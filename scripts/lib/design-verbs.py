@@ -5,7 +5,9 @@ dashboard's side), which is where the words are made.
 The first argument is the verb: nothing or `list` prints the language in a
 line and the pages; `show` prints the prompt for the language, or for one
 page named by its id or its name; `file` prints docs/design-language.md as
-the notebook would write it, for `bb design file > docs/design-language.md`;
+the notebook would write it, for `bb design file > docs/design-language.md`,
+and `file --from FILE` the same from a record given (what `json` prints,
+edited) rather than the saved one, so a branch writes it from its own design;
 `json` prints the record (language, pages, and the presets they are drawn
 from: every kind, template, scheme and choice by key); `schema` prints the
 record's shape with every limit (B342); `save FILE` (or `-`
@@ -25,7 +27,7 @@ argv = sys.argv[1:]
 verb = argv[0] if argv else "list"
 auth = os.environ["BB_DESIGN_AUTH"]
 proj = os.environ["BB_DESIGN_PROJECT"]
-USAGE = "usage: bb design [list | show [ID|NAME] | file | json | schema | save FILE]"
+USAGE = "usage: bb design [list | show [ID|NAME] | file [--from FILE] | json | schema | save FILE]"
 
 
 def fail(msg):
@@ -39,15 +41,36 @@ if verb == "save" and (len(argv) < 2 or argv[1] in ("-h", "--help")):
     print()
     print(r.get("text", "") if isinstance(r, dict) else "")
     raise SystemExit(0 if len(argv) > 1 else 1)
-if verb == "save":
-    src = argv[1]
+def read_record(src):
+    """A record of the shape bb design json prints, from a file or stdin."""
     try:
-        raw = sys.stdin.read() if src == "-" else open(src, encoding="utf-8").read()
-        rec = json.loads(raw)
+        rec = json.loads(sys.stdin.read() if src == "-" else open(src, encoding="utf-8").read())
     except (OSError, ValueError) as e:
         fail(f"could not read {src}: {e}")
     if not isinstance(rec, dict):
         fail("the record is an object with language and pages")
+    return rec
+
+
+if verb == "file" and len(argv) > 1:
+    # From a record given rather than the saved one (B227): a branch writes
+    # the file from its own design, not from what other branches saved.
+    if argv[1] != "--from" or len(argv) != 3:
+        fail("usage: bb design file [--from FILE]")
+    rec = read_record(argv[2])
+    r = bbapi.call("/api/design", {"action": "render", "project": proj,
+                                   "language": rec.get("language") or {},
+                                   "pages": rec.get("pages") or []}, auth=auth)
+    if not isinstance(r, dict):
+        fail("the controller answered something that is not a design")
+    if r.get("error"):
+        fail(r["error"])
+    text = str(r.get("text") or "")
+    sys.stdout.write(text + ("" if text.endswith("\n") else "\n"))
+    raise SystemExit(0)
+
+if verb == "save":
+    rec = read_record(argv[1])
     r = bbapi.call("/api/design", {"action": "save", "project": proj,
                                    "language": rec.get("language") or {},
                                    "pages": rec.get("pages") or []}, auth=auth)

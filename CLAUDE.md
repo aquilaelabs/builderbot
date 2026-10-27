@@ -132,8 +132,9 @@ ref and nowhere else; `bb ci-log` reads a run's output.
   declares `multi`, `live` and `open`.
 - **The design language** is `docs/design-language.md`, written by this
   project's own Design view (`bb design file > docs/design-language.md`,
-  committed with the change) and measured by `test/uniform.mjs`; the house
-  rule `design` holds it.
+  or `--from FILE` with the branch's own record, committed with the
+  change) and measured by `test/uniform.mjs`; the house rule `design`
+  holds it.
 - **Anything the page can execute is a table lookup** (`MACROS`,
   the terminal's `TERM_KEYS`, `TOOLCHAINS`), never a command string, and
   `bb-tty` validates its one URL argument against directories that exist.

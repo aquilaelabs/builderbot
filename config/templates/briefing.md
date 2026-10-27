@@ -314,7 +314,9 @@ change you commit reaches the editor there in seconds.
 what the project looks like as the operator laid it out on the notebook's
 Design view: `bb design show NAME` for one page, theme or rule
 (`nostromo/hull` for a theme's or a page's own), and `bb design file` prints
-the docs/design-language.md it writes. `bb transcripts` lists this account's
+the docs/design-language.md it writes; `bb design file --from FILE` prints it
+from a record of your own (what `bb design json` prints, edited), so a
+branch's file carries its design and not what another branch saved. `bb transcripts` lists this account's
 own earlier conversations here, from every coding agent it uses (Claude,
 ChatGPT, Copilot, Grok), each marked with its agent and never another
 account's, and `bb transcripts show ID` prints one whole, every command and

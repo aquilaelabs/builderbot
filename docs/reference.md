@@ -495,7 +495,9 @@ bb design          what this project looks like, from the notebook's Design view
                    its design language in a line, and its pages
 bb design show [ID|NAME]   the prompt for one page, or for the language alone:
                    the colors as tokens, the type, the shape, the layout
-bb design file     docs/design-language.md as the notebook writes it
+bb design file [--from FILE]   docs/design-language.md as the notebook writes it;
+                   --from renders it from a record (bb design json, edited) instead
+                   of the saved design, so a branch writes the file from its own
 bb design json     the record: the language, the pages, and the presets by key
 bb design schema   the record's shape with every limit, for a save that lands first time
 bb design save FILE   write a record of that shape back, whole: how a session

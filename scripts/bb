@@ -441,7 +441,9 @@ bb design          what this project looks like, from the notebook's Design view
                    its design language in a line, and its pages
 bb design show [ID|NAME]   the prompt for one page, or for the language alone:
                    the colors as tokens, the type, the shape, the layout
-bb design file     docs/design-language.md as the notebook writes it
+bb design file [--from FILE]   docs/design-language.md as the notebook writes it;
+                   --from renders it from a record (bb design json, edited) instead
+                   of the saved design, so a branch writes the file from its own
 bb design json     the record: the language, the pages, and the presets by key
 bb design schema   the record's shape with every limit, for a save that lands first time
 bb design save FILE   write a record of that shape back, whole: how a session
@@ -2473,8 +2475,8 @@ cmd_history() {
 cmd_design() {
     local verb="${1:-list}" auth proj
     case "$verb" in list|show|file|json|schema|save) ;; -h|--help)
-        echo "bb design [list | show [ID|NAME] | file | json | schema | save FILE]: what this project looks like, from the notebook's Design view; bb design save -h prints the record's shape"; return 0 ;;
-        *) die "bb design [list | show [ID|NAME] | file | json | schema | save FILE]" ;; esac
+        echo "bb design [list | show [ID|NAME] | file [--from FILE] | json | schema | save FILE]: what this project looks like, from the notebook's Design view; bb design save -h prints the record's shape"; return 0 ;;
+        *) die "bb design [list | show [ID|NAME] | file [--from FILE] | json | schema | save FILE]" ;; esac
     proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
     auth="$(bb_auth_or_die)"
     BB_DESIGN_AUTH="$auth" BB_DESIGN_PROJECT="$proj" python3 "$BB_LIB/design-verbs.py" "$@"

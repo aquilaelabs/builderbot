@@ -7759,7 +7759,10 @@ class Handler(BaseHTTPRequestHandler):
                 # reply is what lets a session send its next prompt, and one
                 # that overtook the record was told about its own write as
                 # somebody else's (B290). So the reply is held until then.
-                own = any(path.startswith(r) for r in OWN_WRITE_ROUTES)
+                # A design rendered from a record (bb design file --from)
+                # writes nothing, so it marks nothing seen.
+                own = (any(path.startswith(r) for r in OWN_WRITE_ROUTES)
+                       and not (path.startswith("/api/design") and req.get("action") == "render"))
                 self._held = [] if own else None
                 try:
                     out = getattr(self, name)(req)
