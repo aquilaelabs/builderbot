@@ -927,18 +927,21 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
   await dmEditAll();
   await page.waitForSelector(`${DM} [data-dmboot]`, { timeout: 20000 }).catch(() => {});
   // ...and the listing itself, which a refresh empties until its answer
-  // lands: read in that gap it held no instance at all.
-  await page.waitForFunction(() => (dockerList?.instances || []).some(x => x.exists), null,
-                             { timeout: patience(20000) }).catch(() => {});
-  const drawn = await page.evaluate(sel => {
+  // lands: read in that gap it held no instance at all (B161). So the read
+  // is the wait: drawn both ways in one turn once an instance and its
+  // switch are there, and asked again until they are.
+  const flip = force => {
     const d = (dockerList?.instances || []).find(x => x.exists);
-    if (!d) return null;
+    const box = () => d && document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`);
+    if (!d || (!force && !box())) return null;
     d.boot = true; dockerRev++; drawPanes();
-    const on = document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`)?.checked;
+    const on = box()?.checked;
     d.boot = false; dockerRev++; drawPanes();
-    const off = document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`)?.checked;
+    const off = box()?.checked;
     return { on, off, server: 'boot' in d };
-  }, DM);
+  };
+  const drawn = await page.waitForFunction(flip, false, { timeout: patience(20000) })
+    .then(h => h.jsonValue(), () => page.evaluate(flip, true));
   ok(drawn && drawn.on === true && drawn.off === false && drawn.server,
      `an instance's Start on boot reads its own row's boot, which the listing carries (${JSON.stringify(drawn)})`);
 }
@@ -2158,7 +2161,11 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
      `a stack's Ports and mounts are grouped under each service (${JSON.stringify(groups)})`);
   // ...and the fold stays read across a redraw (B827): the stats and every
   // job step redraw the list, and an open fold came back as its shapes.
-  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  // Written again, not left alone: the page writes its markup only when it
+  // says something new (renderDockerInto's __dmHtml), and a redraw that
+  // changed nothing would ask nothing of the fold.
+  const rewrite = () => { document.querySelector('.dmtab').parentElement.__dmHtml = ''; dockerRev++; drawPanes(); };
+  await page.evaluate(rewrite);
   ok(await page.waitForFunction(sel => document.querySelectorAll(sel + ' .sect .wire .wgrp').length === 2, DM, { timeout: 15000 })
        .then(() => true, () => false),
      '...and an open Ports and mounts keeps its lines when the list redraws');
@@ -2167,6 +2174,11 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   // said no ports and no mounts, and the fold said it publishes nothing).
   {
     const route = '**/api/devapp';
+    // The fold is read once that answer has landed (B161): a fixed second
+    // and a half was, under load, before the read had been answered, and
+    // after the page stopped writing an unchanged list it was never asked.
+    let answered, asked = false;
+    const landed = new Promise(f => { answered = f; });
     await page.route(route, async r => {
       const body = r.request().postDataJSON?.() || {};
       if (body.action !== 'state') return r.fallback();
@@ -2174,12 +2186,14 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
       const j = await real.json();
       j.state = { ...(j.state || {}), ports: [], mounts: [], wired: false };
       await r.fulfill({ response: real, json: j });
+      asked = true; answered();
     });
-    await page.evaluate(() => { dockerRev++; drawPanes(); });
-    await page.waitForTimeout(1500);
+    await page.evaluate(rewrite);
+    await Promise.race([landed, sleep(patience(15000))]);
+    await page.evaluate(() => new Promise(f => setTimeout(f, 200)));
     const kept = await page.$$eval(`${DM} .sect .wire`, ws => ws.map(w => w.querySelectorAll('.wgrp').length + ':' + /publishes nothing/.test(w.textContent)));
     await page.unroute(route);
-    ok(kept.includes('2:false'), `...and keeps them when a read could not resolve the compose, never "publishes nothing" (${kept.join(' ')})`);
+    ok(asked && kept.includes('2:false'), `...and keeps them when a read could not resolve the compose, never "publishes nothing" (${asked ? 'answered' : 'never asked'}: ${kept.join(' ')})`);
   }
   // Its services a table in the card (the operator's concept, 17 Oct): each
   // its own line, its ports in their column.
@@ -2504,11 +2518,20 @@ await holdPoll(page);
 // assertion each time (B99's family). holdPoll stops the fifteen-second
 // refresh; it does not stop a revision landing, and there is no need to make
 // it: drawPanes() is synchronous, so one call reads one frame.
-const dead = await page.evaluate(() => {
+// ...and that frame is the one the block is about only once the send above
+// has ended and the tab has its rows (B161): staging-two's job still running
+// says its own step on its row, not "state unknown", and a listing being
+// read again draws no rows at all. So the server's queue is waited out, and
+// the plant is made and read inside a wait that asks again until the page's
+// own listing has rows and no running job.
+await idle(60000);
+const plantDead = force => {
+  if (!force && (!(dockerList?.instances || []).length || dockerList.job?.running)) return null;
   state.docker = { on: false, node: dockerNode,
                    why: 'no node with a daemon: nothing to talk to' };
   dockerRev++; drawPanes();
   const q = s2 => [...document.querySelectorAll(s2)];
+  if (!force && !q('.dmtab .row[data-inst]').length) return null;
   const mk = document.getElementById('bDockerNew');
   return {
     newOff: mk?.disabled === true,
@@ -2521,7 +2544,9 @@ const dead = await page.evaluate(() => {
     off: q('.dmtab .row[data-inst]').map(r => r.classList.contains('off')),
     pills: q('.dmtab .row[data-inst] .dmpill').map(e => e.textContent),
   };
-});
+};
+const dead = await page.waitForFunction(plantDead, false, { timeout: patience(30000) })
+  .then(h => h.jsonValue(), () => page.evaluate(plantDead, true));
 ok(dead.newOff && dead.acts.length > 0 && dead.acts.every(Boolean),
    'with no daemon, the controls that would drive one are disabled');
 ok(/no node with a daemon/.test(dead.tip),
@@ -2806,13 +2831,18 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   // Waited for rather than assumed: the repaint is synchronous but the tab
   // has to be the one on screen, and an earlier file leaving another
   // document in the pane is enough to lose the race.
-  await page.waitForSelector('.dmtab .dmnote', { timeout: 15000 });
-  ok(/not a BuilderBot sandbox/.test(await page.$eval('.dmtab .dmnote', e => e.textContent)),
+  // ...and read inside the wait: a revision landing redraws the tab, and the
+  // note one call found was gone by the next (B161).
+  const note = await page.waitForFunction(() => {
+    const t = document.querySelector('.dmtab .dmnote')?.textContent || '';
+    return /not a BuilderBot sandbox/.test(t) && t;
+  }, null, { timeout: 15000 }).then(h => h.jsonValue(), () => '');
+  ok(/not a BuilderBot sandbox/.test(note),
      'a daemon with no provisioner stamp is refused, and named as the reason');
   // The provisioner's own name, which is provision-linux.sh since there is a
   // macos one beside it. `provision\.sh` matched the name it had before that
   // and nothing since.
-  ok(/provision-linux\.sh/.test(await page.$eval('.dmtab .dmnote', e => e.textContent)),
+  ok(/provision-linux\.sh/.test(note),
      '...saying what to run on the VM, since re-running it is the whole fix');
   rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
   await page.evaluate(async (id) => {
@@ -4629,12 +4659,17 @@ print(json.dumps(out))
   await refreshUntil(page, () => (state.projects || []).find(p => p.name === 'ep.silon')?.color === 'teal',
                      { timeout: 20000 });
   await page.evaluate(() => { dockerRev++; drawPanes(); });
-  await page.waitForFunction(() => /57, 181, 176/.test(getComputedStyle(
-    [...document.querySelectorAll('.dmtab .dmgroup')].find(h => h.querySelector('b')?.textContent === 'ep.silon')).boxShadow),
-    null, { timeout: 10000 }).catch(() => {});
-  b = await bands();
-  ok(/57, 181, 176/.test(b.find(x => x.head === 'ep.silon')?.bar || ''),
-     `...in the project's own color once it has one (${b.find(x => x.head === 'ep.silon')?.bar})`);
+  // Read inside the wait (B161): a band missing for a moment (the listing
+  // read again, its template drawn) threw out of the wait, and the read
+  // after it found no band at all.
+  const tealBar = force => {
+    const h = [...document.querySelectorAll('.dmtab .dmgroup')].find(h => h.querySelector('b')?.textContent === 'ep.silon');
+    const bar = h ? getComputedStyle(h).boxShadow : '';
+    return (force || /57, 181, 176/.test(bar)) && bar;
+  };
+  const teal = await page.waitForFunction(tealBar, false, { timeout: patience(10000) })
+    .then(h => h.jsonValue(), () => page.evaluate(tealBar, true));
+  ok(/57, 181, 176/.test(teal || ''), `...in the project's own color once it has one (${teal})`);
   await api('/api/prefs', { project: 'ep.silon', color: '' });
   const under = h => (g.find(x => x.head === h) || { rows: [] }).rows;
   ok(under('ep.silon').includes('ep.silon|main') && under('ep.silon').includes('helper-for-eps|main')
