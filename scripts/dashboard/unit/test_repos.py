@@ -116,6 +116,18 @@ class Repos(unittest.TestCase):
         self.assertEqual(repos.project_of("cart"), shop)
         self.assertTrue(repos.add(shop, "cart").get("ok"), "the dialog's own add after it is a no-op")
 
+    def test_the_empty_project_b402_left_is_named_and_no_other(self):
+        # As the operator's builderbot-catalog: the repository placed in a
+        # project under its own name, then NAME (Pnn) made empty beside it.
+        placed = self.project("docs", "docs")
+        left = repos.create(f"docs ({registry.pid('docs')})")["key"]
+        mine = repos.create(f"notes ({registry.pid('docs')})")["key"]   # another name: a person's
+        kept = self.project(f"reader ({registry.pid('reader')})", "reader")  # not empty
+        self.assertEqual(repos.leftovers(), [(left, "docs")])
+        self.assertTrue(repos.delete(left).get("ok"))
+        self.assertEqual(repos.leftovers(), [], "gone once deleted")
+        self.assertTrue(registry.is_repos(mine) and registry.is_repos(kept) and repos.project_of("docs") == placed)
+
     def test_one_put_back_by_hand_goes_back_into_its_project(self):
         shop = self.project("Shop", "app", "server")
         repos.detach("app")

@@ -20,6 +20,7 @@ project-groups.json, which is each person's own grouping of the Projects
 page's cards and has nothing to do with this.
 """
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -122,6 +123,24 @@ def expand(names):
 def all_members():
     """{key: [members]} for every project, an empty one with []."""
     return {k: members(k) for k in _load()["projects"] if registry.is_repos(k)}
+
+
+def leftovers():
+    """The empty projects 0.8.0's B402 left: one named NAME (Pnn) with
+    nothing in it, where Pnn is the id of a repository shown as NAME that is
+    in another project. A status read placed the repository in a project of
+    its own while git init ran, and the create then made the one it meant
+    to under the taken name, which the repository never joined. Said on the
+    bell for a person to delete; never deleted here, since an empty project
+    is one a person may have made. [(key, dirname)]."""
+    by_pid = {registry.pid(d): d for d in registry.live_dirs()}
+    got = []
+    for key, have in all_members().items():
+        m = re.fullmatch(r"(.+) \((P\d+)\)", registry.label(key))
+        d = by_pid.get(m.group(2)) if m and not have else None
+        if d and registry.label(d) == m.group(1) and project_of(d) not in ("", key):
+            got.append((key, d))
+    return got
 
 
 def made_since(dirname, started):
