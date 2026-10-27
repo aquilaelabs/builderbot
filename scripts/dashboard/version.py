@@ -1009,10 +1009,22 @@ def release(project, comp="", env=None, may_push=True, push=True):
         out["note"] = (f"{name} is on this commit here. This project has no push "
                        f"rights, so nothing was pushed.")
         return out
-    r = _git(project, "push", "origin", f"refs/tags/{name}", timeout=120, env=env)
-    if r is None:
-        out["note"] = (f"{name} is on this commit here, but the push failed; run "
-                       f"`git push origin {name}` when the remote is reachable.")
+    # git's own words when it fails (B398): "the push failed" alone left the
+    # person guessing between the network, the credential and the remote.
+    try:
+        r = subprocess.run(["git", "-C", str(root(project)), "push", "origin", f"refs/tags/{name}"],
+                           capture_output=True, text=True, timeout=120, check=False,
+                           env={**os.environ, **(env or {})})
+        said = "" if r.returncode == 0 else (r.stderr or r.stdout or "").strip()
+        failed = r.returncode != 0
+    except (OSError, subprocess.SubprocessError) as e:
+        said, failed = str(e), True
+    if failed:
+        # Never a credential: a URL with one in it is cut to its host.
+        said = re.sub(r"(https?://)[^@/\s]*@", r"\1", said)[-400:]
+        out["note"] = (f"{name} is on this commit here, but the push failed"
+                       + (f": {said}" if said else "")
+                       + f"; push it with `git push origin {name}` once that is put right.")
         return out
     out["pushed"] = True
     return out

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A release whose tag could not be pushed says why, in git's own words, rather than only that the push failed (bb35f8c)
+
 ## 0.8.0: 2026-10-27
 
 ### Added
