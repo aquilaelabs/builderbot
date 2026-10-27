@@ -4359,6 +4359,9 @@ def _forge_release(project, tag, version_, sha, comp=""):
     return r
 
 
+# The briefing says what a session may move the version by, with the rest
+# of the project's dials (preamble.dials_line).
+preamble.version_policy = version.policy
 version.configure_verbs(PANEL=version_payload, GIT_ENV=users.git_env, CREDS_ENV=projects._git_env,
                         MAY_PUSH=projects.may_push, SESSIONS=sessions_anywhere,
                         FORGE=_forge_release,
