@@ -200,7 +200,7 @@ function keyMineSection(){
   if (m.error || !m.sealing) return "";
   const forgesHtml = (m.forges || []).length
     ? tblWrap(KS_FORGE_COLS, m.forges.map(f => `<div class="row">${tblLine(KS_FORGE_COLS, [
-        esc(f.host), esc(f.login || "not said"), esc(KEYS_WHEN(f.at)),
+        esc(f.scheme === "http" ? "http://" + f.host : f.host), esc(f.login || "not said"), esc(KEYS_WHEN(f.at)),
         `<button type="button" data-ksunlink="${esc(f.host)}">Remove</button>`])}</div>`).join(""), "ksforges")
     : `<div class="hint">Nothing linked yet. A token linked here is used for your own git work ahead of a project's, and a project can be linked to it from its settings.</div>`;
   const projects = (m.projects || []).length
@@ -211,7 +211,7 @@ function keyMineSection(){
         m.previous_on_nodes === 1 ? "" : "s"} on the nodes ${m.previous_on_nodes === 1 ? "is" : "are"} still sealed under it.</div>` : ""}
     ${forgesHtml}${projects}
     <div class="setrow col ctlrow ksadd">
-      ${lbl("ksToken", "Link a forge", "a personal access token; checked with the forge, then kept under your key")}
+      ${lbl("ksToken", "Link a forge", "its host (http://host for a forge on plain http) and a personal access token; checked with the forge, then kept under your key")}
       <div class="ksaddrow"><input id="ksHost" value="github.com" spellcheck="false" autocomplete="off" aria-label="forge host">
         <input id="ksToken" type="password" autocomplete="off" spellcheck="false" placeholder="token" aria-label="token"></div>
     </div>

@@ -157,6 +157,9 @@ print(gitcreds.read_line("web"))`], { env, encoding: 'utf8' }).trim();
   ok(!purged.forges.length && !purged.has, `Purge empties it after a plain confirmation, no password or code asked (${JSON.stringify(purged)})`);
   ok(page.dialogs.some(t => /Purge your key store/.test(t)), '...the confirmation it asked');
   await keys({ action: 'link-forge', host: 'git.example.test', token: 'storetoken0123456789' });
+  const plain = await keys({ action: 'link-forge', host: 'http://lan.example.test:3000', token: 'storetoken0123456789' });
+  const fg = ((await keys({ action: 'mine' })).forges || []).find(f => f.host === 'lan.example.test:3000');
+  ok(plain.ok && fg?.scheme === 'http', `a forge on plain http is linked with its scheme, which git matches (${JSON.stringify(fg)})`);
   const adm = await keys({ action: 'purge-for', account: OWNER.username });
   ok(adm.ok && !(await keys({ action: 'mine' })).forges.length, 'an administrator purges an account\'s key store from its name');
 

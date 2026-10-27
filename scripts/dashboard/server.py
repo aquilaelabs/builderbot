@@ -9136,8 +9136,12 @@ class Handler(BaseHTTPRequestHandler):
     def _keys_link_forge(self, uid, host, token):
         """A forge token linked into the account's own key store, checked
         with the forge first where it has an API to ask (R154)."""
-        host = (host or "").strip().lower()
+        host = (host or "").strip().lower().rstrip("/")
         token = token.strip()
+        # A forge on somebody's own LAN may be plain http, and git matches
+        # the scheme as well as the host, so it is named with it.
+        scheme = "http" if host.startswith("http://") else "https"
+        host = host.split("://", 1)[-1]
         if not uid:
             return {"error": "only a person keeps a key store"}, 403
         if not re.fullmatch(r"[a-z0-9.-]+(:\d+)?", host):
@@ -9148,11 +9152,11 @@ class Handler(BaseHTTPRequestHandler):
             return {"error": bad}, 400
         login = ""
         if forges.can_create(forge):
-            login = forges.whoami(forge, host, token, "https")
+            login = forges.whoami(forge, host, token, scheme)
             if not login:
                 return {"error": f"{forge['name']} does not accept that token"}, 400
         q = lambda x: urllib.parse.quote(x, safe="")  # noqa: E731
-        line = f"https://{q(login or forge['user'])}:{q(token)}@{host}"
+        line = f"{scheme}://{q(login or forge['user'])}:{q(token)}@{host}"
         return accountkeys.link_forge(uid, host, line, login)
 
     def _keys_purge(self, uid, name):
