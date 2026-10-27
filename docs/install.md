@@ -40,11 +40,9 @@ mkdir -p /mnt/user/appdata/BuilderBot/secrets/ssh
 
 cp /path/to/git-key /mnt/user/appdata/BuilderBot/secrets/ssh/id_ed25519
 
-# the install key, which seals what BuilderBot keeps (keep a copy elsewhere),
-# and any publishing token a controller shell should use: any *.env file here
-# is loaded the same way
+# any publishing token a controller shell should use: any *.env file here
+# is loaded the same way. The install key is made here by the first start.
 cat > /mnt/user/appdata/BuilderBot/secrets/builderbot.env <<'EOF'
-INSTALL_KEY=paste-the-output-of-openssl-rand-hex-32
 NPM_TOKEN=npm_xxxxxxxxxxxxxxxx
 EOF
 
@@ -53,7 +51,8 @@ chmod -R go-rwx    /mnt/user/appdata/BuilderBot/secrets
 ```
 
 The install key seals the settings' tokens, the signing keys and the git
-credentials at rest ([reference.md, The install key](reference.md#the-install-key)).
+credentials at rest. The first start makes it in this folder; save a copy
+from **Controller, Keys** ([reference.md, The install key](reference.md#the-install-key)).
 What this buys you: SSH keys are served by a root-owned `ssh-agent`
 (sessions can push with them, never read them), a token in a `*.env` file
 here never enters a session's environment, and all logs are redacted of

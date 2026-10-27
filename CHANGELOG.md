@@ -11,6 +11,7 @@
 - A Schedules page beside Jobs runs an administrator's own scripts on a timetable, as Unraid's User Scripts do: each on a node of yours, as its jobs account or as root on a sandbox node, every run a job with its log, a failed or skipped run on the bell. The static analysis scan is built in, off until you turn it on with its node and paths (380cc7a)
 - Controller settings' BuilderBot bug reports section lists every report with its own delete, so one can be taken out before the diagnostics are downloaded. (c2ece51)
 - A container that has to talk to a machine on your LAN, such as a device or another server, can be let through the network wall around each project's containers: an administrator turns on Reaches the LAN in its settings on the Containers page (881deec)
+- An install makes its own install key at its first start, so nothing has to be set to keep its tokens, signing keys and sign-ins sealed: Controller, Keys shows where it is kept, shows it to save, changes it with everything kept under it sealed again at once, and lists what is kept under it. Each account has a key of its own for its agents' sign-ins on the nodes, changed from Profile, Your key (fd6c02f)
 
 ### Changed
 
@@ -25,6 +26,7 @@
 - Rename SIGNING_SECRET to INSTALL_KEY in your secrets folder's env file: the old name is read for this release only. With an install key set, everybody is signed out once at the first start of 0.8.0 (7645fec)
 - Update the Android app and the VS Code extension (0.2.0) with the controller: they open a session's terminal on BuilderBot's own terminal now, and an older copy of either cannot open one (052c096)
 - Each project you had becomes a project holding its one repository, under the same name, with its settings, people, owner, pins, groups, colors, archive and lock; nothing on disk moves. New project now asks for a name alone, and Add repository on its card makes or clones the repository (178952e)
+- The secrets folder is mounted read-write now, so the first start can make the install key in it: on Unraid set the Secrets directory's access to Read/Write, and in compose drop :ro from the /secrets volume. An install with INSTALL_KEY set keeps it, and the Keys page says to change it there (fd6c02f)
 
 ### Deprecated
 

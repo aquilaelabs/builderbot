@@ -937,7 +937,7 @@ function nodeSessNetRow(n){
     : !n.reported?.tokseal ? `<div class="sub dim">The node has not reported it yet.</div>`
     : !sealed ? `<div class="sub dim">Nothing is signed in here yet: a sign-in made here is sealed as the login writes it.</div>`
     : `<div class="sub">${sealed} sign-in${sealed === 1 ? "" : "s"} sealed here. Each opens only while its person has a terminal open on this node, so a copy of its disk signs in to nothing.</div>`
-      + (n.tokseal_stale ? `<div class="sub warn">${n.tokseal_stale} still sealed under the install key before this one: keep INSTALL_KEY_PREVIOUS until ${n.tokseal_stale === 1 ? "its person opens" : "their people open"} a terminal here.</div>` : "");
+      + (n.tokseal_stale ? `<div class="sub">${n.tokseal_stale} still sealed under an older key: ${n.tokseal_stale === 1 ? "it moves" : "each moves"} to its account's own key when ${n.tokseal_stale === 1 ? "its person opens" : "their people open"} a terminal here.</div>` : "");
   const ac = n.reported?.session?.accounts || {};
   const acctLine = !acctOn ? (ac.users ? `<div class="sub dim">${ac.users} account${ac.users === 1 ? "" : "s"} still ${ac.users === 1 ? "has" : "have"} a home of ${ac.users === 1 ? "its" : "their"} own user, moved back once ${ac.users === 1 ? "its" : "their"} sessions end.</div>` : "")
     : ac.error ? `<div class="sub bad">Not in force: ${esc(ac.error)}.</div>`

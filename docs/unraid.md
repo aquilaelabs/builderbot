@@ -371,11 +371,10 @@ root-only folder:
    ```bash
    mkdir -p /mnt/user/appdata/BuilderBot/secrets/ssh
 
-   # any publishing token a session should use but never read (optional)
+   # any publishing token a session should use but never read (optional);
+   # the install key is made here by the first start, saved from Controller, Keys
    cat > /mnt/user/appdata/BuilderBot/secrets/builderbot.env <<'EOF'
    NPM_TOKEN=npm_xxxxxxxxxxxxxxxx
-   # seals at rest what BuilderBot keeps (signing keys, tokens); keep a copy elsewhere
-   INSTALL_KEY=paste-the-output-of-openssl-rand-hex-32
    EOF
 
    # any git ssh keys (no passphrase; filename doesn't matter)
@@ -385,7 +384,8 @@ root-only folder:
    chmod -R go-rwx   /mnt/user/appdata/BuilderBot/secrets
    ```
 2. Set the template's **Secrets directory** field (or uncomment the
-   `/secrets` volume in compose) to that folder.
+   `/secrets` volume in compose) to that folder, read-write, so the first
+   start can make the install key in it.
 
 **Git access is a separate question from the runner token.** Over HTTPS,
 "git can use it" and "a session can't read it" are mutually exclusive: a

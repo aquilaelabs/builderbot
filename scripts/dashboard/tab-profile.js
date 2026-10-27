@@ -59,6 +59,7 @@ const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
   twofactor: "an authenticator app, passkeys and recovery codes",
+  mykey: "what your sign-ins on the nodes are sealed with",
   terminal: "the size, cursor and colors of your terminals",
   devices: "your apps, to disconnect",
 };
@@ -156,6 +157,7 @@ function renderProfileInto(i){
           </div>
         </div>`)}
     ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
+    ${keyMineSection()}
     ${sec("terminal", "Your terminal", profileTerminal())}
     ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
   wireSections(d.list);
@@ -163,6 +165,7 @@ function renderProfileInto(i){
   wireProfile(d.el);
   wireDeviceOut(d.el);
   wireTwoFactor(d.el);
+  wireKeyMine(d.el);
   wireTerminalLook(d.el);
 }
 

@@ -63,26 +63,43 @@ out of it, with the rest of the controller (the wall,
 
 ### The install key
 
-`INSTALL_KEY` seals at rest what BuilderBot keeps that would let somebody
+The install key seals at rest what BuilderBot keeps that would let somebody
 in: the settings' tokens, each project's signing keys, the git credentials a
-project holds, and the coding agents' sign-ins a node keeps; the sign-in
-cookies' key is made from it too. Without one, `bb doctor` warns and those
-are kept open in `/config`, so a copy of `/config` or a backup of it gives
-them away.
+project holds, the two-factor secrets, and each account's own key; the
+sign-in cookies' key is made from it too.
 
-Set it once, before anything is kept: 16 characters or more (`openssl rand
--hex 32` makes one), as `INSTALL_KEY=` in a `*.env` file in the root-only
-secrets folder (compose's `/secrets`, the template's **Secrets directory**,
-a bare-metal install's `BB_SECRETS_DIR`), never in `.env` or the template's
-plain fields. It is never written into `/config`, so keep a copy with your
-other secrets: lost or changed, what was sealed under it does not open, and
-each signing key comes back by **Import a backup**. What was kept open before
-is sealed at the next start.
+An install makes its own at its first start, so there is nothing to set:
+32 random bytes in an `install-key` folder only the controller's account
+reads, inside the secrets folder (compose's `/secrets`, the template's
+**Secrets directory**, a bare-metal install's `BB_SECRETS_DIR`) when that is
+mounted read-write, and beside the state in `/config/.install-key` when
+there is none. Kept beside the state, a copy of `/config` carries the key,
+so the Keys page and `bb doctor` say so; mount a secrets folder the
+controller may write to and the next start moves the key into it.
 
-To change it without everybody signing in again, set the old one as
-`INSTALL_KEY_PREVIOUS=` beside the new one until each person has opened a
-terminal on each node once, which seals their sign-in again under the new
-key. `SIGNING_SECRET=`, its name before 0.8.0, is read for one release.
+**Controller, Keys** (an administrator's) shows where the key is kept and
+its fingerprint, which names it and opens nothing. **Show** puts the key on
+the page to copy or download, and **I saved it** marks it saved: keep that
+copy apart from `/config`, since a backup restored on a new install opens
+nothing that was sealed without it. **Change** makes a new key, or takes one
+pasted, and seals everything kept under the one before again under it at
+once; people stay signed in until the next restart. The page also lists
+everything kept under the key, each with what uses it and where it is
+changed.
+
+Each account has a key of its own, kept by the controller under the install
+key, for its coding agents' sign-ins sealed on the nodes; changing the
+install key leaves those as they are. A person changes their own on
+**Profile, Your key**. A sign-in sealed under a key before one that changed
+opens with the old key the next time its person opens a terminal on that
+node, and is sealed again under the new one; the old key is kept until then.
+
+`INSTALL_KEY=` in a `*.env` file in the secrets folder (16 characters or
+more; never in `.env` or the template's plain fields) sets the key instead,
+and the install then makes none: the Keys page shows it and says to change
+it there, with the old one as `INSTALL_KEY_PREVIOUS=` beside it until each
+sign-in has moved. `SIGNING_SECRET=`, its name before 0.8.0, is read for one
+release.
 
 ## The `bb` helper
 
@@ -814,21 +831,15 @@ administrator who works on the project.
 | Play upload key | Google Play with Play App Signing: you sign the `.aab` with it, Google re-signs what users download with the key it holds | Play Console resets it |
 | Sideload signing key | an APK you hand out yourself, or that F-Droid publishes from a reproducible build | gone for good: no update reaches an existing install, or anybody can ship one over it |
 
-On the controller every key is sealed at rest once the install has an
-**install key**: `INSTALL_KEY=` (16 characters or more; `openssl rand -hex 32`
-makes one; `SIGNING_SECRET=`, its name before 0.8.0, is read for one release)
-in an `*.env` file in the root-only secrets folder, as `NPM_TOKEN` is. Each keystore and its passwords under `/config/signing` are
-then ciphertext, so a copy of `/config`, or a backup of it, opens no key;
-keys kept from before are sealed at the next start. The secret is never
-written into `/config`: keep it with your other secrets. Lost or changed, the
-sealed keys cannot be opened, the Signing view says so, and each key comes
-back by **Import a backup**; without a secret, the keys are kept unsealed and
-the view says that too. Root on the running controller can still read them.
-The coding agents' sign-ins a node keeps sealed (Nodes, **Sign-ins sealed**)
-are sealed under keys made from it too: to change the install key without
-everybody signing in again, set the old one as `INSTALL_KEY_PREVIOUS=` beside
-the new one until each person has opened a terminal on each node once, which
-seals their sign-in again under the new key.
+On the controller every key is sealed at rest under the **install key**
+([The install key](#the-install-key)), which the install makes itself
+unless `INSTALL_KEY=` sets one. Each keystore and its passwords under
+`/config/signing` are ciphertext, so a copy of `/config`, or a backup of it,
+opens no key; keys kept from before are sealed at the next start. Changing
+the key on the Keys page seals them again under the new one. A key lost, or
+replaced outside the page, leaves the sealed keys shut: the Signing view
+says so, and each key comes back by **Import a backup**. Root on the running
+controller can still read them.
 
 So a sideload key is downloaded once with **Download backup** and kept
 offline, with its password somewhere apart from it; its row says so in red

@@ -119,7 +119,7 @@ scripts/
     server.py                    the routes, the transport and the gates; each handler one call into a module beside it
     index.html                   the markup, the stylesheet and the wiring that runs at load
     terminal.html                one terminal on a page of its own: a tab popped out of the dock, and the Android app's session screen (R133)
-    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Schedules, nginx, Storage, Toolchains, Agents, Emulator, Phone, Apps, Settings, Users, Profile, Findings, Projects)
+    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Schedules, nginx, Storage, Toolchains, Agents, Emulator, Phone, Apps, Settings, Keys, Users, Profile, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws
@@ -199,7 +199,9 @@ scripts/
     gitcreds.py                  a project's git token, one line in /config/gitcreds, sealed under the install key where there is one (R135)
     git-credential-bb            git's credential helper for that token: opened for the scheme and host it was written for, and nothing kept (R135)
     termws.py                    BuilderBot's own terminal, the controller's half (R133): /termws in a pty here, or carried signed to a node's /term
-    tokenkeys.py                 the controller's half of the sealed sign-ins (R126): each account's public key per node, made from the install key, and the keys a person's own terminal carries
+    tokenkeys.py                 the controller's half of the sealed sign-ins (R126): each account's public key per node, made from the account's own key, and the keys a person's own terminal carries, each seal's by the key it names
+    installkey.py                the install key the install made itself (R154): where it is kept, its fingerprint, shown to save, changed with everything kept under it sealed again
+    accountkeys.py               each account's own key for its sign-ins on the nodes (R154), in account-keys.json sealed under the install key, changed from Profile
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
     phone.py                     a paired handset on a node: install, push, and the asking
     phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
