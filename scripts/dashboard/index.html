@@ -3423,6 +3423,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    Rename) wears the same color as its buttons, its field tinted and its focus
    ring the project's, where the page's plain skin read as a hole in the card
    (the operator, 22 Oct). */
+/* A project's repositories as a pulldown in its head, in its color. */
+.phead select.prepos{width:auto;max-width:16rem;flex:0 1 auto;min-width:0}
+.pane .bar.proj.pc .phead select.prepos{background-color:color-mix(in srgb, var(--pc) 16%, var(--btn));border-color:color-mix(in srgb, var(--pc) 55%, var(--line))}
 :is(.pcard.pc,.pane .bar.proj.pc) .askrow input{background:color-mix(in srgb, var(--pc) 10%, var(--sunk));
   border-color:color-mix(in srgb, var(--pc) 45%, var(--line))}
 :is(.pcard.pc,.pane .bar.proj.pc) .askrow input:focus{outline:2px solid color-mix(in srgb, var(--pc) 60%, var(--panel));outline-offset:-1px}

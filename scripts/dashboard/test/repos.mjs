@@ -161,9 +161,18 @@ const browser = await launch();
   // with this one picked; its Start opens the project's one session.
   const head = await page.evaluate(() => { const d = document.createElement('div'); d.innerHTML = projectHeader({ arg: 'ep.silon' });
     return { name: d.querySelector('.pname')?.textContent.trim(), at: d.querySelector('[data-c]')?.dataset.c ?? 'gamma',
-             sw: [...d.querySelectorAll('[data-reposw]')].map(b => b.textContent.trim() + (b.classList.contains('on') ? '*' : '')) }; });
+             sw: [...d.querySelectorAll('select[data-reposw] option')].map(o => o.textContent.trim() + (o.selected ? '*' : '')) }; });
   ok(head.name === 'Shop & Co' && head.at === 'gamma' && JSON.stringify(head.sw) === '["gamma","ep.silon*","shopweb"]',
-     `a repository's page names its project, a switch with it picked, Start on the first (${JSON.stringify(head)})`);
+     `a repository's page names its project, its repositories a pulldown with it picked, Start on the first (${JSON.stringify(head)})`);
+  // Picking another opens that one's notebook (the operator, 27 Oct: a
+  // pulldown, a list that may be long).
+  await page.evaluate(() => openNotebook('ep.silon'));
+  await page.waitForSelector('.pane .bar.proj select[data-reposw]', { timeout: 15000 });
+  await page.selectOption('.pane .bar.proj select[data-reposw]', 'shopweb');
+  await page.waitForFunction(() => tabOf(panes[0])?.kind === 'notebook' && tabOf(panes[0])?.arg === 'shopweb', null, { timeout: 10000 }).catch(() => {});
+  ok(await page.evaluate(() => tabOf(panes[0])?.arg === 'shopweb'), "picking another repository in the pulldown opens its notebook");
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector(`${card} .pcfront`, { state: 'visible', timeout: 15000 });
   // Its other repositories' open items under one repository's own list.
   await page.evaluate(() => postJSON('/api/roadmap', { project: 'ep.silon', action: 'add', text: 'also-row from ep.silon' }));
   const also = await page.evaluate(async () => { const d = document.createElement('div'); document.body.append(d);
