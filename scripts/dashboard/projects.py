@@ -1218,6 +1218,18 @@ def _aborted():
 
 # ---- creating -------------------------------------------------------------
 
+def _claim(name, shown, into=""):
+    """A new repository's directory recorded, and put into the project it
+    was added to in the same breath: recorded alone, a status read during
+    git init or an archive's unpack gave it a project of its own (the
+    server's _place), and the one it was added to was then refused (B402).
+    Which project it may go into is the server's to check first."""
+    registry.claim(name, shown)
+    if into:
+        import repos
+        repos.add(into, name)
+
+
 def create(req, env=None):
     """Create a project under /workspace, as a (payload, status) pair.
     `env` is the account's git identity, for the commits a starting version
@@ -1355,7 +1367,7 @@ def create(req, env=None):
             return {"error": f"{name} already exists in the workspace"}, 400
         except OSError as e:
             return {"error": f"cannot create {name}: {e}"}, 500
-    registry.claim(name, shown)
+    _claim(name, shown, _field(req, "project"))
     if mode == "init":
         # An archive to start from: unpacked into the directory just claimed,
         # BEFORE git init, so the tree is there for the first status.
@@ -1972,12 +1984,18 @@ def create_from_dialog(req, *, env, account, may_node):
         # empty project behind; its owner and list come over then.
         pass
     elif not into:
-        made = repos.create(registry.label(name))
-        if made.get("error"):
-            made = repos.create(f"{registry.label(name)} ({registry.pid(name)})")
-        if made.get("ok"):
-            repos.add(made["key"], name)
-            body["project"] = made["key"]
+        # One a status read placed while git init ran (the server's _place)
+        # is already in a project of its own: that one, not a second (B402).
+        key = repos.project_of(name)
+        if not key:
+            made = repos.create(registry.label(name))
+            if made.get("error"):
+                made = repos.create(f"{registry.label(name)} ({registry.pid(name)})")
+            if made.get("ok"):
+                repos.add(made["key"], name)
+                key = made["key"]
+        if key:
+            body["project"] = key
     else:
         body["project"] = into
         # The project's own: its owner, its node and the dials kept by
