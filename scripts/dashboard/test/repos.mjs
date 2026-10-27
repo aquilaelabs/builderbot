@@ -268,13 +268,13 @@ ok(gone.status === 200 && !(await status()).repos[key], `an empty project is del
     $('mvGo').click();
     out.picked = await got;
     return out;
-  }, { label: 'gamma', from: 'Old', to: 'New', nodes: [{ id: 'n_a', name: 'draconis', as: 'hosts', have: false, instances: ['gamma-public'] },
+  }, { label: 'gamma', from: 'Old', to: 'New', nodes: [{ id: 'n_a', name: 'edge1', as: 'hosts', have: false, instances: ['gamma-public'] },
                                                       { id: 'n_b', name: 'vega', as: 'nodes', have: true, instances: [] }],
-       things: [{ kind: 'container', key: 'g|public', name: 'gamma-public', node: 'n_a', node_name: 'draconis', reach: false, goes: true },
+       things: [{ kind: 'container', key: 'g|public', name: 'gamma-public', node: 'n_a', node_name: 'edge1', reach: false, goes: true },
                 { kind: 'container', key: 'o|own', name: 'old-db', node: 'n_b', node_name: 'vega', reach: true, goes: false },
-                { kind: 'vm', key: 'gamma/box', name: 'box', node: 'n_a', node_name: 'draconis', reach: false, goes: true }],
+                { kind: 'vm', key: 'gamma/box', name: 'box', node: 'n_a', node_name: 'edge1', reach: false, goes: true }],
        lose: ['w.peer'], busy: [], node_why: '' });
-  ok(dlg.title === 'Move gamma to New?' && JSON.stringify(dlg.boxes) === '[["n_a",true]]' && /Add draconis to New's nodes it hosts containers on/.test(dlg.text)
+  ok(dlg.title === 'Move gamma to New?' && JSON.stringify(dlg.boxes) === '[["n_a",true]]' && /Add edge1 to New's nodes it hosts containers on/.test(dlg.text)
      && /gamma-public runs there/.test(dlg.text) && /w\.peer reaches it through Old alone/.test(dlg.text) && /vega: New has it already/.test(dlg.text)
      && /Make old-db New's/.test(dlg.text) && /VMs, which go with gamma/.test(dlg.text)
      && JSON.stringify(dlg.picked) === '{"nodes":["n_a"],"give":["g|public"]}',
