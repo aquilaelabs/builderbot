@@ -105,6 +105,22 @@ class Store(unittest.TestCase):
             self.assertIsNone(cmdmatch.first_match(line, pats), line)
         self.assertIn("bb proc", next(r for r in rules.ALWAYS if r["name"] == "pkill-by-pid")["text"])
 
+    def test_a_session_reaches_a_remote_through_bb_git_alone(self):
+        """The operator, 27 Oct: git's own push, fetch, pull, ls-remote and
+        remote update are refused however written, a token in the URL or
+        not, so the controller's credential, git policy and scan cannot be
+        gone round; local git and bb git are let be."""
+        import rules
+        g = next(r for r in rules.ALWAYS if r["name"] == "git-through-bb")
+        for line in ("git push", "git push https://x:tok@github.com/o/r.git main", "git -C /w/x push",
+                     "git -c credential.helper= push origin", "sudo git fetch", "bash -c 'git pull'",
+                     "git --git-dir=/x/.git fetch", "git remote update", "git ls-remote origin"):
+            self.assertIsNotNone(cmdmatch.first_match(line, g["refuse"]), line)
+        for line in ("bb git push", "git commit -m 'push it'", "git log --grep push", "git status",
+                     "git remote -v", "git worktree add ../x", "git clone https://x", "echo git push"):
+            self.assertIsNone(cmdmatch.first_match(line, g["refuse"]), line)
+        self.assertIn("bb git push", g["text"])
+
     def test_the_shipped_install_rule_refuses_and_says_why(self):
         out = self.hook("bb-rule-hook", "guard", "alpha", "u_t",
                         stdin={"tool_name": "Bash", "tool_input": {"command": "sudo apt-get install -y jq"}})

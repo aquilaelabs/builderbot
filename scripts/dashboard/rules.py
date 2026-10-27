@@ -253,6 +253,20 @@ ALWAYS = [
              " turn, and act on the notification.",
      "refuse": ["grep *exited*"],
      "foreground": True},
+    # git's network half goes through bb git (the operator, 27 Oct): the
+    # controller holds the credential and the project's git policy and its
+    # secret scan stand in front of it, so a session's own git push or fetch,
+    # with a token it was handed, would go round all three. A local git
+    # (commit, branch, log, a worktree) is the session's own.
+    {"name": "git-through-bb",
+     "text": "A session reaches a remote only through bb git: `bb git push`, `bb git fetch`, `bb git pull`"
+             " and `bb git ls-remote`, which the controller runs with the project's credential, under"
+             " its git policy and its scan for secrets. git's own push, fetch, pull, ls-remote and"
+             " remote update are refused, with a token or without; everything local to the repository"
+             " is git's as ever.",
+     "refuse": [f"git{pre} {verb}" for verb in ("push", "fetch", "pull", "ls-remote", "remote update")
+                for pre in ("", " -C *", " -c *", " -C * -c *", " -c * -C *", " --git-dir=*",
+                            " --git-dir *", " --work-tree=*", " --no-pager", " -P")]},
     {"name": "identity-is-given",
      "text": "Your commit identity arrives as git's environment, so a commit that cannot find an"
              " author is a fault to report with `bb report`, not one to fix with git config"

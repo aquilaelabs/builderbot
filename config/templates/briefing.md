@@ -13,7 +13,7 @@ stopped by a hook when it runs, with the reason.
 - Build, test and run through `bb build`, `bb test` and `bb run -- CMD`.
 - Start and stop the emulator with `bb emu start` and `bb emu stop`, never its binary (refused).
 - End a process by its pid, `pkill -x NAME` or `bb proc stop PATTERN`, never `pkill -f` or `pgrep -f` (refused).
-- Push with `bb git push`; never write a credential into a repository; your commit identity is given, never set (refused).
+- Reach a remote with `bb git push`, `fetch`, `pull` or `ls-remote`, never git's own (refused); never write a credential into a repository; your commit identity is given, never set (refused).
 - Report what happened: a failure with its output, a skipped step as skipped, never a success you did not see.
 - Read `bb roadmap show N` or `bb bug show N` before starting on one, and `bb design show` before styling anything.
 - A question for the person goes in your reply, before acting on a guess that would change the work.

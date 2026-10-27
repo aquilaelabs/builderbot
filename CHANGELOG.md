@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- A session reaches a remote only through bb git: git's own push, fetch, pull, ls-remote and remote update are refused in a session, so the project's credential, git policy and scan for secrets cannot be gone round with a token of its own (37fd44e)
+
 ### Fixed
 
 - A release whose tag could not be pushed says why, in git's own words, rather than only that the push failed (bb35f8c)
