@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -165,7 +166,11 @@ class PowerEndsSessions(unittest.TestCase):
                 said.append(x)
         was = (cp.os.geteuid, cp.subprocess.Popen)
         cp.os.geteuid = lambda: 0
-        cp.subprocess.Popen = lambda argv, **kw: order.append(("power", argv[-2:]))
+        # subprocess is the process's own module: another thread's Popen in
+        # the same moment is that thread's, not the power-off (B403).
+        me, real = threading.get_ident(), was[1]
+        cp.subprocess.Popen = lambda argv, **kw: (order.append(("power", argv[-2:])) if threading.get_ident() == me
+                                                  else real(argv, **kw))
         try:
             got = a._apply_power(Job(), "poweroff")
         finally:
