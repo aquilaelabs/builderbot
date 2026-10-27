@@ -21,6 +21,7 @@
 - Every page states what it knows in a head at its top (its name, its state and its facts in a grid) in place of loose lines of text (48dbbe9)
 - Each session and each project's containers are kept to their own network on every node: a node that had either switched off has it on again after the upgrade, since which projects reach each other is set by their Reads. A hosting-only node's containers are kept apart the same way. (c2ece51)
 - Download diagnostics moved from the Logs section to the BuilderBot bug reports section, beside the reports it carries, and anyone who can open Controller settings can read the reports and download the diagnostics there. (c2ece51)
+- A shell keeps its history in memory for itself alone, never in a file in the home, where the account's own coding agents, which run as the same user, could read what was typed; the same for the Python, Node, psql, sqlite, mysql and less history files (ba0eeb8)
 
 ### Upgrading
 
@@ -29,6 +30,7 @@
 - Each project you had becomes a project holding its one repository, under the same name, with its settings, people, owner, pins, groups, colors, archive and lock; nothing on disk moves. New project now asks for a name alone, and Add repository on its card makes or clones the repository (178952e)
 - The secrets folder is mounted read-write now, so the first start can make the install key in it: on Unraid set the Secrets directory's access to Read/Write, and in compose drop :ro from the /secrets volume. An install with INSTALL_KEY set keeps it, and the Keys page says to change it there (fd6c02f)
 - An install with INSTALL_KEY set and its secrets folder read-write copies that key into the folder at its first start, so INSTALL_KEY can then be taken out of the secrets folder: the install carries on with the same key, changed from Controller, Keys (8cc38de)
+- The shell and REPL history files in each account's home on a node (.bash_history, .python_history and the like) are removed the first time a terminal opens after the update: copy out anything you want to keep first (ba0eeb8)
 
 ### Deprecated
 

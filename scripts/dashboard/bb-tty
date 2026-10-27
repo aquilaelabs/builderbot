@@ -1238,6 +1238,19 @@ gradle_local_build() {
     fi
 }
 
+# The history files a shell or a REPL kept in the home before shells kept
+# none on disk, removed: only the account's own user may, which a terminal
+# here runs as (bb-session tty).
+HISTORY_FILES=(.bash_history .python_history .node_repl_history .psql_history .sqlite_history
+               .mysql_history .lesshst)
+forget_history() {
+    local f
+    for f in "${HISTORY_FILES[@]}"; do
+        [ -f "$HOME/$f" ] && [ ! -L "$HOME/$f" ] && [ -O "$HOME/$f" ] && rm -f -- "$HOME/$f"
+    done
+    return 0
+}
+
 start() {
     local s="$1" dir="$2"; shift 2
     # tmux rewrites `.` and `:` in a session name to `_` (they are its target
@@ -1276,6 +1289,15 @@ start() {
              GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2 GIT_CONFIG_KEY_3 GIT_CONFIG_VALUE_3 GIT_TERMINAL_PROMPT BB_TOOLCHAINS_OFF; do
         [ -n "${!v:-}" ] && envs+=(-e "$v=${!v}")
     done
+    # No history on disk (the operator, 27 Oct): a person's shell and their
+    # coding agents' sessions run as the same user, so a history file in the
+    # home was one any of their agents could read, a token typed on a command
+    # line among it. Each shell keeps its own in memory, which no other
+    # terminal reaches (each has a process space of its own); the REPLs'
+    # files go the same way, and what was kept before is taken away.
+    envs+=(-e "HISTFILE=" -e "PYTHON_HISTORY=/dev/null" -e "NODE_REPL_HISTORY=" -e "LESSHISTFILE=-"
+           -e "PSQL_HISTORY=/dev/null" -e "SQLITE_HISTORY=/dev/null" -e "MYSQL_HISTFILE=/dev/null")
+    forget_history
     # The server is started on its own first. When new-session is what
     # starts it, the server daemon keeps that new-session's argv (the -e
     # list above, token included) for the life of the server, where ps

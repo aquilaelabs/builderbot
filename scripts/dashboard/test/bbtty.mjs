@@ -13,7 +13,7 @@ import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt, takeOn, member }
 import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync, symlinkSync, realpathSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 
 // bb-tty leaves git's GIT_CONFIG_n to whoever set them, and a Claude session
 // running this suite has set its own: they are not this suite's to inherit
@@ -911,6 +911,28 @@ sleep 60
     } catch { return ''; } })();
     ok(home === `HOME=${join(HOMEDIR, 'users', other)}`,
        `the session's own HOME is set on the session, not left to the server (${home})`);
+    tmuxKill(`${other}~shell-9`);
+  }
+
+  // ---- no history on disk (the operator, 27 Oct) -----------------------------
+  // A person's shell and their agents run as one user, so a history file in
+  // the home was the agents' to read: each shell keeps its own in memory,
+  // and the files kept before are taken away.
+  {
+    const hist = join(HOMEDIR, 'users', other, '.bash_history');
+    mkdirSync(dirname(hist), { recursive: true });
+    writeFileSync(hist, 'export SECRET=hunter2\n');
+    writeFileSync(join(HOMEDIR, 'users', other, '.python_history'), 'x\n');
+    tmuxKill(`${other}~shell-9`);
+    shell(`u:${other}:sh:9:`);
+    await sleep(300);
+    const env = k => { try {
+      return execFileSync('tmux', ['show-environment', '-t', `${other}~shell-9`, k], { encoding: 'utf8', env: process.env }).trim();
+    } catch { return ''; } };
+    ok(env('HISTFILE') === 'HISTFILE=' && env('PYTHON_HISTORY') === 'PYTHON_HISTORY=/dev/null',
+       `a shell keeps no history file, nor a REPL (${env('HISTFILE')}, ${env('PYTHON_HISTORY')})`);
+    ok(!existsSync(hist) && !existsSync(join(HOMEDIR, 'users', other, '.python_history')),
+       '...and the history files kept in the home before are gone');
     tmuxKill(`${other}~shell-9`);
   }
 
