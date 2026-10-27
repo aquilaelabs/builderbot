@@ -53,20 +53,29 @@ let tcSizeTimer = null;
 async function loadToolchains(){
   const asked = ++tcLoadSeq;
   if (nodesList === null || nodesStale) await loadNodes();
-  if (asked !== tcLoadSeq) return;           // the node changed under this load
+  if (asked !== tcLoadSeq) return;           // a later load asks instead
   if (!tcPick()){
     toolchains = {nonode: true};
     clearTimeout(tcSizeTimer); tcSizeTimer = null;
     tcRev++; drawPanes();
     return;
   }
+  // A reply is kept when it is still about the node on show and nothing
+  // asked after it has landed first. Dropping every reply a later ask had
+  // overtaken was a livelock on a loaded box: the revision watch, the
+  // sizing timer and the settling poll each ask again, and when they asked
+  // faster than one read came back, every reply was overtaken, the page sat
+  // on its template, and Forward to a node never said what it held (B154).
+  const node = tcNode;
+  const keep = () => tcNode === node && asked > tcLanded;
   try{
-    const r = await fetch("/api/toolchains" + (tcNode !== "local" ? `?node=${encodeURIComponent(tcNode)}` : ""));
+    const r = await fetch("/api/toolchains" + (node !== "local" ? `?node=${encodeURIComponent(node)}` : ""));
     if (!r.ok) throw new Error("HTTP " + r.status);
     const got = await r.json();
-    if (asked !== tcLoadSeq) return;
+    if (!keep()) return;
     toolchains = got;
-  }catch(e){ if (asked !== tcLoadSeq) return; toolchains = {error: String(e)}; }
+  }catch(e){ if (!keep()) return; toolchains = {error: String(e)}; }
+  tcLanded = asked;
   clearTimeout(tcSizeTimer); tcSizeTimer = null;
   // ...and while Claude Code's own job runs (R145), which is not a toolchain
   // job and so moves nothing the tab waits on otherwise.
@@ -92,7 +101,8 @@ let tcDots = 0, tcDotsTimer = null;
 // called (`bb toolchains install` from a shell and the suite address it) but
 // nothing on this page sets it.
 let tcNode = "";
-let tcLoadSeq = 0;         // a load that lands after the node changed is dropped
+let tcLoadSeq = 0;         // each load's number, in the order asked
+let tcLanded = 0;          // the newest load drawn: an older reply landing after it is dropped
 
 // The node the tab opens on: the one it showed last (remembered in this
 // browser), else the first live agent node, else nothing. Re-asked on every
