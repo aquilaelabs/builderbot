@@ -194,7 +194,10 @@ for (const who of CAST) {
   // cd'd into alpha reads "sh: alpha" and wears alpha's color.
   const moved = await owner.page.evaluate(() => {
     const was = state.sessions;
-    state.sessions = [...(was || []), { name: sessionOf('shell'), cwd: '/workspace/alpha' }];
+    // In place of the workspace's real shell, which a full run has open by
+    // here: found first, at /workspace, it answered for this one (B405).
+    state.sessions = [{ name: sessionOf('shell'), cwd: '/workspace/alpha' },
+                      ...(was || []).filter(s => s.name !== sessionOf('shell'))];
     const r = tabProject({ kind: 'term', arg: 'shell' }) || '-';
     state.sessions = was; return r; });
   ok(moved === 'alpha', `...and the workspace's shell, gone into alpha, wears alpha's (${moved})`);
@@ -204,7 +207,10 @@ for (const who of CAST) {
   // one evaluate, so a poll cannot land between.
   const shown = await owner.page.evaluate(() => {
     const was = state.sessions, row = (state.projects || []).find(p => p.name === 'alpha'), lbl = row?.label;
-    state.sessions = [...(was || []), { name: sessionOf('shell'), cwd: '/workspace/alpha' }];
+    // In place of the workspace's real shell, which a full run has open by
+    // here: found first, at /workspace, it answered for this one (B405).
+    state.sessions = [{ name: sessionOf('shell'), cwd: '/workspace/alpha' },
+                      ...(was || []).filter(s => s.name !== sessionOf('shell'))];
     if (row) row.label = 'alpha-shown';
     const r = [sessionLabels().get(sessionOf('shell')) || '-', tabLabel({ kind: 'term', arg: 'shell', label: '' })];
     state.sessions = was; if (row) row.label = lbl;
