@@ -2994,6 +2994,15 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* Rewording is not a deletion; it borrows the box and not the red. */
 .editbox{border-color:var(--line);
   background:color-mix(in srgb, var(--panel), #000000 22%)}
+/* Splitting an item (R168): its steps as a list to tick, then the title. */
+.splitbox .splitsteps{display:flex;flex-direction:column;gap:4px;margin:0 0 8px}
+.splitbox .splitsteps label{display:flex;gap:8px;align-items:flex-start;font:var(--f-row);color:var(--ink);
+  min-height:var(--tap);padding:4px 0;cursor:pointer}
+.splitbox .splitsteps input{width:auto;min-height:0;margin-top:5px}
+.splitbox .splitsteps .n{color:var(--dim);font:600 11px/1.5 var(--mono);min-width:1.4em;padding-top:3px}
+.roadmap[draggable="true"]{cursor:grab}
+.roadmap.dragging{opacity:.5}
+.roadmap.dropat{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-small)}
 .dropbox .acts{display:flex;gap:8px;margin-top:8px}
 .dropbox .acts .sp{flex:1}
 /* Giving an item a step, which is how a plain one becomes a plan. */

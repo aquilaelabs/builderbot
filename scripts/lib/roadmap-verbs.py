@@ -29,8 +29,20 @@ _nb = dash.load("notebook", _here)
 _nb.configure(roadmap_mod=roadmap, bugs_mod=_bugs)
 
 proj, argv = sys.argv[2], sys.argv[3:]
+# `--format json|yaml|markdown` or `--json` on a list or a show (R167): the
+# records whole, from records.py, in place of the text printed here.
+fmt, argv = dash.format_flag(argv)
 op = argv[0] if argv else "list"
 rest = argv[1:]
+records = dash.load("records", _here)
+
+
+def dump_records(rows, as_of=None):
+    sys.stdout.write(records.dump(records.document("roadmap", rows, proj, as_of=as_of), fmt))
+
+
+def as_of_now():
+    return (roadmap.revisions().get(proj) or {}).get("roadmap", 0)
 
 # roadmap.py put its own directory on sys.path, so the id module beside it is
 # importable here the way it is inside the dashboard, and the approval
@@ -171,7 +183,14 @@ if op in ("list", "ls", "--target"):
         at = rest if op == "--target" else rest[rest.index("--target") + 1:]
         if not at:
             print("usage: bb roadmap --target X.Y.Z|none", file=sys.stderr); sys.exit(1)
-        show(at[0])
+        if fmt != "text":
+            want = at[0].lstrip("vV") if at[0].lower() != "none" else ""
+            rows = roadmap.items(proj)
+            dump_records([r for r in rows if roadmap.for_release(r, want)] if want else [r for r in rows if not r.get("target")], as_of_now())
+        else:
+            show(at[0])
+    elif fmt != "text":
+        dump_records(roadmap.items(proj), as_of_now())
     else:
         show()
     # Read, so what arrives on the next prompt is what has moved SINCE this,
@@ -182,7 +201,24 @@ elif op == "show":
     # this without becoming unreadable, and a session working item N wants
     # exactly N, the same reason `bb bug show` exists.
     if not rest:
-        print("usage: bb roadmap show <n>", file=sys.stderr); sys.exit(1)
+        print("usage: bb roadmap show <n>[.<step>] [<step>]", file=sys.stderr); sys.exit(1)
+    # One step by the number it was first given (R168): `show R56.9` or
+    # `show R56 9` finds it wherever it is now, moved, split away or not.
+    head, _, dot = rest[0].partition(".")
+    stepno = dot or (rest[1] if len(rest) > 1 and rest[1].isdigit() else "")
+    if stepno:
+        n = ident(head)
+        got = roadmap.resolve(proj, n, int(stepno)); bail(got)
+        it, i = got["item"], got["index"]
+        where = (f"{R(it['id'])} step {i + 1}" if i >= 0 else R(it["id"])) + (" (finished)" if got["where"] == "finished" else "")
+        print(f"  {R(n)} step {stepno} is {where}" + (": moved there" if got["moved"] else "") if int(stepno) or got["moved"]
+              else f"  {R(n)} is on the list")
+        st = it["steps"][i] if i >= 0 else it
+        print(f"    {st['text']}" + (f"  [for {st['target']}]" if st.get("target") else "")
+              + ("  (done)" if st.get("done") else "  (sent)" if st.get("sent") else ""))
+        if st.get("info"):
+            print("       details: " + st["info"].replace("\n", "\n                "))
+        sys.exit(0)
     n = ident(rest[0])
     r = next((x for x in roadmap.items(proj) if x.get("id") == n), None)
     # A finished item is shown as the Finished section shows it (B766):
@@ -192,6 +228,10 @@ elif op == "show":
     if r is None:
         print(f"[builderbot] ERROR: no item {R(n)} here", file=sys.stderr)
         sys.exit(1)
+    if fmt != "text":
+        dump_records([r], as_of_now())
+        roadmap.mark_seen(proj, _who, "roadmap")
+        sys.exit(0)
     who = " (claude)" if r.get("by") == "claude" else ""
     when = time.strftime("%d %b", time.localtime(r["done_at"])) if r.get("done_at") else ""
     print(f"  {R(r['id'])}  {r['text']}{who}"
@@ -201,14 +241,88 @@ elif op == "show":
     if r.get("info"):
         print("  details: " + r["info"].replace("\n", "\n           "))
     for i, st in enumerate(r.get("steps") or []):
+        # A step from another item says so (R168): the number it answers
+        # to there is its sid's.
+        sid = st.get("sid") if isinstance(st.get("sid"), list) and len(st["sid"]) == 2 else None
+        came = (f"  (was {R(sid[0])} step {sid[1]})" if sid and sid[1] else f"  (was {R(sid[0])}, folded in)") if sid and sid[0] != r["id"] else ""
         print(f"    {i + 1}. {st['text']}"
               + (f"  [for {st['target']}]" if st.get("target") else "")
-              + ("  (done)" if st.get("done") else "  (sent)" if st.get("sent") else ""))
+              + ("  (done)" if st.get("done") else "  (sent)" if st.get("sent") else "") + came)
         if st.get("info"):
             print("       details: " + st["info"].replace("\n", "\n                "))
+    # ...and where each step that left went (R168), with its place now.
+    for m in r.get("moved") or []:
+        got = roadmap.resolve(proj, m["sid"][0], m["sid"][1]) if isinstance(m.get("sid"), list) else {}
+        now = (f"{R(got['item']['id'])} step {got['index'] + 1}" if got.get("item") and got.get("index", -1) >= 0
+               else R(m.get("to")))
+        own = f"step {m['sid'][1]}" if m["sid"][0] == r["id"] else f"{R(m['sid'][0])} step {m['sid'][1]}, then step {m.get('n')} here"
+        print(f"    moved: {own} went to {now}")
     roadmap.mark_seen(proj, _who, "roadmap")
 elif op == "--prompt":
     sys.stdout.write(roadmap.prompt(proj))
+elif op == "add" and "--from" in rest:
+    # Records from a file (R167): `bb roadmap add --from FILE` (or `-` for
+    # stdin) adds each as one item with its steps, details and target, in
+    # any of the formats bb prints; a record's id is ignored, since a new
+    # item takes the next number.
+    src = rest[rest.index("--from") + 1] if rest.index("--from") + 1 < len(rest) else ""
+    if not src:
+        print("[builderbot] ERROR: --from needs the file after it, or - for stdin", file=sys.stderr); sys.exit(1)
+    try:
+        doc = records.load(sys.stdin.read() if src == "-" else open(src, encoding="utf-8").read())
+    except (OSError, ValueError) as e:
+        print(f"[builderbot] ERROR: {src}: {e}", file=sys.stderr); sys.exit(1)
+    if doc.get("kind") not in (None, "roadmap"):
+        print(f"[builderbot] ERROR: {src} holds {doc['kind']} records, not roadmap items", file=sys.stderr); sys.exit(1)
+    for rec in doc.get("records") or []:
+        steps = [str(st.get("text") or "") for st in (rec.get("steps") or []) if isinstance(st, dict)]
+        r = roadmap.add(proj, str(rec.get("text") or ""), by="claude", steps=steps, who=_who,
+                        target=str(rec.get("target") or "")); bail(r)
+        if r.get("held"):
+            print(held_line(r)); continue
+        nid = r["item"]["id"]
+        if rec.get("info"):
+            bail(roadmap.set_info(proj, nid, str(rec["info"]), by="claude", who=_who))
+        for i, st in enumerate(rec.get("steps") or []):
+            if isinstance(st, dict) and st.get("info"):
+                bail(roadmap.set_info(proj, nid, str(st["info"]), step=i, by="claude", who=_who))
+            if isinstance(st, dict) and st.get("target"):
+                bail(roadmap.set_step_target(proj, nid, i, str(st["target"]), by="claude", who=_who))
+        print(f"added {R(nid)}: {r['item']['text']}" + (f" ({len(steps)} steps)" if steps else ""))
+elif op == "apply":
+    # An edited show back (R167): `bb roadmap show N --format yaml > f`,
+    # edit, `bb roadmap apply f`. Each record's words, details and target,
+    # and each step's by its id, are written where they differ; a step
+    # with no id is added; nothing is removed. Refused when the list moved
+    # since the document was printed (its as_of), so an edit never lands
+    # on words it did not see.
+    if not rest:
+        print("usage: bb roadmap apply FILE|-", file=sys.stderr); sys.exit(1)
+    try:
+        doc = records.load(sys.stdin.read() if rest[0] == "-" else open(rest[0], encoding="utf-8").read())
+    except (OSError, ValueError) as e:
+        print(f"[builderbot] ERROR: {rest[0]}: {e}", file=sys.stderr); sys.exit(1)
+    if doc.get("as_of") is not None and int(doc["as_of"]) != int(as_of_now()):
+        print("[builderbot] ERROR: the roadmap has changed since this was printed: print it again "
+              "(bb roadmap show N --format ...) and make the edit against what it says now", file=sys.stderr)
+        sys.exit(2)
+    fresh()
+    try:
+        changes, adds = records.apply_plan(doc, roadmap.items(proj))
+    except ValueError as e:
+        print(f"[builderbot] ERROR: {e}", file=sys.stderr); sys.exit(1)
+    for rid, k, i, v in changes:
+        if k == "text":
+            r = roadmap.edit(proj, rid, v, step=i, by="claude", who=_who)
+        elif k == "info":
+            r = roadmap.set_info(proj, rid, v, step=i, by="claude", who=_who)
+        else:
+            r = (roadmap.set_step_target(proj, rid, i, v, by="claude", who=_who) if i is not None
+                 else roadmap.set_target(proj, rid, v, by="claude", who=_who))
+        bail(r)
+    for rid, text in adds:
+        bail(roadmap.add_step(proj, rid, text, by="claude", who=_who))
+    print(f"applied: {len(changes)} field{'' if len(changes) == 1 else 's'} changed, {len(adds)} step{'' if len(adds) == 1 else 's'} added")
 elif op == "add":
     # `bb roadmap add "title" --step "..." --step "..."`: a change that needs
     # things done in an order is one item with steps, not several items that
@@ -445,7 +559,9 @@ elif op == "step":
                   file=sys.stderr)
             sys.exit(1)
         return n - 1
-    item = ident(srest[0]) if srest else None
+    # `N.M` names a step by its old number (R168), parsed by the verb that
+    # takes it; everything else names the item first.
+    item = ident(srest[0]) if srest and not ("." in srest[0] and sub in ("mv", "move")) else None
     if sub == "add" and len(srest) >= 2:
         if behind(item, "step-add", {"item_id": item, "text": " ".join(srest[1:]), "who": _who},
                   f"a step on {R(item)}: {' '.join(srest[1:])}"):
@@ -495,6 +611,23 @@ elif op == "step":
         r = roadmap.step_undone(proj, item, step_index(srest[1]),
                                 by="claude", note=" ".join(srest[2:]), who=_who); bail(r)
         print(f"step {srest[1]} of {R(item)} is to do again")
+    elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] not in ("up", "down"):
+        # To another item (R168): `step mv N M TO [POSITION]`, or `step mv
+        # N.M TO`; the step goes whole, and N says where it went.
+        to = ident(srest[2])
+        pos = srest[3] if len(srest) > 3 and srest[3].isdigit() else None
+        behind(item, None, None, None); behind(to, None, None, None); fresh()
+        r = roadmap.step_mv(proj, item, step_index(srest[1]), to, position=pos, by="claude", who=_who); bail(r)
+        print(f"moved step {srest[1]} of {R(item)} to {R(to)}, its step {r['step'] + 1}; "
+              f"bb roadmap show {R(item)}.{srest[1]} still finds it")
+    elif sub in ("mv", "move") and len(srest) >= 2 and "." in srest[0]:
+        head, _, dot = srest[0].partition(".")
+        item, to = ident(head), ident(srest[1])
+        pos = srest[2] if len(srest) > 2 and srest[2].isdigit() else None
+        behind(item, None, None, None); behind(to, None, None, None); fresh()
+        r = roadmap.step_mv(proj, item, step_index(dot), to, position=pos, by="claude", who=_who); bail(r)
+        print(f"moved step {dot} of {R(item)} to {R(to)}, its step {r['step'] + 1}; "
+              f"bb roadmap show {R(item)}.{dot} still finds it")
     elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
         # The other half of restructuring a plan. Without it a session that
         # finds two steps in the wrong order can only delete and retype them,
@@ -508,8 +641,64 @@ elif op == "step":
     else:
         print("usage: bb roadmap step add <n> \"...\" | step edit <n> <step> \"...\""
               " | step rm <n> <step> [\"why\"] | step mv <n> <step> up|down"
+              " | step mv <n> <step> <to> [<position>]"
               " | step done <n> <step> [\"note\"] | step undone <n> <step> [\"why\"]",
               file=sys.stderr)
+        sys.exit(1)
+elif op == "split":
+    # An item's steps into new items, one change (R168): `bb roadmap split
+    # N --into "TITLE" 3 4 5 --into "TITLE" 7`; each new item carries
+    # those steps whole and points back at N's details. Under the roadmap
+    # gate as an add is: a session's may be held.
+    if not rest:
+        print("usage: bb roadmap split <n> --into \"TITLE\" <step>... [--target X.Y.Z] [--into ...]", file=sys.stderr)
+        sys.exit(1)
+    n = ident(rest[0]); groups, cur, i = [], None, 1
+    while i < len(rest):
+        if rest[i] == "--into":
+            if i + 1 >= len(rest):
+                print("[builderbot] ERROR: --into needs the new item's title after it", file=sys.stderr); sys.exit(1)
+            cur = {"text": rest[i + 1], "steps": []}; groups.append(cur); i += 2
+        elif rest[i] == "--target" and cur is not None:
+            if i + 1 >= len(rest):
+                print("[builderbot] ERROR: --target needs the version after it", file=sys.stderr); sys.exit(1)
+            cur["target"] = rest[i + 1]; i += 2
+        elif cur is not None and rest[i].isdigit():
+            cur["steps"].append(int(rest[i])); i += 1
+        else:
+            print(f"[builderbot] ERROR: not a step number or --into: {rest[i]!r}", file=sys.stderr); sys.exit(1)
+    behind(n, None, None, None); fresh()
+    r = roadmap.split(proj, n, groups, by="claude", who=_who); bail(r)
+    if r.get("held"):
+        print(held_line(r, "the split")); sys.exit(0)
+    for made in r["made"]:
+        print(f"added {R(made['id'])}: {made['text']} ({len(made['steps'])} steps)")
+    left = len(r["item"].get("steps") or [])
+    print(f"{R(n)} keeps {left} step{'' if left == 1 else 's'} and says where each went; "
+          f"bb roadmap show {R(n)}.N finds a step by its old number")
+elif op == "fold":
+    # One item into another (R168): `bb roadmap fold N INTO M` makes N a
+    # step of M, its steps following; `fold N INTO M.K` adds N's words to
+    # step K's details and puts its steps after it. N leaves the list with
+    # where it went, and restore brings it back.
+    if len(rest) < 3 or rest[1].upper() != "INTO":
+        print("usage: bb roadmap fold <n> INTO <m>[.<step>] [\"why\"]", file=sys.stderr); sys.exit(1)
+    n = ident(rest[0]); head, _, dot = rest[2].partition("."); m = ident(head)
+    behind(n, None, None, None); behind(m, None, None, None); fresh()
+    r = roadmap.fold(proj, n, m, into_step=(int(dot) - 1 if dot.isdigit() and int(dot) >= 1 else None),
+                     by="claude", who=_who, why=" ".join(rest[3:])); bail(r)
+    print(f"folded {R(n)} into {R(m)} step {r['folded'][1]}; bb roadmap restore {R(n)} undoes it")
+elif op == "refs":
+    # The list's own words checked (R168): every R number and step they
+    # name that no longer finds anything, and a moved one's place now.
+    rs = roadmap.refs(proj)
+    bad = [x for x in rs if not x.get("moved")]
+    for x in rs:
+        print(f"  {x['where']:<22} {x['ref']:<14} {x['why']}")
+    if not rs:
+        print(f"every reference on {proj}'s list finds what it names")
+    elif bad:
+        print(f"{len(bad)} reference{'' if len(bad) == 1 else 's'} find{'s' if len(bad) == 1 else ''} nothing: reword the lines that carry them", file=sys.stderr)
         sys.exit(1)
 elif op == "pending":
     # What this project has waiting for the operator (roadmap #27): the

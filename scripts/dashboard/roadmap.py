@@ -91,6 +91,8 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None,
 # add. Everything else on a held item is refused by bb with "still waiting".
 _REPLAY = {"add": "add", "info": "set_info", "step-add": "add_step", "edit": "edit",
            "target": "set_target", "target-step": "set_step_target",
+           # A session's split makes items, so it is gated as an add (R168).
+           "split": "split",
            # A session asking for an item back off the shelf (R78): held as a
            # request whatever the gate says, and a person's Approve replays it.
            "unshelve": "shelve"}
@@ -757,6 +759,7 @@ def add(project, text, by="you", steps=(), who="", number=None, target=""):
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps],
                **({"target": target} if target else {})}
+        _sids(row)
         # The end, so the ids run down the page. The alternative is a list
         # where every addition renumbers what a session was looking at, and
         # the number is the whole way to say which item is meant.
@@ -947,6 +950,7 @@ def _edit(project, item_id, change, by="you", who="", finished=False):
             row = done
         if row is None:
             return _gone(d, project, item_id)
+        _sids(row)
         out = change(row, rows)
         if done and isinstance(out, dict) and isinstance(out.get("log"), dict):
             out["log"]["finished"] = True
@@ -1269,9 +1273,10 @@ def remove(project, item_id, step=None, by="you", why="", was=None, who=""):
             return {"error": "no such step"}
         if (bad := clash("step", steps[i].get("text", ""), was)):
             return bad
+        sid = _sid_of(row, i)
         gone = steps.pop(i)
         return {"ok": True,
-                "log": {"act": "remove-step", "id": row["id"], "step": i,
+                "log": {"act": "remove-step", "id": row["id"], "step": i, "sid": sid,
                         "text": gone.get("text", ""), "of": row["text"],
                         **({"why": why} if why else {})}}
     return _edit(project, item_id, change, by, who)
@@ -1340,6 +1345,339 @@ def move(project, item_id, step=None, dir=0, by="you", who=""):
     return _edit(project, item_id, change, by, who=who)
 
 
+# ---- steps that move (R168) ------------------------------------------------
+# A step has an id of its own, `sid`: the item it was first written on and
+# its number there, [item, n], with n counted up on the item (`nsteps`) and
+# never handed out twice. The number a person reads is still its place in
+# the list; the sid is what "R56 step 9" meant when it was written, so it
+# finds the step after a move, a split or a drop of one before it. An item
+# folded into another becomes [item, 0]: the item itself, as a step.
+
+def _sid_ok(s):
+    return isinstance(s, (list, tuple)) and len(s) == 2 and _int(s[0]) is not None and _int(s[1]) is not None
+
+
+def _sids(row):
+    """Every step of `row` numbered for good: one without a sid (written
+    before this, or by an older build) takes the item's next number. The
+    counter never falls below a number already handed out."""
+    rid, steps = _int(row.get("id")), row.get("steps") or []
+    n = _int(row.get("nsteps")) or 0
+    for st in steps:
+        if _sid_ok(st.get("sid")) and _int(st["sid"][0]) == rid:
+            n = max(n, _int(st["sid"][1]))
+    for st in steps:
+        if not _sid_ok(st.get("sid")):
+            n += 1
+            st["sid"] = [rid, n]
+    if steps or n:
+        row["nsteps"] = n
+    return row
+
+
+def _sid_of(row, i):
+    s = (row.get("steps") or [])[i].get("sid")
+    return [_int(s[0]), _int(s[1])] if _sid_ok(s) else [_int(row.get("id")), i + 1]
+
+
+def _by_sid(rows, sid):
+    """(row, index) of the step whose sid this is, among `rows`."""
+    for r in rows:
+        for i, st in enumerate(r.get("steps") or []):
+            if _sid_ok(st.get("sid")) and [_int(st["sid"][0]), _int(st["sid"][1])] == sid:
+                return r, i
+    return None, None
+
+
+def _finished_rows(d, project):
+    """Every finished item's row, as finished() reads them, from the loaded file."""
+    seen, out = set(), []
+    for e in reversed(_events(d, project)):
+        if e.get("act") != "done" or e.get("step") is not None:
+            continue
+        rid = _int(e.get("id"))
+        if rid in seen or _find(d["projects"].get(project) or [], rid):
+            continue
+        seen.add(rid)
+        row = e.get("row") if isinstance(e.get("row"), dict) else None
+        if row:
+            out.append({**row, "done_at": e.get("at", 0)})
+    return out
+
+
+def resolve(project, item_id, n):
+    """Where step n of R{item_id} is now (R168): the step whose sid that is,
+    on whichever item holds it, open or finished; n of 0 is the item itself,
+    where it was folded into another. {item, index, where: open|finished,
+    moved: bool} or {error}."""
+    item_id, n = _int(item_id), _int(n)
+    if item_id is None or n is None or n < 0:
+        return {"error": "not a step"}
+    with _lock:
+        d = load()
+        rows = d["projects"].get(project) or []
+        fin = _finished_rows(d, project)
+        for where, pool in (("open", rows), ("finished", fin)):
+            row, i = _by_sid(pool, [item_id, n])
+            if row is not None:
+                return {"item": row, "index": i, "where": where,
+                        "moved": _int(row.get("id")) != item_id}
+        # Not held by any step: the plain place on the item, where that is
+        # still what the number means (a step never numbered, a build before
+        # the migration), else what became of it.
+        row = _find(rows, item_id) or _find(fin, item_id)
+        if n == 0:
+            if row is not None:
+                return {"item": row, "index": -1, "where": "open" if _find(rows, item_id) else "finished", "moved": False}
+            return _gone(d, project, item_id)
+        if row is not None:
+            steps = row.get("steps") or []
+            if 0 < n <= len(steps) and not _sid_ok(steps[n - 1].get("sid")):
+                return {"item": row, "index": n - 1, "where": "open" if _find(rows, item_id) else "finished", "moved": False}
+            for e in reversed(_events(d, project)):
+                if e.get("act") == "remove-step" and e.get("sid") == [item_id, n]:
+                    return {"error": f"step {n} of R{item_id} was dropped"
+                                     + (f": {e['why']}" if e.get("why") else "")}
+            if n > (_int(row.get("nsteps")) or len(steps)):
+                return {"error": f"R{item_id} never had a step {n}"}
+            return {"error": f"step {n} of R{item_id} is gone"}
+        return _gone(d, project, item_id)
+
+
+def _step_into(dst, st, position):
+    """`st` put on `dst` at `position` (1-based, the end when None or past
+    it), the gone steps staying a prefix."""
+    steps = dst.setdefault("steps", [])
+    j = len(steps) if position is None else max(0, min(_int(position) - 1 if _int(position) else len(steps), len(steps)))
+    while j < len(steps) and gone(steps[j]) and not gone(st):
+        j += 1
+    steps.insert(j, st)
+    return j
+
+
+def step_mv(project, item_id, step, to, position=None, by="you", who=""):
+    """One step moved to another open item, whole (its words, details, done
+    or sent mark, target and sid), leaving a line on the item it left
+    saying where it went (R168)."""
+    item_id, to, i = _int(item_id), _int(to), _int(step)
+    if item_id is None or to is None:
+        return {"error": "not an item"}
+    if i is None or i < 0:
+        return {"error": "not a step"}
+    if item_id == to:
+        return {"error": "that is the item it is on: step mv N M up|down moves one within it"}
+    with _lock:
+        d = load()
+        rows = d["projects"].get(project) or []
+        src, dst = _find(rows, item_id), _find(rows, to)
+        if src is None:
+            return _gone(d, project, item_id)
+        if dst is None:
+            return _gone(d, project, to)
+        _sids(src); _sids(dst)
+        steps = src.get("steps") or []
+        if not 0 <= i < len(steps):
+            return {"error": "no such step"}
+        if len(dst.get("steps") or []) >= MAX_STEPS:
+            return {"error": f"R{to} has {MAX_STEPS} steps already, the limit for one item"}
+        st = steps.pop(i)
+        sid = _sid_of({"steps": [st], "id": item_id}, 0)
+        j = _step_into(dst, st, position)
+        src.setdefault("moved", []).append({"sid": sid, "n": i + 1, "to": to, "at": int(time.time())})
+        for e in ({"act": "mv-step", "id": item_id, "step": i, "sid": sid, "to": to, "to_step": j,
+                   "text": st.get("text", ""), "of": src["text"]},
+                  {"act": "took-step", "id": to, "step": j, "sid": sid, "from": item_id,
+                   "text": st.get("text", ""), "of": dst["text"]}):
+            _log(d, project, by, e)
+        d["projects"][project] = rows
+        _touch(d, project, who=who)
+        _credit(d, project, who)
+        save(d)
+    return {"ok": True, "item": dst, "from": src, "step": j, "sid": sid}
+
+
+def _new_row(d, project, rows, text, by, who, target="", info=""):
+    """A row added as add() adds one, inside a lock add() does not hold."""
+    nid = _next_id(rows, d, project)
+    _took(d, project, nid)
+    row = {"id": nid, "text": text, "added": int(time.time()),
+           "by": "claude" if by == "claude" else "you", **agents.asker(by), "sent": 0, "steps": [],
+           **({"target": target} if target else {}), **({"info": info} if info else {})}
+    rows.insert(sum(1 for r in rows if not r.get("shelved")), row)
+    _log(d, project, by, {"act": "add", "id": nid, "text": text, **({"target": target} if target else {})})
+    return row
+
+
+def split(project, item_id, groups, by="you", who=""):
+    """An item's steps moved to new items in one change (R168): `groups` is
+    [{text, steps: [n, ...], target?}], each a new item taking those steps
+    (1-based numbers as they stand now) whole, pointing back at the old
+    item's details; the old item keeps the rest and says where each went.
+    A session's split makes items, so the roadmap gate reads it as an add."""
+    item_id = _int(item_id)
+    if item_id is None:
+        return {"error": "not an item"}
+    want = []
+    for g in groups or []:
+        text = _clean(str((g or {}).get("text") or ""))
+        nums = [_int(x) for x in ((g or {}).get("steps") or [])]
+        target, bad = _target(str((g or {}).get("target") or ""))
+        if bad:
+            return {"error": bad}
+        if not text:
+            return {"error": "a new item needs a title"}
+        if not nums or any(n is None or n < 1 for n in nums):
+            return {"error": f"which steps go into {text!r}: their numbers, as they stand now"}
+        want.append({"text": text, "steps": nums, "target": target})
+    if not want:
+        return {"error": "nothing to split into: --into \"TITLE\" N... names each new item and its steps"}
+    taken = [n for g in want for n in g["steps"]]
+    if len(set(taken)) != len(taken):
+        return {"error": "a step can go into one new item only"}
+    if by == "claude" and not pending.replaying():
+        g = pending.mode(project, "roadmap")
+        if g == "deny":
+            return {"error": pending.refusal("roadmap")}
+        if g == "ask":
+            return pending.hold(project, "roadmap", "split", {"item_id": item_id, "groups": want, "who": who},
+                                summary=f"split R{item_id} into {', '.join(x['text'] for x in want)}", number=item_id)
+    with _lock:
+        d = load()
+        rows = d["projects"].get(project) or []
+        src = _find(rows, item_id)
+        if src is None:
+            return _gone(d, project, item_id)
+        _sids(src)
+        steps = src.get("steps") or []
+        if any(n > len(steps) for n in taken):
+            return {"error": f"R{item_id} has {len(steps)} steps"}
+        if len(rows) + len(want) > MAX_OPEN:
+            return {"error": f"{MAX_OPEN} open items is the limit"}
+        day = time.strftime("%d %b", time.localtime())
+        made, take = [], {n: _sid_of(src, n - 1) for n in taken}
+        for g in want:
+            info = (f"Split from R{item_id} on {day}, each step's wording kept: R{item_id}'s details hold "
+                    f"the decisions behind it, and bb roadmap show R{item_id}.N finds a step by its old number.")
+            row = _new_row(d, project, rows, g["text"], by, who, target=g["target"] or str(src.get("target") or ""), info=info)
+            for n in g["steps"]:
+                r2, i = _by_sid([src], take[n])
+                st = r2["steps"].pop(i)
+                j = _step_into(row, st, None)
+                src.setdefault("moved", []).append({"sid": take[n], "n": n, "to": row["id"], "at": int(time.time())})
+                _log(d, project, by, {"act": "took-step", "id": row["id"], "step": j, "sid": take[n],
+                                      "from": item_id, "text": st.get("text", ""), "of": row["text"]})
+            made.append(row)
+        _log(d, project, by, {"act": "split", "id": item_id, "text": src["text"],
+                              "into": [{"id": r["id"], "text": r["text"], "steps": len(r["steps"])} for r in made]})
+        d["projects"][project] = rows
+        _touch(d, project, who=who)
+        _credit(d, project, who)
+        save(d)
+    return {"ok": True, "item": src, "made": made}
+
+
+def fold(project, item_id, into, into_step=None, by="you", who="", why=""):
+    """One item folded into another (R168): a step of it, its own steps
+    following with their marks, or, with a step named, its words added to
+    that step's details and its steps put after it. The old item leaves the
+    list with where it went, and restore puts it back."""
+    item_id, into = _int(item_id), _int(into)
+    if item_id is None or into is None:
+        return {"error": "not an item"}
+    if item_id == into:
+        return {"error": "an item cannot be folded into itself"}
+    k = _int(into_step)
+    if into_step is not None and (k is None or k < 0):
+        return {"error": "not a step"}
+    why = _clean(why, multiline=False)[:MAX_TEXT]
+    with _lock:
+        d = load()
+        rows = d["projects"].get(project) or []
+        src, dst = _find(rows, item_id), _find(rows, into)
+        if src is None:
+            return _gone(d, project, item_id)
+        if dst is None:
+            return _gone(d, project, into)
+        _sids(src); _sids(dst)
+        own = list(src.get("steps") or [])
+        dsteps = dst.setdefault("steps", [])
+        if k is not None and not 0 <= k < len(dsteps):
+            return {"error": "no such step"}
+        if len(dsteps) + len(own) + (0 if k is not None else 1) > MAX_STEPS:
+            return {"error": f"R{into} would have more than {MAX_STEPS} steps"}
+        day = time.strftime("%d %b", time.localtime())
+        if k is None:
+            head = {"text": src["text"], "sent": 0, "sid": [item_id, 0],
+                    **({"info": src["info"]} if src.get("info") else {}),
+                    **({"target": src["target"]} if src.get("target") else {})}
+            at = _step_into(dst, head, None)
+            _log(d, project, by, {"act": "took-step", "id": into, "step": at, "sid": [item_id, 0],
+                                  "from": item_id, "text": src["text"], "of": dst["text"]})
+            where = at
+        else:
+            st = dsteps[k]
+            st["info"] = (f"{st['info']}\n" if st.get("info") else "") + f"Folded in from R{item_id} on {day}: {src['text']}" \
+                         + (f"\n{src['info']}" if src.get("info") else "")
+            _log(d, project, by, {"act": "info-step", "id": into, "step": k, "text": st["info"], "of": dst["text"]})
+            where = k
+        own_sids = [_sid_of(src, i) for i in range(len(own))]
+        for st, sid in zip(own, own_sids, strict=True):
+            # After the last one placed: position is 1-based, so the slot
+            # after index `where` is where + 2.
+            where = _step_into(dst, st, where + 2)
+            _log(d, project, by, {"act": "took-step", "id": into, "step": where, "sid": sid,
+                                  "from": item_id, "text": st.get("text", ""), "of": dst["text"]})
+        src["steps"] = []
+        rows.remove(src)
+        folded = [into, (k if k is not None else at) + 1]
+        _log(d, project, by, {"act": "remove", "id": item_id, "text": src["text"], "row": copy.deepcopy({**src, "steps": own}),
+                              "folded": folded, "why": why or f"folded into R{into} step {folded[1]}"})
+        d["projects"][project] = rows
+        _touch(d, project, who=who)
+        _credit(d, project, who)
+        save(d)
+    return {"ok": True, "item": dst, "folded": folded}
+
+
+_STEP_REF = re.compile(r"\bR(\d+)(?:\.(\d+)|(?:'s)? steps? (\d+))?\b")
+
+
+def refs(project):
+    """Every R reference in the list's own words that no longer finds anything
+    (R168): an item nobody here has heard of, or a step past the ones its item
+    was ever given. [{where, ref, why}], and a reference to a moved step says
+    where it is now."""
+    out = []
+    with _lock:
+        d = load()
+        rows = d["projects"].get(project) or []
+        fin = _finished_rows(d, project)
+    known = {_int(r.get("id")) for r in rows} | {_int(r.get("id")) for r in fin}
+    for e in _events(d, project):
+        if e.get("act") == "remove" and e.get("step") is None:
+            known.add(_int(e.get("id")))
+
+    def check(where, text):
+        for m in _STEP_REF.finditer(text or ""):
+            rid, n = int(m.group(1)), m.group(2) or m.group(3)
+            if rid not in known:
+                out.append({"where": where, "ref": m.group(0), "why": f"no item R{rid} here"})
+                continue
+            if n is None:
+                continue
+            got = resolve(project, rid, int(n))
+            if got.get("error"):
+                out.append({"where": where, "ref": m.group(0), "why": got["error"]})
+            elif got.get("moved"):
+                out.append({"where": where, "ref": m.group(0), "moved": True,
+                            "why": f"now R{got['item']['id']} step {got['index'] + 1}"})
+    for r in rows:
+        check(f"R{r['id']}", r.get("text")); check(f"R{r['id']} details", r.get("info"))
+        for i, st in enumerate(r.get("steps") or []):
+            check(f"R{r['id']} step {i + 1}", st.get("text")); check(f"R{r['id']} step {i + 1} details", st.get("info"))
+    return out
+
+
 def add_step(project, item_id, text, by="you", who=""):
     """Give an item a step, which is how a plain one becomes a plan."""
     text = _clean(text)
@@ -1353,8 +1691,9 @@ def add_step(project, item_id, text, by="you", who=""):
         if len(steps) >= MAX_STEPS:
             return {"error": f"{MAX_STEPS} steps is the limit for one item. Past that it is more than one goal, and separate items can be sent in any order, which is the whole reason both shapes exist."}
         steps.append({"text": text, "sent": 0})
+        _sids(row)
         return {"ok": True,
-                "log": {"act": "add-step", "id": row["id"],
+                "log": {"act": "add-step", "id": row["id"], "sid": steps[-1]["sid"],
                         "step": len(steps) - 1, "text": text, "of": row["text"]}}
     return _edit(project, item_id, change, by, who=who)
 
@@ -1524,9 +1863,21 @@ def restore(project, item_id, at=None, by="you", who=""):
         if not evs:
             return {"error": f"nothing dropped as {ids.label("roadmap", item_id)} "
                              "is in the history to put back"}
-        row = copy.deepcopy(max(evs, key=lambda e: e.get("at", 0))["row"])
+        ev = max(evs, key=lambda e: e.get("at", 0))
+        row = copy.deepcopy(ev["row"])
         row["id"] = item_id
         row.pop("shelved", None)
+        # One folded into another item (R168) takes its steps back out of
+        # it, as they stand now, and its own line there goes with them.
+        if ev.get("folded"):
+            back = []
+            for st in row.get("steps") or []:
+                r2, i = _by_sid(rows, _sid_of(row, (row["steps"]).index(st)))
+                back.append(r2["steps"].pop(i) if r2 is not None and r2 is not row else st)
+            row["steps"] = back
+            r2, i = _by_sid(rows, [item_id, 0])
+            if r2 is not None:
+                r2["steps"].pop(i)
         rows.insert(sum(1 for r in rows if not r.get("shelved")), row)
         _log(d, project, by, {"act": "restored", "id": item_id, "text": row.get("text", ""),
                               **({"steps": len(row.get("steps") or [])}
@@ -2007,6 +2358,20 @@ def verb(name, act, req, me, *, live, prefix):
                      step=req.get("step"), was=was, who=who)
     elif act == "add-step":
         r = add_step(name, req.get("id"), field(req, "text"))
+    elif act == "step-mv":
+        # A step to another item (R168): dragged there, or Move to on its row.
+        r = step_mv(name, req.get("id"), req.get("step"), req.get("to"), position=req.get("position"),
+                    by="claude" if me.get("session") else "you", who=who)
+    elif act == "split":
+        r = split(name, req.get("id"), req.get("groups") or [],
+                  by="claude" if me.get("session") else "you", who=who)
+        if r.get("held"):
+            return r | panel(name, live, prefix), 200
+    elif act == "fold":
+        r = fold(name, req.get("id"), req.get("into"), into_step=req.get("into_step"),
+                 by="claude" if me.get("session") else "you", who=who, why=field(req, "why"))
+    elif act == "refs":
+        return {"refs": refs(name)}, 200
     elif act == "cross":
         r = cross(name, req.get("id"), req.get("step"), bool(req.get("on", True)))
     elif act == "remove":
