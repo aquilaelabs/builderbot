@@ -6,6 +6,7 @@
 
 - The roadmap's steps move between items without losing anything: bb roadmap step mv takes a step to another item whole, split makes new items from an item's steps, fold makes an item a step of another, and each step keeps the number it was first given, so bb roadmap show R56.9 finds it wherever it is now; on the page a step has Move to, an item Split and Fold into, and in reorder mode a step drags onto another item (e1d916e)
 - Every notebook record prints whole as JSON, YAML or Markdown (--format, or --json) on bb roadmap, bug, rules, wiki, design and map, from one serializer with a format number in each document, and the same formats come back in: bb roadmap add --from FILE and bb bug add --from FILE add the records in a file, and bb roadmap apply FILE writes an edited show back, refused when the list moved since it was printed; the code map reads data files too, so bb map find DASHBOARD_PORT names every file a setting lands in and bb map who-calls DASHBOARD_PORT where the code reads it (e1d916e)
+- The threat model is written down in docs/security.md: who is trusted for what, what each store protects and does not, what an unlock gives up, and the line each hardening step closes (46493b1)
 
 ### Changed
 

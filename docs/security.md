@@ -1,0 +1,139 @@
+# The threat model
+
+What BuilderBot protects, from whom, and what it does not. Written before
+BuilderBot ships as an operating system (R158), so that every hardening
+step names the line here it closes, and so that whoever runs an install
+can tell their own users what a copy of the disk, a person on the LAN or a
+tampered page would and would not get. [privacy.md](privacy.md) says what
+an install keeps; this page says who can reach it.
+
+The short version: a secret lives in one place, sealed under a key that is
+not beside it, and is handed to the one process that needs it for the one
+moment it needs it. Root on the running controller reads everything the
+controller can; nobody else reads anything whole.
+
+## Who is trusted for what
+
+| Who | Trusted to | Not trusted to |
+|---|---|---|
+| **The owner** | run the install: the controller's settings, every project, every account, the install key, maintenance mode | open another person's key store (their agent sign-ins, their git tokens): sealed under that person's key, which only the install key opens, which the owner holds, so this is a line of policy today and a line of cryptography once R157 lands |
+| **An administrator** | projects, nodes, people, the Keys page's inventory, purging a store | read a store's contents; sign in as another person |
+| **A person** | their own projects, their own key store, their own sign-ins | another person's sessions, store or sign-ins; the controller's settings |
+| **A person's coding agent (a session)** | the project it runs in, the projects it reads, `bb` on its person's behalf under the project's dials | the controller's state, another project's tree, any token (it pushes and signs through BuilderBot, which holds the credential), another account's home or tmux (R125), the dashboard's shell history (R155) |
+| **Root on a node** | the machine: every session there, every token file on it | the controller: a node has no credential to the controller beyond its own enrollment, which reaches its own project's work and nothing of another node's |
+| **Root on the controller** | everything the controller can read, the install key included | nothing is kept from root on the running controller; this is the host's own trust (`docker exec`, the machine's console) |
+| **A copy of a disk** (a backup, a stolen drive, a copy of `/config`) | nothing | the sealed stores open without the install key (kept outside `/config`), the node's sealed sign-ins open without the controller, the signing keys and git tokens are ciphertext |
+| **Someone on the LAN** | nothing | reading or changing what the page, the agent channel and the terminal relay carry: the channel and the relay are signed by their own keys either way; the page's traffic is theirs to read where the dashboard is served over http (step 2 below) |
+| **The page's own code** | drawing what the controller answers and asking it to act | holding a key: the page never holds a key (a key of a person's own is a passkey's or a companion's, R157), keeps no secret in local or session storage, and under the CSP of step 4 runs no script it did not ship |
+
+## What each store protects, and what it does not
+
+**The install key** (`BB_SECRETS_DIR/install-key`, or `/config/.install-key`
+where there is no secrets folder; made at the first start, changed from the
+Keys page). Everything the controller keeps sealed is sealed under a key
+derived from it: the accounts' keys, the signing keys, two-factor secrets,
+the deploy keys' passphrases, a project's own git line from before 0.8.0.
+
+- Protects against: a copy of `/config` (ciphertext alone), a backup
+  restored on another machine (refused until the key is given), an
+  operator of the share the state lives on.
+- Does not protect against: root on the running controller, who reads the
+  key where the controller does; a secrets folder copied along with
+  `/config`, which is why the key belongs in a folder the state is not in.
+
+**An account's key** (`account-keys.json`, sealed under the install key).
+Each person's own, made with their account, changed from Profile. Their
+key store, their agent sign-ins on every node and the key pair each node
+seals those under derive from it.
+
+- Protects against: another person, an administrator and a copy of the
+  disk reading the store; the install key changing (the account's key is
+  sealed again, nothing on the nodes moves).
+- Does not protect against: the owner, who holds the install key the
+  account's key is sealed under. R157 closes this: a key of the person's
+  own, held by a passkey or the companion, which the controller cannot
+  open.
+
+**A person's key store** (`account-secrets.json`: their git tokens, each
+sealed under their account's key; the project's `gitcreds/NAME` names
+entries and holds no token). A token is handed to git only for that
+person's own work (their session's `bb git`, their presses, the release
+they cut) and only while they hold a live sign-in (`logins.json`); work
+that is nobody's (watching CI) takes any signed-in giver's.
+
+- Protects against: a token outliving its person's sign-in; a session
+  pushing as somebody who is not there; a project carrying a token nobody
+  gave it; a session reading the token (it never sees it: the helper hands
+  it to git on the controller).
+- Does not protect against: the controller itself while a person is signed
+  in, which opens the token to hand it over. Step 5 makes that an unlock per
+  token for a time the person picks, with each use logged.
+
+**The agent sign-ins on a node** (sealed by the node under a public key
+whose secret only the controller derives; `tokenseal.py`). The node seals
+and never holds what opens a seal; the controller hands the seal's key into
+a terminal a signed-in person opened, wrapped to the agent's own key for
+this boot.
+
+- Protects against: a copy of the node's disk or of the share; the traffic
+  captured and the disk copied together; another account's shell on the
+  node (R125: each account is a Unix user of its own).
+- Does not protect against: root on that node while the sign-in is open in
+  a terminal there, which reads the process's memory; a controller that is
+  itself compromised, which can derive any node's secret.
+
+**The signing keys and the deploy keys** (`/config/signing`, `/config/deploy-keys`;
+sealed, root-only). A signing is a job on the project's node handed the key
+over the agent's channel for that job; a push with a deploy key goes
+through the shielded ssh agent.
+
+- Protects against: a session reading, printing or committing a key; a copy
+  of `/config`.
+- Does not protect against: root on the node during the job that holds the
+  key.
+
+**The cryptography itself.** Today every seal is HMAC-SHA256 in counter
+mode with a second HMAC as its tag, and the node's key pair is
+Diffie-Hellman in RFC 3526's 2048-bit group, built from the standard
+library because the image carried nothing else. It is sound by
+construction and reviewed by nobody outside. Step 3 moves every seal to
+X25519 and ChaCha20-Poly1305 (or AES-GCM) with HKDF from a vetted library,
+reseals what was sealed the old way, and reads the old format for one
+release; step 7 is the outside review.
+
+## What an unlock gives up
+
+A store is opened to be used. Each opening is a moment the controller holds
+the plain token:
+
+- A person's git token is opened when git asks for it, for that one
+  command, while they are signed in. Nothing is kept open between commands.
+- An agent sign-in is opened into the terminal that starts the session, on
+  the node, and lives in that process for the session's life.
+- The install key is in the controller's memory for as long as it runs:
+  what root on the controller reads.
+
+Step 5 narrows the first: a store opened per token, for a time the person
+picks, the controller holding the opened tokens it needs and never the key
+that opens the rest, every use logged where the person reads it. Step 6
+keeps what is held in memory from core dumps and swap, zeroes it where the
+language allows, and keeps the processes that hold keys apart from the ones
+that run what sessions ask. R157 then takes the key itself out of the
+controller's hands.
+
+## The lines the hardening closes
+
+| Step of R158 | The line it closes |
+|---|---|
+| 2, TLS | someone on the LAN reading the page's traffic, a session cookie or a token typed into a form; http stays a choice for an install with no CA, said on the page with what then crosses in the clear |
+| 3, vetted cryptography | the hand-built seal and key exchange, replaced with a library somebody else has reviewed |
+| 4, the page hardened | a tampered or injected script on the page, a secret parked in the browser's storage, a cookie sent cross-site |
+| 5, an unlock that gives up less | the controller holding a person's whole store open while they are signed in |
+| 6, memory and process | a core dump, swap or a neighboring process reading a key the controller holds |
+| 7, outside review | this page and the cryptography being right by their authors' word alone |
+| 8, sign-in hardened | a stolen cookie used from another device; what was done to the host read back by person and machine |
+
+What no step closes: root on the running controller, and a person's own
+agent acting as them on their own projects, which is what it is for. The
+dials (Agents may) bound what it may do; the record (the audit, the
+notebook's history, the forge's log under their own token) says what it did.

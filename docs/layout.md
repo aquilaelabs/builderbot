@@ -369,6 +369,7 @@ docs/machines.md                 Controller settings, Nodes, Storage, the logs, 
 docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile
 docs/bb-command.md               the bb verbs with more behind them: the test harness, the code map, capture, sound and documents
 docs/privacy.md                  data and privacy: what an install keeps, what it contacts, how to remove it
+docs/security.md                 the threat model: who is trusted for what, what each store protects and does not, and the line each hardening step closes (R158)
 docs/features.md                 everything BuilderBot does, by area, linked from each release's notes
 docs/companion-app.md            the companion app for an Android phone: pairing, its lock, notifications, how it is built
 docs/decisions.md                the design decisions, with their dates and reasons

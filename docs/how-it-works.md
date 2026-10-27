@@ -70,7 +70,7 @@ update cannot touch. See [the toolchain store lives outside the image](toolchain
 - Don't attach the runner to public repos; treat container-produced commits
   and packages with normal review.
 
-Full discussion: [unraid.md](unraid.md#notes-and-gotchas).
+Full discussion: [unraid.md](unraid.md#notes-and-gotchas); the threat model, who is trusted for what and what each store protects, is [security.md](security.md).
 
 ## Without the container
 
