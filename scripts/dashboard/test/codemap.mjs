@@ -266,7 +266,7 @@ ok(/^\d+-\d+  function nbRoadmapView$/m.test(defs) && /^  \d+-\d+  function draw
    'defs lists a file top down, a function under the closure it lives in and a callback under its function');
 
 // It rebuilds itself when a source is newer, and not otherwise.
-const stamp = () => readFileSync(`${REPO}/.bb-map/map3.json`, 'utf8').match(/"built": ([\d.]+)/)[1];
+const stamp = () => readFileSync(`${REPO}/.bb-map/map4.json`, 'utf8').match(/"built": ([\d.]+)/)[1];
 const before = stamp();
 map('find', 'openDocker');
 ok(stamp() === before, 'a query on an unchanged tree does not rebuild');
@@ -278,7 +278,7 @@ ok(/\(1 file scanned\)/.test(map()), '...rescanning that file alone and keeping 
 // An index of another format is rebuilt, never read: the first map crashed
 // with a KeyError on every question when it met a newer index on the tree.
 {
-  const f = `${REPO}/.bb-map/map3.json`;
+  const f = `${REPO}/.bb-map/map4.json`;
   const good = readFileSync(f, 'utf8');
   writeFileSync(f, JSON.stringify({ built: 1, files: { 'scripts/bb': { mtime: 1, lang: 'sh' } }, defs: [], calls: [], draws: [] }));
   ok(/^scripts\/dashboard\/tab-docker\.js:\d+ to \d+  function$/m.test(map('find', 'openDocker')),
@@ -323,7 +323,7 @@ ok(/nothing defines noSuchFunctionAnywhere/.test(map('find', 'noSuchFunctionAnyw
   const g = (cwd, ...a) => execFileSync('git', ['-C', cwd, ...a], { encoding: 'utf8', env }).trim();
   const build = root => execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, '--root', root, 'build'],
                                      { encoding: 'utf8' });
-  const ignored = root => { try { g(root, 'check-ignore', '-q', '.bb-map/map3.json'); return true; }
+  const ignored = root => { try { g(root, 'check-ignore', '-q', '.bb-map/map4.json'); return true; }
                             catch { return false; } };
   const t = mkdtempSync(`${tmpdir()}/bbmap-`);
   g(t, 'init', '-q', '-b', 'main');
@@ -346,7 +346,7 @@ ok(/nothing defines noSuchFunctionAnywhere/.test(map('find', 'noSuchFunctionAnyw
   try { execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, '--root', plain, 'exclude'],
                      { encoding: 'utf8', stdio: 'pipe' }); }
   catch (e) { why = String(e.stderr || ''); }
-  ok(existsSync(`${plain}/.bb-map/map3.json`) && /not in a git repository/.test(why),
+  ok(existsSync(`${plain}/.bb-map/map4.json`) && /not in a git repository/.test(why),
      '...while a tree with no repository still gets its map, and bb map exclude says why it wrote nothing');
   g(t, 'worktree', 'remove', '--force', `${t}-wt`);
   for (const d of [t, plain]) rmSync(d, { recursive: true, force: true });

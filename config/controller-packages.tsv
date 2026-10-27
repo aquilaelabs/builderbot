@@ -27,6 +27,7 @@ pkg-config	tools	pkg-config	pkgconf-pkg-config	pkgconf	pkgconf-pkg-config|pkg-co
 make	tools	make	make	make	make	make	make	-
 cmake	tools	cmake	cmake	cmake	cmake	cmake	cmake	dev-build/cmake
 python3	core	python3	python3.12|python3	python	python313|python312|python3	python3	python3	dev-lang/python
+python3-cryptography	core	python3-cryptography	python3.12-cryptography|python3-cryptography	python-cryptography	python313-cryptography|python312-cryptography|python3-cryptography	py3-cryptography	python3-cryptography	dev-python/cryptography
 python3-pip	tools	python3-pip	python3.12-pip|python3-pip	python-pip	python313-pip|python312-pip|python3-pip	py3-pip	python3-pip	dev-python/pip
 python3-venv	tools	python3-venv	-	-	-	-	-	-
 python3-dev	tools	python3-dev	python3.12-devel|python3-devel	-	python313-devel|python312-devel|python3-devel	python3-dev	python3-devel	-

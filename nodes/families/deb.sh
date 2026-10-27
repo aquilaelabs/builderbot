@@ -49,6 +49,7 @@ pkg_names() {
         guest) echo "qemu-guest-agent" ;;
         guestsvc) echo "qemu-guest-agent" ;;
         python) echo "python3" ;;
+        pycrypto) echo "python3-cryptography" ;;
         session) echo "tmux jq git" ;;
         reel) echo "xvfb xdotool x11-utils" ;;
         wg) echo "wireguard-tools" ;;

@@ -3155,6 +3155,10 @@ if [ -n "$CONTROLLER" ]; then
     say "agent: enrolling with ${CONTROLLER}"
     # shellcheck disable=SC2046
     pkg $(pkg_names python)
+    # The sealed sign-ins' cryptography (R158 step 3): X25519 and
+    # ChaCha20-Poly1305 from the family's package of the cryptography library.
+    # shellcheck disable=SC2046
+    pkg $(pkg_names pycrypto)
     hdr="$(mktemp)"
     curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
          "${CONTROLLER%/}/api/v1/agent/download" -o "${AGENT}.new" \

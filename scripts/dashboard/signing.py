@@ -88,7 +88,8 @@ def configure(*, state, project_name, secret_file=None):
 # (encrypt-then-MAC, two keys derived from the secret apart).
 SECRET_FILE = "/run/builderbot-key"
 PREVIOUS_FILE = "/run/builderbot-key-previous"
-MAGIC = b"BBSEAL1\n"
+MAGIC = b"BBSEAL2\n"
+MAGIC1 = b"BBSEAL1\n"       # the format before, opened for one release
 MASTER = None
 PREVIOUS = None
 
@@ -129,22 +130,63 @@ def _stream(key, nonce, n):
     return bytes(out[:n])
 
 
+def _aead(key=None):
+    """ChaCha20-Poly1305 under a key HKDF derives from the install key, or
+    from `key` (an account's own): the vetted seal (R158 step 3)."""
+    from cryptography.hazmat.primitives import hashes                      # noqa: PLC0415
+    from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305  # noqa: PLC0415
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF               # noqa: PLC0415
+    k = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"builderbot signing seal v2").derive(bytes(key or MASTER))
+    return ChaCha20Poly1305(k)
+
+
+def _have_aead():
+    try:
+        import cryptography.hazmat.primitives.ciphers.aead  # noqa: F401, PLC0415
+        return True
+    except ImportError:
+        return False
+
+
 def seal(data, key=None):
     """`data` sealed under the install key, or under `key` (an account's own,
-    R154): MAGIC, nonce, ciphertext, tag."""
+    R154): MAGIC, nonce, ciphertext with its tag, ChaCha20-Poly1305 from the
+    cryptography library (R158 step 3); the format before (BBSEAL1, a
+    HMAC-SHA256 stream and tag from the standard library alone) where the
+    library is missing, and still opened here for one release."""
+    if _have_aead():
+        nonce = secrets.token_bytes(12)
+        return MAGIC + nonce + _aead(key).encrypt(nonce, data, MAGIC)
     enc, mac = _subkeys(key)
     nonce = secrets.token_bytes(16)
     ct = bytes(a ^ b for a, b in zip(data, _stream(enc, nonce, len(data)), strict=True))
-    return MAGIC + nonce + ct + hmac.new(mac, MAGIC + nonce + ct, hashlib.sha256).digest()
+    return MAGIC1 + nonce + ct + hmac.new(mac, MAGIC1 + nonce + ct, hashlib.sha256).digest()
+
+
+def old_format(blob):
+    """Whether a seal is of the format before (BBSEAL1), to be sealed again
+    the vetted way at the next start that can (seal_all passes)."""
+    return bytes(blob or b"").startswith(MAGIC1)
 
 
 def _open_with(key, blob):
-    """The data a seal holds under `key`, or None: checked whole first."""
+    """The data a seal holds under `key`, or None: checked whole first,
+    whichever format it is."""
+    blob = bytes(blob or b"")
+    if blob.startswith(MAGIC):
+        if len(blob) < len(MAGIC) + 12 + 16 or not _have_aead():
+            return None
+        try:
+            return _aead(key).decrypt(blob[len(MAGIC):len(MAGIC) + 12], blob[len(MAGIC) + 12:], MAGIC)
+        except Exception:                                   # noqa: BLE001 (InvalidTag: another key, or damaged)
+            return None
+    if not blob.startswith(MAGIC1):
+        return None
     enc, mac = _subkeys(key)
     body, tag = blob[:-32], blob[-32:]
-    if len(blob) < len(MAGIC) + 48 or not hmac.compare_digest(tag, hmac.new(mac, body, hashlib.sha256).digest()):
+    if len(blob) < len(MAGIC1) + 48 or not hmac.compare_digest(tag, hmac.new(mac, body, hashlib.sha256).digest()):
         return None
-    nonce, ct = body[len(MAGIC):len(MAGIC) + 16], body[len(MAGIC) + 16:]
+    nonce, ct = body[len(MAGIC1):len(MAGIC1) + 16], body[len(MAGIC1) + 16:]
     return bytes(a ^ b for a, b in zip(ct, _stream(enc, nonce, len(ct)), strict=True))
 
 
@@ -170,15 +212,15 @@ def open_with(key, blob):
 
 
 def current(blob):
-    """Whether a seal is under today's install key, so a change's pass knows
-    which to seal again."""
-    return MASTER is not None and _open_with(MASTER, blob) is not None
+    """Whether a seal is under today's install key and of today's format,
+    so a change's pass knows which to seal again."""
+    return MASTER is not None and not old_format(blob) and _open_with(MASTER, blob) is not None
 
 
 def _read_secret(path):
     """A keystore's bytes from disk, opened if sealed (Locked if it cannot be)."""
     data = Path(path).read_bytes()
-    return unseal(data) if data.startswith(MAGIC) else data
+    return unseal(data) if data.startswith((MAGIC, MAGIC1)) else data
 
 
 def _write_secret(path, data):
@@ -242,13 +284,14 @@ def seal_all(again=False):
                 rec = _record(proj, r, k)
                 if not rec or rec.get("locked"):
                     continue
-                stale = bool(again and rec.get("sealed") and not current(base64.b64decode(rec["sealed"])))
+                stale = bool(rec.get("sealed") and (again or old_format(base64.b64decode(rec["sealed"])))
+                             and not current(base64.b64decode(rec["sealed"])))
                 ks = _dir(proj, k) / f"{r}.ks"
                 try:
                     data = ks.read_bytes()
-                    if not data.startswith(MAGIC):
+                    if not data.startswith((MAGIC, MAGIC1)):
                         _write_private(ks, seal(data))
-                    elif again and not current(data):
+                    elif (again or old_format(data)) and not current(data):
                         _write_private(ks, seal(unseal(data)))
                         stale = True
                 except (OSError, Locked):

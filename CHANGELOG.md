@@ -11,10 +11,19 @@
 ### Changed
 
 - Every git action is a person's, with their own token: each person gives a project their own token for their pushes, pulls and releases, used only while they are signed in on a browser or a device, and the project keeps none of its own; its settings list who has given one, the Git view says whose token a press would use, a session whose person is signed out everywhere is told that bb git waits for them, and watching CI pauses, said on the project, while nobody who gave a token is signed in (3b4d293)
+- The node agent's compatibility window moves to 0.9: a 0.8.x agent still seals sign-ins the way before, which the controller opens, but a controller from 0.8.x cannot open a seal a 0.9 node made nor read a node's config without the two network switches, so every node is updated with the controller, which it does by itself (1493a5c)
 
 ### Upgrading
 
 - Signing in again once after this upgrade: a browser's sign-in now has a record of its own, which says when a person's tokens may be used, and the cookies from before carry none. A project's token from 0.8.0 stays its owner's for that project; everyone else on it gives their own in the project's settings (Give it to this project) before their pushes go (3b4d293)
+
+### Removed
+
+- The two node switches deprecated in 0.8.0 are gone: every session is kept to its own project's network and every project's containers to their own, on every node that runs them, with no checkbox; a key an older build left in a node's config is read as on (1493a5c)
+
+### Security
+
+- Every seal is on vetted cryptography: what the controller keeps sealed (the accounts' keys and key stores, the signing keys, the settings' secrets, two-factor secrets) is ChaCha20-Poly1305 under a key HKDF derives from the install key or the account's, and a node seals the coding agents' sign-ins with X25519 and ChaCha20-Poly1305, all from the cryptography library in the image and on every node; what was sealed the way before is sealed again at the next start, and on a node the next time its person opens a terminal there, and the old format is still read this release (1493a5c)
 
 ## 0.8.2: 2026-10-27
 

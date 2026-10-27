@@ -1941,28 +1941,11 @@ def node_turn_limit(principal, node_id, limit):
 
 
 def node_session_net(principal, node_id, on):
-    """Whether each Claude session on this node reaches only its own
-    project's containers, the controller and the internet (R79). An
-    administrator's, like the rest of the config plane: a session that could
-    turn it off for itself would make it a suggestion. The node hears at once,
-    by a fresh hello, rather than at the next ten-minute one."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node runs sessions"}
-    if own_machine(n) and not on:
-        # The wall (R90): on the controller's own machine a session's own
-        # network is what keeps it off the controller's loopback ports, and
-        # bb-session starts none without it.
-        return {"error": "this is the controller's own machine: its sessions run only in a network of their own, "
-                         "which is what keeps them off the controller's own ports"}
-    conf = dict(n.get("config") or {})
-    conf["session_net"] = bool(on)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-session-net", {"on": bool(on)})
-    ask_hello(node_id)
-    return {"ok": True, "on": bool(on)}
+    """The switch that kept each session to its own project's network went
+    in 0.9.0 (R146, the operator, 26 Oct): every session is, on every node
+    that runs them."""
+    del principal, node_id, on
+    return {"error": "every session is kept to its own project's network now: the switch went in 0.9.0"}
 
 
 def node_vm_of(node_id, host_id):
@@ -2101,30 +2084,19 @@ def root_refused(n):
 
 def container_net_on(node_id):
     """Whether each project's containers on this node are kept to their own
-    network (R178): on unless the config switches it off, which is deprecated
-    in 0.8.0 and gone in 0.9.0 (the operator, 26 Oct: which projects reach
-    each other is their Reads, not a node's choice)."""
-    conf = (node(node_id) or {}).get("config") or {}
-    return bool(conf.get("container_net", True))
+    network (R178): on, on every node (the operator, 26 Oct: which projects
+    reach each other is their Reads, not a node's choice). The config's
+    switch, deprecated in 0.8.0, is gone (R146) and a key an older build
+    left is read as on."""
+    del node_id
+    return True
 
 
 def node_container_net(principal, node_id, on):
-    """The switch (R178), an administrator's like the rest of the config
-    plane; the next hello carries it to the agent."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node keeps its containers apart"}
-    conf = dict(n.get("config") or {})
-    conf["container_net"] = bool(on)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-container-net", {"on": bool(on)})
-    _bump()
-    # The next hello carries it: asked for now rather than at the agent's
-    # next ten-minute turn.
-    ask_hello(node_id)
-    return {"ok": True, "on": bool(on)}
+    """The switch went in 0.9.0 (R146): every project's containers are kept
+    to their own network on every node."""
+    del principal, node_id, on
+    return {"error": "every project's containers are kept to their own network now: the switch went in 0.9.0"}
 
 
 def ports_local_on(node_id):
@@ -2161,11 +2133,11 @@ def node_ports_local(principal, node_id, on):
 
 def session_net_on(node_id):
     """Whether each session on a node is kept to its own project's network
-    (R79): on unless the config switches it off, deprecated in 0.8.0 and gone
-    in 0.9.0 (the operator, 26 Oct); a hosting-only node runs no sessions."""
+    (R79): on wherever sessions run; a hosting-only node runs none. The
+    config's switch, deprecated in 0.8.0, is gone (R146) and a key an older
+    build left is read as on."""
     n = node(node_id) or {}
-    conf = n.get("config") or {}
-    return bool(conf.get("session_net", not host_only(n)))
+    return not host_only(n)
 
 
 def session_net_nudge():
@@ -3642,7 +3614,10 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             # ...and its coding agents' sign-ins sealed there (R126), with
             # each account's public key to seal them with.
             "token_seal": token_seal_on(nid),
-            "token_pubs": (token_pubs(nid) if token_pubs and token_seal_on(nid) else {}),
+            "token_pubs": (token_pubs(nid, True) if token_pubs and token_seal_on(nid) else {}),
+            # The X25519 publics a 0.9 agent seals with (R158 step 3); a
+            # 0.8.x agent reads token_pubs, the format before's.
+            "token_pubs2": (token_pubs(nid) if token_pubs and token_seal_on(nid) else {}),
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
@@ -5801,10 +5776,6 @@ def verb(principal, req):
         # its cores. An administrator's, like the rest.
         return node_test_workers(principal, nid, req.get("workers"))
 
-    def session_net():
-        # Whether each session on the node reaches only its own project's
-        # containers (R79). An administrator's, like the rest.
-        return node_session_net(principal, nid, req.get("on") is True)
 
     def ports_local():
         # Whether published ports on the node bind to 127.0.0.1 by default
@@ -5918,8 +5889,6 @@ def verb(principal, req):
     def update_agent():
         return node_update_agent(principal, nid)
 
-    def container_net():
-        return node_container_net(principal, nid, req.get("on") is True)
 
     def cache_clear():
         # Drop a node's build caches, one project's or all (docs/nodes.md
@@ -5976,8 +5945,8 @@ def verb(principal, req):
              "reboot": power, "poweroff": power, "gpu-display": gpu_display,
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
-             "test-workers": test_workers, "session-net": session_net, "ports-local": ports_local,
-             "root-asks": root_asks, "account-users": account_users, "token-seal": token_seal, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
+             "test-workers": test_workers, "ports-local": ports_local,
+             "root-asks": root_asks, "account-users": account_users, "token-seal": token_seal, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
              "lockdown": lambda: node_lockdown(principal, nid),

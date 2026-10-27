@@ -785,7 +785,7 @@ function nodeSessionsSection(n){
 function nodeSessSettings(n){
   const host = !!n.config?.host_only;
   const rows = host ? nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n)
-    : nodeSessNetRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeTurnsRow(n);
+    : nodeSessNetRow(n) + nodePortsLocalRow(n) + nodeTurnsRow(n);
   const t = n.turns || {};
   // Sessions, said so: under the test workers' field it read as them (B394).
   const now = host ? "" : `${t.working || 0} session${(t.working || 0) === 1 ? "" : "s"} working now${t.limit ? ` of ${t.limit}` : ""}${t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
@@ -800,13 +800,10 @@ function nodeSessSettings(n){
 function nodeSessDirty(n){
   const c = nodeDraft(n).draft || {};
   const conf = n.config || {};
-  const ctrOn = "container_net" in conf ? !!conf.container_net : !!conf.host_only;
   const portsOn = "ports_local" in conf ? !!conf.ports_local : !!conf.host_only;
-  return (c.sessnetOn !== undefined && c.sessnetOn !== !!conf.session_net)
-    || (c.rootAsks !== undefined && c.rootAsks !== !conf.no_root)
+  return (c.rootAsks !== undefined && c.rootAsks !== !conf.no_root)
     || (c.acctUsers !== undefined && c.acctUsers !== !!conf.account_users)
     || (c.tokSeal !== undefined && c.tokSeal !== !!conf.token_seal)
-    || (c.ctrNet !== undefined && c.ctrNet !== ctrOn)
     || (c.portsLocal !== undefined && c.portsLocal !== portsOn)
     || (c.turnsText !== undefined && String(Number(c.turnsText) || 0) !== String((n.turns || {}).limit || 0))
     || (c.workersText !== undefined && String(Number(c.workersText) || 0) !== String(conf.test_workers || 0));
@@ -858,32 +855,6 @@ function nodeHostRootRow(n){
   </div>`;
 }
 
-// Each project's containers kept to their own network on this node (R178,
-// the operator, 11 Oct): a container reaches its own project's containers,
-// those of the projects it reads, the controller, DNS, the node's 80 and
-// 443 and the internet, and nothing else on the node. On by default for a
-// hosting-only node, which is the one two web-facing projects share. A
-// draft until its Save, like the switches beside it.
-function nodeContainerNetRow(n){
-  const c = nodeDraft(n);
-  const on = "container_net" in (n.config || {}) ? !!n.config.container_net : true;
-  if (c.draft.ctrNet === undefined || c.draft.ctrFrom !== on){
-    c.draft.ctrNet = on; c.draft.ctrFrom = on;
-  }
-  const ct = n.reported?.session_net?.ctr;
-  const line = !on ? ""
-    : !ct ? `<div class="sub dim">The node has not reported it yet.</div>`
-    : !ct.can ? `<div class="sub bad">Not in force: ${esc(ct.why || "this node cannot do it")}.</div>`
-    : ct.error ? `<div class="sub bad">Not in force: ${esc(ct.error)}.</div>`
-    : ct.active ? `<div class="sub">In force on ${ct.bridges} compose network${ct.bridges === 1 ? "" : "s"}: a container reaches its own project's containers, the ones its project reads, and the internet; not another project's by this node's address.</div>`
-    : `<div class="sub dim">Setting it up.</div>`;
-  return `<div class="field">
-    <label class="ndcap"><input type="checkbox" data-k="ctrnet" ${c.draft.ctrNet ? "checked" : ""}>
-      keep each project's containers to their own network (a container reaches another project's only where its project reads it)</label>
-    ${line}
-    <div class="sub dim">This switch goes in 0.9.0, and the network is kept apart on every node from then.</div>
-  </div>`;
-}
 
 // Published ports bound to 127.0.0.1 by default (R190): on for a hosting-only
 // node unless switched off, since there a port on every address is open to
@@ -908,15 +879,12 @@ function nodePortsLocalRow(n){
 }
 
 function nodeSessNetRow(n){
-  const on = "session_net" in (n.config || {}) ? !!n.config.session_net : !n.config?.host_only;
-  // A draft until the section's Save is pressed (the rule apply-not-onchange,
-  // the operator, 24 Sep): the tick is kept across the repaints a heartbeat
-  // brings, and the press is where it is made.
+  // Every session here is kept to its own project's network (R146): the
+  // switch went in 0.9.0. A draft until the section's Save is pressed (the
+  // rule apply-not-onchange, the operator, 24 Sep): each tick is kept across
+  // the repaints a heartbeat brings, and the press is where it is made.
   const c = nodeDraft(n);
-  if (c.draft.sessnetOn === undefined || c.draft.sessnetFrom !== on){
-    c.draft.sessnetOn = on; c.draft.sessnetFrom = on;
-  }
-  // ...and whether a session here may ask for a root command at all (the
+  // Whether a session here may ask for a root command at all (the
   // operator, 24 Sep): the same draft, the same Save.
   const rootOn = !n.config?.no_root;
   if (c.draft.rootAsks === undefined || c.draft.rootFrom !== rootOn){
@@ -959,10 +927,8 @@ function nodeSessNetRow(n){
   // what keeps a session there off the controller's own ports; said on the
   // row, muted, rather than a box that refuses at Save.
   const own = !!n.config?.own;
-  return `<div class="field"><label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}${own ? " disabled" : ""}>
-      keep each session to its own project's network</label>
-    ${own ? `<div class="sub dim">Always on here: this is the controller's own machine, and its own network is what keeps a session off the controller's ports.</div>`
-      : `<div class="sub dim">This switch goes in 0.9.0, and each session is kept to its own network on every node from then.</div>`}
+  return `<div class="field"><div class="sub">Each session here is kept to its own project's network${
+      own ? ", which is what keeps one off the controller's own ports" : ""}.</div>
     ${line}</div>
     <div class="field"><label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
       let a session ask for a root command (bb root run), which a person then allows or denies</label>
@@ -2473,7 +2439,7 @@ function wireNodesTab(root){
       }
       if (act === "sess-revert"){
         const c = nodesConf[id];
-        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "tokSeal", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (c && c.draft) for (const k of ["rootAsks", "acctUsers", "tokSeal", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         nodesRev++; drawPanes();
         return;
       }
@@ -2496,8 +2462,6 @@ function wireNodesTab(root){
         };
         const ok = await step(val("turns"), String((n0.turns || {}).limit || 0), v => ({action: "turns", limit: Number(v)}),
                               v => Number(v) ? `at most ${v} session${Number(v) === 1 ? "" : "s"} work here at once` : "no limit on sessions working here at once")
-          && await step(val("sessnet"), !!conf.session_net, v => ({action: "session-net", on: v}),
-                        v => v ? "sessions started here from now on reach only their own project's containers" : "sessions started here from now on share its network")
           && await step(val("workers"), String(conf.test_workers || 0), v => ({action: "test-workers", workers: Number(v)}),
                         v => Number(v) ? `test runs here may use ${v} worker${Number(v) === 1 ? "" : "s"}` : "test runs here may use every core")
           && await step(val("rootasks"), !conf.no_root, v => ({action: "root-asks", on: v}),
@@ -2506,12 +2470,10 @@ function wireNodesTab(root){
                         v => v ? "each account here becomes a user of its own; a home moves once its older sessions end" : "accounts here run as the session account again once their sessions end")
           && await step(val("tokseal"), !!conf.token_seal, v => ({action: "token-seal", on: v}),
                         v => v ? "coding agents' sign-ins here are sealed from the next hello, each opened only for a terminal its person opens" : "coding agents' sign-ins here are kept as plain files again, each from the next terminal its person opens")
-          && await step(val("ctrnet"), "container_net" in conf ? !!conf.container_net : !!conf.host_only, v => ({action: "container-net", on: v}),
-                        v => v ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello")
           && await step(val("portslocal"), "ports_local" in conf ? !!conf.ports_local : !!conf.host_only, v => ({action: "ports-local", on: v}),
                         v => v ? "published ports here bind to 127.0.0.1 from the next hello; docker restarts once" : "published ports here bind to every address from the next hello; docker restarts once");
         const c = nodesConf[id];
-        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "tokSeal", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (ok && c && c.draft) for (const k of ["rootAsks", "acctUsers", "tokSeal", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         if (said.length) notify(said.join("; "));
         await loadNodes();
         return;
@@ -2608,7 +2570,7 @@ function wireNodesTab(root){
     // Revert, which sleep again when every field is back where it was.
     const sessWake = () => { const dirty = nodeSessDirty(nodesList.find(x => x.id === id) || {});
       box.querySelectorAll('[data-nd="sess-save"], [data-nd="sess-revert"]').forEach(x => { x.disabled = !dirty; }); };
-    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["acctusers", "acctUsers"], ["tokseal", "tokSeal"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
+    for (const [k, key] of [["rootasks", "rootAsks"], ["acctusers", "acctUsers"], ["tokseal", "tokSeal"], ["portslocal", "portsLocal"]]){
       const el = box.querySelector(`[data-k="${k}"]`);
       if (el) el.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft[key] = el.checked; sessWake(); };
     }

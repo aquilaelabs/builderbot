@@ -175,7 +175,10 @@ class TokensMixin:
         return d
 
     def _seal(self, acct, agent, data, home):
-        pub = (self.state.get("token_pubs") or {}).get(acct)
+        # The X25519 public where this node has the library (R158 step 3),
+        # else the public before, which seals the old way.
+        pub = ((self.state.get("token_pubs2") or {}).get(acct) if tokenseal.HAVE else None) \
+            or (self.state.get("token_pubs") or {}).get(acct)
         if not pub:
             return False
         d = os.path.join(SEAL_DIR, acct)

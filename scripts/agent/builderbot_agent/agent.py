@@ -314,8 +314,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # The coding agents' sign-ins sealed (R126): the controller's
             # switch, and each account's public key here, kept in node.json.
             ts, pubs = bool(r.get("token_seal")), r.get("token_pubs") if isinstance(r.get("token_pubs"), dict) else {}
-            if ts != bool(self.state.get("token_seal")) or pubs != (self.state.get("token_pubs") or {}):
-                self.state["token_seal"], self.state["token_pubs"] = ts, pubs
+            # ...and the X25519 publics a seal is made with here (R158 step 3).
+            pubs2 = r.get("token_pubs2") if isinstance(r.get("token_pubs2"), dict) else {}
+            if ts != bool(self.state.get("token_seal")) or pubs != (self.state.get("token_pubs") or {}) \
+                    or pubs2 != (self.state.get("token_pubs2") or {}):
+                self.state["token_seal"], self.state["token_pubs"], self.state["token_pubs2"] = ts, pubs, pubs2
                 save_state(self.state)
                 if ts != bool(self.state.get("token_seal_said")):
                     self.state["token_seal_said"] = ts

@@ -302,12 +302,8 @@ function rnDrawReach(focus){
     rnDrawReach();
   });
   if (focus) box.querySelector(".rnreach:last-child [data-reach]")?.focus();
-  // Whether it does anything yet: only where a node filters (its row's switch).
-  const off = ns.filter(n => !n.config?.session_net).map(n => n.name);
-  $("rnReachHint").textContent = !ns.length ? ""
-    : off.length === ns.length ? `${off.join(", ")} lets sessions reach the whole network now, so this applies once it keeps each session to its own project's.`
-    : off.length ? `Applies on the nodes that keep sessions to their own network; ${off.join(", ")} does not yet.`
-    : "An address for the whole machine, or address:port for one service.";
+  // Every node keeps each session to its own project's network (R146).
+  $("rnReachHint").textContent = !ns.length ? "" : "An address for the whole machine, or address:port for one service.";
 }
 
 // What Save sends: the rows with an address, in the stored shape.

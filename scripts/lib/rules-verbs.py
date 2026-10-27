@@ -30,8 +30,12 @@ proj, argv = sys.argv[2], sys.argv[3:]
 if "--global" in argv:
     argv = [a for a in argv if a != "--global"]
     proj = reg.GLOBAL
-# `--format json|yaml|markdown` or `--json` on a list or a show (R167).
-fmt, argv = dash.format_flag(argv)
+# `--format json|yaml|markdown` on a list or a show (R167); `--json` stays
+# the plain list the page, the briefing and bb rules check read.
+if "--json" in argv:
+    fmt, argv = "text", ["--json"] + [a for a in argv if a != "--json"]
+else:
+    fmt, argv = dash.format_flag(argv)
 op = argv[0] if argv else "list"
 rest = argv[1:]
 _records = dash.load("records", dash.beside(sys.argv[1]))
