@@ -299,6 +299,9 @@ def rename(req):
     # The project's git access linked to the asking account's own token for
     # its remote's host (R154); `_uid` is the server's, never the page's.
     link_mine = bool(req.get("link_account")) and not token and not clear
+    # The asking account's own token no longer given to the project (R159);
+    # the others who gave theirs stay.
+    unlink_mine = bool(req.get("unlink_mine")) and not token and not clear and not link_mine
     # The same repository's new address, after its owner was renamed on the
     # host (set_address); "" leaves the remote where it points.
     address = _field(req, "address").strip()
@@ -316,7 +319,7 @@ def rename(req):
                          "digits, dots, dashes and underscores, no spaces"}, 400
     was = registry.label(old)
     renaming = bool(shown) and shown != was
-    if not renaming and not token and not auth and not clear and not address and not link_mine:
+    if not renaming and not token and not auth and not clear and not address and not link_mine and not unlink_mine:
         return {"error": f"{was} is already its name"}, 400
     moved, failed = [], []
     if renaming:
@@ -354,6 +357,13 @@ def rename(req):
         gitcreds.link_account(old, uid, fid)
         _scope_to_token(src, token_helper(old))
         moved.append(f"its git access, your {host} token")
+    elif unlink_mine:
+        uid = str(req.get("_uid") or "")
+        if not gitcreds.unlink_person(old, uid):
+            return {"error": "you have not given this project a token"}, 400
+        if not gitcreds.givers(old) and not token_helper(old):
+            unscope(src)
+        moved.append("your token, no longer given to it")
     elif clear:
         forget_token(old)
         unscope(src)

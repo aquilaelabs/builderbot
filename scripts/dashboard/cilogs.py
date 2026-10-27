@@ -67,10 +67,12 @@ def repo_of(project):
     return ""
 
 
-def _token(project):
-    """The project's own token, else the shared PAT; "" when neither."""
+def _token(project, uid=None):
+    """A GitHub token for the project: the asking person's own while they
+    are signed in, else any signed-in giver's (R159), else the shared PAT;
+    "" when none."""
     import gitcreds                                         # noqa: PLC0415
-    m = re.match(r"https?://[^:@/]*:([^@/]+)@github\.com$", gitcreds.read_line(project) if gitcreds.STATE else "")
+    m = re.match(r"https?://[^:@/]*:([^@/]+)@github\.com$", gitcreds.read_line(project, uid=uid) if gitcreds.STATE else "")
     if m:
         return urllib.parse.unquote(m.group(1))
     try:

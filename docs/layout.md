@@ -198,7 +198,8 @@ scripts/
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
     imagecheck.py                every container's registry images against what their registries serve (R195): a weekly check, Check for updates on the Containers page, Update on a row
     vms.py                       the VM manager (R91): each project's VMs on the nodes with VM host, the OS catalog matched by name, the limits, and the vm jobs
-    gitcreds.py                  a project's git token, one line in /config/gitcreds, sealed under the install key where there is one (R135)
+    gitcreds.py                  who gave a project a token, a line per person in /config/gitcreds naming their key store's entry, and the credential git work is handed: theirs while they are signed in (R135, R159)
+    logins.py                    who is signed in now: a row per browser sign-in the cookie names, and a device signed in as the account, in /config/logins.json (R159)
     git-credential-bb            git's credential helper for that token: opened for the scheme and host it was written for, and nothing kept (R135)
     termws.py                    BuilderBot's own terminal, the controller's half (R133): /termws in a pty here, or carried signed to a node's /term
     tokenkeys.py                 the controller's half of the sealed sign-ins (R126): each account's public key per node, made from the account's own key, and the keys a person's own terminal carries, each seal's by the key it names

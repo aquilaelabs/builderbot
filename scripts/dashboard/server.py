@@ -114,20 +114,24 @@ def _session_secret():
 SECRET = _session_secret()
 
 
-def make_token(u):
-    """A cookie for this account: name, expiry, and a signature over both plus
-    the account's password stamp.
+def make_token(u, lid=""):
+    """A cookie for this account: name, expiry, the sign-in's id and a
+    signature over those plus the account's password stamp.
 
     Stateless: there is no token table to keep. What
     the stamp buys is the revocation such a table would have given: changing a
     password or deleting an account moves it, and every cookie signed against
-    the old one stops verifying on the next request.
+    the old one stops verifying on the next request. The sign-in's id names
+    the row logins.py keeps (R159), which says the browser is signed in
+    until it signs out or the cookie runs out; a cookie minted again for the
+    same browser (a rename) keeps the id it had.
     """
     exp = str(int(time.time()) + SESSION_DAYS * 86400)
     nm = base64.urlsafe_b64encode(u["name"].encode()).decode().rstrip("=")
-    sig = hmac.new(SECRET, f"{u['name']}|{exp}|{users.stamp(u)}".encode(),
+    lid = lid or logins.mint(u.get("uid") or "")
+    sig = hmac.new(SECRET, f"{u['name']}|{exp}|{lid}|{users.stamp(u)}".encode(),
                    hashlib.sha256).hexdigest()
-    return f"{nm}.{exp}.{sig}"
+    return f"{nm}.{exp}.{lid}.{sig}"
 
 
 def purpose_token(u, purpose, secs, extra=""):
@@ -167,8 +171,10 @@ def token_user(tok):
     simply does not verify, which signs those sessions out once. That is the
     honest outcome: there is no way to know who they were.
     """
-    nm, _, rest = str(tok or "").partition(".")
-    exp, _, sig = rest.partition(".")
+    parts = str(tok or "").split(".")
+    if len(parts) != 4:
+        return None
+    nm, exp, lid, sig = parts
     if not exp.isdigit() or int(exp) < time.time():
         return None
     try:
@@ -178,9 +184,9 @@ def token_user(tok):
     u = users.get(name)
     if not u:
         return None
-    want = hmac.new(SECRET, f"{name}|{exp}|{users.stamp(u)}".encode(),
+    want = hmac.new(SECRET, f"{name}|{exp}|{lid}|{users.stamp(u)}".encode(),
                     hashlib.sha256).hexdigest()
-    return u if hmac.compare_digest(sig, want) else None
+    return {**u, "lid": lid} if hmac.compare_digest(sig, want) else None
 
 
 # The landing page. Same palette as the dashboard, one job: turn a credential
@@ -1763,6 +1769,26 @@ def _room_loop():
                           f"{v.get('error') or (v.get('out') or 'nothing').splitlines()[-1][:200]}", flush=True)
         except Exception as e:                                       # noqa: BLE001 (the loop must live)
             print(f"[room] {type(e).__name__}: {e}", flush=True)
+
+
+def _givers_said(project, me):
+    """Who has given this project a token (R159): [{uid, name, login, host,
+    mine, live}], never the token."""
+    names = {u.get("uid"): u.get("name") for u in users.all_users() if u.get("uid")}
+    out = []
+    for uid, fid in gitcreds.givers(project):
+        fg = accountkeys.forge_of(uid, fid) or {}
+        out.append({"uid": uid, "name": names.get(uid) or "an account that is gone", "login": fg.get("login", ""),
+                    "host": fg.get("host", ""), "mine": uid == me, "live": logins.live(uid)})
+    return out
+
+
+def _token_said(project, me):
+    """What git work by `me` on this project runs with (gitcreds.usable),
+    the giver named rather than numbered."""
+    u = gitcreds.usable(project, me)
+    names = {x.get("uid"): x.get("name") for x in users.all_users() if x.get("uid")}
+    return {**u, "name": (names.get(u.get("by")) or "") if u.get("by") else ""}
 
 
 def _attention(who):
@@ -4096,6 +4122,7 @@ except OSError as e:
 # account's own key for its sign-ins on the nodes (R154): what the nodes
 # report of their seals decides when a key before today's can go.
 import accountkeys                                               # noqa: E402
+import logins                                                    # noqa: E402
 import installkey                                                # noqa: E402
 
 
@@ -4104,6 +4131,10 @@ def _node_seals():
 
 
 accountkeys.configure(state=STATE, nodes_under=lambda uid, k: tokenkeys.sealed_under(_node_seals(), k, uid))
+# Who is signed in now (R159): the rows the cookies name, and a device
+# signed in as the account counts the same way.
+logins.configure(state=STATE, days=SESSION_DAYS,
+                 devices_of=lambda uid: devices.listed({"uid": uid}))
 installkey.configure(passes=(signing.seal_all, gitcreds.seal_all, settings.seal_all, mfa.seal_all,
                              accountkeys.seal_all),
                      nodes_previous=lambda: tokenkeys.sealed_under(_node_seals(), signing.PREVIOUS)
@@ -5383,6 +5414,14 @@ class Handler(BaseHTTPRequestHandler):
         if self._maint:
             u = None
         _writing.who = u
+        # Whose work this request's git is (R159): the person, or the person
+        # a session was started for; and their sign-in, seen.
+        gitcreds.ACTING.set(users.uid_of(u) if u else "")
+        if u and u.get("lid"):
+            logins.seen(users.uid_of(u), u["lid"])
+        elif u and not u.get("session") and self.headers.get("Authorization", "").startswith("Basic "):
+            # The password proved on this request is a sign-in for a while.
+            logins.basic(users.uid_of(u))
         return u
 
     def _who_raw(self):
@@ -5842,6 +5881,15 @@ class Handler(BaseHTTPRequestHandler):
         return f"a terminal opens from this dashboard's own page, not from {o}"
 
     def _logout(self):
+        # The browser's sign-in is over (R159): its row goes, so its
+        # person's tokens are used no more unless they are signed in
+        # elsewhere.
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "bb_session":
+                u = token_user(v.strip())
+                if u and u.get("lid"):
+                    logins.drop(users.uid_of(u), u["lid"])
         self.send_response(302)
         self.send_header("Location", "/login")
         self.send_header("Set-Cookie",
@@ -6865,9 +6913,13 @@ class Handler(BaseHTTPRequestHandler):
             n = int(q.get("n", ["0"])[0])
         except ValueError:
             n = 0
-        return self._result(gitview.view(name, q.get("what", [""])[0], sha=q.get("sha", [""])[0],
-                                         path=q.get("path", [""])[0], n=n,
-                                         branch=q.get("branch", [""])[0]))
+        body, code = gitview.view(name, q.get("what", [""])[0], sha=q.get("sha", [""])[0],
+                                  path=q.get("path", [""])[0], n=n,
+                                  branch=q.get("branch", [""])[0])
+        if code == 200 and isinstance(body, dict) and q.get("what", [""])[0] in ("", "all", "status"):
+            # Whose token a press would use (R159), by name.
+            body["token"] = _token_said(name, users.uid_of(self._who()))
+        return self._json(body, code)
 
     def _get_changelog(self):
         """GET /api/changelog: changelog.reading, for a project this account
@@ -9247,14 +9299,15 @@ class Handler(BaseHTTPRequestHandler):
         names = {u.get("uid"): u.get("name") for u in users.all_users() if u.get("uid")}
         for f in sorted((STATE / "gitcreds").iterdir()) if (STATE / "gitcreds").is_dir() else []:
             raw = f.read_text(errors="replace").strip() if f.is_file() else ""
-            lk_uid, lk_host = gitcreds.linked_to(f.name)
-            if lk_uid:
-                # Linked to a person's own token (R154): kept in their store,
-                # not this one.
-                fg = accountkeys.forge_of(lk_uid, lk_host) or {}
+            gv = gitcreds.givers(f.name)
+            if gv:
+                # Each person's own token (R159): kept in their store, not
+                # this one, and used for their own work while signed in.
+                who = ", ".join(f"{names.get(u) or 'an account'}'s"
+                                + (f" {accountkeys.forge_of(u, fid)['host']}" if accountkeys.forge_of(u, fid) else "")
+                                for u, fid in gv)
                 rows.append({"kind": "git", "name": f.name, "sealed": True, "go": ["project", f.name],
-                             "uses": f"kept in {names.get(lk_uid) or 'an account'}'s key store"
-                                     + (f", their {fg['host']} token" if fg.get("host") else "")})
+                             "uses": f"the token{'s' if len(gv) > 1 else ''} {who}, each in their own key store"})
                 continue
             rows.append({"kind": "git", "name": f.name, "sealed": raw.startswith(gitcreds.SEALED),
                          "uses": "git push and pull for the project's repositories", "go": ["project", f.name]})
@@ -9733,7 +9786,7 @@ class Handler(BaseHTTPRequestHandler):
         if req is None:
             return self._json(*profiletab.view(me))
         payload, status, renamed = profiletab.verb(me, field(req, "action"), req, origin=self._origin())
-        return self._json(payload, status, cookie=make_token(renamed) if renamed else None)
+        return self._json(payload, status, cookie=make_token(renamed, (self._who() or {}).get("lid", "")) if renamed else None)
 
     def _get_snapshots(self):
         """GET /api/snapshots?project=NAME: the days kept of the project's
@@ -10936,6 +10989,11 @@ class Handler(BaseHTTPRequestHandler):
             # What the asker's own key store keeps, to link the project to
             # (R154), and whose account the project is linked to now.
             body["store"] = accountkeys.forges_of(users.uid_of(self._who()))
+            # Who has given the project a token (R159), by name, and
+            # whether each is signed in now; what the asker's own press
+            # would run with.
+            body["givers"] = _givers_said(name, users.uid_of(self._who()))
+            body["token"] = _token_said(name, users.uid_of(self._who()))
             lk = body.get("linked") or {}
             if lk.get("uid"):
                 # `host` holds the entry's id since entries have ids: its host said.

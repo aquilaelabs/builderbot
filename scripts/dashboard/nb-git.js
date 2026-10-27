@@ -133,8 +133,15 @@ function nbGitView({$, nb, project}){
     // committed yet. The branch is the picker's to say (R269 step 3); the
     // words name one only when there is none to pick.
     const host = git.host?.name || "the remote";
+    // Whose token a press would use (R159): yours, somebody else's who is
+    // signed in, or nobody's, which is what a push would wait on.
+    const tk = git.token || {};
+    const tokenSaid = !git.remote || !git.push ? ""
+      : tk.mine && tk.live ? "pushes and pulls use your token"
+      : tk.why ? tk.why
+      : tk.name ? `pushes and pulls use ${esc(tk.name)}'s token; yours is given in the project's settings` : "";
     const said = [tree.notMine ? `${tree.owner}'s working tree` : "", st.branch ? "" : "on no branch",
-      commits.length ? "" : "no commits yet",
+      commits.length ? "" : "no commits yet", tokenSaid,
       // Without push rights and without an upstream there is nothing to pull
       // either, and the line says so rather than offering Pull (B294).
       !git.remote ? "" : !git.push

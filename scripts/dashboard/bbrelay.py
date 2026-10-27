@@ -36,6 +36,7 @@ import threading
 from pathlib import Path
 
 import agents
+import gitcreds
 from fields import field
 
 HERE = Path(__file__).resolve().parent
@@ -313,6 +314,12 @@ def run(me, req, project):
     # (B148): the controller does it in a repository of its own and
     # hands the tree's half back to the node's bb as `apply`.
     if argv[0] == "git" and argv[1:2] and argv[1] in gitrelay.VERBS:
+        # A session's git is its person's, with their own token, while they
+        # are signed in (R159): signed out everywhere, bb git waits for them,
+        # and a project nobody signed in gave a token says so.
+        u = gitcreds.usable(project, str(me.get("uid") or ""))
+        if u.get("why"):
+            return {"error": u["why"]}, 409
         # The project's git policy may turn the hold off (the Git view's
         # "Hold a push that looks sensitive"): the push then goes unread.
         hold = prefs.get(project)["gitpol"].get("scan") != "off"

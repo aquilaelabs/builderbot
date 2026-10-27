@@ -930,8 +930,21 @@ def set_password(name, password):
         if name not in d["users"]:
             return {"error": f"no account called {name}"}
         d["users"][name]["password"] = hash_password(password)
+        uid = d["users"][name].get("uid") or ""
         _save(d)
+    # Every browser's cookie stops verifying with the stamp; the sign-ins
+    # they named go too (R159), so the tokens they kept in use are not.
+    _signed_out_everywhere(uid)
     return {"ok": True, "name": name}
+
+
+def _signed_out_everywhere(uid):
+    try:
+        import logins                                       # noqa: PLC0415
+        if logins.STATE is not None and uid:
+            logins.drop_all(uid)
+    except ImportError:
+        pass
 
 
 def set_role(name, role):
@@ -1160,6 +1173,7 @@ def remove(name):
         accountkeys.forget(u.get("uid") or "")
     if gitcreds.STATE is not None and u.get("uid"):
         gitcreds.unlink_account(u["uid"], name)
+    _signed_out_everywhere(u.get("uid") or "")
     return {"ok": True, "name": name}
 
 

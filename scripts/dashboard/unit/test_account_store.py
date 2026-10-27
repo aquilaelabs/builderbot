@@ -17,6 +17,7 @@ sys.path.insert(0, str(HERE.parent))
 
 import accountkeys  # noqa: E402
 import gitcreds     # noqa: E402
+import logins       # noqa: E402
 import signing      # noqa: E402
 
 UID = "u_0000000a"
@@ -32,6 +33,10 @@ class Store(unittest.TestCase):
         accountkeys.configure(state=self.d)
         gitcreds.configure(state=self.d, seal_fn=signing.seal, unseal_fn=signing.unseal,
                            sealing_fn=lambda: signing.MASTER is not None)
+        # A token is used only while its person is signed in (R159): this
+        # account is, in a browser.
+        logins.configure(state=self.d, devices_of=lambda uid: [])
+        logins.mint(UID, "a browser")
         got = accountkeys.link_forge(UID, "github.com", LINE, "octo")
         self.assertEqual(got[1], 200)
         self.fid = got[0]["id"]

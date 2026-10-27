@@ -1124,21 +1124,37 @@ function rnDrawStore(name){
   let host = "";
   try{ host = new URL(String(o.url || "").replace(/^git@([^:]+):/, "https://$1/")).host.toLowerCase(); }catch(e){ host = ""; }
   const mine = (o.store || []).filter(f => f.host === host);
-  const lk = o.linked || {};
-  const said = lk.uid ? `<div class="hint">Its token is kept in ${lk.mine ? "your" : esc(lk.name) + "'s"} key store.</div>` : "";
-  const rows = mine.filter(f => !(lk.mine && lk.id === f.id)).map(f => `<div class="setrow ctlrow"><span class="grow">Your ${
+  // Who has given the project a token (R159): each a person, their token
+  // used for their own work while they are signed in; yours removable.
+  const givers = o.givers || [], me = givers.find(g => g.mine);
+  const who = givers.map(g => `<div class="setrow ctlrow"><span class="grow">${g.mine ? "Your" : esc(g.name) + "'s"} ${
+    esc(g.host || host)} token${g.login ? `, as ${esc(g.login)}` : ""}${g.live ? "" : `<span class="dim"> (signed out: not in use)</span>`}</span>${
+    g.mine ? `<button type="button" data-rnunlink="1">Take it back</button>` : ""}</div>`).join("");
+  const said = givers.length
+    ? `<div class="hint">${givers.length === 1 ? "One person has" : givers.length + " people have"} given this project a token; each is used for their own pushes and pulls while they are signed in${
+        me ? "" : ", and yours is not among them"}.</div>`
+    : `<div class="hint">Nobody has given this project a token: pushes and pulls wait until somebody does.</div>`;
+  const rows = mine.filter(f => !(me && me.id === f.id)).map(f => `<div class="setrow ctlrow"><span class="grow">Your ${
     esc(f.host)} token${f.login ? `, as ${esc(f.login)}` : ""}</span>
-    <button type="button" data-rnstore="${esc(f.id)}">Use for this project</button></div>`).join("");
-  const none = "";
-  box.innerHTML = said + rows + none;
-  box.hidden = !(said || rows || none);
+    <button type="button" data-rnstore="${esc(f.id)}">${me ? "Use this one instead" : "Give it to this project"}</button></div>`).join("");
+  box.innerHTML = said + who + rows;
+  box.hidden = !(said || who || rows);
   box.querySelectorAll("[data-rnstore]").forEach(b => b.onclick = async () => {
     busy(b, "Linking");
     try{
       const j = await (await postJSON("/api/rename", {name, link_account: b.dataset.rnstore})).json();
       if (j.error) notify(j.error, true);
-      else notify(`${projLabel(name)} now uses that token`);
+      else notify(`${projLabel(name)} uses your token for your pushes and pulls`);
     }catch(e){ notify("link: " + failWords(e), true); }
+    rnLoadAuth(name);
+  });
+  box.querySelectorAll("[data-rnunlink]").forEach(b => b.onclick = async () => {
+    busy(b, "Taking back");
+    try{
+      const j = await (await postJSON("/api/rename", {name, unlink_mine: true})).json();
+      if (j.error) notify(j.error, true);
+      else notify(`your token is no longer given to ${projLabel(name)}`);
+    }catch(e){ notify("take back: " + failWords(e), true); }
     rnLoadAuth(name);
   });
 }

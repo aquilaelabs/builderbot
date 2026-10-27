@@ -7,6 +7,14 @@
 - The roadmap's steps move between items without losing anything: bb roadmap step mv takes a step to another item whole, split makes new items from an item's steps, fold makes an item a step of another, and each step keeps the number it was first given, so bb roadmap show R56.9 finds it wherever it is now; on the page a step has Move to, an item Split and Fold into, and in reorder mode a step drags onto another item (e1d916e)
 - Every notebook record prints whole as JSON, YAML or Markdown (--format, or --json) on bb roadmap, bug, rules, wiki, design and map, from one serializer with a format number in each document, and the same formats come back in: bb roadmap add --from FILE and bb bug add --from FILE add the records in a file, and bb roadmap apply FILE writes an edited show back, refused when the list moved since it was printed; the code map reads data files too, so bb map find DASHBOARD_PORT names every file a setting lands in and bb map who-calls DASHBOARD_PORT where the code reads it (e1d916e)
 
+### Changed
+
+- Every git action is a person's, with their own token: each person gives a project their own token for their pushes, pulls and releases, used only while they are signed in on a browser or a device, and the project keeps none of its own; its settings list who has given one, the Git view says whose token a press would use, a session whose person is signed out everywhere is told that bb git waits for them, and watching CI pauses, said on the project, while nobody who gave a token is signed in (3b4d293)
+
+### Upgrading
+
+- Signing in again once after this upgrade: a browser's sign-in now has a record of its own, which says when a person's tokens may be used, and the cookies from before carry none. A project's token from 0.8.0 stays its owner's for that project; everyone else on it gives their own in the project's settings (Give it to this project) before their pushes go (3b4d293)
+
 ## 0.8.2: 2026-10-27
 
 ### Fixed
