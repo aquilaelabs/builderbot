@@ -75,6 +75,11 @@ log "dashboard: http://<host>:${PORT}"
 # when the dashboard has died (B282).
 listening() { ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ":$1\$"; }
 
+# Without the shielded secrets: the hooks run with them, and the dashboard
+# and every controller terminal it opens would carry them (B389).
+unset_args=()
+for v in ${BB_SHIELDED:-}; do unset_args+=(-u "$v"); done
+
 # Through log-split rather than straight into the file: the full stream stays
 # where it was, and the warnings are copied to this hook's own stdout, which is
 # the container's, and therefore the boot log. That is what makes the session
@@ -83,7 +88,7 @@ listening() { ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ":$1\$"; }
 # -u so a warning is in the file at the moment it happens rather than when a
 # 8kB buffer fills, which for a mostly-idle server can be hours.
 listening "$PORT" || \
-nohup env DASHBOARD_PORT="$PORT" \
+nohup env "${unset_args[@]}" DASHBOARD_PORT="$PORT" \
         python3 -u "$DASH/server.py" 2>&1 \
     | /opt/builderbot/scripts/lib/log-split.sh "$(bb_log_dir)/dashboard.log" dashboard &
 

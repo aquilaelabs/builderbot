@@ -167,6 +167,21 @@ class KeyBeforeHooks(unittest.TestCase):
             self.assertEqual(calls, ["install_key_file", "run_hooks"], f)
 
 
+class DashboardShielded(unittest.TestCase):
+    """The hook that starts the dashboard starts it without the shielded
+    secrets the hooks run with (B389): its own lines, run here."""
+    def test_the_dashboard_starts_without_them(self):
+        hook = open(os.path.join(SCRIPTS, "startup.d", "15-dashboard.sh"), encoding="utf-8").read()
+        lines = [ln for ln in hook.splitlines() if ln.startswith(("unset_args=", "for v in ${BB_SHIELDED"))]
+        self.assertEqual(len(lines), 2, lines)
+        self.assertIn('nohup env "${unset_args[@]}" DASHBOARD_PORT=', hook)
+        r = sh("\n".join(lines) + '\nenv "${unset_args[@]}" env', {"NPM_TOKEN": "npm_" + "x" * 20, "INSTALL_KEY": "k" * 32})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("NPM_TOKEN=", r.stdout)
+        self.assertNotIn("INSTALL_KEY=", r.stdout)
+        self.assertIn("BB_SHIELDED=", r.stdout)
+
+
 class InstallKey(unittest.TestCase):
     """install_key_file under set -u (the boot's own): an install with a key
     and no previous one starts, and one with both keeps both (R126)."""

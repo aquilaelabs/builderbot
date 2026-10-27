@@ -43,6 +43,9 @@ BB_RUN_DIR="${BB_RUN_DIR:-/run/builderbot}"
 # file of its own in /run below, never kept in /config. SIGNING_SECRET, its
 # name before 0.8.0, is read when it is not set, for this release.
 SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN INSTALL_KEY INSTALL_KEY_PREVIOUS SIGNING_SECRET)
+# ...named for the hooks, which run with them: the one that starts the
+# dashboard starts it without them (B389).
+export BB_SHIELDED="${SECRET_VARS[*]}"
 
 # The one secret the dashboard itself needs, the install key, as a file only
 # the controller's account reads, in /run (never the state, so a copy of the
@@ -96,8 +99,11 @@ install_key_made() {
         mv -f "$spare"/key* "$dir"/ && rm -rf "$spare" && log "install key: moved into the secrets folder from beside the state"
     fi
     if [ ! -s "$dir/key" ]; then
-        ( umask 077; od -An -vtx1 -N32 /dev/urandom | tr -d ' \n' > "$dir/key.new" ) && mv -f "$dir/key.new" "$dir/key" \
-            || { warn "install key: could not write one in ${dir}, so nothing is sealed"; return 0; }
+        if ! ( umask 077; od -An -vtx1 -N32 /dev/urandom | tr -d ' \n' > "$dir/key.new" ) \
+                || ! mv -f "$dir/key.new" "$dir/key"; then
+            warn "install key: could not write one in ${dir}, so nothing is sealed"
+            return 0
+        fi
         log "install key: made one in ${dir}; Controller, Keys shows it to save"
     fi
     chown -R "$BB_ACCOUNT" "$dir" 2>/dev/null || true
