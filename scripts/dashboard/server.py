@@ -8608,12 +8608,15 @@ class Handler(BaseHTTPRequestHandler):
         # A project's container is worked on by the people on that project,
         # an administrator as much as anyone (R274): one not on it adds it to
         # their own list first. System's and nobody's stay an administrator's.
-        if act != "prune":
-            with devapp.on_node(nid or None):
-                owner = containers.owner_named(name)
-            if why := self._not_on_list(me, owner):
-                return self._json({"error": why}, 403)
-        return self._json(*containers.admin_verb(act, name, nid, under))
+        # The owner's check and the act read the daemon's list once between
+        # them (devapp.one_listing): Start on boot read it twice first.
+        with devapp.one_listing():
+            if act != "prune":
+                with devapp.on_node(nid or None):
+                    owner = containers.owner_named(name)
+                if why := self._not_on_list(me, owner):
+                    return self._json({"error": why}, 403)
+            return self._json(*containers.admin_verb(act, name, nid, under))
 
     def _not_on_list(self, me, owner):
         """Why `me` may not act on a container of project `owner`, or "":

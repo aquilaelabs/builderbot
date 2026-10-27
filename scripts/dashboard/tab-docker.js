@@ -264,16 +264,40 @@ async function loadDockerStats(list){
   dockerStats[node] = got.stats;
   dockerSpark[node] = got.spark || {};
   if ((dockerList?.node || dockerNode || "") !== node) return;
-  dockerRev++;
-  drawPanes();
+  dmStatsPatch();
 }
 
 // The strip of what an instance's containers use, summed: CPU, memory,
 // network in and out, processes. Nothing when nothing was sampled.
+// What the stats are on every drawing of the rows (the page and a
+// notebook's Docker view), written in place (the operator, 26 Oct: a tick
+// redrew the whole page every few seconds, its folds and menus with it).
+function dmStatsPatch(){
+  const all = dockerStats[dockerList?.node || dockerNode || ""] || {};
+  for (const el of document.querySelectorAll("[data-dmstats]")){
+    const d = (dockerList?.instances || []).find(x => `${x.project}|${x.instance}` === el.dataset.dmstats);
+    if (!d) continue;
+    const t = document.createElement("template");
+    t.innerHTML = dmStatStrip(d);
+    const fresh = t.content.firstElementChild;
+    if (fresh && fresh.outerHTML !== el.outerHTML) el.replaceWith(fresh);
+  }
+  for (const el of document.querySelectorAll("[data-dmcpu]")){
+    const st = all[el.dataset.dmcpu];
+    setText(el, st ? `${st.cpu.toFixed(1)}%` : "");
+  }
+  for (const el of document.querySelectorAll("[data-dmmem]")){
+    const st = all[el.dataset.dmmem];
+    setText(el, st ? humanBytes(st.mem) : "");
+  }
+}
 function dmStatStrip(d){
   const all = dockerStats[dockerList?.node || dockerNode || ""] || {};
   const mine = (d.services || []).map(c => all[c.name]).filter(Boolean);
-  if (!mine.length) return "";
+  // Addressed by its row, and drawn empty where nothing is measured yet, so
+  // a stats tick writes into it alone rather than redrawing the page.
+  const at = `data-dmstats="${esc(`${d.project}|${d.instance}`)}"`;
+  if (!mine.length) return `<div class="dmstats" ${at} hidden></div>`;
   const sum = k => mine.reduce((n, x) => n + (x[k] || 0), 0);
   const kb = n => humanBytes(n);
   // The instance's last half hour under its CPU (R218 step 9): its
@@ -289,7 +313,7 @@ function dmStatStrip(d){
   const pct = lim ? Math.min(100, sum("mem") / lim * 100) : 0;
   // One band of four (the operator's concept, 17 Oct): each its word over
   // its figure, CPU with its half hour, memory with how full it is.
-  return `<div class="dmstats">
+  return `<div class="dmstats" ${at}>
     <div class="tile"><span class="tl">CPU</span><span class="tv">${esc(sum("cpu").toFixed(sum("cpu") < 10 ? 1 : 0))}<span class="tu">%</span></span>${
       sparkSvg(cpuS, 100, "CPU over the last half hour")}</div>
     <div class="tile"><span class="tl">Memory</span><span class="tv">${esc(kb(sum("mem")))}${
@@ -318,8 +342,8 @@ function dmServicesTable(d, finished){
         c.state === "running" ? "" : ` <span class="dim dmsvcst">${finished(c) ? "finished" : esc(c.status || c.state || "")}</span>`}`,
       `<span class="mono">${dmImage(c.image)}</span>`,
       ports.map(m => `${dmPortLink(m[1])} → ${esc(m[2])}`).join(" · "),
-      st ? `${esc(st.cpu.toFixed(1))}%` : "",
-      st ? esc(humanBytes(st.mem)) : "",
+      `<span data-dmcpu="${esc(c.name)}">${st ? `${esc(st.cpu.toFixed(1))}%` : ""}</span>`,
+      `<span data-dmmem="${esc(c.name)}">${st ? esc(humanBytes(st.mem)) : ""}</span>`,
       ports.length && c.state === "running" ? `<a href="http://${esc(daemonHost())}:${esc(ports[0][1])}/" target="_blank" rel="noreferrer">Open</a>` : ""]);
   }).join("");
   return tblWrap(DM_SVC_COLS, rows, "dmsvctbl");
@@ -2017,6 +2041,38 @@ async function dockerPrune(kind, node, nodeName, b){
 // ...and the handlers those rows need, wired onto whichever element holds
 // them. `list` is the answer the rows were drawn from, for the saved values
 // a pick is compared against.
+// A row's settings dialog shown where its drawing is on show, and only
+// one per row (B852), after every draw and after a draw skipped for having
+// nothing new: a dialog closed while its page was out of sight is shown
+// again when the page comes back. Escape is its Cancel.
+function dmSyncDialogs(el){
+  const onShow = !!el.offsetParent || (el.checkVisibility?.() ?? false);
+  // Out of sight with a dialog waiting (a phone's pane behind another): shown
+  // once the page comes into sight, which no redraw may bring now that one
+  // with nothing new is skipped and the stats write in place.
+  if (!onShow && el.querySelector("dialog.dmsetdlg") && typeof ResizeObserver === "function" && !el.__dmWatch){
+    el.__dmWatch = new ResizeObserver(() => {
+      if (!(el.offsetParent || el.checkVisibility?.())) return;
+      el.__dmWatch.disconnect(); el.__dmWatch = null;
+      dmSyncDialogs(el);
+    });
+    el.__dmWatch.observe(el);
+  }
+  el.querySelectorAll("dialog.dmsetdlg").forEach(dlg => {
+    const twin = [...document.querySelectorAll("dialog.dmsetdlg[open]")]
+      .some(o => o !== dlg && o.dataset.dmdlg === dlg.dataset.dmdlg);
+    if (!onShow || twin){ if (dlg.open) dlg.close(); }
+    else if (!dlg.open) try{
+      dlg.classList.toggle("still", dmWasOpen.has(dlg.dataset.dmdlg));
+      dlg.showModal();
+    }catch(e){ /* detached mid-draw */ }
+    dlg.oncancel = e => {
+      e.preventDefault();
+      dmDropDrafts(dlg.dataset.dmdlg); dmEditing.delete(dlg.dataset.dmdlg); dockerRev++; drawPanes();
+    };
+  });
+}
+
 function dmWireRows(el, list = dockerList){
   // Another project's containers, for an administrator not on it (R274):
   // read, never acted on; the server refuses the same.
@@ -2272,17 +2328,7 @@ function dmWireRows(el, list = dockerList){
   // Docker view draws the same rows in a page out of sight, and its dialog,
   // shown modal on top, left the one on screen inert, every keystroke typed
   // into it going nowhere (B852).
-  const onShow = !!el.offsetParent || (el.checkVisibility?.() ?? false);
-  el.querySelectorAll("dialog.dmsetdlg").forEach(dlg => {
-    const twin = [...document.querySelectorAll("dialog.dmsetdlg[open]")]
-      .some(o => o !== dlg && o.dataset.dmdlg === dlg.dataset.dmdlg);
-    if (!onShow || twin){ if (dlg.open) dlg.close(); }
-    else if (!dlg.open) try{ dlg.showModal(); }catch(e){ /* detached mid-draw */ }
-    dlg.oncancel = e => {
-      e.preventDefault();
-      dmDropDrafts(dlg.dataset.dmdlg); dmEditing.delete(dlg.dataset.dmdlg); dockerRev++; drawPanes();
-    };
-  });
+  dmSyncDialogs(el);
   el.querySelectorAll("[data-dmedit]").forEach(b => b.onclick = () => {
     closeMore(); dmEditing.add(b.dataset.dmedit); dockerRev++; drawPanes();
   });
@@ -2539,6 +2585,13 @@ function dmStatus(d){
     ["Shells", host && mayShell() ? `from a node that runs sessions: ${host.name} hosts containers only` : ""]]});
 }
 
+// The rows' settings dialogs open before a redraw, by key: shown again after
+// it without their opening animation (the operator, 26 Oct: each redraw
+// played it again, a flicker under the pointer).
+let dmWasOpen = new Set();
+function dmNoteOpen(el){
+  dmWasOpen = new Set([...(el?.querySelectorAll("dialog.dmsetdlg[open]") || [])].map(d => d.dataset.dmdlg));
+}
 function renderDockerInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -2557,6 +2610,7 @@ function renderDockerInto(i){
     // builders given nothing (the operator, 18 Oct: a template written
     // beside the page fell behind it): the bar, the tiles, the status line,
     // then the rows.
+    el.__dmHtml = "";
     el.innerHTML = `<div class="doctab dmtab">${skTpl(`${dmBar(null)}${dmTiles(null)}${dmStatus(null)}
       ${dmView === "list" ? skTable(DM_COLS, 4)
         // ...the rows in a project group's card, as they land (R262).
@@ -2681,7 +2735,7 @@ function renderDockerInto(i){
   const notOurs = allCs.filter(c => !c.ours).length;
   const tiles = blind || !(allIns.length || allCs.length) ? "" : dmTiles({running, all: allIns.length, behind,
     checked: !!dockerList?.images_at, projects: chips.filter(g => g.key !== "none").length, notOurs});
-  el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${tiles}${
+  const html = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${tiles}${
     // The page's own boxes under the tiles and the chips, never between
     // them (the operator, 26 Oct): what every page has comes first.
     chipBar(chips, dmChip, "data-dmchip")}${status}${askRows}${note
@@ -2702,6 +2756,13 @@ function renderDockerInto(i){
     // nothing a container uses. Blind, there is no daemon to list.
     blind ? "" : dmImagesSection()}
     </div>`;
+  // Written only when it says something new (the operator, 26 Oct: the page
+  // was written again on every read, its open folds read again, the pointer's
+  // place lost): a read that brings the same list leaves the page alone.
+  if (el.__dmHtml === html && el.querySelector(":scope > .dmtab")){ dmSyncDialogs(el); return; }
+  dmNoteOpen(el);
+  el.innerHTML = html;
+  el.__dmHtml = html;
   gateDocker(el, off);
   // The asks answer through the phone's endpoint, which holds the one list of
   // them; phFetch redraws this tab when the answer comes back.

@@ -206,6 +206,7 @@ function renderVmsInto(i){
   if (!el) return;
   el.classList.add("flush");
   if (!vmsData){
+    el.__vmHtml = "";
     el.innerHTML = `<div class="doctab vmtab">${skTpl(`${vmBar(true)}${statTiles([{label: "running", value: GHOST, sub: GHOST},
         {label: "projects", value: GHOST}, {label: "snapshots", value: GHOST}])}
       <section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(2)}</section>`)}</div>`;
@@ -235,8 +236,14 @@ function renderVmsInto(i){
   const head = off || vmsErr || !onNode.length ? "" : vmTiles(onNode, chips.length) + chipBar(chips, vmsChip, "data-vmchip");
   // A reload that lands while the search is being typed in keeps the box's
   // focus and its caret, as Containers' does: the box is drawn anew.
+  // Written only when it says something new, as the Containers page is
+  // (the operator, 26 Oct): a read bringing the same VMs leaves the page,
+  // its menus and its focus alone.
+  const html = `<div class="doctab vmtab">${vmBar(false)}${head}${empty || vmGroupsHtml(rows)}</div>`;
+  if (el.__vmHtml === html && el.querySelector(":scope > .vmtab")) return;
   const typing = document.activeElement?.id === "vmSearch" && el.contains(document.activeElement) ? document.activeElement.selectionStart : null;
-  el.innerHTML = `<div class="doctab vmtab">${vmBar(false)}${head}${empty || vmGroupsHtml(rows)}</div>`;
+  el.innerHTML = html;
+  el.__vmHtml = html;
   wireVms(el);
   const sb = typing === null ? null : el.querySelector("#vmSearch");
   if (sb){ sb.focus(); try{ sb.setSelectionRange(typing, typing); }catch(e){ /* a type that cannot */ } }

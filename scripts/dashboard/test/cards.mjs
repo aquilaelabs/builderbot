@@ -2574,6 +2574,9 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
                              { timeout: 10000 });
   ok(!existsSync(`${LD}/docker.log.2`),
      'Apply crops what the new number already excludes, then and there');
+  // ...the 3 saved and read back first: 30 typed over a page still holding
+  // 30 as saved changes nothing, and Apply rightly sleeps.
+  await page.waitForFunction(() => String(state?.logs?.days) === '3', null, { timeout: 10000 }).catch(() => {});
   await page.fill('.settingstab #logDays', '30');
   await page.click('.settingstab #logApply');
   await page.waitForFunction(() => document.querySelector('#logApply')?.textContent.trim() === 'Apply' && !('logDays' in (settingsDraft || {})),

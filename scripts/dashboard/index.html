@@ -1673,6 +1673,9 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
    it is leaving, the arrival must not replay, and nothing under it may take
    a tap meant for the page behind. */
 .modal.leaving,.modal.leaving>.box{animation:none;pointer-events:none}
+/* A row's settings dialog shown again by a redraw is the one that was open:
+   no opening (dmNoteOpen). */
+.modal.dmsetdlg.still,.modal.dmsetdlg.still>.box{animation:none}
 .modal[hidden]{display:none}
 /* A dialog's box shown in place, in a notebook view (the project's Settings):
    no overlay, no shadow, the document's width, and its own scroll is the
@@ -3184,9 +3187,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    notebook's rows as wide as the pages' beside them. */
 .dmsrc{padding:var(--row-y) var(--row-x)}
 /* The last answer while a new one is on its way, or one the server kept
-   from before the node's job: dimmed as a whole, still readable, with no
-   motion. The word at the foot says which, and only when it has been slow. */
-.dmtab.dmstale .row{opacity:.6}
+   from before the node's job, is drawn as it is (the operator, 26 Oct: the
+   rows dimmed on every slow read, which on a node was most of them); the
+   word at the foot says which, and only when it has been slow. */
 /* The heading over each group of rows: where these came from, which is what
    decides what can be done to them (R68). Quiet, because it is a label on a
    list and not a section of its own. */
@@ -3681,6 +3684,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 /* What it uses: one band of four sharing hairlines, each its word over its
    figure, CPU with its half hour at the right, memory with how full. Two
    across on a phone. */
+.dmstats[hidden]{display:none}
 .dmstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--hair);background:var(--line);
   border:var(--hair) solid var(--line);border-radius:var(--r-control);overflow:hidden;margin:10px 0 0}
 /* A line under the stats or the services' table keeps the gap the stats

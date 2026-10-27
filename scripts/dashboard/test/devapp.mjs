@@ -346,7 +346,7 @@ const pillIs = async (want) => {
   });
   const quickSaid = runs.out.filter(r => r.said && r.ms < runs.slow);
   ok(quickSaid.length === 0,
-     `four quick reloads in a row never dim the rows on a fetch quicker than ${runs.slow} ms (${
+     `four quick reloads in a row never mark the rows stale on a fetch quicker than ${runs.slow} ms (${
        runs.out.map(r => `${r.ms}ms${r.said ? ' shown' : ''}`).join(', ')})`);
   const slow = await page.evaluate(async () => {
     const f = window.fetch;
@@ -354,7 +354,8 @@ const pillIs = async (want) => {
       ? new Promise(r => setTimeout(() => r(f(...a)), DM_SLOW_MS + 400)) : f(...a);
     const p = loadDocker();
     await new Promise(r => setTimeout(r, DM_SLOW_MS + 200));
-    const during = { dim: !!document.querySelector('.dmtab.dmstale') };
+    const during = { dim: !!document.querySelector('.dmtab.dmstale'),
+                     faded: [...document.querySelectorAll('.dmtab .row')].some(r => getComputedStyle(r).opacity !== '1') };
     await p; window.fetch = f;
     // A revision reload that started under the slowed fetch is itself still
     // slowed and still in flight; the word it is entitled to is not this
@@ -362,8 +363,21 @@ const pillIs = async (want) => {
     for (let i = 0; i < 40 && dockerFetching; i++) await new Promise(r => setTimeout(r, 100));
     return { ...during, after: !!document.querySelector('.dmtab.dmstale') };
   });
-  ok(slow.dim && !slow.after,
-     `...and one that is slow dims the rows until it lands (${JSON.stringify(slow)})`);
+  ok(slow.dim && !slow.after && !slow.faded,
+     `...and one that is slow is marked so until it lands, its rows drawn as they are rather than dimmed (${JSON.stringify(slow)})`);
+  // A read that brings the same list, and a stats tick, leave the page as it
+  // is (the operator, 26 Oct): the stats are written into their own boxes.
+  const kept = await page.evaluate(async () => {
+    const tab = document.querySelector('.dmtab');
+    tab.dataset.mark = 'kept';
+    dockerRev++; drawPanes();
+    await new Promise(r => setTimeout(r, 300));
+    const sameRead = document.querySelector('.dmtab')?.dataset.mark === 'kept';
+    await loadDockerStats(dockerList);
+    await new Promise(r => setTimeout(r, 300));
+    return { sameRead, afterStats: document.querySelector('.dmtab')?.dataset.mark === 'kept' };
+  });
+  ok(kept.sameRead && kept.afterStats, `a redraw of the same list and a stats tick leave the page alone (${JSON.stringify(kept)})`);
 }
 
 // A redraw must not take an open menu with it. The manager repaints on every
@@ -380,7 +394,9 @@ const pillIs = async (want) => {
                                 window.__heldTab = document.querySelector('.dmtab'); });
     await sel.click();
     const open = await page.evaluate(() => window.__heldSel.matches(':open'));
-    await page.evaluate(() => { dockerRev++; drawPanes(); });
+    // A redraw with something new to say: one with nothing new leaves the
+    // page alone anyway (the operator, 26 Oct).
+    await page.evaluate(() => { if (dockerList) dockerList.images_at = Math.floor(Date.now() / 1000) - 3 * 86400; dockerRev++; drawPanes(); });
     const kept = await page.evaluate(() => ({
       same: window.__heldSel.isConnected && document.querySelector('.dmtab') === window.__heldTab,
       open: window.__heldSel.matches(':open') }));
@@ -2521,7 +2537,7 @@ ok(dead.files.every(x => !x),
 // a row on a machine that had gone away could be removed by nobody, and the
 // row is the only control over the thing it names.
 ok(dead.removes.length > 0 && dead.removes.every(x => !x),
-   '...and so does Remove: the record is this side\'s, and a stranded row must go');
+   `...and so does Remove: the record is this side's, and a stranded row must go (${JSON.stringify(dead.removes)})`);
 // The rows stay, and stop claiming anything. The tab used to render one error
 // line and no rows at all, throwing away everything it could still honestly
 // say, which is most of it: what an instance is, and what it was built from,
@@ -2532,7 +2548,7 @@ ok(dead.off.length > 0,
 ok(dead.off.every(Boolean),
    '...grayed, every one of them, so an inert row looks inert before you press');
 ok(dead.pills.length > 0 && dead.pills.every(t => /state unknown/.test(t)),
-   '...saying the state is unknown rather than reporting one nobody asked for');
+   `...saying the state is unknown rather than reporting one nobody asked for (${JSON.stringify(dead.pills)})`);
 // ...except on a row whose own job is running, which knows what it is doing
 // (B65: a Rebuild read "state unknown" over its own "stopping"); and a job
 // the queue says has ended is said on its row at once, not when the whole
@@ -3041,7 +3057,9 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
   // fixture's stub node does not run: the tab is the stream's, in the dock.
   ok(logTab.inDock && /^log:ctr:ep\.silon:staging-two:/.test(logTab.arg) && (logTab.text || /did not answer/.test(logTab.ended)),
      `Log in its ⋯ opens a running container's log in a tab of the dock, streamed from its node (${JSON.stringify(logTab)})`);
-  await page.evaluate(() => dropTab(tabs.find(x => /^log:(ctr|dm):/.test(x.arg || '')).id));
+  // ...and the dock put down after it, as it was: up, it is a phone's whole
+  // page, and the checks below read the page.
+  await page.evaluate(() => { dropTab(tabs.find(x => /^log:(ctr|dm):/.test(x.arg || '')).id); dockToggle(false); });
   // The daemon's images and volumes, in a section at the foot: tiles of
   // what it holds, each image in use or not, each volume, and the two
   // prunes that touch nothing a container uses (the fixture answers all
@@ -4194,6 +4212,9 @@ ok(await page.$('#devSend'),
      '...and turning it back to deny there takes the grant back');
   ok(await page.evaluate(() => ((state?.projects || []).find(p => p.name === 'ep.silon') || {}).prefs?.test_change) === 'restart',
      'the test-run setting is saved with it');
+  // ...the person's own, saved by its own request: read once the poll has it.
+  await refreshUntil(page, () => { const p = (state?.projects || []).find(p => p.name === 'ep.silon') || {};
+    return p.yours?.reply === 'minimal' && p.yours?.asks === 'fewer'; }, { timeout: 20000 }).catch(() => {});
   ok(await page.evaluate(() => { const p = (state?.projects || []).find(p => p.name === 'ep.silon') || {};
        return p.yours?.reply === 'minimal' && p.yours?.asks === 'fewer'; }),
      '...and the reply and question styles with the person');
@@ -4557,20 +4578,21 @@ print(json.dumps(out))
   const back = await api('/api/devapp', { project: 'alpha', action: 'move', instance: 'loose', to: 'ep.silon' });
   ok(back.ok, `...and back again (${back.error || 'ok'})`);
   rmSync(`${DIR}/ws/alpha/docker-compose.yml`, { force: true });
-  // A deleted project's containers keep its name, drawn "X (deleted)", and
-  // come back with it from the trash (8 Oct).
+  // A deleted project's containers keep running with no project (the
+  // operator, 26 Oct), and come back to it from the trash.
   const zc = await api('/api/container', { action: 'create', name: 'helper-for-gamma', owner: 'gamma',
                                           compose: 'services:\n  app:\n    image: alpine\n', env: '' });
   const zrow = l => (l.instances || []).find(d => d.project === 'helper-for-gamma') || {};
   const gone1 = await api('/api/trash', { name: 'gamma' });
   const whileGone = await api('/api/docker');
-  ok(zc.ok && gone1.ok && zrow(whileGone).owner === 'gamma' && zrow(whileGone).owner_gone === true,
-     `a deleted project's container is still its, marked gone (${JSON.stringify(zrow(whileGone)).slice(0, 120)} ${zc.error || gone1.error || ''})`);
+  ok(zc.ok && gone1.ok && zrow(whileGone).owner === '' && JSON.stringify(gone1.unassigned || []).includes('helper-for-gamma'),
+     `a deleted project's container keeps running, given to no project (${JSON.stringify(zrow(whileGone)).slice(0, 120)} ${zc.error || gone1.error || ''})`);
   await openManager();
-  await page.waitForFunction(() => [...document.querySelectorAll('.dmgroup b')].some(b => b.textContent === 'gamma (deleted)'));
-  ok(true, '...drawn under "gamma (deleted)" on the Containers page');
+  await page.waitForFunction(() => [...document.querySelectorAll('.dmgroup b')].some(b => /^No project/.test(b.textContent)), null, { timeout: 15000 }).catch(() => {});
+  ok(await page.evaluate(() => [...document.querySelectorAll('.dmgroup b')].some(b => /^No project/.test(b.textContent))),
+     '...drawn under No project on the Containers page');
   const back2 = await api('/api/trash-restore', { name: (gone1.to || '').split('/').pop() });
-  ok(back2.ok && zrow(await api('/api/docker')).owner_gone === false, `...and a restore gives it back (${back2.error || 'ok'})`);
+  ok(back2.ok && zrow(await api('/api/docker')).owner === 'gamma', `...and Put back gives it back to gamma (${back2.error || 'ok'})`);
   await api('/api/devapp', { project: 'helper-for-gamma', action: 'remove' });
   for (const p of ['alpha', 'gamma']) await api('/api/prefs', { project: p, node: '', nodes: [] });
 

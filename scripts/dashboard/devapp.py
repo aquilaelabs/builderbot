@@ -1305,6 +1305,13 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     Both optional, and every short call still takes the simple path: a
     `docker version` does not need a reader thread.
     """
+    # Anything but a read changes what docker ps would say: the listing
+    # held for a press's own checks (containers) goes with it.
+    verb = argv[1] if len(argv) > 1 else ""
+    if not (verb in ("ps", "images", "inspect", "logs", "stats", "version", "info")
+            or (verb in ("volume", "system") and len(argv) > 2 and argv[2] in ("ls", "df"))):
+        if getattr(_ps_held, "by", None):
+            _ps_held.by = {}
     bad = _guard(argv)
     if bad:
         # Refused rather than raised: a build runs on a job thread, where an
@@ -1608,6 +1615,22 @@ def prune(kind):
     return {"ok": True, "out": r["out"].strip()[-2000:]}
 
 
+# The listing one press reads, by (node, addr), while one_listing() is open on
+# its thread.
+_ps_held = threading.local()
+
+
+@contextlib.contextmanager
+def one_listing():
+    """A block whose reads of the daemon's containers share one docker ps:
+    a press's checks and its action, never longer."""
+    _ps_held.by = {}
+    try:
+        yield
+    finally:
+        _ps_held.__dict__.pop("by", None)
+
+
 def containers():
     """Everything on the daemon, and whose it is.
 
@@ -1622,8 +1645,21 @@ def containers():
     listed and marked as not ours: started, stopped or restarted by name one
     at a time, and nobody's project until its row names one.
     """
-    r = _run([DOCKER, "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
-             timeout=25)
+    # One listing serves the checks one press makes in the same breath, inside
+    # one_listing() alone (the operator, 26 Oct: Start on boot read the
+    # daemon twice, the project's check and the targets, before it acted, each
+    # a trip to the node), dropped by any write (_run). Nowhere else: a job
+    # reads the daemon again to see what its own step did.
+    key = (getattr(_node_ctx, "node", None) or "", getattr(_node_ctx, "addr", None) or "")
+    mine = _ps_held.__dict__.get("by")
+    held = mine.get(key) if mine is not None else None
+    if held:
+        r = held
+    else:
+        r = _run([DOCKER, "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
+                 timeout=25)
+        if r["code"] == 0 and mine is not None:
+            mine[key] = r
     if r["code"] != 0:
         # From the TAIL, through the same reader availability uses. Cut from
         # the front, as this was, docker's connect error reads "command [ssh

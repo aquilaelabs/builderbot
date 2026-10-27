@@ -865,6 +865,7 @@ function makeNotebook(project){
     ck.hidden = blind || !mayDocker() || !mine.length;
     ck.onclick = () => dmCheck(ck, node, () => { unbusy(ck, "Check"); ck.insertAdjacentHTML("beforeend", `<span class="lng"> for updates</span>`); loadNbDocker(); });
     // What the view is for, as its empty state (R119 step 4).
+    dmNoteOpen($("dkList"));
     $("dkList").innerHTML = dmGroupsHtml(mine, others, job, blind, project)
       || `<div class="field"><div class="hint nbempty">Send ${esc(projLabel(project))} from ${pageLink("", "Artifacts", `#/projects/${encodeURIComponent(project)}/artifacts`)}, or pick it on a container's row on the ${pageLink("docker", "Containers page")}.</div></div>`;
     dmWireRows($("dkList"), got);
