@@ -134,6 +134,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => openSchedulesTab()),
     readyWhen: '.schedulestab .schedrow',
   },
+  // The Keys page (R154): the install key's section and what is kept under
+  // it, drawn whether the box has a key or none.
+  keys: {
+    open: () => page.evaluate(() => openKeysTab()),
+    readyWhen: '.keystab details[data-sect="keys:kept"]',
+  },
   storage: {
     // A section per node, or the empty band on a box with none (R169).
     open: () => page.evaluate(() => openStorageTab()),
