@@ -915,6 +915,10 @@ def add(name, password, role="user", projects=None):
                             # wants (the operator, 7 Oct): see starts_unpinned.
                             "prefs": {}, "pins_empty": True}
         _save(d)
+    # Its own key made now, as every account's is at the start (R154).
+    import accountkeys
+    if accountkeys.STATE is not None:
+        accountkeys.key_of((d["users"].get(name) or {}).get("uid") or "")
     return {"ok": True, "name": name}
 
 

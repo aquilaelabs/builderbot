@@ -4101,6 +4101,12 @@ installkey.configure(passes=(signing.seal_all, gitcreds.seal_all, settings.seal_
                      nodes_previous=lambda: tokenkeys.sealed_under(_node_seals(), signing.PREVIOUS)
                      if signing.PREVIOUS else 0)
 installkey.note_made()
+# Every account's own key made at the start that can seal it, a fresh
+# install's first and an upgraded one's first alike, rather than when it is
+# first needed (the operator, 27 Oct); one added later has its own made then.
+for _u in users.all_users():
+    if _u.get("uid"):
+        accountkeys.key_of(_u["uid"])
 # A project's token from before tokens were a person's: into its owner's key
 # store, the project linked to it (0011, the operator, 27 Oct).
 try:

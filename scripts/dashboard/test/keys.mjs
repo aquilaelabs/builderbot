@@ -67,6 +67,10 @@ try {
   ok(git?.sealed, `the git token kept plain before the start was sealed at it and is listed (${JSON.stringify(git)})`);
   ok(!readFileSync(`${w}/config/gitcreds/web`, 'utf8').includes('plaintoken123'), '...and the file holds it sealed');
 
+  const first = await keys({ action: 'mine' });
+  ok(first.has && /^[0-9a-f]{4} [0-9a-f]{4}$/.test(first.fingerprint || ''),
+     `every account's own key is made at the start, not when first needed (${JSON.stringify(first).slice(0, 80)})`);
+
   // ---- the page at a desk --------------------------------------------------------
   const browser = await launch();
   const page = await newPage(browser, { httpCredentials: OWNER, extraHTTPHeaders: { Authorization: AUTH },
