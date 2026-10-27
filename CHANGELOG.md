@@ -1,11 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.8.2: 2026-10-27
 
 ### Fixed
 
-- A pick list under a field (moving a repository to another project, a project's group) takes an option on a click, so pressing on the list to hold and scroll it no longer takes the option under the pointer (0defbdd)
-- An empty project left beside a new repository's by the 0.8.0 bug fixed in 0.8.1 (its name the repository's with its id, such as NAME (P43)) is named on the bell, with Delete on the row; nothing is deleted without that press (94e3b2e)
+- A pick list under a field (moving a repository to another project, a project's group) takes an option on a click, so pressing on the list to hold and scroll it no longer takes the option under the pointer (6d22e0b)
+- An empty project left beside a new repository's by the 0.8.0 bug fixed in 0.8.1 (its name the repository's with its id, such as NAME (P43)) is named on the bell, with Delete on the row; nothing is deleted without that press (cc6c3e7)
 
 ## 0.8.1: 2026-10-27
 
