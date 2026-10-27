@@ -9,6 +9,7 @@ import { ok, done, URL, DIR, pinBreaks } from './lib.mjs';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, utimesSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -63,11 +64,39 @@ ok(typeof meta.body.built === 'string',
      `...read from the project whose origin is BuilderBot's repository, not a folder named BuilderBot (${meta.apk_sha256})`);
 }
 
+// ---- a row in each list the app reads ----------------------------------------------
+// A row's types are held only where there is a row, and the fixture leaves
+// most of these lists empty, so a type changed on one went unseen (B107).
+// Each list the notebook or the tree fills gets a row here, through the verbs
+// a session or a person uses; the world is put back before the next file.
+{
+  const ENV = { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`,
+                WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha', BB_ROADMAP_PROJECT: 'alpha', BB_BUG_PROJECT: 'alpha',
+                BB_TESTS_PROJECT: 'alpha' };
+  const bb = (...a) => execFileSync(join(REPO, 'scripts', 'bb'), a, { env: ENV, encoding: 'utf8' });
+  const post = async (p, b) => (await fetch(base + p, { method: 'POST', headers: H, body: JSON.stringify(b) })).json();
+  bb('roadmap', 'add', 'a row the contract types', '--step', 'and a step');
+  bb('bug', 'add', 'a row the contract types', '--area', 'contract');
+  bb('rules', 'add', 'contract-row', 'A rule the contract types.', '--words', 'contract');
+  // Held for the operator: the gate set to ask, and a session's add.
+  await post('/api/prefs', { project: 'alpha', gate: { roadmap: 'ask' } });
+  bb('roadmap', 'add', 'a held row the contract types');
+  await post('/api/wiki', { project: 'alpha', action: 'save', name: 'Contract row', text: 'A page the contract types.' });
+  mkdirSync(`${DIR}/ws/alpha/dist/shot`, { recursive: true });
+  writeFileSync(`${DIR}/ws/alpha/dist/contract-row.apk`, 'an artifact');
+  writeFileSync(`${DIR}/ws/alpha/dist/shot/contract-row.png`, 'a shot');
+  const was = (await get('/api/design?project=alpha')).body;
+  await post('/api/design', { project: 'alpha', action: 'save', language: was.language,
+    pages: [...(was.pages || []), { name: 'a page the contract types', platform: 'web', frame: 'desktop', template: 'blank', blocks: [] }] });
+  writeFileSync(`${DIR}/contract-run.log`, '[dashboard-test] == contract.mjs ==\nPASS  [+0.2s] a test the contract types\n1 passed, 0 failed in 1.0s\n');
+  bb('tests', 'ingest', `${DIR}/contract-run.log`);
+}
+
 // ---- every GET the app makes answers with the fields it reads ------------------------
 // Against the fixture project alpha, which has a roadmap, bugs, rules and a
 // dist/ from the other files' fixtures, or empty lists, which still carry
 // the keys.
-let missing = [], typed = [];
+let missing = [], typed = [], rowless = [];
 for (const e of surface.endpoints) {
   if (e.method !== 'GET') continue;
   // A download is bytes and has no fields to check: what it owes is that the
@@ -94,15 +123,36 @@ for (const e of surface.endpoints) {
   for (const f of e.fields || []) if (!(f in r.body)) missing.push(`${e.path}: no "${f}" in the answer`);
   // ...and each as the type the app reads it as (R79 step 8).
   typed.push(...pinBreaks(r.body, (surface.types || {})[e.path], e.path));
-  // The rows' fields, on the first row where there is one.
+  // The rows' fields, on the first row where there is one; a field pinned
+  // with ? is one only some rows carry (a kind's own), so it may be absent.
+  const pins = (surface.types || {})[e.path] || {};
   for (const [key, want] of Object.entries(e)) {
     if (['method', 'path', 'fields', 'actions', 'binary', 'needs'].includes(key)) continue;
     const rows = r.body[key];
-    if (!Array.isArray(rows) || !rows.length) continue;
-    for (const f of want) if (!(f in rows[0])) missing.push(`${e.path}: rows of "${key}" carry no "${f}"`);
+    if (!Array.isArray(rows) || !rows.length) { if (Array.isArray(rows)) rowless.push(`${e.path} ${key}`); continue; }
+    for (const f of want)
+      if (!(f in rows[0]) && !(`${key}[].${f}?` in pins)) missing.push(`${e.path}: rows of "${key}" carry no "${f}"`);
   }
 }
 ok(missing.length === 0, `every path the app reads answers with the fields it draws${missing.length ? ': ' + missing.join('; ') : ''}`);
+// Every row field the app reads is pinned a type, so a list the fixture
+// leaves empty still says what its rows hold, and is held to it wherever a
+// row turns up (B107).
+const untyped = [];
+for (const e of surface.endpoints) {
+  if (e.method !== 'GET' || e.needs) continue;
+  const pins = (surface.types || {})[e.path] || {};
+  for (const [key, want] of Object.entries(e)) {
+    if (['method', 'path', 'fields', 'actions', 'binary', 'needs'].includes(key)) continue;
+    for (const f of want)
+      if (![`${key}[].${f}`, `${key}[].${f}?`, `${key}.${f}`].some(k => k in pins)) untyped.push(`${e.path} ${key}[].${f}`);
+  }
+}
+ok(untyped.length === 0, `...and every row field it reads is pinned a type${untyped.length ? ': not ' + untyped.join(', ') : ''}`);
+// The lists seeded above, and those another suite fills (the bell's rows,
+// the phone's asks, a node's jobs and instances), held to it here when the
+// world has one: which had no row this time is said, not failed.
+ok(true, `the row lists with no row to type this run: ${rowless.join(', ') || 'none'}`);
 // A field pinned a type is one the app reads: removed or retyped, it fails
 // here until the release after the app stopped reading it (api-surface.json).
 const unpinned = Object.keys(surface.types || {}).filter(p => !surface.endpoints.some(e => e.path === p && e.method === 'GET'));
