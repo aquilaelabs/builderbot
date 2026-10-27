@@ -152,15 +152,18 @@ function vmRow(v){
     <div class="dmbody">${inner}</div></details>`;
 }
 
+// A VM whose repository is gone is in no project (the operator, 26 Oct),
+// grouped and chipped as No project.
+const vmOwner = p => (vmsData?.unowned || []).includes(p) ? "No project" : projLabel(p);
 function vmGroupsHtml(rows){
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
-  const owners = [...new Set(rows.map(v => v.project))].sort((a, b) => byName(projLabel(a), projLabel(b)));
+  const owners = [...new Set(rows.map(v => v.project))].sort((a, b) => byName(vmOwner(a), vmOwner(b)));
   const group = o => {
     const html = rows.filter(v => v.project === o).sort((a, b) => byName(a.name, b.name)).map(vmRow).join("");
     return vmView === "list" ? tblWrap(VM_COLS, html, "dmtbl") : html;
   };
   return owners.map(o => `<section class="dmcard"><div class="field dmgroup" style="--gc:${colorTone(projectColor(o)) || "var(--accent)"}"><b>${
-      esc(projLabel(o))}</b></div>${group(o)}</section>`).join("");
+      esc(vmOwner(o))}</b></div>${group(o)}</section>`).join("");
 }
 
 // The bar, as Containers' is (the operator, 26 Oct): the node switcher, every
@@ -194,7 +197,7 @@ function vmTiles(vms, projects){
 // A chip per project with a VM here (the chips rule), by name.
 function vmChipGroups(vms){
   const owners = [...new Set(vms.map(v => v.project))];
-  return owners.map(o => ({key: o, label: projLabel(o), count: vms.filter(v => v.project === o).length}))
+  return owners.map(o => ({key: o, label: vmOwner(o), count: vms.filter(v => v.project === o).length}))
     .sort((a, b) => a.label.localeCompare(b.label, undefined, {sensitivity: "base"}));
 }
 

@@ -1646,11 +1646,16 @@ async function rnSubmit(sect, end = false){
 // touched at all. Putting one back is a mv. Friction proportionate to a
 // reversible act, and the dialog names the path so the reversal is obvious.
 async function deleteProject(name){
+  // What keeps running with no project while it is in the trash (the
+  // operator, 26 Oct), said before it is asked.
+  const own = await postJSON("/api/repos", {action: "owned", name}).then(r => r.json()).catch(() => ({}));
+  const left = [own.containers?.length ? `Its container${own.containers.length === 1 ? "" : "s"} ${own.containers.join(", ")} keep${own.containers.length === 1 ? "s" : ""} running, given to no project until it is put back.` : "",
+                own.vms?.length ? `Its VM${own.vms.length === 1 ? "" : "s"} ${own.vms.join(", ")} keep${own.vms.length === 1 ? "s" : ""} running under No project, an administrator's to act on.` : ""].filter(Boolean).join(" ");
   if (!await askYes(`Delete ${projLabel(name)}?\n\n`
       + `It moves to /workspace/.trash/${name}, with every file kept. Its `
-      + `roadmap, bugs, versions, memories and containers stay where they are, `
-      + `and Put back in the trash returns all of it.\n\n`
-      + `Close its terminals first, and bring its dev instance down.`)) return;
+      + `roadmap, bugs, versions and memories stay where they are, `
+      + `and Put back in the trash returns all of it.${left ? "\n\n" + left : ""}\n\n`
+      + `Close its terminals first.`)) return;
   try{
     const r = await postJSON("/api/trash", {name});
     const j = await r.json();

@@ -7300,15 +7300,22 @@ class Handler(BaseHTTPRequestHandler):
             seen = {sess}
         else:
             seen = {p for p in project_names(me) if roles.level_of(me, "vms", p)}
+        # A VM whose repository is gone is in no project (the operator, 26
+        # Oct): an administrator's to see and act on, under No project.
+        gone = set()
+        if not sess and users.is_admin(me):
+            gone = {v.get("project") or "" for v in vms.view()} - {""}
+            gone = {p for p in gone if not registry.is_project(p)}
+            seen |= gone
         # Which of them it may change, for the page's buttons: the server
         # refuses the rest whatever is pressed.
-        can = {p: "write" if sess or roles.level_of(me, "vms", p) == "write" else "read" for p in seen}
+        can = {p: "write" if sess or p in gone or roles.level_of(me, "vms", p) == "write" else "read" for p in seen}
         # ...and on which it may take a Console from whoever has it: the
         # project's owner's and the administrators' (the operator, 21 Oct).
         uid = users.uid_of(me) or ""
         take = {p: not sess and can[p] == "write" and (users.is_admin(me) or (uid and membership.owner_of(p) == uid))
                 for p in seen}
-        return self._json(vms.payload(seen) | {"can": can, "take": take, "me": uid})
+        return self._json(vms.payload(seen) | {"can": can, "take": take, "me": uid, "unowned": sorted(gone)})
 
     def _vms(self, req):
         """POST /api/vms (R91): new, start, stop, restart, remove, snapshot,
@@ -7328,7 +7335,12 @@ class Handler(BaseHTTPRequestHandler):
         req = dict(req, _admin=bool(users.is_admin(me)) and not sess)
         if action in ("iso-add", "iso-rm", "vbios") and sess:
             return self._json({"error": "fetching an installer ISO onto a node is a person's, on the VMs page"}, 403)
-        if not project or not registry.is_project(project):
+        # One whose repository is gone is in no project, and an
+        # administrator's alone; nothing new is made in it.
+        orphan = (bool(project) and not registry.is_project(project) and not sess and users.is_admin(me)
+                  and action not in ("new", "iso-add", "iso-rm")
+                  and any(v.get("project") == project for v in vms.view([project])))
+        if not project or not (registry.is_project(project) or orphan):
             return self._json({"error": "which project's VM? name one"}, 400)
         # The address this controller was reached at, which a VM made a node
         # dials (R91 step 14): the asker's own, as Enroll node's script uses.
@@ -10387,8 +10399,11 @@ class Handler(BaseHTTPRequestHandler):
     def _repos(self, req):
         """Projects and their repositories (R138): create (a project with a
         name and nothing in it), rename, move (a repository into another
-        project) and delete (a project with no repository left). A
-        person's, never a session's."""
+        project) with move-check (what it changes, asked first: the nodes,
+        containers and VMs it touches and who loses it), delete (a project
+        with no repository left, what was given to it left to no project)
+        and owned (what a delete would leave with no project). A person's,
+        never a session's."""
         me = self._who()
         if not me or me.get("session"):
             return self._json({"error": "a person makes and changes projects, never a session"}, 403)
@@ -10422,7 +10437,18 @@ class Handler(BaseHTTPRequestHandler):
             if got.get("ok"):
                 membership.forget_project(key)
                 prefs.forget(key)
+                # What was given to it keeps running, given to no project
+                # (the operator, 26 Oct).
+                got = dict(got, unassigned=devapp.unassign(key))
             return self._result(got, 409)
+        # What a delete would leave with no project, for its dialog to say:
+        # the containers given to a project or a repository, and a
+        # repository's VMs.
+        if act == "owned":
+            name = field(req, "name")
+            if not (registry.is_repos(name) or registry.is_project(name)) or not users.may_see(me, name):
+                return self._json({"error": f"not a project: {name}"}, 400)
+            return self._json({"containers": devapp.owned_by(name), "vms": sorted(v.get("name") or "" for v in vms.view([name]))})
         if act in ("move", "move-check"):
             name, to = field(req, "name"), field(req, "to")
             if self._not_project(name):
@@ -10450,7 +10476,7 @@ class Handler(BaseHTTPRequestHandler):
             # The nodes the person ticked to bring along, as the check offered
             # them: no other node, and only a node this account may set.
             plan = self._move_plan(me, name, to, was)
-            offered = {n["id"]: n["as"] for n in plan["nodes"]}
+            offered = {n["id"]: n["as"] for n in plan["nodes"] if not n["have"]}
             add = [str(x) for x in (req.get("add_nodes") or []) if str(x) in offered]
             if add and users.may(me, "node"):
                 return self._json({"error": users.may(me, "node")}, 403)
@@ -10463,9 +10489,28 @@ class Handler(BaseHTTPRequestHandler):
                 hosts = list(dst.get("hosts") or []) + [n for n in add if offered[n] == "hosts"]
                 nodes_ = list(dst.get("nodes") or []) + [n for n in add if offered[n] != "hosts"]
                 prefs.set_prefs(to, nodes=nodes_, hosts=hosts)
-            return self._json(dict(got, name=name, project=registry.label(to), added=add,
-                                   readers=[registry.label(r) for r in readers]))
-        return self._json({"error": "action is create, rename, move or delete"}, 400)
+            # Each container as the person left its box (the operator, 26
+            # Oct): ticked, the project it goes to has it; unticked, the one
+            # it leaves keeps it. One on a node the project it goes to has not
+            # got, even now, stays where it can be reached.
+            give = {str(x) for x in (req.get("give") or [])}
+            reach = set(add) | {n["id"] for n in plan["nodes"] if n["have"]} | {prefs.get(to).get("node") or ""}
+            kept, given, why = [], [], []
+            for t in plan["things"]:
+                if t["kind"] != "container":
+                    continue
+                p, _, inst = t["key"].partition("|")
+                want = t["key"] in give and (t["reach"] or t["node"] in reach)
+                if want == t["goes"]:
+                    continue
+                r = devapp.set_owner(p, inst, name if want else was)
+                if r.get("error"):
+                    why.append(f"{t['name']}: {r['error']}")
+                else:
+                    (given if want else kept).append(t["name"])
+            return self._json(dict(got, name=name, project=registry.label(to), added=add, given=given, kept=kept,
+                                   owner_errors=why, readers=[registry.label(r) for r in readers]))
+        return self._json({"error": "action is create, rename, move, move-check, delete or owned"}, 400)
 
     def _move_plan(self, me, name, to, was):
         """What moving the repository `name` from its project `was` into `to`
@@ -10478,11 +10523,13 @@ class Handler(BaseHTTPRequestHandler):
         have = {dst.get("node") or ""} | set(dst.get("nodes") or []) | set(dst.get("hosts") or [])
         runs = devapp.instance_nodes(name)
         out = []
+        # Every node the project it leaves has, dev and hosting (the operator,
+        # 26 Oct): the ones `to` has already said so, the rest offered.
         for nid, kind in ([(src.get("node") or "", "nodes")] + [(n, "nodes") for n in src.get("nodes") or []]
                           + [(n, "hosts") for n in src.get("hosts") or []]):
-            if nid and nid not in have and nid not in {x["id"] for x in out}:
+            if nid and nid not in {x["id"] for x in out}:
                 n = nodes.node(nid) or {}
-                out.append({"id": nid, "name": n.get("name") or nid, "as": kind,
+                out.append({"id": nid, "name": n.get("name") or nid, "as": kind, "have": nid in have,
                             "instances": sorted(i for i, at in runs.items() if at == nid)})
         lose = []
         if was:
@@ -10493,7 +10540,32 @@ class Handler(BaseHTTPRequestHandler):
         busy = self._running_on([k for k in (was, to) if k])
         return {"name": name, "label": registry.label(name), "from": registry.label(was) if was else "",
                 "to": registry.label(to), "nodes": out, "lose": sorted(x for x in lose if x),
-                "busy": busy, "node_why": users.may(me, "node") if out else ""}
+                "things": self._move_things(name, was, have),
+                "busy": busy, "node_why": users.may(me, "node") if any(not n["have"] for n in out) else ""}
+
+    @staticmethod
+    def _move_things(name, was, have):
+        """The containers and VMs moving `name` out of `was` touches (the
+        operator, 26 Oct). A container is the repository's unless it was given
+        to a project: the repository's go with it, and stay with `was` only
+        when asked; `was`'s own stay, and go to the project it moves to only
+        when asked. A VM is its repository's and always goes with it. Each
+        with its node and whether the project it goes to has that node."""
+        out = []
+        for p, insts in (devapp._load() or {}).items():
+            for inst, rec in (insts or {}).items():
+                own = devapp.owner_of(p, inst, rec)
+                if not own or own not in (name, was):
+                    continue
+                nid = str((rec or {}).get("node") or "")
+                out.append({"kind": "container", "key": f"{p}|{inst}", "name": devapp._pname(p, inst),
+                            "node": nid, "node_name": (nodes.node(nid) or {}).get("name") or nid,
+                            "reach": nid in have, "goes": own == name})
+        for v in vms.view([name]):
+            nid = str(v.get("node") or "")
+            out.append({"kind": "vm", "key": v.get("key") or "", "name": v.get("name") or "",
+                        "node": nid, "node_name": v.get("node_name") or nid, "reach": nid in have, "goes": True})
+        return out
 
     def _archive(self, req):
         """Archive or unarchive a project (R119): out of sight, and nothing
@@ -10518,7 +10590,9 @@ class Handler(BaseHTTPRequestHandler):
         # Out of its project, which its record keeps (R138): the trash says
         # where it was, and a restore puts it back there.
         if code == 200 and not body.get("error"):
-            body = dict(body, project=registry.label(repos.detach(name)))
+            # Its containers keep running, given to no project until it is
+            # put back (the operator, 26 Oct).
+            body = dict(body, project=registry.label(repos.detach(name)), unassigned=devapp.unassign(name))
         return self._json(body, code)
 
     def _trash_list(self):
@@ -10550,7 +10624,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 _place({body["name"]})
                 into = repos.project_of(body["name"])
-            body = dict(body, project=registry.label(into) if into else "")
+            body = dict(body, project=registry.label(into) if into else "", reassigned=devapp.reassign(body["name"]))
         return self._json(body, code)
 
     def _trash_purge(self, req):

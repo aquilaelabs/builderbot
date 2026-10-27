@@ -409,26 +409,30 @@ async function moveRepository(btn){
     plan = await (await postJSON("/api/repos", {action: "move-check", name, to: c.key})).json();
   }catch(e){ notify("checking the move failed: " + failWords(e), true); return; }
   if (plan.error){ notify(plan.error, true); return; }
-  const add = await moveConfirm(plan);
-  if (add === null) return;
+  const picked = await moveConfirm(plan);
+  if (picked === null) return;
   try{
-    const j = await (await postJSON("/api/repos", {action: "move", name, to: c.key, add_nodes: add})).json();
+    const j = await (await postJSON("/api/repos", {action: "move", name, to: c.key, add_nodes: picked.nodes, give: picked.give})).json();
     if (j.error){ notify(j.error, true); return; }
     const nn = id => plan.nodes.find(n => n.id === id)?.name || id;
     notify(`${projLabel(name)} is in ${j.project}${
       j.added?.length ? `, which now has ${j.added.map(nn).join(" and ")} too` : ""}${
-      j.readers?.length ? `; ${j.readers.join(", ")} now read${j.readers.length === 1 ? "s" : ""} it too` : ""}`);
+      j.readers?.length ? `; ${j.readers.join(", ")} now read${j.readers.length === 1 ? "s" : ""} it too` : ""}${
+      j.kept?.length ? `; ${plan.from} keeps ${j.kept.join(", ")}` : ""}`);
+    if (j.owner_errors?.length) notify(j.owner_errors.join("; "), true);
   }catch(e){ notify("moving it failed: " + failWords(e), true); }
   await refresh();
 }
 
 // Are you sure, with what the move changes (the operator, 26 Oct): the
-// repository takes its new project's node, people and settings, so the
-// nodes the project it leaves had and the new one has not are offered to
-// bring along, ticked, each saying the dev instances running there; who
-// reaches it through the old project alone is named; a session running on
-// either is said, and Move waits for it. Resolves with the nodes to add, or
-// null for Cancel.
+// repository takes its new project's node, people and settings, so every node
+// the project it leaves has is said, dev and hosting, those the new one has
+// not got offered to bring along, ticked; then its containers and VMs, each
+// with a box to make it the new project's (ticked for the repository's own,
+// which go with it), ghosted while it is on a node the new project will not
+// have; who reaches it through the old project alone is named; a session
+// running on either is said, and Move waits for it. Resolves with {nodes,
+// give}, or null for Cancel.
 function moveConfirm(plan){
   return new Promise(resolve => {
     let m = document.getElementById("mvmodal");
@@ -442,19 +446,47 @@ function moveConfirm(plan){
     const what = n => n.as === "hosts" ? "nodes it hosts containers on" : "nodes it works on";
     const dead = plan.node_why || "";
     const busy = (plan.busy || []).length > 0;
+    const offer = plan.nodes.filter(n => !n.have), had = plan.nodes.filter(n => n.have);
+    const things = plan.things || [];
+    const ctrs = things.filter(t => t.kind === "container"), vms_ = things.filter(t => t.kind === "vm");
     m.innerHTML = `<div class="box"><h3 id="mvTitle">Move ${esc(plan.label)} to ${esc(plan.to)}?</h3>
       <div class="field"><p class="asksaid">It leaves ${esc(plan.from || "no project")}: from now on ${esc(plan.to)}'s node, people and settings apply to it. Its notebook goes with it.</p></div>
-      ${plan.nodes.length ? `<div class="field"><div class="lbl">${esc(plan.from)} uses ${plan.nodes.length === 1 ? "a node" : "nodes"} ${esc(plan.to)} does not</div>
-        ${plan.nodes.map(n => `<label class="ndcap"><input type="checkbox" data-mvnode="${esc(n.id)}"${dead ? " disabled" : " checked"}> Add ${esc(n.name)} to ${esc(plan.to)}'s ${what(n)}${
+      ${plan.nodes.length ? `<div class="field"><div class="lbl">${esc(plan.from)}'s nodes</div>
+        ${had.map(n => `<div class="ndcap dim">${esc(n.name)}: ${esc(plan.to)} has it already</div>`).join("")}
+        ${offer.map(n => `<label class="ndcap"><input type="checkbox" data-mvnode="${esc(n.id)}"${dead ? " disabled" : " checked"}> Add ${esc(n.name)} to ${esc(plan.to)}'s ${what(n)}${
           n.instances.length ? `<span class="dim"> (${esc(n.instances.join(", "))} ${n.instances.length === 1 ? "runs" : "run"} there)</span>` : ""}</label>`).join("")}
-        ${dead ? `<div class="sub dim">${esc(dead)}</div>` : `<div class="sub dim">Left unticked, a dev instance there stays where it is, and nothing builds or runs on that node for ${esc(plan.label)} until ${esc(plan.to)} has it.</div>`}</div>` : ""}
+        ${!offer.length ? "" : dead ? `<div class="sub dim">${esc(dead)}</div>` : `<div class="sub dim">Left unticked, nothing builds or runs on that node for ${esc(plan.label)} until ${esc(plan.to)} has it.</div>`}</div>` : ""}
+      ${ctrs.length ? `<div class="field"><div class="lbl">Containers</div>
+        ${ctrs.map(t => `<label class="ndcap" data-mvon="${esc(t.node)}"><input type="checkbox" data-mvgive="${esc(t.key)}" data-reach="${t.reach ? 1 : 0}"${t.goes ? " checked" : ""}> Make ${esc(t.name)} ${esc(plan.to)}'s<span class="dim"> (on ${esc(t.node_name)}${t.goes ? `, ${esc(plan.label)}'s` : `, ${esc(plan.from)}'s`})</span></label>`).join("")}
+        <div class="sub dim">Left unticked, ${esc(plan.from)} keeps it and its sessions rebuild it. One on a node ${esc(plan.to)} will not have stays with ${esc(plan.from)}.</div></div>` : ""}
+      ${vms_.length ? `<div class="field"><div class="lbl">VMs, which go with ${esc(plan.label)}</div>
+        ${vms_.map(t => `<div class="ndcap" data-mvvm="${esc(t.node)}" data-reach="${t.reach ? 1 : 0}">${esc(t.name)}<span class="dim"> (on ${esc(t.node_name)})</span><span class="sub warn" data-mvvmwhy hidden> ${esc(plan.to)} will not have ${esc(t.node_name)}: its sessions cannot reach it</span></div>`).join("")}</div>` : ""}
       ${plan.lose.length ? `<div class="field"><div class="sub warn">${esc(plan.lose.join(", "))} ${plan.lose.length === 1 ? "reaches" : "reach"} it through ${esc(plan.from)} alone and ${plan.lose.length === 1 ? "loses" : "lose"} it: a role on ${esc(plan.to)} keeps it.</div></div>` : ""}
       ${busy ? `<div class="field"><div class="sub warn">${esc(plan.busy.join(", "))} running on ${esc(plan.from)} or ${esc(plan.to)}: end ${plan.busy.length === 1 ? "it" : "them"} first, then move it.</div></div>` : ""}
       ${dlgFoot(`<button type="button" id="mvCancel">Cancel</button>`, `<button type="button" class="primary" id="mvGo"${busy ? " disabled" : ""}>Move</button>`)}</div>`;
+    // A container or VM is in reach when the new project has its node, or
+    // that node is ticked to bring along; out of reach, a container's box is
+    // ghosted and unticked, and a VM says so.
+    const reachable = () => new Set([...m.querySelectorAll("[data-mvnode]:checked")].map(i => i.dataset.mvnode));
+    const ghost = () => {
+      const on = reachable();
+      m.querySelectorAll("[data-mvgive]").forEach(i => {
+        const ok = i.dataset.reach === "1" || on.has(i.closest("[data-mvon]").dataset.mvon);
+        if (!ok) i.checked = false;
+        i.disabled = !ok;
+        i.closest("label").classList.toggle("dim", !ok);
+      });
+      m.querySelectorAll("[data-mvvm]").forEach(v => {
+        v.querySelector("[data-mvvmwhy]").hidden = v.dataset.reach === "1" || on.has(v.dataset.mvvm);
+      });
+    };
+    m.querySelectorAll("[data-mvnode]").forEach(i => i.onchange = ghost);
+    ghost();
     let over = false;
     const done = v => { if (over) return; over = true; m.hidden = true; resolve(v); };
     m.querySelector("#mvCancel").onclick = () => done(null);
-    m.querySelector("#mvGo").onclick = () => done([...m.querySelectorAll("[data-mvnode]:checked")].map(i => i.dataset.mvnode));
+    m.querySelector("#mvGo").onclick = () => done({nodes: [...m.querySelectorAll("[data-mvnode]:checked")].map(i => i.dataset.mvnode),
+                                                   give: [...m.querySelectorAll("[data-mvgive]:checked")].map(i => i.dataset.mvgive)});
     m.onclick = e => { if (e.target === m) done(null); };
     m.hidden = false;
     // Escape and the backdrop close it as Cancel does.
@@ -467,7 +499,11 @@ function moveConfirm(plan){
 // is refused, and says so).
 async function deleteProjectCard(key){
   const n = projectName(key);
-  if (!await askYes(`Delete the project ${n}?\n\nIt has no repository in it, so nothing on disk goes.`)) return;
+  // What was given to it keeps running with no project (the operator, 26 Oct).
+  const own = await postJSON("/api/repos", {action: "owned", name: key}).then(r => r.json()).catch(() => ({}));
+  const left = own.containers?.length ? `\n\nThe container${own.containers.length === 1 ? "" : "s"} given to it, ${own.containers.join(", ")}, keep${
+    own.containers.length === 1 ? "s" : ""} running, given to no project.` : "";
+  if (!await askYes(`Delete the project ${n}?\n\nIt has no repository in it, so nothing on disk goes.${left}`)) return;
   try{
     const j = await (await postJSON("/api/repos", {action: "delete", key})).json();
     if (j.error){ notify(j.error, true); return; }

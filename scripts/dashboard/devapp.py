@@ -3358,6 +3358,63 @@ def move_instance(project, instance, to):
             "dropped_ref": ref or ""}
 
 
+def unassign(owner):
+    """Every instance and written container that belongs to `owner`, a
+    project or a repository going away (to the trash, or deleted), given to
+    no project rather than left naming one that is gone (the operator, 26
+    Oct): they keep running, and an administrator gives them to another.
+    The names of those it changed."""
+    owner = str(owner or "")
+    if not owner:
+        return []
+    out = []
+    with _lock:
+        d = _load()
+        for p, insts in d.items():
+            for inst, rec in (insts or {}).items():
+                if isinstance(rec, dict) and owner_of(p, inst, rec) == owner:
+                    rec["for"] = ""
+                    # ...remembered, so Put back gives them back (reassign).
+                    rec["was_for"] = owner
+                    out.append(_pname(p, inst))
+        if out:
+            write_json(FILE, d)
+    if out:
+        _bump()
+    return sorted(out)
+
+
+def reassign(owner):
+    """The ones unassign gave to no project when `owner` went to the trash,
+    given back to it as it is put back: those still with no project. The
+    names of those it changed."""
+    owner = str(owner or "")
+    out = []
+    with _lock:
+        d = _load()
+        for p, insts in d.items():
+            for inst, rec in (insts or {}).items():
+                if isinstance(rec, dict) and rec.get("was_for") == owner and rec.get("for") == "":
+                    rec.pop("was_for", None)
+                    if owner == ("" if rec.get("source") == "file" else p):
+                        rec.pop("for", None)
+                    else:
+                        rec["for"] = owner
+                    out.append(_pname(p, inst))
+        if out:
+            write_json(FILE, d)
+    if out:
+        _bump()
+    return sorted(out)
+
+
+def owned_by(owner):
+    """The names of the instances and written containers `owner` has: what a
+    delete of it would leave with no project, said before it is asked."""
+    return sorted(_pname(p, i) for p, insts in (_load() or {}).items() for i, rec in (insts or {}).items()
+                  if isinstance(rec, dict) and owner and owner_of(p, i, rec) == owner)
+
+
 def set_owner(project, instance, owner):
     """Which project an instance or a written container belongs to: a
     project's name, or "" for none. server.py has checked that the name is a

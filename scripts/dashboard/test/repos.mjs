@@ -7,7 +7,7 @@
 // front and back, the trash naming the project, and Put back asking where
 // when the project is gone.
 import { ok, done, DIR, URL, launch, newPage, ready } from './lib.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 const base = URL.replace(/\/$/, '');
 const ADMIN = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
@@ -34,7 +34,7 @@ ok(was.status === 200, `beta reads ep.silon to begin with (${was.status} ${was.e
 const blank = await post('/api/repos', { action: 'create', name: ' ?! ' });
 ok(blank.status === 400 && /letter or digit/.test(blank.error || ''), `a project's name needs a letter or digit (${blank.error})`);
 const bad = await post('/api/repos', { action: 'shuffle' });
-ok(bad.status === 400 && /create, rename, move or delete/.test(bad.error || ''), `an action that is none of them is refused (${bad.error})`);
+ok(bad.status === 400 && /create, rename, move, move-check, delete or owned/.test(bad.error || ''), `an action that is none of them is refused (${bad.error})`);
 
 // Made with a name alone, spaces and punctuation kept, and nothing in it.
 const m = await post('/api/repos', { action: 'create', name: 'Shop & Co' });
@@ -210,7 +210,17 @@ const clash = await post('/api/repos', { action: 'rename', key, to: (await statu
 ok(clash.status === 400 && /already a project's name/.test(clash.error || ''), `not to another project's name (${clash.error})`);
 
 // The trash names the project; with the project gone, Put back asks where.
+// A container built from it keeps running when it goes to the trash, given
+// to no project, and its delete says so first (the operator, 26 Oct).
+const appsFile = `${DIR}/state/devapps.json`;
+const apps = () => { try { return JSON.parse(readFileSync(appsFile, 'utf8')); } catch { return {}; } };
+writeFileSync(appsFile, JSON.stringify({ ...apps(), shopweb: { main: { node: '' } } }));
+const owned = await post('/api/repos', { action: 'owned', name: 'shopweb' });
+ok(owned.status === 200 && JSON.stringify(owned.containers) === '["shopweb"]' && Array.isArray(owned.vms),
+   `owned names what a delete would leave with no project (${JSON.stringify(owned)})`);
 const tr = await post('/api/trash', { name: 'shopweb' });
+ok(apps().shopweb?.main?.for === '' && apps().shopweb?.main?.was_for === 'shopweb' && JSON.stringify(tr.unassigned) === '["shopweb"]',
+   `...and the trash gives its container to no project, remembering whose it was (${JSON.stringify(apps().shopweb)})`);
 ok(tr.status === 200 && tr.project === 'Shop', `a repository to the trash says which project it was in (${JSON.stringify(tr)})`);
 const bin = await (await fetch(base + '/api/trash', { headers: ADMIN })).json();
 ok((bin.items || []).some(i => i.name === 'shopweb' && i.project === 'Shop'), 'the trash lists it with its project');
@@ -228,7 +238,8 @@ ok(gone.status === 200 && !(await status()).repos[key], `an empty project is del
   await post('/api/prefs', { project: 'gamma', nodes: [nid] });
   const p2 = await post('/api/repos', { action: 'create', name: 'Node check' });
   const plan = await post('/api/repos', { action: 'move-check', name: 'gamma', to: p2.key });
-  ok(plan.status === 200 && plan.nodes.some(n => n.id === nid && n.as === 'nodes') && plan.to === 'Node check' && Array.isArray(plan.lose),
+  ok(plan.status === 200 && plan.nodes.some(n => n.id === nid && n.as === 'nodes' && n.have === false) && plan.to === 'Node check'
+     && Array.isArray(plan.lose) && Array.isArray(plan.things),
      `move-check names the nodes the project it leaves has and the other has not (${JSON.stringify(plan.nodes)})`);
   const mv = await post('/api/repos', { action: 'move', name: 'gamma', to: p2.key, add_nodes: [nid, 'n_nosuch'] });
   ok(mv.status === 200 && JSON.stringify(mv.added) === JSON.stringify([nid]) && (prefsFile()[p2.key]?.nodes || []).includes(nid),
@@ -242,13 +253,31 @@ ok(gone.status === 200 && !(await status()).repos[key], `an empty project is del
     const m = $('mvmodal');
     const out = { title: $('mvTitle').textContent, boxes: [...m.querySelectorAll('[data-mvnode]')].map(i => [i.dataset.mvnode, i.checked]),
                   text: m.querySelector('.box').textContent.replace(/\s+/g, ' ') };
+    // A container on a node it does not get, with that node unticked, is
+    // ghosted and stays; ticked again, it may go. A VM there says so.
+    const give = k => m.querySelector(`[data-mvgive="${k}"]`);
+    out.before = [give('g|public').checked, give('g|public').disabled, give('o|own').checked, give('o|own').disabled];
+    const node = m.querySelector('[data-mvnode="n_a"]');
+    node.checked = false; node.dispatchEvent(new Event('change'));
+    out.off = [give('g|public').checked, give('g|public').disabled, !m.querySelector('[data-mvvmwhy]').hidden];
+    node.checked = true; node.dispatchEvent(new Event('change'));
+    give('g|public').checked = true;
     $('mvGo').click();
     out.picked = await got;
     return out;
-  }, { label: 'gamma', from: 'Old', to: 'New', nodes: [{ id: 'n_a', name: 'draconis', as: 'hosts', instances: ['gamma-public'] }], lose: ['w.peer'], busy: [], node_why: '' });
+  }, { label: 'gamma', from: 'Old', to: 'New', nodes: [{ id: 'n_a', name: 'draconis', as: 'hosts', have: false, instances: ['gamma-public'] },
+                                                      { id: 'n_b', name: 'vega', as: 'nodes', have: true, instances: [] }],
+       things: [{ kind: 'container', key: 'g|public', name: 'gamma-public', node: 'n_a', node_name: 'draconis', reach: false, goes: true },
+                { kind: 'container', key: 'o|own', name: 'old-db', node: 'n_b', node_name: 'vega', reach: true, goes: false },
+                { kind: 'vm', key: 'gamma/box', name: 'box', node: 'n_a', node_name: 'draconis', reach: false, goes: true }],
+       lose: ['w.peer'], busy: [], node_why: '' });
   ok(dlg.title === 'Move gamma to New?' && JSON.stringify(dlg.boxes) === '[["n_a",true]]' && /Add draconis to New's nodes it hosts containers on/.test(dlg.text)
-     && /gamma-public runs there/.test(dlg.text) && /w\.peer reaches it through Old alone/.test(dlg.text) && JSON.stringify(dlg.picked) === '["n_a"]',
-     `the move asks first: each node to bring ticked with what runs there, who loses it, and Move hands back the ticked ones (${dlg.text.slice(0, 160)})`);
+     && /gamma-public runs there/.test(dlg.text) && /w\.peer reaches it through Old alone/.test(dlg.text) && /vega: New has it already/.test(dlg.text)
+     && /Make old-db New's/.test(dlg.text) && /VMs, which go with gamma/.test(dlg.text)
+     && JSON.stringify(dlg.picked) === '{"nodes":["n_a"],"give":["g|public"]}',
+     `the move asks first: every node of the old project, each to bring ticked, its containers to give over and its VMs, who loses it, and Move hands back the ticked ones (${dlg.text.slice(0, 200)})`);
+  ok(JSON.stringify(dlg.before) === '[true,false,false,false]' && JSON.stringify(dlg.off) === '[false,true,true]',
+     `a container on a node left behind is ghosted and stays, and a VM there says it cannot be reached (${JSON.stringify(dlg)})`);
   await pg.close();
   await post('/api/repos', { action: 'move', name: 'gamma', to: gammaWas });
   await post('/api/prefs', { project: 'gamma', nodes: gammaNodes });
@@ -258,6 +287,8 @@ const ask = await post('/api/trash-restore', { name: 'shopweb' });
 ok(ask.status === 409 && ask.pick && /Shop, which is deleted/.test(ask.error || ''), `Put back asks where when its project is gone (${ask.error})`);
 const back = await post('/api/trash-restore', { name: 'shopweb', project: gammaWas });
 ok(back.status === 200 && reposFile()[gammaWas]?.members.includes('shopweb'), `...and puts it back into the project picked (${JSON.stringify(back)})`);
+ok(!('for' in (apps().shopweb?.main || {})) && !('was_for' in (apps().shopweb?.main || {})) && JSON.stringify(back.reassigned) === '["shopweb"]',
+   `Put back gives its container back to it (${JSON.stringify(apps().shopweb)})`);
 await post('/api/trash', { name: 'shopweb' });
 
 // Put back.
