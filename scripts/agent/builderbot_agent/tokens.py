@@ -100,6 +100,14 @@ def _shred(path):
         os.unlink(path)
 
 
+def link_left(home_file, opened, seal):
+    """Whether the home's file is a link to an opened copy that is not there
+    with no seal left to open it from: a sign-out, or a seal wiped, after
+    the link was made."""
+    return os.path.islink(home_file) and os.readlink(home_file) == opened \
+        and not os.path.lexists(opened) and not os.path.exists(seal)
+
+
 def _write(path, data, mode, uid=0, gid=0):
     tmp = path + ".new"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
@@ -251,6 +259,11 @@ class TokensMixin:
                             with open(of, "rb") as f:
                                 self._seal(acct, agent, f.read(), home)
                             seen[(acct, agent)] = key
+                    elif acct not in live and link_left(hf, of, os.path.join(SEAL_DIR, acct, agent + ".seal")):
+                        # No seal behind the home's link and nothing open: the
+                        # link goes, so a terminal here says to sign in rather
+                        # than that a sign-in is waiting to be opened (B386).
+                        os.unlink(hf)
             if not os.path.isdir(odir):
                 continue
             if self._live(acct):
