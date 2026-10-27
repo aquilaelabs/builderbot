@@ -2554,6 +2554,19 @@ def session_behind(s):
     return why
 
 
+def session_behind_of(project, uid, agent, slot):
+    """session_behind for the session a hook speaks for: its project, its
+    account, its agent and its slot."""
+    want = tmux_name(project)
+    for s in projsessions.SESSIONS():
+        base = tmux_base(s.get("name") or "")
+        ag, stem = agents.of_session(base)
+        if ag and ag.id == agent and stem == want and agents.slot_of(base) == slot \
+                and projsessions.OWNER(s.get("name") or "") == uid:
+            return session_behind(s)
+    return []
+
+
 def _repos_since(s, started):
     """The repositories of a session's project made after it started, by
     their shown names (repos.made_since), its own found by its tmux name."""
@@ -4392,7 +4405,7 @@ import hooks                                                     # noqa: E402
 hooks.configure(users=users, rules=rules, preamble=preamble, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
                 turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope,
                 asking_set=asking_set, asking_clear=asking_clear, asked=projsessions.asked,
-                agent_state=agent_state_set, agent_conv=agent_conv_set)
+                agent_state=agent_state_set, agent_conv=agent_conv_set, behind=session_behind_of)
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as

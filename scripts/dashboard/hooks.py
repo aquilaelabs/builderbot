@@ -48,10 +48,33 @@ asking_set = None
 asking_clear = None
 asked = None          # projsessions.asked: what a session was last asked (B59)
 agent_conv = None     # (project, uid, agent, slot, id): the conversation a session is in (R143)
+# (project, uid, agent, slot) -> [why]: what changed since the session
+# started that its briefing does not know (server.session_behind), which the
+# card says to the person and the prompt's notice says to the session.
+behind = None
 
 
 def configure(**deps):
     globals().update(deps)
+
+
+def stale_note(project, uid, agent, slot, told=()):
+    """(what to tell a session whose briefing is out of date, the name it is
+    remembered by), or ("", []): what changed since it started, once a
+    change, with what to do about it."""
+    import hashlib                                          # noqa: PLC0415
+    try:
+        why = list(behind(project, uid, agent, slot) or []) if behind else []
+    except Exception:                                       # noqa: BLE001 (a notice is never worth a turn)
+        why = []
+    if not why:
+        return "", []
+    key = "behind:" + hashlib.sha256("; ".join(why).encode()).hexdigest()[:12]
+    if key in told:
+        return "", []
+    return ("Your briefing is out of date: " + "; ".join(why) + ". What it says about those may no longer "
+            "hold (what this project holds and reads, BuilderBot's own rules), so check before acting on it, "
+            "tell the person in your reply, and say that Restart under Manage agent starts you with a fresh one."), [key]
 
 
 def verb(kind, req, me, uid, project):
@@ -115,8 +138,14 @@ def verb(kind, req, me, uid, project):
         hit = [r for r in rules.matching(project, prompt=prompt) if r["name"] not in told]
         # ...and the open items and bugs the prompt names (R202), the same way.
         related, rnames = preamble.mentioned(project, prompt, told)
+        # ...and a briefing gone stale (the operator, 27 Oct): the card says
+        # so to the person, and the session was never told, so it acted on
+        # what its briefing said. Said once for each change, as a rule is.
+        stale, snames = stale_note(project, uid, agent, slot, told)
+        if stale:
+            line = " ".join(x for x in (stale, line) if x)
         return {"ok": True, "line": line, "rules": rules.said(hit), "related": related,
-                "names": [r["name"] for r in hit] + rnames}, 200
+                "names": [r["name"] for r in hit] + rnames + snames}, 200
     if kind == "asking":
         # Claude Code waits on its own permission prompt (B52): marked until
         # it works again, its turn ends or it is sent a prompt.
