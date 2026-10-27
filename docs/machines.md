@@ -318,8 +318,11 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   the owner signs in and is answered, from the page, the phone app or a
   session of theirs. Everybody else is told BuilderBot is down for
   maintenance, by the sign-in page, the API (503) and the app, and stays
-  signed in for when it ends. Nodes are not accounts and keep running, and a
-  band under the header reminds the owner it is on.
+  signed in for when it ends. Turning it on ends everybody else's coding
+  agent sessions and terminals, here and on the nodes; it asks first, listing
+  each with whose it is, its project, whether it is working or waiting, and
+  its node. Nodes are not accounts and keep running, and a band under the
+  header reminds the owner it is on.
 - **Reset BuilderBot**, last.
 
 The page says plainly what still comes from the environment and why (the

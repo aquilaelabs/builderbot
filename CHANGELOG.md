@@ -22,6 +22,7 @@
 - Each session and each project's containers are kept to their own network on every node: a node that had either switched off has it on again after the upgrade, since which projects reach each other is set by their Reads. A hosting-only node's containers are kept apart the same way. (c2ece51)
 - Download diagnostics moved from the Logs section to the BuilderBot bug reports section, beside the reports it carries, and anyone who can open Controller settings can read the reports and download the diagnostics there. (c2ece51)
 - A shell keeps its history in memory for itself alone, never in a file in the home, where the account's own coding agents, which run as the same user, could read what was typed; the same for the Python, Node, psql, sqlite, mysql and less history files (ba0eeb8)
+- Turning maintenance mode on ends every other account's coding-agent sessions and terminals, here and on the nodes, after asking: the question lists each with whose it is, its project, whether it is working or waiting, and its node (12966dc)
 
 ### Upgrading
 

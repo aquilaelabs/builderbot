@@ -2834,6 +2834,45 @@ def end_session(session, node=""):
     return run(["tmux", "kill-session", "-t", session], timeout=10)
 
 
+def others_sessions():
+    """Every session and terminal open that is not the owner's, here and on
+    the nodes, as maintenance mode's question lists them (the operator, 27
+    Oct): whose, which project, which agent or a shell, what it is doing,
+    and where. What turning maintenance on ends."""
+    owner = users.get(users.owner_name() or "") or {}
+    mine = owner.get("uid") or ""
+    names = account_names()
+    out = []
+    for s in tmux_sessions() + node_tmux_sessions():
+        uid = tmux_owner(s["name"])
+        if not uid or uid == mine:
+            continue
+        base = tmux_base(s["name"])
+        ag, stem = agents.of_session(base)
+        if not ag:
+            # A terminal's project is in its name: shell-PROJECT-N.
+            m = re.match(r"shell-(.+)-\d+$", base)
+            stem = m.group(1) if m and registry.is_project(m.group(1)) else ""
+        st = (s.get("claude") or {}).get("state") or ""
+        out.append({"name": s["name"], "node_id": s.get("node_id") or "", "who": names.get(uid) or uid,
+                    "project": registry.label(stem) if stem else "",
+                    "what": ag.name if ag else "a terminal",
+                    "state": st if ag else "open", "node": s.get("node") or "this controller"})
+    return out
+
+
+def end_others_sessions(rows):
+    """Maintenance on: each of those ended, in the background, since a node
+    answers through its held poll."""
+    def go():
+        for r in rows:
+            try:
+                end_session(r["name"], r["node_id"])
+            except Exception as e:                                  # noqa: BLE001
+                print(f"dashboard: maintenance could not end {r['name']}: {e}", flush=True)
+    threading.Thread(target=go, daemon=True).start()
+
+
 def uptime():
     # PID 1 started when the container did, so its elapsed time is the
     # container's; /proc/uptime alone is the host's under a shared kernel.
@@ -7878,6 +7917,16 @@ class Handler(BaseHTTPRequestHandler):
         if ("maintenance_mode" in want and want["maintenance_mode"] != settings.get("maintenance_mode")
                 and (users.account_of(self._who()) or {}).get("role") != "owner"):
             return self._json({"error": "only the owner switches maintenance mode"}, 403)
+        # Turning it on ends everybody else's sessions and terminals (the
+        # operator, 27 Oct): asked first, with each listed and what it is
+        # doing, and ended once the owner says yes.
+        ending = []
+        if want.get("maintenance_mode") is True and not settings.get("maintenance_mode"):
+            ending = others_sessions()
+            if not req.get("confirmed"):
+                return self._json({"error": "maintenance mode asks first", "confirm": "maintenance",
+                                   "sessions": [{k: r[k] for k in ("who", "project", "what", "state", "node")}
+                                                for r in ending]}, 409)
         if want.get("setup_done") is True and not settings.get("setup_done") and not setup_node():
             own = BARE_METAL and any(nodes.own_machine(n) and n.get("state") != "retired" for n in nodes.node_list())
             return self._json({"error": "this machine is still being set up as a node: Finish waits for it to "
@@ -7887,6 +7936,9 @@ class Handler(BaseHTTPRequestHandler):
         r = settings.set_many(req.get("set") or {})
         if r.get("error"):
             return self._json(r, 400)
+        if ending and settings.get("maintenance_mode"):
+            end_others_sessions(ending)
+            r["ended"] = len(ending)
         # The home tunnel follows its settings at once (R176): the process
         # started, restarted or stopped, and with an API token the hostname's
         # record and the tunnel's rules written; what happened rides back.

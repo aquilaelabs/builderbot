@@ -1870,7 +1870,37 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
 
   let r = await set(adm, true);
   ok(r.status === 403 && /only the owner/.test((await r.json()).error || ''), 'an administrator cannot switch maintenance mode on');
-  ok((await set(owner, true)).status === 200, '...and the owner can');
+  // Turning it on asks first, listing everybody else's sessions and
+  // terminals with what each is doing, since it ends them (the operator,
+  // 27 Oct); the owner's own are not in it.
+  // The terminal's session is made a moment after its socket opens: asked
+  // again until it is there, since an ask changes nothing.
+  let ask = {};
+  for (let i = 0; i < 20; i++){
+    r = await set(owner, true);
+    ask = r.status === 409 ? await r.json() : {};
+    if ((ask.sessions || []).some(x => x.who === 'maintadm')) break;
+    await sleep(500);
+  }
+  ok(ask.confirm === 'maintenance' && (ask.sessions || []).some(x => x.who === 'maintadm' && x.what === 'a terminal' && x.state === 'open' && x.project === 'alpha'),
+     `the owner is asked first, with the administrator's terminal listed (${r.status} ${JSON.stringify(ask.sessions || [])})`);
+  ok(!(ask.sessions || []).some(x => x.who === 'test'), "...and not the owner's own");
+  const confirmOn = () => bare('/api/settings', { method: 'POST', headers: owner,
+    body: JSON.stringify({ set: { maintenance_mode: true }, confirmed: true }) });
+  r = await confirmOn();
+  const onSaid = r.status === 200 ? await r.json() : {};
+  ok(onSaid.ended >= 1, `...and the owner can, which ends them (${r.status} ended ${onSaid.ended})`);
+  // Ended, not only shut out: off and on again lists it no more.
+  let gone = false;
+  for (let i = 0; i < 20 && !gone; i++){
+    await sleep(500);
+    await set(owner, false);
+    const again = await set(owner, true);
+    const j = again.status === 409 ? await again.json() : { sessions: [] };
+    gone = !(j.sessions || []).some(x => x.who === 'maintadm');
+    await confirmOn();
+  }
+  ok(gone, "...and the administrator's terminal is ended, not only kept out");
 
   r = await bare('/api/status', { headers: user });
   ok(r.status === 503 && SAID.test((await r.json()).error || ''), 'while it is on, another account is answered 503 with the sentence');

@@ -279,8 +279,22 @@ const SETTING_GROUPS = [
    headingCls: s => s?.settings?.maintenance_mode?.value ? "warn" : "",
    fields: [
     {key: "maintenance_mode", label: "Maintenance mode", type: "bool",
-     hint: "Only you can sign in and use BuilderBot, from the page, a phone or a session. Everybody else is told it is down for maintenance and stays signed in for after. Nodes keep running."}]},
+     hint: "Only you can sign in and use BuilderBot, from the page, a phone or a session. Everybody else is told it is down for maintenance and stays signed in for after; their sessions and terminals are ended when it goes on, which it asks about first. Nodes keep running."}]},
 ];
+
+// Turning maintenance mode on: who is kept out, and the sessions and
+// terminals of theirs it ends, each with what it is doing (the operator, 27
+// Oct), so a working session is not ended unseen.
+const MAINT_STATE = {working: "working", waiting: "waiting for its person", asking: "asking for permission", open: "open"};
+async function maintAsk(rows){
+  const line = r => `${r.who}: ${r.what}${r.project ? ` on ${r.project}` : ""}, ${MAINT_STATE[r.state] || "idle"}, on ${r.node}`;
+  const busyN = rows.filter(r => r.state === "working").length;
+  const text = rows.length
+    ? `Everybody else is kept out until it is off, and these ${rows.length} session${rows.length === 1 ? "" : "s"} and terminal${
+        rows.length === 1 ? "" : "s"} of theirs end now${busyN ? `, ${busyN} of them in the middle of work` : ""}:\n\n${rows.map(line).join("\n")}`
+    : "Everybody else is kept out until it is off. Nobody else has a session or a terminal open.";
+  return askYes(text, {title: "Turn maintenance mode on?", verb: rows.length ? "End them and turn it on" : "Turn it on", danger: rows.length > 0});
+}
 
 // What the Apps section holds, over its switches, and Look now.
 function appsIntro(){
@@ -524,9 +538,15 @@ function wireSettingsSections(el){
       box.querySelectorAll("[data-clear]:checked").forEach(i => { set[i.dataset.clear] = ""; });
       busy(btn, "Applying");
       try{
-        const r = await fetch("/api/settings", {method: "POST",
-          headers: {"Content-Type": "application/json"}, body: JSON.stringify({set})});
-        const j = await r.json();
+        const post = extra => fetch("/api/settings", {method: "POST",
+          headers: {"Content-Type": "application/json"}, body: JSON.stringify({set, ...extra})});
+        let j = await (await post({})).json();
+        // Maintenance mode asks first, with every other account's sessions
+        // and what each is doing, since turning it on ends them.
+        if (j.confirm === "maintenance"){
+          if (!await maintAsk(j.sessions || [])) return;
+          j = await (await post({confirmed: true})).json();
+        }
         if (j.error) return notify(j.error, true);
         box.querySelectorAll("[data-set]").forEach(i => { delete settingsDraft[i.id]; });
         // What the tunnel did with it (R176): the record and rules written,
