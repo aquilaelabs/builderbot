@@ -55,6 +55,9 @@ def _load():
             continue
         ms = [str(x) for x in (v.get("members") or []) if isinstance(x, str) and x]
         out[str(k)] = {"members": list(dict.fromkeys(ms)), "at": int(v.get("at") or 0)}
+        added = v.get("added") if isinstance(v.get("added"), dict) else {}
+        if added:
+            out[str(k)]["added"] = {str(m): int(t) for m, t in added.items() if isinstance(t, int)}
     d = {"projects": out}
     _cache.update(mtime=m, data=d)
     return d
@@ -126,8 +129,9 @@ def made_since(dirname, started):
     by their shown names: what a session that started on it then does not
     have in its view."""
     key = project_of(dirname)
+    added = ((_load()["projects"].get(key) or {}).get("added") or {}) if key else {}
     return [registry.label(m) for m in (members(key) if key else [])
-            if m != dirname and int(registry.get(m).get("at") or 0) > started]
+            if m != dirname and max(int(registry.get(m).get("at") or 0), int(added.get(m) or 0)) > started]
 
 
 def create(name):
@@ -190,9 +194,13 @@ def add(key, dirname):
         if other and other != key:
             return {"error": f"{registry.label(dirname)} is already in {registry.label(other)}"}
         d = _load()
-        have = d["projects"].setdefault(key, {"members": [], "at": int(time.time())})["members"]
+        rec = d["projects"].setdefault(key, {"members": [], "at": int(time.time())})
+        have = rec["members"]
         if dirname not in have:
             have.append(dirname)
+            # When it joined, apart from when it was made: one moved in from
+            # another project is as new to a session here as one made now.
+            rec.setdefault("added", {})[dirname] = int(time.time())
         _save(d)
         return {"ok": True, "key": key, "members": [m for m in have if registry.is_project(m)]}
 
