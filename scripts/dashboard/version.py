@@ -890,6 +890,11 @@ def release_plan(project, comp=""):
         return {"error": no_history(project)}
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
+        # Tagged here and pushed by hand after the release's push failed:
+        # what is left is its page on the forge (B399).
+        on = _git(project, "rev-list", "-n", "1", "--abbrev-commit", name) or ""
+        if on and (sha.startswith(on) or on.startswith(sha)) and _remote_has_tag(project, name):
+            return {"tag": name, "sha": sha, "target": tgt, "finish": True}
         return {"error": f"{name} already exists: bump to the next number first"}
     if (_git(project, "status", "--porcelain") or "").strip():
         return {"error": "there are uncommitted changes in the project directory: commit or "
@@ -913,6 +918,16 @@ def no_upgrade_snapshot(project, comp, tgt):
         return ""
     return (f"{tgt} has no /config snapshot in {UPGRADE_SNAPSHOTS}/{tgt}/: run tools/upgrade-snapshot.py, "
             f"commit what it writes, then release")
+
+
+def _remote_has_tag(project, name, env=None):
+    """Whether origin carries the tag `name`."""
+    try:
+        r = subprocess.run(["git", "-C", str(root(project)), "ls-remote", "--tags", "origin", f"refs/tags/{name}"],
+                           capture_output=True, text=True, timeout=60, check=False, env={**os.environ, **(env or {})})
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0 and f"refs/tags/{name}" in r.stdout
 
 
 def release(project, comp="", env=None, may_push=True, push=True):
@@ -955,6 +970,11 @@ def release(project, comp="", env=None, may_push=True, push=True):
         # one of them is a problem.
         on = _git(project, "rev-list", "-n", "1", "--abbrev-commit", name) or "?"
         here = "this commit" if on and sha.startswith(on) or on.startswith(sha) else on
+        # ...on this commit and on the remote too, pushed by hand after the
+        # release's own push failed: the release is finished, its page on
+        # the forge made by the caller (B399), and nothing is tagged again.
+        if here == "this commit" and push and _remote_has_tag(project, name, env):
+            return {"ok": True, "tag": name, "sha": sha, "target": tgt, "pushed": True, "finished": True}
         return {"error": f"{name} already exists, on {here}. A published tag is not "
                          f"moved from here: bump to the next number, or move it "
                          f"yourself in a terminal if it was never pushed."}

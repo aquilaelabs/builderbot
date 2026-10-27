@@ -37,5 +37,28 @@ class PushSaid(unittest.TestCase):
         self.assertIn("git push origin v1.2.3", r["note"])
 
 
+class Finish(unittest.TestCase):
+    def test_a_tag_pushed_by_hand_finishes_the_release(self):
+        """B399: the release's push failed and the tag went up by hand; the
+        release again is its page on the forge, nothing tagged twice."""
+        ws = Path(tempfile.mkdtemp())
+        remote = ws / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        d = ws / "app"
+        d.mkdir()
+        git(d, "init", "-q", "-b", "main")
+        (d / "VERSION").write_text("1.2.3\n")
+        git(d, "add", "VERSION")
+        git(d, "commit", "-q", "-m", "one")
+        git(d, "remote", "add", "origin", str(remote))
+        git(d, "tag", "-a", "v1.2.3", "-m", "x")
+        version.configure(workspace=str(ws), state=str(ws / "state"), write_json=lambda *a, **k: None)
+        self.assertIn("already exists", version.release_plan("app").get("error", ""), "not on the remote yet")
+        git(d, "push", "-q", "origin", "refs/tags/v1.2.3")
+        self.assertTrue(version.release_plan("app").get("finish"))
+        r = version.release("app")
+        self.assertTrue(r.get("ok") and r.get("pushed") and r.get("finished"), r)
+
+
 if __name__ == "__main__":
     unittest.main()

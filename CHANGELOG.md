@@ -5,6 +5,7 @@
 ### Fixed
 
 - A release whose tag could not be pushed says why, in git's own words, rather than only that the push failed (bb35f8c)
+- A release whose tag was pushed by hand after its own push failed can be finished: releasing again makes its page on GitHub rather than refusing the tag that exists (f36411f)
 
 ## 0.8.0: 2026-10-27
 
