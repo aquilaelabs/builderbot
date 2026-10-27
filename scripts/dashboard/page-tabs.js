@@ -480,7 +480,9 @@ function renderDoc(i, t, pane){
 // half-drawn state the throw left.
 function renderGuarded(spec, i, t){
   try{
+    const f = typingIn(i);
     spec.render(i, t);
+    typingBack(i, f);
     // ...and its jump bar, whatever it drew: a page waiting on its read
     // draws its sections' template, and waits as itself with the bar the
     // loaded page will have (sectJump; the templates rule).
@@ -493,6 +495,29 @@ function renderGuarded(spec, i, t){
       ${esc(String(e && e.message || e))}</div>`;
     setTimeout(() => { throw e; });
   }
+}
+
+// A box being typed in keeps the caret across its page's redraw (B156,
+// B158): the page writes the box again with what was typed (each page keeps
+// its fields' values), but the focus stayed on the box the redraw threw
+// away, so the next keys went nowhere, and a paste landing in that moment
+// was lost. Found by id, so only a box the page names; given back only when
+// the redraw left nothing else focused.
+function typingIn(i){
+  const a = document.activeElement, doc = $("doc" + i);
+  if (!a?.id || !doc?.contains(a) || !/^(INPUT|TEXTAREA)$/.test(a.tagName)) return null;
+  let s = null, e = null;
+  try{ s = a.selectionStart; e = a.selectionEnd; }catch(x){ /* a box with no caret */ }
+  return {id: a.id, s, e};
+}
+function typingBack(i, f){
+  if (!f) return;
+  const a = document.activeElement;
+  if (a && a !== document.body && a.isConnected) return;
+  const el = $("doc" + i)?.querySelector("#" + CSS.escape(f.id));
+  if (!el || el.disabled) return;
+  el.focus({preventScroll: true});
+  try{ if (typeof f.s === "number") el.setSelectionRange(f.s, f.e ?? f.s); }catch(x){ /* a box with no caret */ }
 }
 
 // The same guard for a card on the Dashboard side. A card's draw that throws

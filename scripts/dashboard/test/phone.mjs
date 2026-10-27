@@ -67,6 +67,17 @@ ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
      && after.connect === '' && /Pair needs the pairing port and the pairing code/.test(after.pair)
      && await page.$eval('.doc.on [data-phwhy="connect"]', e => e.classList.contains('warn')),
      `Connect and Pair say under their rows what they still need, and the line goes as it is typed (${JSON.stringify({ before, after })})`);
+  // ...and a box being typed in keeps the caret when the page is drawn again
+  // under it (B156): a read landing between a fill's focus and its keys took
+  // the focus with the old box, the keys went nowhere, and the port typed
+  // was never there for the line to go.
+  await page.focus('.doc.on #phConnPort');
+  await page.evaluate(() => { phRev++; drawPanes(); });
+  await page.keyboard.press('End');
+  await page.keyboard.type('1');
+  const kept = await page.evaluate(() => ({ at: document.activeElement?.id, port: phConnPort }));
+  ok(kept.at === 'phConnPort' && kept.port === '55551',
+     `...and the box being typed in keeps its caret across a redraw (${JSON.stringify(kept)})`);
   await page.evaluate(() => { phIp = ''; phConnPort = ''; phRev++; drawPanes(); });
 }
 // ...and a link to a page this account's grants keep it from is its words,
