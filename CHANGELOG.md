@@ -10,6 +10,7 @@
 - You can run several sessions of one coding agent on a project at once, each in its own worktree and conversation (Claude 2 beside Claude). Start agent lists your running sessions with Open, Restart and End, starts a new one, or resumes any of your conversations there; one already running is not offered twice. A project's settings say how many each person may run (three unless changed), and a Send with several running asks which one (efdf884)
 - A Schedules page beside Jobs runs an administrator's own scripts on a timetable, as Unraid's User Scripts do: each on a node of yours, as its jobs account or as root on a sandbox node, every run a job with its log, a failed or skipped run on the bell. The static analysis scan is built in, off until you turn it on with its node and paths (380cc7a)
 - Controller settings' BuilderBot bug reports section lists every report with its own delete, so one can be taken out before the diagnostics are downloaded. (c2ece51)
+- A container that has to talk to a machine on your LAN, such as a device or another server, can be let through the network wall around each project's containers: an administrator turns on Reaches the LAN in its settings on the Containers page (881deec)
 
 ### Changed
 
