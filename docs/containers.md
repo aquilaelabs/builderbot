@@ -394,7 +394,12 @@ project to the compose projects it may reach) and the switch (config
 the session switch elsewhere); a prefs change or the switch asks for a
 hello, so a container reaches a newly read project within a poll. Nothing
 is marked: a missing table leaves Docker's own rules, and the row says not
-in force rather than a container being cut off. A container BuilderBot
+in force rather than a container being cut off. A container that has to talk
+to a machine on the LAN (a BuilderBot controller under test to its nodes, an
+app to a device) is let through by an administrator: **Reaches the LAN** in
+its settings, kept in `docker-lan.json` by node and by the name the map
+gives it, puts its bridges in the table's `lanok` set, which passes the
+private ranges and nothing more of the node's. A container BuilderBot
 deploys itself is **System**'s (R180, the operator, 11 Oct): the nginx
 page's container today, set by that deployment and by no picker, a person's
 or a session's, and given every bridge and every published port on its node

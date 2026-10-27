@@ -2390,6 +2390,34 @@ print(json.dumps(m.session_net_own('n1')))
      `...a project on this node alone reaches nothing else, and one not on this node is not named at all (${JSON.stringify(own.beta)}; gamma ${JSON.stringify(own.gamma)})`);
 }
 
+// ---- a container an administrator let onto the LAN (R178) ------------------
+// The wall's map marks it `lan`, by the key the map names it by: an
+// instance's compose project, a given container's name, and one with no
+// project as well; the store keeps it per node, and off takes it out again.
+{
+  const got = execFileSync('python3', ['-c', `
+import importlib.util, json, tempfile, os
+spec = importlib.util.spec_from_file_location('d', ${JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+m.LANS = os.path.join(d, 'docker-lan.json')
+m.write_json = lambda p, v: open(p, 'w').write(json.dumps(v))
+m._instance_node = lambda p, i: 'n1'
+m._load = lambda: {'alpha': {'main': {}}, 'beta': {'main': {}}}
+m._owners = lambda: {'n1': {'plex': 'beta'}}
+m.reads_of = None
+m.set_lan('n1', {'alpha'}, True); m.set_lan('n1', {'plex', 'loose'}, True); m.set_lan('n2', {'beta'}, True)
+print(json.dumps(m.container_net_own('n1')))
+m.set_lan('n1', {'plex', 'loose'}, False)
+print(json.dumps({'n1': sorted(m.lans('n1')), 'n2': sorted(m.lans('n2'))}))
+`], { encoding: 'utf8' });
+  const [own, after] = got.trim().split('\n').slice(-2).map(l => JSON.parse(l));
+  ok(own.alpha?.lan === true && own.plex?.lan === true && !own.beta?.lan && own.loose?.lan === true && own.loose.owner === '',
+     `a container let onto the LAN is marked so on the wall's map, an instance by its compose project, a given container and one with no project by name, and no other (${JSON.stringify(own)})`);
+  ok(JSON.stringify(after) === JSON.stringify({ n1: ['alpha'], n2: ['beta'] }),
+     `...kept per node, and switched off it is taken out again (${JSON.stringify(after)})`);
+}
+
 // ---- a refused new leaves nothing behind -----------------------------------
 // The env is written after the record is made, so an env the write refuses
 // (over 64KB here) left the instance registered, and the retry that fixed

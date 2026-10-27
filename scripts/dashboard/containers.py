@@ -82,6 +82,9 @@ def _known_container(name):
 
 
 BOOT_CTL = ("boot-on", "boot-off")
+# Onto the LAN and off it again (R178): an administrator's, read by the wall
+# the node's agent keeps around each project's containers.
+LAN_CTL = ("lan-on", "lan-off")
 
 
 def container_ctl(name, what):
@@ -119,6 +122,22 @@ def container_ctl(name, what):
         return {"error": devapp._why_not(r["out"]) or f"{what} failed"}
     did = ", ".join(c.get("name") or c.get("id") for c in cs)
     return {"ok": True, "out": f"{what}ped {did}" if what == "stop" else f"{what}ed {did}"}
+
+
+def container_lan(name, nid, on):
+    """Let every container `name` means on node `nid` reach the LAN, or keep
+    it off again: kept by the key the wall names it by (an instance's
+    compose project, any other container's name), so a rebuild keeps it,
+    and told to the node at once."""
+    cs = _targets(name)
+    if not cs:
+        return {"error": f"no container called {name} on this daemon now: the list is "
+                         "read again before anything is acted on, and it has moved"}
+    keys = {(c.get("project") if c.get("ours") else "") or c.get("name") or c.get("id") for c in cs}
+    devapp.set_lan(nid or devapp._node_here(), keys, on)
+    net_nudge()
+    did = ", ".join(sorted(keys))
+    return {"ok": True, "out": f"{did} {'reaches' if on else 'no longer reaches'} the network around its node"}
 
 
 def owned_container(name):
@@ -633,6 +652,8 @@ def admin_verb(act, name, nid, under):
             return _answer(r)
         if act == "logs":
             return container_logs(name), 200
+        if act in LAN_CTL:
+            return _answer(container_lan(name, nid, act == "lan-on"))
         # The two prunes the Images and volumes section offers (R216):
         # `name` is which, images or volumes, and nothing is named.
         if act == "prune":

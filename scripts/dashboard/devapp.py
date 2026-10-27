@@ -78,6 +78,7 @@ WORKSPACE = None
 STATE = None
 FILE = None
 OWNERS = None
+LANS = None             # docker-lan.json: {node: [container keys]} let onto the LAN (R178)
 node_for = None
 node_addr = None
 ENVDIR = None
@@ -615,6 +616,7 @@ def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
     # know it exists (25 Sep).
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["OWNERS"] = Path(state) / "docker-owners.json"
+    globals()["LANS"] = Path(state) / "docker-lan.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
 
 
@@ -2854,6 +2856,7 @@ def _overview_here(picked):
     # inside the availability memo answers the same as one that was never
     # there.
     blind = not got.get("on") or bool(cs["error"])
+    lan_here = lans(picked or _node_here())
     for project in sorted(store):
         # Once per PROJECT, not per instance: every instance of a project is
         # built from the same working copy, so the answer cannot differ
@@ -2901,6 +2904,8 @@ def _overview_here(picked):
                 # The project it belongs to, or "" for none: whose sessions
                 # may see it and work on it, and the group it is drawn in.
                 "owner": owner_of(project, inst, rec),
+                # Let onto the network around its node (R178).
+                "lan": pn in lan_here,
                 # Its project was deleted (moved to the trash): drawn as
                 # "X (deleted)" until X is restored or it is moved (8 Oct).
                 "owner_gone": owner_gone(owner_of(project, inst, rec)),
@@ -3015,7 +3020,7 @@ def _overview_here(picked):
             # above already account for those, and listing them twice would
             # make the page look like the daemon is running double. Each with
             # the project it was put under, read once for the node.
-            "containers": [c | {"owner": held.get(c["name"], ""),
+            "containers": [c | {"owner": held.get(c["name"], ""), "lan": c["name"] in lan_here,
                                 "owner_gone": owner_gone(held.get(c["name"], "")),
                                 "owner_label": owner_label(held.get(c["name"], ""))}
                            for held in [_owners().get(picked or _node_here()) or {}]
@@ -3510,7 +3515,9 @@ def container_net_own(node_id):
     those of the projects it reads (prefs.reads). The agent turns it into
     bridge pairs; a compose project not named here reaches its own and no
     other. A container the operator gave a project is named by its name,
-    which is its compose project when it was started by compose."""
+    which is its compose project when it was started by compose. `lan`
+    marks one an administrator let onto the network around the node,
+    with no project as much as with one."""
     owned = {}
     for project, insts in _load().items():
         for inst, rec in insts.items():
@@ -3519,7 +3526,7 @@ def container_net_own(node_id):
                 owned.setdefault(owner, set()).add(_pname(project, inst))
     for name, owner in (_owners().get(node_id) or {}).items():
         owned.setdefault(owner, set()).add(name)
-    out = {}
+    out, lan = {}, lans(node_id)
     for owner, comps in owned.items():
         to = set(comps)
         for r in (reads_of(owner) if reads_of and owner != SYSTEM else []) or []:
@@ -3527,7 +3534,10 @@ def container_net_own(node_id):
         # BuilderBot's own (R180) reaches every compose project here by
         # `all`, which covers a container nobody here knows of.
         for c in comps:
-            out[c] = {"owner": owner, "to": sorted(to)} | ({"all": True} if owner == SYSTEM else {})
+            out[c] = ({"owner": owner, "to": sorted(to)} | ({"all": True} if owner == SYSTEM else {})
+                      | ({"lan": True} if c in lan else {}))
+    for c in lan - set(out):
+        out[c] = {"owner": "", "to": [c], "lan": True}
     return dict(sorted(out.items()))
 
 
@@ -3560,6 +3570,42 @@ def _owners():
         return {}
     return {n: {c: p for c, p in v.items() if isinstance(p, str) and p}
             for n, v in d.items() if isinstance(v, dict)}
+
+
+def lans(node_id):
+    """The containers on `node_id` an administrator let onto the network
+    around the node (R178): their keys, the compose project for one of
+    BuilderBot's instances and the container's name for any other, the same
+    keys container_net_own names them by. Off for every one not listed."""
+    try:
+        with open(LANS) as f:
+            d = json.load(f)
+    except (OSError, ValueError, TypeError):
+        return set()
+    got = d.get(node_id) if isinstance(d, dict) else None
+    return {str(k) for k in got if isinstance(k, str)} if isinstance(got, list) else set()
+
+
+def set_lan(node_id, keys, on):
+    """Let these containers on `node_id` reach the LAN, or keep them off it
+    again: the wall around each project's containers rejects every private
+    address, which a container that talks to a machine on the LAN (a
+    controller to its nodes, an app to a device) cannot work behind."""
+    with _lock:
+        try:
+            with open(LANS) as f:
+                d = json.load(f)
+        except (OSError, ValueError, TypeError):
+            d = {}
+        if not isinstance(d, dict):
+            d = {}
+        have = set(d.get(node_id) or []) if isinstance(d.get(node_id), list) else set()
+        have = (have | set(keys)) if on else (have - set(keys))
+        if have:
+            d[node_id] = sorted(have)
+        else:
+            d.pop(node_id, None)
+        write_json(LANS, d)
 
 
 def _node_here():

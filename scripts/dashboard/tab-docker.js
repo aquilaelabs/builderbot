@@ -891,7 +891,7 @@ function dmSetGrid(cells, key, {cancel = false, bare = false} = {}){
   if (!body) return "";
   // ...or the grid alone, for a dialog whose foot carries the buttons.
   if (bare) return `<div class="setgrid dmsettings">${body.replace("<!--APPLY-->", "")}</div>`;
-  const settable = /data-(dmown|dmmove|dmref|dmov|dmboot|route)=/.test(body);
+  const settable = /data-(dmown|dmmove|dmref|dmov|dmboot|dmlan|route)=/.test(body);
   // ...with Cancel before it where Edit settings opened them: it drops what
   // was staged and puts the fields away (rows-you-open).
   const apply = `${cancel ? `<button type="button" class="stop" data-dmcancel="${esc(key)}">Cancel</button>` : ""}<button type="button" class="primary" data-dmapply="${esc(key)}"${
@@ -928,7 +928,7 @@ function dmDropDrafts(key){
   const name = inst ? (dockerList?.instances || []).find(x => `${x.project}|${x.instance}` === inst)?.name : key.slice(4);
   delete dmOwnDraft[key];
   if (inst){ delete dmMoveDraft[inst]; delete dmRefDraft[inst]; delete dmOvDraft[inst]; delete dmRouteDraft[inst]; delete dmNginxDraft[inst]; }
-  if (name) delete dmBootDraft[name];
+  if (name){ delete dmBootDraft[name]; delete dmLanDraft[name]; }
 }
 // Whether a row has a setting staged and not yet applied: the drafts each
 // setting keeps, read by the row's key.
@@ -939,7 +939,7 @@ function dmRowDirty(key){
   return dmOwnDraft[key] !== undefined
     || (inst && (dmMoveDraft[inst] !== undefined || dmRefDraft[inst] !== undefined || dmOvDraft[inst] !== undefined
                  || dmRouteDraft[inst] !== undefined))
-    || (rowName && dmBootDraft[rowName] !== undefined);
+    || (rowName && (dmBootDraft[rowName] !== undefined || dmLanDraft[rowName] !== undefined));
 }
 // Which project a row belongs to: its group on this tab, the notebook that
 // lists it, and whose Claude sessions may see it and work on it (the
@@ -1847,7 +1847,7 @@ function dmRowsHtml(ins, job, blind){
         dmSetPills(dmInstPills(d, managed))}
         ${dmEditing.has(key) || dmRowDirty(key)
           ? dmSetDialog(d.name, key, [dmOwnerLine(d, key), dmMoveLine(d), dmRefLine(d), dmOverrideLine(d), dmRouteLine(d),
-                       dmNginxLine(d), d.exists ? dmBootLine(d.name, !!d.boot) : ""]) : ""}
+                       dmNginxLine(d), d.exists ? dmBootLine(d.name, !!d.boot) : "", d.exists ? dmLanLine(d.name, !!d.lan) : ""]) : ""}
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
                    "Ports and mounts", dmPortsSaid(d),
@@ -2239,6 +2239,20 @@ function dmWireRows(el, list = dockerList){
     delete dmBootDraft[name];
     notify(j.out || (on ? `${name} starts on boot` : `${name} no longer starts on boot`));
   };
+  // Reaches the LAN (R178): the same draft and Apply, an administrator's.
+  el.querySelectorAll("[data-dmlan]").forEach(cb => cb.onchange = () => {
+    const name = cb.dataset.dmlan, was = cb.dataset.was === "1";
+    if (cb.checked === was) delete dmLanDraft[name]; else dmLanDraft[name] = cb.checked;
+    wake(cb.closest(".row"));
+  });
+  const applyLan = async name => {
+    const on = dmLanDraft[name];
+    if (on === undefined) return;
+    const j = await (await postJSON("/api/dockerctl", {action: on ? "lan-on" : "lan-off", container: name, node})).json();
+    if (j.error){ notify(j.error, true); return; }
+    delete dmLanDraft[name];
+    notify(j.out || (on ? `${name} reaches the network around its node` : `${name} no longer reaches the network around its node`));
+  };
   // Which project a row belongs to: staged on the pick, written by Apply.
   const ownSaved = key => (key.startsWith("ctr:")
     ? (list?.containers || []).find(c => (c.name || c.id) === key.slice(4))
@@ -2344,7 +2358,7 @@ function dmWireRows(el, list = dockerList){
     try{
       await applyOwner(key);
       if (inst){ await applyMove(inst); await applyRef(inst); await applyOverride(inst); if (row?.dataset.inst) await applyRoute(row); }
-      if (name) await applyBoot(name);
+      if (name){ await applyBoot(name); await applyLan(name); }
     }catch(e){ notify("apply: " + failWords(e), true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
     dockerList = null; dockerRev++; loadDocker();
@@ -2450,6 +2464,18 @@ function dmBootLine(name, on){
       data-was="${on ? "1" : ""}"${want ? " checked" : ""}> Start on boot</label><!--APPLY--></div></div>`;
 }
 
+// Reaches the LAN (R178): each project's containers are kept off the
+// private ranges, which a container that talks to a machine on the network
+// (a controller to its nodes, an app to a device) cannot work behind. An
+// administrator lets one through; what no role gives is not drawn.
+let dmLanDraft = {};
+function dmLanLine(name, on){
+  if (!state?.can?.admin) return "";
+  const want = name in dmLanDraft ? dmLanDraft[name] : on;
+  return `<div class="setcell dmlan">${lbl("", "Network", "")}<div class="ctl"><label class="ndcap"><input type="checkbox" data-dmlan="${esc(name)}"
+      data-was="${on ? "1" : ""}"${want ? " checked" : ""}> Reaches the LAN</label></div></div>`;
+}
+
 function dmOtherRowsHtml(cs){
   return cs.map(c => dmOtherWrap(c, `
       <div class="grow">
@@ -2479,7 +2505,8 @@ function dmOtherRowsHtml(cs){
                         ["Claude", dmClaudeSaid(c, true)]])}
         ${dmEditing.has("ctr:" + (c.name || c.id)) || dmRowDirty("ctr:" + (c.name || c.id))
           ? dmSetDialog(c.name || c.id, "ctr:" + (c.name || c.id),
-                        [dmOwnerLine(c, "ctr:" + (c.name || c.id)), dmBootLine(c.name || c.id, !!c.boot)]) : ""}
+                        [dmOwnerLine(c, "ctr:" + (c.name || c.id)), dmBootLine(c.name || c.id, !!c.boot),
+                         dmLanLine(c.name || c.id, !!c.lan)]) : ""}
       </div>`)).join("");
 }
 // A container BuilderBot did not start is a line in list view too, with

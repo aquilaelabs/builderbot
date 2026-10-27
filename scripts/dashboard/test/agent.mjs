@@ -853,7 +853,12 @@ print(json.dumps({
                             {'name': 'stranger', 'compose': 'other', 'ips': ['172.21.0.9'], 'bridges': ['br-cccccccccccc'], 'ports': [9000]},
                             {'name': 'monitor-1', 'compose': 'monitor', 'ips': ['172.22.0.2'], 'bridges': ['br-dddddddddddd'], 'ports': [3000]}],
                            {'alpha': {'owner': 'alpha', 'to': ['alpha']}, 'monitor': {'owner': 'System', 'to': ['alpha', 'monitor'], 'all': True}}),
-  'ctrfill': m.ctrnet_fill(['br-aaaaaaaaaaaa'], [('br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa')], [('br-aaaaaaaaaaaa', 8080)], [('192.168.1.15', 7680)], ['192.168.1.1']),
+  # ...and one an administrator let onto the LAN (R178): its bridges, and
+  # only its, past the reject of the private ranges.
+  'ctrlan': m.ctrnet_reach([{'name': 'alpha-app-1', 'compose': 'alpha', 'ips': ['172.18.0.2'], 'bridges': ['br-aaaaaaaaaaaa'], 'ports': [8080]},
+                            {'name': 'beta-db-1', 'compose': 'beta', 'ips': ['172.20.0.3'], 'bridges': ['br-bbbbbbbbbbbb'], 'ports': [5432]}],
+                           {'alpha': {'owner': 'alpha', 'to': ['alpha'], 'lan': True}, 'beta': {'owner': 'beta', 'to': ['beta']}}),
+  'ctrfill': m.ctrnet_fill(['br-aaaaaaaaaaaa'], [('br-aaaaaaaaaaaa', 'br-aaaaaaaaaaaa')], [('br-aaaaaaaaaaaa', 8080)], [('192.168.1.15', 7680)], ['192.168.1.1'], ['br-aaaaaaaaaaaa']),
   'ctrtable': m.ctrnet_table(),
   'rules': rules, 'fresh': fresh, 'kept': kept, 'fixed': fixed, 'off': off.held,
   # What the node's own network already has in the range: a LAN, a VPN or a
@@ -880,6 +885,9 @@ print(json.dumps({
       ok(/add element inet builderbot_ctrnet pairs \{ "br-aaaaaaaaaaaa" \. "br-aaaaaaaaaaaa" \}/.test(sn.ctrfill) && /ownports \{ "br-aaaaaaaaaaaa" \. 8080 \}/.test(sn.ctrfill)
          && /typeof iifname \. oifname/.test(sn.ctrtable) && /tcp dport \{ 80, 443 \} accept/.test(sn.ctrtable) && /oifname @bridges drop/.test(sn.ctrtable),
          '...the sets are written as nft reads them, and the table drops a bridge to another bridge and lets the node\'s 80 and 443 through');
+      ok(JSON.stringify(sn.ctrlan[3]) === JSON.stringify(['br-aaaaaaaaaaaa']) && /lanok \{ "br-aaaaaaaaaaaa" \}/.test(sn.ctrfill)
+         && /iifname @lanok accept\n\t\tip daddr @local reject/.test(sn.ctrtable) && !/lanok/.test(sn.ctrtable.split('chain input')[1]),
+         `a container let onto the LAN passes the private ranges' reject on its own bridge alone, and gains nothing into the node (${JSON.stringify(sn.ctrlan[3])})`);
       ok(JSON.stringify(sn.pairs) === JSON.stringify([['10.231.0.2', '172.18.0.2'], ['10.231.0.2', '172.19.0.5'], ['10.231.0.6', '172.20.0.3']]),
          `each session may reach its own project's containers, by compose project and by the name the operator gave, and no other (${JSON.stringify(sn.pairs)})`);
       ok(/^flush set inet builderbot_sessnet ctl\nflush set inet builderbot_sessnet dns\nflush set inet builderbot_sessnet own\n/.test(sn.fill)

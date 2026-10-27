@@ -8608,6 +8608,10 @@ class Handler(BaseHTTPRequestHandler):
         under = field(req, "owner")
         if act == "owner" and under and under not in set(project_names(me)):
             return self._json({"error": f"no project called {under}"}, 400)
+        # Onto the LAN (R178) opens a way out of the wall around a project's
+        # containers: an administrator's, as the node's own switches are.
+        if act in containers.LAN_CTL and not users.is_admin(me):
+            return self._json({"error": "letting a container reach the network around its node is an administrator's"}, 403)
         # A project's container is worked on by the people on that project,
         # an administrator as much as anyone (R274): one not on it adds it to
         # their own list first. System's and nobody's stay an administrator's.
