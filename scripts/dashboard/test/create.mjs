@@ -145,7 +145,12 @@ const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    '...with the cursor in none of its fields');
 ok(await page.$eval('#pUrlField', el => el.hidden), 'local repo is the default; no URL field');
+const boxH = sel => page.$eval(sel, b => Math.round(b.getBoundingClientRect().height));
+await page.waitForTimeout(500);              // the dialog's own opening scale
+const localH = await boxH('#pmodal .box');
 const cloneSlide = await animatedDuring(page, () => page.click('#pClone'));
+await page.waitForTimeout(300);
+ok(Math.abs(await boxH('#pmodal .box') - localH) <= 1, `the dialog keeps its size from a new repository to a clone (${localH} then ${await boxH('#pmodal .box')})`);
 ok(await page.$eval('#pUrlField', el => !el.hidden)
    && await page.$eval('#pClone', b => b.classList.contains('on')),
    'clone mode shows the URL field and takes the green');

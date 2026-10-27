@@ -468,7 +468,10 @@ function tpClose(){
 }
 
 // Drawn again on each step (looking, what came back, adding), the URL as
-// typed kept in tpForm across the redraws.
+// typed kept in tpForm across the redraws. The height its From panes share,
+// measured as it opens (holdPanes' way, the operator, 26 Oct), held on every
+// redraw since each draws the box anew.
+let tpHeld = 0;
 function tpDraw(first){
   let m = document.getElementById("tpmodal");
   if (!m){
@@ -480,6 +483,23 @@ function tpDraw(first){
   }
   m.innerHTML = tpModalHtml();
   m.hidden = false;
+  if (first){
+    tpHeld = 0;
+    if (m.querySelector("[data-tpfrom]")){
+      const was = tpForm.from;
+      let h = 0;
+      for (const k of [...m.querySelectorAll("[data-tpfrom]")].map(x => x.dataset.tpfrom)){
+        tpForm.from = k;
+        m.innerHTML = tpModalHtml();
+        h = Math.max(h, m.querySelector(".box").getBoundingClientRect().height);
+      }
+      tpForm.from = was;
+      m.innerHTML = tpModalHtml();
+      tpHeld = Math.ceil(h);
+    }
+  }
+  // Held while From is chosen; what a look brings back is a step of its own.
+  if (tpHeld && !tpForm.seen) Object.assign(m.querySelector(".box").style, {boxSizing: "border-box", height: tpHeld + "px"});
   m.onclick = e => { if (e.target === m) tpClose(); };
   const url = m.querySelector("#tpUrl");
   if (url){

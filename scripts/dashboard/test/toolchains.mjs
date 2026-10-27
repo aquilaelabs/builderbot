@@ -1104,7 +1104,11 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
     install: { steps: [['sh', '-c', 'mkdir -p "$1/bin"', 'x', '{dir}']] },
     verbs: { count: { about: 'Words in a file.', usage: 'FILE', run: ['{dir}/bin/wordy', '{args}'] } } };
   await page.click('.doc.on [data-tpnew]');
+  const tpH = () => page.$eval('#tpmodal .box', b => Math.round(b.getBoundingClientRect().height));
+  await page.waitForTimeout(500);              // the dialog's own opening scale
+  const repoH = await tpH();
   await page.click('#tpmodal [data-tpfrom="paste"]');
+  ok(Math.abs(await tpH() - repoH) <= 1, `the tool pack dialog keeps its size from A repository to Paste (${repoH} then ${await tpH()})`);
   await page.fill('#tpText', JSON.stringify(pasted, null, 1));
   await page.click('#tpmodal [data-tplook]');
   await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });

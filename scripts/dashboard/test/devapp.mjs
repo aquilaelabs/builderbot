@@ -469,7 +469,12 @@ ok(await page.evaluate(() => {
      cLock(false);
      return ok;
    }), '...while one that runs ghosts Save and makes both boxes read-only, still scrollable');
+await page.waitForTimeout(500);              // the dialog's own opening scale
+const ymlH = await page.$eval('#cmodal .box', b => Math.round(b.getBoundingClientRect().height));
 await page.click('#cTabEnv');
+await page.waitForTimeout(300);
+ok(Math.abs(await page.$eval('#cmodal .box', b => Math.round(b.getBoundingClientRect().height)) - ymlH) <= 1,
+   'the container dialog keeps its size from Compose to Environment');
 ok(/missing against \.env\.example: PORT/.test(await page.$eval('#cEnvHint', e => e.textContent)),
    'the env tab says which keys the example declares and this does not');
 // An empty env opens on the example rather than on a blank box under a list

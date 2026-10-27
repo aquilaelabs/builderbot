@@ -1290,6 +1290,7 @@ async function openEditContainer(name){
   cLock(!down || managed);
   cSeg("yml");
   $("cmodal").hidden = false;
+  cHold();
   try{
     const r = await postJSON("/api/container", {action:"read", name});
     const j = await r.json();
@@ -1329,6 +1330,7 @@ async function openEditInstance(project, instance){
   cLock(running);
   cSeg("yml");
   $("cmodal").hidden = false;
+  cHold();
   try{
     const [c, e] = await Promise.all([
       postJSON("/api/devapp", {project, instance, action: "compose-get"}).then(r => r.json()),
@@ -1446,6 +1448,7 @@ function openNewContainer(){
   $("cNameHint").textContent =
     "A name no other container has.";
   $("cmodal").hidden = false;
+  cHold();
 }
 
 let cTab = "yml";                 // which pane the segment is showing
@@ -1506,6 +1509,11 @@ function cSlide(which){
 }
 
 const cSwitch = w => { if (cTab === w) return; cSeg(w); cSlide(w); };
+// One size whichever pane is on show (holdPanes): the ones this open offers.
+function cHold(){
+  const keys = [["form", "cTabForm"], ["yml", "cTabYml"], ["env", "cTabEnv"]].filter(([, id]) => !$(id).hidden).map(([k]) => k);
+  holdPanes($("cmodal").querySelector(".box"), keys, cSeg, cTab);
+}
 
 async function cSubmit(){
   if (cEditing && typeof cEditing === "object") return cSaveInstance(cEditing);

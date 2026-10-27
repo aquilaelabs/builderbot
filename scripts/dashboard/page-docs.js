@@ -1288,6 +1288,24 @@ function saveBar({save, revert, state = "", dead = false, cls = "", attrs = ""})
 // (consistency batch J: nine foots put the action before Cancel, two
 // without type="button"). `cancel` is the Cancel or Done button, `acts`
 // what follows it, the filled one last, and `lead` what sits at the left.
+// A dialog that switches between panes keeps one size whichever is on show
+// (the operator, 26 Oct): each pane is drawn in turn before a frame is
+// painted, and the box is held at the tallest, never past its own
+// max-height; what fills in later (a node list, a file read) scrolls inside
+// it rather than growing it. `show(key)` draws a pane; `cur` is the one to
+// leave on show. Returns the height held.
+function holdPanes(box, keys, show, cur){
+  if (!box) return 0;
+  box.style.height = "";
+  if (keys.length < 2) return 0;
+  let h = 0;
+  for (const k of keys){ show(k); h = Math.max(h, box.getBoundingClientRect().height); }
+  show(cur);
+  const held = Math.ceil(h);
+  box.style.boxSizing = "border-box";
+  box.style.height = held + "px";
+  return held;
+}
 function dlgFoot(cancel, acts, lead = ""){
   return `<div class="foot">${lead}<span class="sp"></span>${cancel}${acts}</div>`;
 }

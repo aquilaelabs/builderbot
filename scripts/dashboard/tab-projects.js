@@ -933,6 +933,9 @@ function pOpen(mode){
   $("pErrWrap").hidden = $("pPubWrap").hidden = true;
   unbusy($("pCreate"), PMODES[mode].btn);
   $("pmodal").hidden = false;
+  // One size for a new repository and a clone (holdPanes).
+  if (mode !== "link") holdPanes($("pmodal").querySelector(".box"), ["init", "clone"], k => { pMode = k; pDraw(); }, mode);
+  else $("pmodal").querySelector(".box").style.height = "";
   pFillNode();
   // Fetched per open, not cached: keys change when the container restarts
   // with a new /secrets/ssh, and a stale list here would offer a key the
