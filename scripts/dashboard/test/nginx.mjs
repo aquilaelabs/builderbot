@@ -150,6 +150,16 @@ ok(/already on the Containers page/.test((await api('/api/nginx', { action: 'dep
   await page.fill(`${sect} #ngKey`, '-----BEGIN PRIVATE KEY-----');
   const awake = await page.$eval(`${sect} [data-ngcertsave]`, b => !b.disabled);
   const routesQuiet = !(await page.$(`${sect} .ngform`));
+  // ...and the box being pasted in keeps its caret when a read draws the
+  // page again under it (B158): the focus went with the old box, and a
+  // paste landing in that moment went nowhere, leaving Add asleep.
+  await page.focus(`${sect} #ngKey`);
+  await page.evaluate(() => { nginxRev++; drawPanes(); });
+  await page.keyboard.press('End');
+  await page.keyboard.type('x');
+  const caret = await page.evaluate(id => ({ at: document.activeElement?.id, key: nginxDraft[id]?.key }), sandbox.node);
+  ok(caret.at === 'ngKey' && caret.key === '-----BEGIN PRIVATE KEY-----x',
+     `...and the box being pasted in keeps its caret across a redraw (${JSON.stringify(caret)})`);
   await page.click(`${sect} [data-ngcertcancel]`);
   await page.waitForFunction(s => document.querySelector(s + ' .ngcertform').hidden && !document.querySelector(s + ' #ngCert').value, sect, { timeout: 5000 });
   ok(asleep && awake && routesQuiet,
