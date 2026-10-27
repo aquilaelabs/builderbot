@@ -168,6 +168,9 @@ const browser = await launch();
   // pulldown, a list that may be long).
   await page.evaluate(() => openNotebook('ep.silon'));
   await page.waitForSelector('.pane .bar.proj select[data-reposw]', { timeout: 15000 });
+  const heights = await page.evaluate(() => { const h = e => e ? Math.round(e.getBoundingClientRect().height) : 0;
+    return { sel: h(document.querySelector('.pane .bar.proj .phead>select[data-reposw]')), btn: h(document.querySelector('.pane .bar.proj .phead>button')) }; });
+  ok(heights.sel && Math.abs(heights.sel - heights.btn) <= 1, `the pulldown is the height of the buttons beside it (${JSON.stringify(heights)})`);
   await page.selectOption('.pane .bar.proj select[data-reposw]', 'shopweb');
   await page.waitForFunction(() => tabOf(panes[0])?.kind === 'notebook' && tabOf(panes[0])?.arg === 'shopweb', null, { timeout: 10000 }).catch(() => {});
   ok(await page.evaluate(() => tabOf(panes[0])?.arg === 'shopweb'), "picking another repository in the pulldown opens its notebook");
