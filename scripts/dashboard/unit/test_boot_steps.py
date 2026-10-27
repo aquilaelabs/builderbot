@@ -156,6 +156,17 @@ class RootState(unittest.TestCase):
 
 
 
+class KeyBeforeHooks(unittest.TestCase):
+    """The install key is written before the hooks run, in both boots: hook
+    15 starts the dashboard, which reads the key as it starts (B388)."""
+    def test_the_key_before_the_hooks(self):
+        for f in ("entrypoint.sh", "host-boot.sh"):
+            text = open(os.path.join(SCRIPTS, f), encoding="utf-8").read()
+            body = text[text.index("main() {"):]
+            calls = [ln.strip() for ln in body.splitlines() if ln.strip() in ("install_key_file", "run_hooks")]
+            self.assertEqual(calls, ["install_key_file", "run_hooks"], f)
+
+
 class InstallKey(unittest.TestCase):
     """install_key_file under set -u (the boot's own): an install with a key
     and no previous one starts, and one with both keeps both (R126)."""

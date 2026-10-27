@@ -101,6 +101,10 @@ main() {
     # that wants to know what it is running on can read it.
     record_image
 
+    # The one secret the dashboard itself needs, as a file only it reads
+    # (lib/boot.sh), before the hooks: hook 15 starts the dashboard, which
+    # reads the key as it starts (B388).
+    install_key_file
     run_hooks
     log "hooks done (+${SECONDS}s from start)"
     boot_ready
@@ -115,9 +119,6 @@ main() {
     # this is the environment of the dashboard, its terminals and every process under
     # the builder account, and it carried every one of them until the review
     # of 26 Sep read this file.
-    # The one secret the dashboard itself needs, as a file only it reads
-    # (lib/boot.sh), written before the rest go from the environment.
-    install_key_file
     unset "${SECRET_VARS[@]}"
     if [ "$privileged" -eq 1 ]; then
         exec gosu builder env HOME="$BUILDER_HOME" USER=builder "${cmd[@]}"

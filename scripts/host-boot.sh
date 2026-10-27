@@ -65,6 +65,8 @@ main() {
     sock_dir
     setup_ssh_agent
     record_image
+    # Before the hooks, which start the dashboard (B388).
+    install_key_file
     run_hooks
     log "hooks done (+${SECONDS}s from start)"
     boot_ready
@@ -72,7 +74,6 @@ main() {
     local -a cmd=()
     mapfile -d '' -t cmd < <(resolve_command "$@")
     log "starting: ${cmd[*]} as ${BB_ACCOUNT}"
-    install_key_file
     unset "${SECRET_VARS[@]}"
     exec setpriv --reuid="$BB_ACCOUNT" --regid="$PGID" --init-groups \
         env HOME="$BUILDER_HOME" USER="$BB_ACCOUNT" LOGNAME="$BB_ACCOUNT" "${cmd[@]}"
