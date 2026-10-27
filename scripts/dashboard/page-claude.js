@@ -704,6 +704,10 @@ function placeResumeMenu(){
   // button ended on another and did nothing, and it blinked.
   const was = card.querySelector(`.resumemenu[data-for="${CSS.escape(p.name)}"]:not([data-pick])`);
   if (was && was.dataset.sig === html) return;
+  // ...and one drawn again with something new (your conversations landing,
+  // another node or agent picked) takes the old one's place without its
+  // entrance: it faded in twice on every open (the operator, 27 Oct).
+  if (was) m.classList.add("still");
   was?.remove();
   m.dataset.for = p.name;
   m.dataset.sig = html;

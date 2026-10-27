@@ -4953,6 +4953,7 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
    8px over the same time a menu below it drops (menuIn): the motion goes the
    way the menu opened (the operator, 18 Oct). */
 @keyframes menuRise{from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none}}
+.pinmenu.still{animation:none}
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
   border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
   gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
