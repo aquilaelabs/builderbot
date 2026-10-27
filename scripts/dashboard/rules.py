@@ -174,7 +174,8 @@ BUILTIN = [
     {"name": "ask-do-not-install",
      "text": "Never install a tool with a system package manager: it is invisible"
              " to `bb toolchains` and gone when the node is rebuilt. Say what is"
-             " missing; installing is the operator's.",
+             " missing and which toolchain carries it (`bb toolchains`); installing is"
+             " the operator's, from the Toolchains page.",
      # Refused, not only said (R200): the one rule here a command shows
      # being broken, so the guard stops it with this text as the reason.
      "refuse": ["apt install", "apt-get install", "apt-get -y install", "aptitude install",
@@ -184,18 +185,20 @@ BUILTIN = [
                 "!apt-get install* -s*", "!apt-get install* --simulate*", "!apt install* -s*",
                 "!apt install* --simulate*", "!dnf install* --assumeno*"]},
     {"name": "file-what-you-find",
-     "text": "What you notice goes on the record, not only in a reply: a bug"
-             " with `bb bug add`, work worth doing with `bb roadmap add`. Tick"
-             " items off as you finish them."},
+     "text": "What you notice goes on the record as you meet it, not only in a"
+             " reply: a bug with `bb bug add`, work worth doing with `bb roadmap"
+             " add`. Close what you finish as it lands: `bb bug fix`, `bb roadmap"
+             " step done`, `bb roadmap done`."},
     {"name": "side-quests",
      "text": "A bug met mid-task is fixed only when your own change caused it"
              " or it blocks the work: the smallest fix, in its own commit, said"
              " in the reply. Anything else is filed and left. One level deep:"
              " a bug found while fixing one of those is filed, not chased."},
     {"name": "prove-in-the-app",
-     "text": "Tests passing is not done: where the project has a dev instance or"
-             " an app on the emulator, use the change there the way a person"
-             " would before calling it done, and say what you saw."},
+     "text": "Tests passing is not done: where the project has a dev instance"
+             " (`bb devapp`) or an app on the emulator, use the change there the way"
+             " a person would before calling it done (`bb capture shot` or `reel`"
+             " to see it), and say what you saw."},
 ]
 
 # What the briefing says a session never does, refused by the guard as well
@@ -223,11 +226,11 @@ ALWAYS = [
     # with run_in_background is what the line asks for (the operator, 12 Oct:
     # a run held every reply, so a new ask could never cut into it).
     {"name": "tests-in-the-background",
-     "text": "Start a build, a test run, a probe or a dev instance's rebuild in the background"
-             " (run_in_background) and wait on its notification, answering meanwhile: one in the"
-             " foreground holds every reply until it ends, so a new ask cannot cut into it the way"
-             " the project's While a test runs setting says. The unit tier (bb tests unit) is quick"
-             " enough to run either way.",
+     "text": "Start a build, a test run, a probe or a dev instance's rebuild in the background,"
+             " the way your tool runs one detached (Claude Code's run_in_background), and wait on its"
+             " notification, answering meanwhile: one in the foreground holds every reply until it"
+             " ends, so a new ask cannot cut into it the way the project's While a test runs setting"
+             " says. The unit tier (bb tests unit) is quick enough to run either way.",
      # A probe is a run against the kept fixture, a rebuild is minutes of a
      # job, and a build can be longer than either (the operator, 16 Oct:
      # messages queued behind them, on every project as on this one).
