@@ -175,5 +175,53 @@ class InstallKey(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(open(os.path.join(d, "key-previous")).read(), "p" * 32)
 
+
+class MadeKey(unittest.TestCase):
+    """No INSTALL_KEY: the install makes its own (R154), in the secrets folder
+    when it can write there, else beside the state, and moves it into the
+    secrets folder once that can take it; a second start keeps it."""
+    def run_it(self, secrets, state):
+        body = ('BB_ACCOUNT=$(id -un); install_key_made; '
+                'echo "$BB_INSTALL_KEY_IN $BB_INSTALL_KEY_DIR $BB_SIGNING_SECRET_FILE"')
+        r = sh(body, {"BB_SECRETS_DIR": secrets, "DASHBOARD_STATE": state})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.splitlines()[-1].split()
+
+    def test_made_in_the_secrets_folder_and_kept(self):
+        d = tempfile.mkdtemp()
+        sec, st = os.path.join(d, "secrets"), os.path.join(d, "config")
+        os.makedirs(sec)
+        os.makedirs(st)
+        where, kd, kf = self.run_it(sec, st)
+        self.assertEqual((where, kd, kf), ("secrets", os.path.join(sec, "install-key"), os.path.join(sec, "install-key", "key")))
+        key = open(kf).read()
+        self.assertRegex(key, r"^[0-9a-f]{64}$")
+        self.assertEqual(os.stat(kd).st_mode & 0o777, 0o700)
+        self.assertEqual(os.stat(kf).st_mode & 0o777, 0o600)
+        self.run_it(sec, st)
+        self.assertEqual(open(kf).read(), key)
+        self.assertFalse(os.path.exists(os.path.join(st, ".install-key")))
+
+    def test_beside_the_state_with_no_secrets_folder_then_moved(self):
+        d = tempfile.mkdtemp()
+        sec, st = os.path.join(d, "secrets"), os.path.join(d, "config")
+        os.makedirs(st)
+        where, kd, kf = self.run_it(sec, st)
+        self.assertEqual((where, kd), ("state", os.path.join(st, ".install-key")))
+        key = open(kf).read()
+        os.makedirs(sec)
+        where, kd, kf = self.run_it(sec, st)
+        self.assertEqual(where, "secrets")
+        self.assertEqual(open(kf).read(), key)
+        self.assertFalse(os.path.exists(os.path.join(st, ".install-key")))
+
+    def test_a_set_key_makes_none(self):
+        d = tempfile.mkdtemp()
+        body = (f'eval "$(declare -f install_key_file | sed "s#/run/builderbot-key#{d}/key#")"\n'
+                'BB_ACCOUNT=$(id -un); install_key_file; echo "$BB_INSTALL_KEY_IN"; ls ' + d)
+        r = sh(body, {"INSTALL_KEY": "k" * 32, "BB_SECRETS_DIR": d, "DASHBOARD_STATE": d})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.split()[-2:], ["env", "key"])
+
 if __name__ == "__main__":
     unittest.main()

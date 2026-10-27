@@ -55,7 +55,11 @@ install_key_file() {
         key="$SIGNING_SECRET"
         warn "SIGNING_SECRET is INSTALL_KEY now: rename it in your secrets folder, since the old name is read for this release only"
     fi
-    [ -n "$key" ] || return 0
+    if [ -z "$key" ]; then
+        install_key_made
+        return 0
+    fi
+    export BB_INSTALL_KEY_IN=env
     if [ "${#key}" -lt 16 ]; then
         warn "INSTALL_KEY is shorter than 16 characters, so nothing is sealed: openssl rand -hex 32 makes one"
         return 0
@@ -71,6 +75,36 @@ install_key_file() {
         ( umask 077; printf '%s' "$prev" > "$f-previous" )
         chown "$BB_ACCOUNT" "$f-previous" 2>/dev/null || true
     fi
+}
+
+# With no INSTALL_KEY set, the install makes its own (R154) and the page
+# changes it: a key folder only the controller's account reads, in the
+# secrets folder when root may write there, else beside the state, which
+# the page warns of since a copy of /config then carries the key. One kept
+# beside the state moves into the secrets folder once that can take it.
+# The dashboard reads and writes the folder itself (BB_INSTALL_KEY_DIR).
+install_key_made() {
+    local state="${DASHBOARD_STATE:-/config}" dir in=secrets
+    local spare="$state/.install-key"
+    if [ -d "$BB_SECRETS_DIR" ] && [ -w "$BB_SECRETS_DIR" ]; then
+        dir="$BB_SECRETS_DIR/install-key"
+    else
+        dir="$spare" in=state
+    fi
+    mkdir -p "$dir" || { warn "install key: could not make ${dir}, so nothing is sealed"; return 0; }
+    if [ "$in" = secrets ] && [ ! -s "$dir/key" ] && [ -s "$spare/key" ]; then
+        mv -f "$spare"/key* "$dir"/ && rm -rf "$spare" && log "install key: moved into the secrets folder from beside the state"
+    fi
+    if [ ! -s "$dir/key" ]; then
+        ( umask 077; od -An -vtx1 -N32 /dev/urandom | tr -d ' \n' > "$dir/key.new" ) && mv -f "$dir/key.new" "$dir/key" \
+            || { warn "install key: could not write one in ${dir}, so nothing is sealed"; return 0; }
+        log "install key: made one in ${dir}; Controller, Keys shows it to save"
+    fi
+    chown -R "$BB_ACCOUNT" "$dir" 2>/dev/null || true
+    chmod 700 "$dir"; chmod 600 "$dir"/key* 2>/dev/null || true
+    [ "$in" = state ] && warn "install key: kept beside the state in ${dir}, so a copy of it carries the key; a secrets folder root may write moves it there"
+    export BB_INSTALL_KEY_DIR="$dir" BB_INSTALL_KEY_IN="$in"
+    export BB_SIGNING_SECRET_FILE="$dir/key" BB_INSTALL_KEY_PREVIOUS_FILE="$dir/key-previous"
 }
 
 # as_account CMD...: CMD as the controller's account, with its groups. gosu

@@ -94,9 +94,10 @@ def forget(project):
         path(project).unlink()
 
 
-def seal_all():
+def seal_all(again=False):
     """Every line kept open sealed, once the install has a key: at start.
-    Returns how many."""
+    `again`, after the install key changed (R154): every sealed one sealed
+    once more, under today's key. Returns how many."""
     if not (seal and sealing and sealing()):
         return 0
     d = STATE / "gitcreds"
@@ -108,5 +109,8 @@ def seal_all():
             continue
         if text and not text.startswith(SEALED):
             write_line(f.name, text.splitlines()[0])
+            n += 1
+        elif again and text and (line := open_text(text)):
+            write_line(f.name, line)
             n += 1
     return n

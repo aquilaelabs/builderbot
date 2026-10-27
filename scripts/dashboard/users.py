@@ -1148,6 +1148,10 @@ def remove(name):
     # Its invitations go, and what it owned falls back to BuilderBot's owner.
     import membership
     membership.forget_account(u.get("uid") or "")
+    # ...and its own key for its sign-ins on the nodes (R154).
+    import accountkeys
+    if accountkeys.STATE is not None:
+        accountkeys.forget(u.get("uid") or "")
     return {"ok": True, "name": name}
 
 

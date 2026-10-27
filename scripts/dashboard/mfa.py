@@ -137,6 +137,32 @@ def _secret_of(t):
     return base64.b32decode(t.get("plain", ""))
 
 
+def seal_all(again=False):
+    """Each account's authenticator secret sealed under today's install key:
+    one kept plain once there is a key, and with `again`, after the key
+    changed (R154), one sealed under the key before it. Returns how many."""
+    if not (seal and sealing and sealing()):
+        return 0
+    n = 0
+    with _lock:
+        d = load()
+        for r in d.values():
+            for slot in ("totp", "totp_pending"):
+                t = r.get(slot) if isinstance(r, dict) else None
+                if not isinstance(t, dict) or not (t.get("plain") or (again and t.get("sealed"))):
+                    continue
+                try:
+                    key = _secret_of(t)
+                except Exception:                           # noqa: BLE001 (one that cannot be opened stays as it is)
+                    continue
+                t.pop("plain", None)
+                t.update(_keep_secret(key))
+                n += 1
+        if n:
+            _save(d)
+    return n
+
+
 def totp_begin(uid, name):
     """A new secret, not yet on: the QR's otpauth URI and the secret in
     words, for the first code to confirm."""

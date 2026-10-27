@@ -5626,10 +5626,14 @@ cmd_doctor() {
     # the sign-in cookies' key. Said either way, since nothing else on the
     # page says whether it is in force.
     if ! on_node && [ -n "$(dashboard_pid)" ]; then
-        if [ -s /run/builderbot-key ]; then
+        # A key the install made (R154) is in its own folder, not /run.
+        if [ -s "${BB_SIGNING_SECRET_FILE:-/run/builderbot-key}" ]; then
             printf '  [ok]   an install key is loaded: the settings'"'"' tokens, the signing keys and the git credentials are sealed under it\n'
+            if [ "${BB_INSTALL_KEY_IN:-}" = state ]; then
+                printf '  [warn] the install key is kept beside the state, so a copy of /config carries it: mount a secrets folder the controller may write to\n'
+            fi
         else
-            printf '  [warn] no install key: the settings'"'"' tokens, the signing keys and the git credentials are kept open in /config; set INSTALL_KEY (docs/reference.md)\n'
+            printf '  [warn] no install key: the settings'"'"' tokens, the signing keys and the git credentials are kept open in /config; one is made at the next start (Controller, Keys)\n'
         fi
     fi
     # Claude Code is a node's, so a controller has nothing to check for: a

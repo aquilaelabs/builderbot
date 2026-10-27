@@ -214,9 +214,10 @@ def _sealed(v):
     return v
 
 
-def seal_all():
+def seal_all(again=False):
     """Every secret kept open sealed, once the install has a key: at start.
-    Returns how many."""
+    `again`, after the install key changed (R154): every sealed one sealed
+    once more, under today's key. Returns how many."""
     if not (seal and sealing and sealing()):
         return 0
     with _lock:
@@ -224,9 +225,17 @@ def seal_all():
         n = 0
         for key, spec in KEYS.items():
             v = d.get(key)
-            if spec["kind"] == "secret" and isinstance(v, str) and v and not v.startswith(SEALED):
+            if spec["kind"] != "secret" or not isinstance(v, str) or not v:
+                continue
+            if not v.startswith(SEALED):
                 d[key] = _sealed(v)
                 n += 1
+            elif again:
+                try:
+                    d[key] = _sealed(unseal(base64.b64decode(v[len(SEALED):])).decode())
+                    n += 1
+                except Exception:                           # noqa: BLE001 (one that cannot be opened stays as it is)
+                    continue
         if n:
             write_json(FILE, d)
     return n

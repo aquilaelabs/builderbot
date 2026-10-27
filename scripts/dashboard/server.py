@@ -4022,6 +4022,29 @@ import mfa                                                       # noqa: E402
 
 mfa.configure(STATE=STATE, seal=signing.seal, unseal=signing.unseal,
               sealing=lambda: signing.MASTER is not None)
+try:
+    if (_sealed := mfa.seal_all()):
+        print(f"dashboard: sealed {_sealed} authenticator secret(s) under the install's key", flush=True)
+except OSError as e:
+    print(f"dashboard: authenticator secrets left as they were, not sealed: {e}", flush=True)
+
+# The install key made by the install and changed from the page, and each
+# account's own key for its sign-ins on the nodes (R154): what the nodes
+# report of their seals decides when a key before today's can go.
+import accountkeys                                               # noqa: E402
+import installkey                                                # noqa: E402
+
+
+def _node_seals():
+    return {n["id"]: (n.get("reported") or {}).get("tokseal") for n in nodes.node_list(all=True)}
+
+
+accountkeys.configure(state=STATE, nodes_under=lambda uid, k: tokenkeys.sealed_under(_node_seals(), k, uid))
+installkey.configure(passes=(signing.seal_all, gitcreds.seal_all, settings.seal_all, mfa.seal_all,
+                             accountkeys.seal_all),
+                     nodes_previous=lambda: tokenkeys.sealed_under(_node_seals(), signing.PREVIOUS)
+                     if signing.PREVIOUS else 0)
+installkey.note_made()
 
 # An account's conversations with Claude as a download: transcripts.py.
 import transcripts                                               # noqa: E402
@@ -5234,6 +5257,7 @@ POST_ROUTES = (
     ("prefix", "/api/changelog", "_changelog"),
     ("prefix", "/api/version", "_version"),
     ("exact", "/api/signing", "_signing"),
+    ("exact", "/api/keys", "_keys"),
     ("exact", "/api/members", "_members"),
     ("exact", "/api/signing-backup", "_post_signing_backup"),
     ("prefix", "/api/artifacts", "_artifacts"),
@@ -9043,6 +9067,80 @@ class Handler(BaseHTTPRequestHandler):
         if field(req, "action") not in ("accept", "decline", "withdraw") and self._not_project(name):
             return None
         return self._json(*membership.verb(me, req))
+
+    # The settings' secrets as the Keys page names them (R154).
+    KEPT_SETTINGS = {"tunnel_token": ("Cloudflare tunnel token", "the tunnel that serves this controller"),
+                     "cf_api_token": ("Cloudflare API token", "the tunnel's hostnames and DNS records")}
+
+    def _keys(self, req):
+        """POST /api/keys (R154): the install key and everything kept under
+        it for an administrator (status, show, saved, change), and the
+        account's own key for its sign-ins on the nodes (mine, change-mine).
+        A session is refused whatever it asks."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "the keys are a person's to manage"}, 403)
+        act = field(req, "action")
+        uid = users.uid_of(who) or ""
+        if act == "mine":
+            return self._json(accountkeys.status(uid))
+        if act == "change-mine":
+            body, code = accountkeys.change(uid, str(req.get("key") or ""))
+            if code == 200:
+                print(f"dashboard: {who.get('name') or uid} changed their account key", flush=True)
+            return self._json(body, code)
+        if self._refused("controller"):
+            return
+        if act == "status":
+            return self._json({"install": installkey.status(), "kept": self._keys_kept()})
+        if act == "show":
+            body, code = installkey.reveal()
+            if code == 200:
+                print(f"dashboard: {who.get('name')} was shown the install key", flush=True)
+            return self._json(body, code)
+        if act == "saved":
+            return self._json(*installkey.saved(field(req, "fingerprint")))
+        if act == "change":
+            body, code = installkey.change(str(req.get("key") or ""))
+            if code == 200:
+                print(f"dashboard: {who.get('name')} changed the install key; {body['resealed']} sealed again", flush=True)
+            return self._json(body, code)
+        return self._json({"error": f"unknown action {act!r}"}, 400)
+
+    def _keys_kept(self):
+        """What the install keeps under its key, by kind, each row naming
+        what uses it and where it is changed; no value, sealed or not."""
+        rows = []
+        for f in sorted((STATE / "gitcreds").iterdir()) if (STATE / "gitcreds").is_dir() else []:
+            raw = f.read_text(errors="replace").strip() if f.is_file() else ""
+            rows.append({"kind": "git", "name": f.name, "sealed": raw.startswith(gitcreds.SEALED),
+                         "uses": "git push and pull for the project's repositories", "go": ["project", f.name]})
+        d = settings.load()
+        for key, spec in settings.KEYS.items():
+            if spec["kind"] == "secret" and d.get(key):
+                rows.append({"kind": "setting", "name": self.KEPT_SETTINGS.get(key, (key, ""))[0],
+                             "sealed": str(d[key]).startswith(settings.SEALED),
+                             "uses": self.KEPT_SETTINGS.get(key, ("", key))[1], "go": ["controller"]})
+        for proj in signing._projects():
+            for k in signing.key_names(proj):
+                rows.append({"kind": "signing", "name": f"{proj}: {k}", "sealed": signing.at_rest(proj) == "sealed",
+                             "uses": "signing the project's Android builds", "go": ["project", proj]})
+        names = {u.get("uid"): u.get("name") for u in users.all_users() if u.get("uid")}
+        for uid, r in sorted(mfa.load().items()):
+            t = (r or {}).get("totp") or {}
+            if t.get("on"):
+                rows.append({"kind": "two-factor", "name": names.get(uid) or uid, "sealed": bool(t.get("sealed")),
+                             "uses": "the authenticator codes this account signs in with", "go": ["user", names.get(uid) or uid]})
+        for uid in sorted(accountkeys._load()):
+            rows.append({"kind": "account", "name": names.get(uid) or uid, "sealed": True,
+                         "uses": "the key this account's sign-ins on the nodes are sealed with", "go": ["profile"]})
+        for n in nodes.node_list(all=True):
+            for uid, seals in sorted((((n.get("reported") or {}).get("tokseal") or {}).get("sealed") or {}).items()):
+                rows.append({"kind": "sign-in", "name": f"{names.get(uid) or uid} on {n['name']}", "sealed": True,
+                             "uses": ", ".join(getattr(agents.get(a), "name", a) for a in sorted(seals or {}))
+                             + " signed in there",
+                             "go": ["agents", n["id"]]})
+        return rows
 
     def _signing(self, req):
         """A project's Android signing keys (signing.verb, R106). A session

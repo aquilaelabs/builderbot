@@ -2063,8 +2063,8 @@ def node_token_seal(principal, node_id, on):
         return {"error": "sealed sign-ins need each account to be a user of its own there first: "
                          "turn that on, then this"}
     if on and not (can_seal and can_seal()):
-        return {"error": "sealed sign-ins are sealed under the install key, and this controller has none: "
-                         "set INSTALL_KEY in its secrets folder and restart it, then this"}
+        return {"error": "sealed sign-ins need an install key, and this controller has none: "
+                         "one is made at its next start (Controller, Keys), then this"}
     conf = dict(n.get("config") or {})
     if on:
         conf["token_seal"] = True

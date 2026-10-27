@@ -1,7 +1,8 @@
 """The controller's half of the coding agents' sealed sign-ins (R126).
 
-Each account's key pair on each node is made here from the install key
-(R135) and kept nowhere: the node is handed the public half to seal with
+Each account's key pair on each node is made here from the account's own
+key (R154, accountkeys.py; from the install key, R135, before that) and
+kept nowhere: the node is handed the public half to seal with
 (public), and the key that opens one of its seals is made only for a
 terminal a person opened for their own account (wrapped_for), wrapped to
 the node agent's key for this boot. The arithmetic is tokenseal.py's, the
@@ -18,6 +19,7 @@ import importlib.util
 import os
 from pathlib import Path
 
+import accountkeys
 import signing
 
 PREV_FILE = "/run/builderbot-key-previous"
@@ -56,18 +58,43 @@ def keys():
     return [k for k in (signing.MASTER, prev if len(prev) >= 16 else None) if k]
 
 
-def public(node, uid):
-    """The account's public key on this node, hex, or "" with no install
-    key: an install with none has nothing to seal with, and keeps its
-    sign-ins as plain files."""
-    k = keys()
-    if not k:
-        return ""
-    cache = (k[0], node, uid)
+def _pub(k, node, uid):
+    cache = (k, node, uid)
     if cache not in _pub_cache:
         _pub_cache.clear() if len(_pub_cache) > 4096 else None
-        _pub_cache[cache] = ts().public(ts().secret(k[0], node, uid))
+        _pub_cache[cache] = ts().public(ts().secret(k, node, uid))
     return _pub_cache[cache]
+
+
+def public(node, uid):
+    """The account's public key on this node, hex, made from its own key,
+    or "" with no install key: an install with none has nothing to seal
+    with, and keeps its sign-ins as plain files."""
+    k = accountkeys.key_of(uid)
+    return _pub(k, node, uid) if k else ""
+
+
+def _candidates(uid):
+    """Every key a seal of this account's may have been made under, today's
+    own first: its own, the one before it, and the install key and the one
+    before that, which sealed every sign-in before accounts had their own."""
+    out = [accountkeys.key_of(uid), accountkeys.previous_of(uid)] + keys()
+    seen, keep = set(), []
+    for k in out:
+        if k and k not in seen:
+            seen.add(k)
+            keep.append(k)
+    return keep
+
+
+def made_under(node, uid, v):
+    """The key a reported seal was made under, from the public half it names
+    (K), or None when it names none or none of the account's fits."""
+    K = str((v or {}).get("K") or "")
+    for k in (_candidates(uid) if K else ()):
+        if ts().rid(_pub(k, node, uid)) == K:
+            return k
+    return None
 
 
 def pubs(node, uids):
@@ -84,22 +111,28 @@ def wrapped_for(node, uid, tokseal):
     """The `tk` a terminal's open carries for this account on this node,
     from what the node reported (its boot public E and its seals' R), or
     None when there is nothing to open: {acct, C, w}, the keys of each seal
-    made with the install key and the one before it (by rid(R), and with
-    |prev), wrapped
+    made with the key it names (by rid(R), and with |prev when that is not
+    the account's own key today), wrapped
     to E so only the running agent can read them."""
     if not isinstance(tokseal, dict) or not tokseal.get("E"):
         return None
     seals = (tokseal.get("sealed") or {}).get(uid) or {}
-    ks = keys()
-    if not seals or not ks:
+    own = accountkeys.key_of(uid)
+    if not seals or not own:
         return None
     t = ts()
     out = {}
     for v in seals.values():
         R = str((v or {}).get("R") or "")
-        for i, k in enumerate(ks[:2]):
+        # The key the seal names, as the node's first try when it is today's
+        # own and as |prev otherwise, which the node opens and then seals
+        # again under the account's public key (R154). One naming none is
+        # from before K: today's own key, then the install key as |prev.
+        k = made_under(node, uid, v)
+        pairs = ([(k, "")] if k == own else [(k, "|prev")]) if k else [(own, ""), (keys()[0], "|prev")]
+        for key, slot in pairs:
             try:
-                out[t.rid(R) + ("|prev" if i else "")] = t.key_for(t.secret(k, node, uid), R)
+                out[t.rid(R) + slot] = t.key_for(t.secret(key, node, uid), R)
             except t.Refused:
                 continue
     if not out:
@@ -112,12 +145,29 @@ def wrapped_for(node, uid, tokseal):
 
 
 def under_previous(node, tokseal):
-    """How many of this node's seals were made under a key other than
-    today's install key: what keeps INSTALL_KEY_PREVIOUS needed."""
+    """How many of this node's seals were made under a key other than the
+    account's own today: each moves to it when its person next opens a
+    terminal there."""
     if not isinstance(tokseal, dict) or not keys():
         return 0
     n = 0
     for uid, agents in (tokseal.get("sealed") or {}).items():
-        want = ts().rid(public(node, uid))
+        want = ts().rid(public(node, uid)) if public(node, uid) else ""
         n += sum(1 for v in (agents or {}).values() if (v or {}).get("K") and v["K"] != want)
+    return n
+
+
+def sealed_under(censuses, key, uid=None):
+    """How many seals on these nodes ({node: tokseal}) were made under this
+    key, for one account or every one: what keeps a key before today's
+    needed. A seal naming no key counts, since it may be any."""
+    n = 0
+    for node, tk in (censuses or {}).items():
+        for u, agents in ((tk or {}).get("sealed") or {}).items() if isinstance(tk, dict) else ():
+            if uid and u != uid:
+                continue
+            for v in (agents or {}).values():
+                K = str((v or {}).get("K") or "")
+                if not K or ts().rid(_pub(key, node, u)) == K:
+                    n += 1
     return n
