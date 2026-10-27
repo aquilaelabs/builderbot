@@ -886,6 +886,13 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   ok(other.status === 403 && /no someone-else in this tree/.test(other.error || ''),
      `writing a branch this tree does not have is refused, which is the one on the remote (${
        (other.error || '').slice(0, 70)})`);
+  // B397: a tag the tree holds is refused as a tag, the release's, and not
+  // as a branch the tree lacks.
+  execFileSync('git', ['-C', B, 'tag', 'v9.9.9-b397']);
+  const tag = await relay(['git', 'push', 'origin', 'v9.9.9-b397']);
+  execFileSync('git', ['-C', B, 'tag', '-d', 'v9.9.9-b397']);
+  ok(tag.status === 403 && /v9\.9\.9-b397 is a tag/.test(tag.error || '') && /bb version release/.test(tag.error || ''),
+     `pushing a tag the tree holds is refused as the release's, naming bb version release (${(tag.error || '').slice(0, 80)})`);
   const gone = await relay(['git', 'push', 'origin', '--delete', 'topic']);
   ok(gone.status === 403 && /does not take work away/.test(gone.error || '')
      && execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'topic'], { encoding: 'utf8' }).includes('topic'),
