@@ -113,6 +113,10 @@
 
 - The Lock grant on a role no longer decides anything (a project's owner locks it, an administrator too) and goes in 0.8.0 (24c9a24)
 
+### Removed
+
+- Show the tours again is no longer on Profile: it is in About, under the version in the header (51f1a7a)
+
 ### Fixed
 
 - A toolchain left half-installed reads as not installed, and Install clears what it left and installs it whole. (933a5aa)
