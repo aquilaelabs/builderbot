@@ -30,8 +30,15 @@ proj, argv = sys.argv[2], sys.argv[3:]
 if "--global" in argv:
     argv = [a for a in argv if a != "--global"]
     proj = reg.GLOBAL
+# `--format json|yaml|markdown` or `--json` on a list or a show (R167).
+fmt, argv = dash.format_flag(argv)
 op = argv[0] if argv else "list"
 rest = argv[1:]
+_records = dash.load("records", dash.beside(sys.argv[1]))
+
+
+def dump_rules(rs):
+    sys.stdout.write(_records.dump(_records.document("rules", rs, proj), fmt))
 import pending  # noqa: E402 (rules.py put its directory on sys.path)
 
 # What bb-tty puts in front of a session. Empty output and status 0 when
@@ -48,6 +55,8 @@ elif op == "show":
     want = rest[0].strip().lower()
     for r in reg.effective(proj):
         if r["name"] == want:
+            if fmt != "text":
+                dump_rules([r]); break
             print(r["text"])
             if r.get("doc"):
                 print(f"\ndefined in full in {r['doc']}")
@@ -172,6 +181,8 @@ elif op == "history":
             print(f"{'':>32}approved by the operator")
 elif op == "list":
     rs = reg.effective(proj)
+    if fmt != "text":
+        dump_rules(rs); sys.exit(0)
     if not rs:
         print("no house rules on this project yet. The operator writes them on "
               "the notebook's Briefing tab; `bb rules add NAME \"...\"` leaves "

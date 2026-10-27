@@ -22,7 +22,12 @@ import urllib.parse
 
 import bbapi
 
-argv = sys.argv[1:]
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dashboard"))
+import records  # noqa: E402
+import dash  # noqa: E402
+
+# `--format json|yaml|markdown` or `--json` on list or show (R167).
+fmt, argv = dash.format_flag(sys.argv[1:])
 verb = argv[0] if argv else "list"
 auth = os.environ["BB_WIKI_AUTH"]
 proj = os.environ["BB_WIKI_PROJECT"]
@@ -75,6 +80,8 @@ if verb == "list":
     r = get()
     if r.get("error"):
         fail(r["error"])
+    if fmt != "text":
+        sys.stdout.write(records.dump(records.document("wiki", r.get("pages") or [], proj), fmt)); raise SystemExit(0)
     rem = r.get("remote") or {}
     print(f"{proj}'s wiki: {len(r.get('pages') or [])} page(s)"
           + (f", on {rem['label']}" if rem.get("label") else ", no remote: the view exports it as a zip")
@@ -87,6 +94,8 @@ elif verb == "show" and len(argv) >= 2:
         fail(r["error"])
     if "--rev" in argv:
         print(r["rev"])
+    elif fmt != "text":
+        sys.stdout.write(records.dump(records.document("wiki", [{"name": argv[1], "rev": r.get("rev"), "text": r["text"]}], proj), fmt))
     else:
         sys.stdout.write(r["text"])
 elif verb == "save" and len(argv) >= 3:
