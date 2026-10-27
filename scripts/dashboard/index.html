@@ -85,7 +85,7 @@
    `design` and measured by test/uniform.mjs. */
 :root,.sw[data-theme="default"]{
   --bg:#1a1f26; --panel:#212730; --line:#4d5c6f; --ink:#e6edf3;
-  --dim:#9fa9b4; --accent:#3fb950; --warn:#d29922; --bad:#f8524a;
+  --dim:#9fa9b4; --accent:#3fb950; --warn:#d29922; --bad:#f07178;
   --note:#58a6ff;
   /* A check that passed is green in every scheme (the operator, 16 Oct: the
      doctor read teal on Abyss and orange on Ember, an accent that reads as
@@ -1911,6 +1911,13 @@ select:focus{outline-offset:-2px}
    one answer: `.rm` used to be a second word for it and is now only what it
    also was, the dim icon that drops a row from a list. */
 .danger{color:var(--bad);border-color:var(--red2-edge)}
+/* A destructive button is filled, never an outline alone (the operator, 27
+   Oct): a tint of the scheme's own red under its red words, a little more of
+   it under the pointer, its edge the same red mixed down. */
+button.danger,a.btn.danger{background:color-mix(in srgb, var(--bad) 22%, var(--panel));
+  border-color:color-mix(in srgb, var(--bad) 50%, var(--panel))}
+@media(hover:hover){ button.danger:not([disabled]):hover,a.btn.danger:hover{background:color-mix(in srgb, var(--bad) 32%, var(--panel))} }
+button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel))}
 /* Revert is amber rather than red. It throws away what has not been saved
    yet: a decision you might want back, and the color this page already uses
    for "wants a decision from you". Red is kept for the controls that destroy

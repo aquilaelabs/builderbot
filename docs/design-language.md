@@ -19,7 +19,7 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--line` | `#4d5c6f` | hairlines and borders, 1px |
 | `--accent` | `#3fb950` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d29922` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
-| `--bad` | `#f8524a` | an error, a destructive verb |
+| `--bad` | `#f07178` | an error, a destructive verb |
 | `--note` | `#58a6ff` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -631,7 +631,7 @@ do), because a dead button with no visible reason is what somebody stares
 at (three projects with no node read as broken after an update, 23 Sep).
 A `title` written anyway is never drawn: `untitle()` keeps its words for a
 screen reader (`aria-label` on a control with no text, `aria-description`
-otherwise), and `saidOf(el)` reads them back for a suite.
+otherwise), and `saidOf(el)` reads them back for a suite. A destructive button (`.danger`) is filled, never an outline alone (the operator, 27 Oct): its scheme's own red as its words, a 22% tint of that red over the panel as its ground and a 50% mix as its edge, a little more of the tint under the pointer; the same on every surface.
 
 ### settings
 
