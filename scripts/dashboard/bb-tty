@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# The command ttyd runs for every browser connection.
+# The command every terminal runs (R133): a pty of the dashboard's own on the
+# controller (termws.local), or of a node agent's screen relay (term.py).
 #
-# ttyd is started with --url-arg, so the browser controls this script's only
-# argument via ?arg=... That argument is attacker-controlled in the sense that
-# matters: it never reaches a shell (ttyd execs directly), and a project name
+# The browser chooses this script's arguments, one per ?arg= of /termws.
+# They are attacker-controlled in the sense that matters: they never reach
+# a shell (the pty execs this directly), and a project name
 # is checked against the directories that actually exist rather than trusted as
 # a path. Anyone reaching this is already authenticated and already entitled to
 # a shell, so the goal is not privilege containment; it is making a mistyped
@@ -22,8 +23,8 @@ set -euo pipefail
 . "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
 # A terminal that ends before it starts says so in its tab and waits (R132):
-# set -e ends this script at whatever failed, without a word, and ttyd then
-# reconnects to the same failure in a loop with nothing on the screen. The
+# set -e ends this script at whatever failed, without a word, and the tab
+# then shows an empty terminal that ended with nothing on the screen. The
 # exec into tmux replaces this script, so a terminal that started never
 # reaches it.
 set -E
@@ -41,11 +42,11 @@ target="${1:-shell}"
 
 # ---- whose terminal this is (roadmap #26) ----------------------------------
 #
-# The dashboard's /term proxy stamps the argument with the account it
-# authenticated, as `u:<uid>:<target>`, and OVERWRITES anything the browser
-# put there, so this is the account asking, not the account claimed. That is
-# the same reasoning as the lock check below: a rule only the UI honors is a
-# suggestion, because the ttyd URL is reachable directly.
+# The dashboard stamps the argument with the account it authenticated, as
+# `u:<uid>:<target>`, and OVERWRITES anything the browser put there, so this
+# is the account asking, not the account claimed. That is the same reasoning
+# as the lock check below: a rule only the UI honors is a suggestion, because
+# a terminal's URL can be asked for directly.
 #
 # Empty is a real answer and the common one: a terminal opened before accounts
 # existed, or by something that is not a browser. It gets the box's own home
@@ -65,8 +66,8 @@ esac
 
 # ---- what else rode in on the URL (roadmap #24, the session on a node) ------
 #
-# ttyd's --url-arg passes EVERY ?arg= as one more argument, so beside the
-# target the proxy can hand this script the two things a node does not have
+# Every ?arg= is one more argument, so beside the target the dashboard can
+# hand this script the two things a node does not have
 # and cannot make: the account's name (its users.json is on the controller)
 # and a session token for the project (minted there, by the key only it
 # holds). On the controller neither arrives (the name is looked up and the
@@ -97,10 +98,10 @@ done
 # ---- on a node, the controller says whose this is (B166) --------------------
 #
 # Everything above is what the URL claimed. On the controller that is the
-# account /term proved, because ttyd there is loopback-only and the proxy is
-# the one way in. A node's ttyd is on the node, and a session there reaches it
-# over loopback like any other process on the machine, so on a node the URL
-# proves nothing: u:<uid>, name: and owner:1 would open another account's home
+# account /termws proved, since the dashboard is the one way to start this
+# there. On a node, any process on the machine can start this (or
+# bb-session tty) with whatever arguments it likes, so on a node they prove
+# nothing: u:<uid>, name: and owner:1 would open another account's home
 # and Claude login for whoever typed them. So the token that rode in is shown
 # to the controller, which alone can check its signature, and the account,
 # the name and ownership come from its answer. No answer, no terminal: a node
@@ -157,6 +158,14 @@ if on_node && [ -n "${grant:-}" ]; then
     # into the view read-only, and Claude's walls let it read them.
     BB_READS="$(printf '%s' "$grant" | jq -r '(.reads // []) | join(" ")')"
     export BB_READS
+    # The other repositories of its project (R136), worked in by a coding
+    # agent's session as its own is, each with its token kept where bb in
+    # that tree reads it.
+    BB_WORKS="$(printf '%s' "$grant" | jq -r '(.works // []) | join(" ")')"
+    export BB_WORKS
+    # Held here and written once the session's folders are made (B329):
+    # this runs before the functions that place them are defined.
+    BB_WORK_TOKENS="$(printf '%s' "$grant" | jq -r '(.tokens // {}) | to_entries[] | "\(.key) \(.value)"')"
     # ...and the places on this node it is shown besides (prefs.sees): a
     # share the view would otherwise leave out with every other.
     BB_SEES="$(printf '%s' "$grant" | jq -r '(.sees // []) | join(" ")')"
@@ -191,9 +200,23 @@ if on_node && [ -n "${grant:-}" ]; then
     fi
 fi
 
+# tmux_settings: BuilderBot's tmux settings (lib/tmux.conf: the status line,
+# PgUp's scrollback, the history kept) given to the tmux server this runs
+# under. The controller's own reads the copy its start writes; a node's, an
+# account's own and the docker account's have no such copy (B283).
+tmux_settings() {
+    tmux source-file "$(dirname "$(readlink -f "$0")")/../lib/tmux.conf" 2>/dev/null || true
+}
+# tmux_keys: the keys the page's terminal relies on (lib/tmux-keys.conf),
+# given to every server a terminal runs under, the controller's included,
+# whatever its ~/.tmux.conf says.
+tmux_keys() {
+    tmux source-file "$(dirname "$(readlink -f "$0")")/../lib/tmux-keys.conf" 2>/dev/null || true
+}
+
 # ---- a container's shell on a node (R218 step 4) -----------------------------
 #
-# The agent's third terminal server runs this as the docker account, which is
+# The agent's container terminal (its ctr kind) runs this as the docker account, which is
 # kept apart from the session account (that one is in no docker group on
 # purpose: docker is root on the machine, provision-linux.sh). Here it opens a
 # shell inside one running container and nothing else, the one the
@@ -212,13 +235,23 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
         case "$dom" in *[!a-z0-9-]*) ctr_no "Invalid VM: ${dom}" ;; esac
         command -v virsh >/dev/null 2>&1 || ctr_no "There is no virsh here: VM host is not installed on this node."
         s="$(tmux_prefix "$account")vm-${dom}"
-        tmux new-session -A -d -s "$s" -c / virsh -c qemu:///system console --force "$dom"
+        tmux new-session -d -s "$s" -c / virsh -c qemu:///system console --force "$dom" 2>/dev/null || true
+        tmux_settings
         tmux set-option -t "$s" mouse off
-        tmux set-option -t "$s" status-style bg=color236,fg=color252
-        tmux set-option -t "$s" status-left '#[bold] #S '
-        tmux set-option -t "$s" status-right ' builderbot '
+        tmux_keys
         exec tmux attach-session -t "$s"
     fi
+    # A container's log in a dock tab (R133 step 12): docker logs followed,
+    # its last lines first, in no tmux, so a reconnect shows them again.
+    # Nothing typed reaches it.
+    case "$target" in
+        log:ctr:*)
+            cname="${grant_ctr:-}"
+            case "$cname" in
+                ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_.-]*) ctr_no "Invalid container: ${cname}" ;;
+            esac
+            exec docker logs --follow --tail 2000 "$cname" </dev/null ;;
+    esac
     case "$target" in ctr:*) ;; *) ctr_no "This terminal server opens a container's shell and nothing else." ;; esac
     cname="${grant_ctr:-}"
     case "$cname" in
@@ -228,14 +261,11 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
         || ctr_no "docker inspect ${cname} failed on this node: it is gone, or the docker account cannot reach the daemon."
     s="$(tmux_prefix "$account")ctr-${cname}"; s="${s//[.:]/_}"
     # shellcheck disable=SC2016 # expanded in the container, not here
-    tmux new-session -A -d -s "$s" -c / \
-        docker exec -it "$cname" sh -c 'if command -v bash >/dev/null 2>&1; then exec bash; fi; exec sh'
+    tmux new-session -d -s "$s" -c / \
+        docker exec -it "$cname" sh -c 'if command -v bash >/dev/null 2>&1; then exec bash; fi; exec sh' 2>/dev/null || true
+    tmux_settings
     tmux set-option -t "$s" mouse off
-    # The status line every terminal in the dock wears (15-dashboard.sh's),
-    # on the session: the docker account has no BuilderBot tmux.conf.
-    tmux set-option -t "$s" status-style bg=color236,fg=color252
-    tmux set-option -t "$s" status-left '#[bold] #S '
-    tmux set-option -t "$s" status-right ' builderbot '
+    tmux_keys
     exec tmux attach-session -t "$s"
 fi
 
@@ -292,9 +322,10 @@ sess() {
 
 # Projects their owner has locked (R119): nobody else starts a session in
 # one. Shared with the dashboard, which writes the list; enforced here,
-# because a rule only the UI honors is a suggestion: the ttyd URL is
-# reachable directly.
+# because a rule only the UI honors is a suggestion: a terminal's URL can be
+# asked for directly.
 LOCKS_FILE="${DASHBOARD_STATE:-/config}/locked-projects.json"
+REPOS_FILE="${DASHBOARD_STATE:-/config}/project-repos.json"
 
 # is_locked PROJECT ACCOUNT: locked against that account. `bb settings`
 # answers it, here from the file and on a node from the controller, since it
@@ -308,7 +339,12 @@ is_locked() {
         return
     fi
     if [ -f "$LOCKS_FILE" ]; then
-        jq -e --arg n "$1" 'type == "object" and has($n)' "$LOCKS_FILE" >/dev/null 2>&1
+        # A lock is its project's (R138): asked by the repository's name, the
+        # project it is in is looked up and either name holds.
+        local key=""
+        [ -f "$REPOS_FILE" ] && key="$(jq -r --arg n "$1" '(.projects // {}) | to_entries
+            | map(select((.value.members // []) | index($n))) | .[0].key // empty' "$REPOS_FILE" 2>/dev/null)"
+        jq -e --arg n "$1" --arg k "${key:-$1}" 'type == "object" and (has($n) or has($k))' "$LOCKS_FILE" >/dev/null 2>&1
         return
     fi
     return 1
@@ -373,6 +409,14 @@ walls_around() {
         | { grep -vxF "$here" || true; }
 }
 
+# tree_slug DIR - the folder Claude Code keeps a tree's conversations in, under
+# ~/.claude/projects: the path with every character that is not a letter or a
+# digit a dash, as Claude Code names it (claudesync.slug). Its slashes alone
+# missed a worktree's .worktrees and u_ (B348).
+tree_slug() {
+    printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'
+}
+
 # cache_project_dir PROJECT - this account's BuilderBot cache folder for one
 # project, made if it is missing: its launcher, its scope, its token and its
 # session's environment. A folder per project, so that a session's view can
@@ -397,6 +441,10 @@ cache_project_dir() {
 # machine that holds only that project: bb-session, root, and the one command
 # the session account may run through sudo. The agent installs both.
 SESSION_BIN="${BB_SESSION_BIN:-/usr/local/sbin/bb-session}"
+# What only a controller installed bare metal leaves on a machine (R90, the
+# same as bb-session's CONTROLLER_MARKS): where one is, a session runs in
+# its view or not at all.
+CONTROLLER_MARKS=(/etc/bb-session.wall /etc/builderbot-controller /var/lib/builderbot-controller)
 
 # isolating - whether this node builds a session's view. Asked of the helper
 # through sudo, so it answers from what root set up and from nothing a
@@ -416,7 +464,19 @@ in_view() {
     local proj="$1" dir="$2" envf why
     shift 2
     RUN=("$@")
-    isolating || return 0
+    if ! isolating; then
+        # ...but never on the controller's own machine (R90): there a
+        # session runs inside the wall bb-session keeps around the
+        # controller, or not at all, and the check says what is missing.
+        local m
+        for m in "${CONTROLLER_MARKS[@]}"; do
+            on_node && [ -e "$m" ] || continue
+            why="$(sudo -n "$SESSION_BIN" check 2>&1 >/dev/null || true)"
+            bad "This machine is the controller's own, and a session here runs inside the wall around it or not at all:" \
+                "${why:-bb-session is not installed here yet}"
+        done
+        return 0
+    fi
     [ $# -gt 0 ] || set -- "${SHELL:-/bin/bash}" -l
     # The project's own Gradle home (B438), here too: an isolated session's
     # environment is this file, which the helper loads over what tmux was
@@ -450,6 +510,8 @@ in_view() {
     # trees read-only, and repeated words keep the launcher line respawnable.
     local reads=() r
     for r in ${BB_READS:-}; do reads+=(--reads "$r"); done
+    # ...its project's other repositories, one --works each, bound to write,
+    for r in ${BB_WORKS:-}; do reads+=(--works "$r"); done
     # ...and the places it is shown, one --sees each,
     for r in ${BB_SEES:-}; do reads+=(--sees "$r"); done
     # ...the toolchains it may not use left out of its view of the store (R77),
@@ -477,7 +539,7 @@ in_view() {
 claude_scope() {
     local proj="$1" here="${2:-}" dir out tmp hooks bundle
     # One file per project, rewritten each time rather than a fresh temp file:
-    # ttyd runs this script on every browser connection, including a reattach,
+    # Every terminal runs this script, a reattach included,
     # so mktemp here would drop a file per page load. Under the cache dir
     # because it is this user's, not world-writable /tmp.
     # A per-uid directory rather than a shared /tmp path when HOME is unset,
@@ -569,28 +631,38 @@ claude_scope() {
     esac
     # A project this one reads is a wall to Edit and not to Read: its tree
     # is in the view read-only, and the deny list says the same.
-    local readsq
+    local readsq worksq
     readsq="$(for r in ${BB_READS:-}; do printf '%s\n' "$WORKSPACE/$r"; done | jq -R . | jq -s .)"
+    # ...and its project's other repositories (R136) are no wall at all:
+    # their trees and this session's worktrees of them are its to write,
+    # each one's VERSION held as its own is.
+    # Both lists into the one pipe: the first loop's paths went out bare in
+    # front of the second's JSON, which jq refused, and a session of a project
+    # of several repositories started with no scope at all (B380).
+    worksq="$({ for r in ${BB_WORKS:-}; do printf '%s\n' "$WORKSPACE/$r"; done
+               for r in ${BB_WORK_DIRS:-}; do printf '%s\n' "$r"; done; } | jq -R . | jq -s .)"
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" --argjson reads "${readsq:-[]}" \
+               --argjson works "${worksq:-[]}" --argjson workdirs "$(for r in ${BB_WORK_DIRS:-}; do printf '%s\n' "$r"; done | jq -R . | jq -s .)" \
                --arg state "${DASHBOARD_STATE:-/config}" \
                --argjson hooks "$(python3 "$hooks/bb-agent-hook" --claude-settings "$proj" "${account:-owner}" "$hooks")" \
                --arg proj "$proj" --arg who "${account:-owner}" \
-               --arg mem "$HOME/.claude/projects/${here//\//-}/memory" '
+               --arg mem "$HOME/.claude/projects/$(tree_slug "$here")/memory" '
            {permissions: {
               # The memory of the project, which Claude Code keeps outside
               # its tree: a session asked the person to approve reading the
               # file it was about to update (Shebang-DevBoard, 6 Oct).
-              additionalDirectories: [$mem],
-              deny: (map(select(. as $d | $reads | index($d) | not) | "Read(\(.)/**)", "Edit(\(.)/**)")
-                     + map(select(. as $d | $reads | index($d)) | "Edit(\(.)/**)")
-                     + ["Edit(\($here)/VERSION)",
-                        "Edit(\($here)/**/VERSION)",
-                        "Edit(\($state)/rules.json)"])
+              additionalDirectories: ([$mem] + $workdirs),
+              deny: ((map(select(. as $d | $works | index($d) | not))
+                     | map(select(. as $d | $reads | index($d) | not) | "Read(\(.)/**)", "Edit(\(.)/**)")
+                       + map(select(. as $d | $reads | index($d)) | "Edit(\(.)/**)"))
+                     + ([$here] + $workdirs | map("Edit(\(.)/VERSION)", "Edit(\(.)/**/VERSION)"))
+                     + ["Edit(\($state)/rules.json)"])
            },
             # Written from the one list in bb-agent-hook, which the hooks of
             # the other agents run from too: a guard added there holds all.
-            hooks: $hooks}' > "$tmp" && [ -s "$tmp" ]; then
+            hooks: $hooks}' > "$tmp" 2> "$dir/claude-scope.why" && [ -s "$tmp" ]; then
+        rm -f "$dir/claude-scope.why"
         mv -f "$tmp" "$out"
         printf '%s' "$out"
         return 0
@@ -653,8 +725,11 @@ PY
     for a in "$@"; do case "$a" in --resume|--resume=*|resume) base_resumes=1 ;; esac; done
     dir="$(cache_project_dir "$proj")"
     # Named for its agent (claude-run.sh, codex-run.sh), which is what the
-    # session-is-really-this-agent check reads off the pane.
+    # session-is-really-this-agent check reads off the pane, and for its
+    # slot past the first (claude-2-run.sh, R143), so a second session's
+    # start never rewrites the file the first one respawns through.
     out="$dir/$ag-run.sh"
+    [ "${BB_SLOT:-1}" = 1 ] || out="$dir/$ag-${BB_SLOT}-run.sh"
     tmp="$out.new"
     # %q so the command survives being written down and read back as shell:
     # the system prompt is somebody's prose, with quotes and newlines in it.
@@ -687,6 +762,9 @@ PY
         # session asked, whichever agent it is (Claude Code also sets its
         # own CLAUDECODE), and what a held change names as its asker.
         printf 'export BB_AGENT=%q\n' "$ag"
+        # ...and which of its slots on the project (R143), which its hooks
+        # say with every report so each slot's state is its own.
+        printf 'export BB_SLOT=%q\n' "${BB_SLOT:-1}"
         # ...and whose, for the hooks another agent runs (bb-agent-hook),
         # as claude_scope names it in Claude's.
         printf 'export BB_AGENT_WHO=%q\n' "${account:-owner}"
@@ -783,6 +861,18 @@ PY
             printf 'bf=%q\n' "$BB_AGENT_BRIEFING"
             printf 'if [ -s "$bf" ]; then extra+=(-c "developer_instructions=$(jq -Rs . < "$bf")"); fi\n'
         fi
+        # Grok Build's, appended to its own prompt (--rules), read from its
+        # file at exec as Codex's is. Claude's hooks, which it would also
+        # read from ~/.claude/settings.json, kept out (a session runs its own
+        # copy of the guards, once), and its updater off: the node's copy is
+        # the one its Agents page pinned.
+        if [ "$ag" = grok ]; then
+            printf 'export GROK_CLAUDE_HOOKS_ENABLED=0 GROK_DISABLE_AUTOUPDATER=1\n'
+            if [ -n "${BB_AGENT_BRIEFING:-}" ]; then
+                printf 'bf=%q\n' "$BB_AGENT_BRIEFING"
+                printf 'if [ -s "$bf" ]; then extra+=(--rules "$(cat "$bf")"); fi\n'
+            fi
+        fi
         # Copilot CLI's, the folder it reads an AGENTS.md from.
         if [ "$ag" = copilot ] && [ -n "${COPILOT_CUSTOM_INSTRUCTIONS_DIRS:-}" ]; then
             printf 'export COPILOT_CUSTOM_INSTRUCTIONS_DIRS=%q\n' "$COPILOT_CUSTOM_INSTRUCTIONS_DIRS"
@@ -800,7 +890,8 @@ PY
         # would be handed the flag twice.
         # Every agent's the same way (R95 step 19): Codex CLI's newest
         # conversation in this folder (resume --last keeps to the working
-        # directory), Copilot CLI's newest (--continue).
+        # directory), Copilot CLI's newest in this tree (below), Grok Build's
+        # newest in its folder (-c).
         if [ "$base_resumes" -eq 0 ]; then
             case "$ag" in
                 claude)
@@ -809,7 +900,15 @@ PY
                     printf '  if [ -n "$n" ]; then n="${n##*/}"; extra+=(--resume "${n%%.jsonl}"); fi\n'
                     printf 'fi\n' ;;
                 codex)   printf 'if [ "${1:-}" = --respawn ]; then extra+=(resume --last); fi\n' ;;
-                copilot) printf 'if [ "${1:-}" = --respawn ]; then extra+=(--continue); fi\n' ;;
+                # Copilot's --continue is its newest anywhere, which with
+                # two slots on a project is either's (R143): the newest its
+                # Stop hook kept for this tree instead, by its id.
+                copilot)
+                    printf 'if [ "${1:-}" = --respawn ]; then\n'
+                    printf '  n="$(ls -1t %q/copilot/*.jsonl 2>/dev/null | head -1)"\n' "$tdir"
+                    printf '  if [ -n "$n" ]; then n="${n##*/}"; extra+=(--resume "${n%%.jsonl}"); else extra+=(--continue); fi\n'
+                    printf 'fi\n' ;;
+                grok)    printf 'if [ "${1:-}" = --respawn ]; then extra+=(-c); fi\n' ;;
             esac
         fi
         printf 'exec'
@@ -925,6 +1024,15 @@ agent_hooks() {
               def ours(ev; t): [{type: "command", bash: "\($c) \(ev)", timeoutSec: t}];
               {version: 1, hooks: (reduce $evs[] as [$n, $ev, $t] ({}; .[$n] = ours($ev; $t)))}' \
                 > "$f.new" 2>/dev/null && mv -f "$f.new" "$f" ;;
+        # Grok Build's global hooks folder, always trusted (a project's own
+        # need the folder trusted first): a file of BuilderBot's alone.
+        grok)
+            f="${GROK_HOME:-$HOME/.grok}/hooks/builderbot.json"
+            ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
+            jq -n --arg c "$cmd" --argjson evs "$evs" '
+              def ours(ev; t): [{hooks: [{type: "command", command: "\($c) \(ev)", timeout: t}]}];
+              {hooks: (reduce $evs[] as [$n, $ev, $t] ({}; .[$n] = ours($ev; $t)))}' \
+                > "$f.new" 2>/dev/null && mv -f "$f.new" "$f" ;;
     esac
 }
 
@@ -980,12 +1088,12 @@ trust_note() {
     echo "will keep asking about every command until it is restarted." >&2
 }
 
-# bad MESSAGE...: fail visibly. ttyd closes the connection the moment this
-# exits, so without the pause the browser shows an empty terminal and no reason.
+# bad MESSAGE...: fail visibly. The terminal closes the moment this exits, so
+# without the pause the browser shows an empty terminal and no reason.
 bad() {
     for line in "$@"; do echo "$line" >&2; done
-    # ...but only when something is holding a terminal open to read it. Under
-    # ttyd every fd is the pty. Called from a script with stderr on a pipe
+    # ...but only when something is holding a terminal open to read it. In
+    # a terminal every fd is the pty. Called from a script with stderr on a pipe
     # there is nobody to show it to, and the pause was ten seconds of nothing
     # each time; five tests in the dashboard suite spent it proving that a
     # refusal is a refusal.
@@ -1032,9 +1140,14 @@ need_author() {
 no_credential_here() {
     [ -z "${GIT_CONFIG_COUNT:-}" ] || return 0      # somebody else owns these; leave them alone
     export GIT_TERMINAL_PROMPT=0
-    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_COUNT=2
     export GIT_CONFIG_KEY_0=credential.helper
     export GIT_CONFIG_VALUE_0='!f() { echo "[builderbot] no git credential is on this machine, by design: the controller holds the keys. Use bb git push, fetch, pull or ls-remote, which relay through it" >&2; exit 1; }; f'
+    # ...and every tree taken as its own where an account is its own user
+    # (R125 step 7): its view maps its trees to it, and a tree the map could
+    # not reach (a share) is still another's, which git refuses as dubious.
+    # Command scope, which git honors for safe.directory.
+    export GIT_CONFIG_KEY_1=safe.directory GIT_CONFIG_VALUE_1='*'
 }
 
 # toolchains_off_path: PATH without the store directories of the toolchains
@@ -1082,10 +1195,10 @@ git_identity() {
     # the credential helper no_credential_here set, so `git config user.name`
     # and what reads it (Claude Code's status line) name the author a commit
     # carries rather than a home's .gitconfig from before the Profile had one.
-    if [ "${GIT_CONFIG_COUNT:-}" = 1 ] && [ "${GIT_CONFIG_KEY_0:-}" = credential.helper ]; then
-        export GIT_CONFIG_KEY_1=user.name GIT_CONFIG_VALUE_1="$name" GIT_CONFIG_COUNT=2
+    if [ "${GIT_CONFIG_COUNT:-}" = 2 ] && [ "${GIT_CONFIG_KEY_0:-}" = credential.helper ]; then
+        export GIT_CONFIG_KEY_2=user.name GIT_CONFIG_VALUE_2="$name" GIT_CONFIG_COUNT=3
         if [ -n "$email" ]; then
-            export GIT_CONFIG_KEY_2=user.email GIT_CONFIG_VALUE_2="$email" GIT_CONFIG_COUNT=3
+            export GIT_CONFIG_KEY_3=user.email GIT_CONFIG_VALUE_3="$email" GIT_CONFIG_COUNT=4
         fi
     fi
 }
@@ -1125,6 +1238,19 @@ gradle_local_build() {
     fi
 }
 
+# The history files a shell or a REPL kept in the home before shells kept
+# none on disk, removed: only the account's own user may, which a terminal
+# here runs as (bb-session tty).
+HISTORY_FILES=(.bash_history .python_history .node_repl_history .psql_history .sqlite_history
+               .mysql_history .lesshst)
+forget_history() {
+    local f
+    for f in "${HISTORY_FILES[@]}"; do
+        [ -f "$HOME/$f" ] && [ ! -L "$HOME/$f" ] && [ -O "$HOME/$f" ] && rm -f -- "$HOME/$f"
+    done
+    return 0
+}
+
 start() {
     local s="$1" dir="$2"; shift 2
     # tmux rewrites `.` and `:` in a session name to `_` (they are its target
@@ -1156,13 +1282,22 @@ start() {
         GRADLE_USER_HOME="$HOME/.cache/builderbot/u/$account/project/$BB_PROJECT/gradle-home"
     fi
     gradle_local_build
-    for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE BB_LOCAL_BUILD \
+    for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE BB_LOCAL_BUILD BB_WORKS BB_WORK_DIRS \
              GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME \
              GRADLE_USER_HOME ANDROID_USER_HOME XDG_DATA_HOME \
              GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 \
-             GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2 GIT_TERMINAL_PROMPT BB_TOOLCHAINS_OFF; do
+             GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2 GIT_CONFIG_KEY_3 GIT_CONFIG_VALUE_3 GIT_TERMINAL_PROMPT BB_TOOLCHAINS_OFF; do
         [ -n "${!v:-}" ] && envs+=(-e "$v=${!v}")
     done
+    # No history on disk (the operator, 27 Oct): a person's shell and their
+    # coding agents' sessions run as the same user, so a history file in the
+    # home was one any of their agents could read, a token typed on a command
+    # line among it. Each shell keeps its own in memory, which no other
+    # terminal reaches (each has a process space of its own); the REPLs'
+    # files go the same way, and what was kept before is taken away.
+    envs+=(-e "HISTFILE=" -e "PYTHON_HISTORY=/dev/null" -e "NODE_REPL_HISTORY=" -e "LESSHISTFILE=-"
+           -e "PSQL_HISTORY=/dev/null" -e "SQLITE_HISTORY=/dev/null" -e "MYSQL_HISTFILE=/dev/null")
+    forget_history
     # The server is started on its own first. When new-session is what
     # starts it, the server daemon keeps that new-session's argv (the -e
     # list above, token included) for the life of the server, where ps
@@ -1182,12 +1317,10 @@ start() {
     tmux set-option -g remain-on-exit-format \
         "BuilderBot: this ended before it started (exit #{pane_dead_status}). Close the tab, or open it again to start afresh." \
         2>/dev/null || true
-    # BuilderBot's tmux settings (the status line, PgUp's scrollback, the
-    # history kept), which the controller's server reads from the copy its
-    # start writes: a node's server, an account's own included, has no such
-    # copy, so it is given them here (B283).
+    # BuilderBot's tmux settings, which the controller's server reads from
+    # the copy its start writes (tmux_settings).
     if on_node; then
-        tmux source-file "$(dirname "$(readlink -f "$0")")/../lib/tmux.conf" 2>/dev/null || true
+        tmux_settings
     fi
     # ...and one left so from before is started afresh, not attached to.
     if tmux list-panes -t "=$s" -F '#{pane_dead}' 2>/dev/null | grep -qx 1; then
@@ -1205,7 +1338,7 @@ start() {
     local kv
     while IFS= read -r -d '' kv; do
         case "$kv" in
-            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*|CARGO_HOME=*|GRADLE_USER_HOME=*|ANDROID_USER_HOME=*|XDG_DATA_HOME=*) continue ;;
+            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|BB_WORKS=*|BB_WORK_DIRS=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*|CARGO_HOME=*|GRADLE_USER_HOME=*|ANDROID_USER_HOME=*|XDG_DATA_HOME=*) continue ;;
         esac
         tmux set-environment -g "${kv%%=*}" "${kv#*=}" 2>/dev/null || true
     done < <(env -0)
@@ -1218,9 +1351,13 @@ start() {
     for v in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
         tmux set-environment -gu "$v" 2>/dev/null || true
     done
-    # -A -d creates it if it is missing and attaches to it if it is not, without
-    # attaching yet: race-free where has-session followed by new-session is not.
-    tmux new-session -A -d -s "$s" -c "$dir" "${envs[@]}" "$@"
+    # Made if it is missing, and left as it is if it is there: a session of
+    # that name already running is new-session's "duplicate session", which
+    # is what is ignored. Race-free where has-session followed by
+    # new-session is not. Not -A: on a session that is there it is
+    # attach-session, which attached this terminal right here, before the
+    # settings below were made, and with -d threw every other client off it.
+    tmux new-session -d -s "$s" -c "$dir" "${envs[@]}" "$@" 2>/dev/null || true
 
     # Mouse mode decides who owns a drag. Off, the browser makes an ordinary
     # selection and the terminal copies it as the button comes up. On, tmux
@@ -1231,29 +1368,16 @@ start() {
     # Plain name, not tmux's `=exact` prefix: set-option rejects that form
     # ("no such session: =shell"), and the session was just created here, so an
     # exact match is the one it resolves to anyway.
-    case "${s#*~}" in
-        claude-*|codex-*|copilot-*) tmux set-option -t "$s" mouse on ;;
+    # Only the account's prefix comes off: a second slot's name ends in ~2
+    # (R143), which ${s#*~} took for the prefix on the owner's own name.
+    local b="$s"
+    [[ "$s" =~ ^u_[0-9a-f]{8}~ ]] && b="${s#*~}"
+    case "$b" in
+        claude-*|codex-*|copilot-*|grok-*) tmux set-option -t "$s" mouse on ;;
         *)        tmux set-option -t "$s" mouse off ;;
     esac
 
-    # A key copy mode has no use for leaves it, so a letter typed into a pane
-    # scrolled back ends the scroll rather than vanishing (the operator, 23
-    # Oct: Codex's approval list ignored every key while the pane sat in
-    # copy mode a scroll had put it in). Its own keys (arrows, q, /) keep
-    # their meaning; the first other key is spent leaving.
-    tmux bind-key -T copy-mode Any send-keys -X cancel 2>/dev/null || true
-    tmux bind-key -T copy-mode-vi Any send-keys -X cancel 2>/dev/null || true
-
-    # tmux's own right-click menu is drawn in the terminal, underneath the
-    # browser's context menu, which covers it: two menus for one click, and
-    # only one of them dismissable. The browser's cannot be suppressed from
-    # here (the terminal is served from its own port and is a cross-origin
-    # frame), so the one we control is the one that goes.
-    tmux unbind-key -n MouseDown3Pane 2>/dev/null || true
-    tmux unbind-key -n MouseDown3Status 2>/dev/null || true
-    tmux unbind-key -n MouseDown3StatusLeft 2>/dev/null || true
-    tmux unbind-key -n MouseDown3StatusRight 2>/dev/null || true
-
+    tmux_keys
     exec tmux attach-session -t "$s"
 }
 
@@ -1288,7 +1412,7 @@ case "$target" in
         start "$(sess "shell-${proj}-${num}")" "$dir" "${RUN[@]}"
         ;;
 
-    claude:*|codex:*|copilot:*)
+    claude:*|codex:*|copilot:*|grok:*)
         # The coding agent this session runs (R95): the argument's prefix,
         # by the agent table's ids (scripts/dashboard/agents.py), each with
         # what a person reads it as. Claude's is the path this branch has
@@ -1301,14 +1425,29 @@ case "$target" in
             claude)  agent_name=Claude;  agent_product="Claude Code" ;;
             codex)   agent_name=ChatGPT; agent_product="Codex CLI" ;;
             copilot) agent_name=Copilot; agent_product="Copilot CLI" ;;
+            grok)    agent_name=Grok;    agent_product="Grok Build" ;;
         esac
         # claude:PROJECT                  a fresh conversation
         # claude:PROJECT:r:UUID           resume that transcript (Claude's)
         # ...:b:BOOT                      and which run of the container asked
-        resume="" want_boot="" want_model="" want_effort=""
+        resume="" want_boot="" want_model="" want_effort="" slot=1
         case "$rest" in
             *:b:*) want_boot="${rest##*:b:}"; rest="${rest%:b:*}" ;;
         esac
+        # ...:s:N                         its slot on the project (R143): a
+        # second session of this agent there, its own name (claude-P~2), tree
+        # and conversation; the first when the argument names none.
+        case "$rest" in
+            *:s:*) slot="${rest##*:s:}"; rest="${rest%:s:*}" ;;
+        esac
+        case "$slot" in
+            [1-9]) ;;
+            *) bad "Not a slot: ${slot}" ;;
+        esac
+        # The session's name in its slot, the first as it always was.
+        slot_tail=""
+        [ "$slot" = 1 ] || slot_tail="~${slot}"
+        export BB_SLOT="$slot"
         # ...:m:MODEL:e:EFFORT            another agent's model and effort,
         # picked at Start (R95 step 9), each passed on only when it is one
         # of that agent's own (agents.py MODELS, EFFORTS): a table lookup.
@@ -1360,7 +1499,7 @@ case "$target" in
         #
         # First of the checks, so a tab that is going to be refused anyway
         # does not first fetch a login it will not use.
-        if ! tmux has-session -t "=$(sess "${agent}-${proj//[.:]/_}")" 2>/dev/null \
+        if ! tmux has-session -t "=$(sess "${agent}-${proj//[.:]/_}${slot_tail}")" 2>/dev/null \
            && [ "$want_boot" != "$(boot_id)" ]; then
             bad "This tab is from before ${BB_NODE:-the container} restarted." \
                 "Its conversation is still on disk. Open ${agent_name} on ${proj} from" \
@@ -1374,17 +1513,18 @@ case "$target" in
         # that was there all along (the operator, 6 Oct: the Claude tab took
         # a long time to load though it was running). Not for a resume, which
         # names a transcript, nor on a locked project, which says so below.
-        fast="$(sess "${agent}-${proj//[.:]/_}")"
+        fast="$(sess "${agent}-${proj//[.:]/_}${slot_tail}")"
         if [ -z "$resume" ] && ! is_locked "$proj" "${account:-}" \
            && tmux list-panes -t "=$fast" -F '#{pane_start_command}' 2>/dev/null | grep -qi "$agent"; then
             # The trust flag is still put back (a few jq calls), and the
             # running session is still told it started on the old answer.
             # On the session's own tree, which for anybody but the owner is
             # their worktree (session_dir, already there for a running one).
-            dir="$(session_dir "$proj" "$account" "$agent")"
+            dir="$(session_dir "$proj" "$account" "$agent" "$slot")"
             if [ "$agent" = claude ]; then claude_first_run "$dir" || true
             else agent_first_run "$agent" "$dir" || true; fi
             trust_note "$agent" "$dir"
+            tmux_keys
             exec tmux attach-session -t "=$fast"
         fi
         # Signed out, a session starts and dies on claude's own error, which
@@ -1411,6 +1551,10 @@ case "$target" in
                     [ -n "${COPILOT_GITHUB_TOKEN:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" ] \
                         || grep -v '^[[:space:]]*//' "${COPILOT_HOME:-$HOME/.copilot}/config.json" 2>/dev/null \
                             | jq -e '.lastLoggedInUser.login // empty' >/dev/null 2>&1 ;;
+                # Grok Build has no status verb either: its session token in
+                # ~/.grok/auth.json, or an API key in the environment.
+                grok)
+                    [ -n "${XAI_API_KEY:-}" ] || [ -s "${GROK_HOME:-$HOME/.grok}/auth.json" ] ;;
             esac
         }
         # EACH MACHINE KEEPS ITS OWN LOGIN, and opening a tab is when this
@@ -1436,6 +1580,14 @@ case "$target" in
                 "${agent_name}; then open this again."
         fi
         if ! logged_in; then
+            # Sealed here (R126) and not open: the home's file links into the
+            # tmpfs, which holds nothing until a person opens a terminal.
+            case "$agent" in claude) tf="$HOME/.claude/.credentials.json" ;; codex|grok) tf="$HOME/.$agent/auth.json" ;; *) tf="" ;; esac
+            if on_node && [ -n "$tf" ] && [ -L "$tf" ] && [ ! -e "$tf" ]; then
+                bad "This account's ${agent_name} sign-in is kept sealed on ${BB_NODE:-this node}, and it opens" \
+                    "only when you open one of your terminals there from the dashboard. Open this" \
+                    "session's tab, or a shell on this project, and it starts."
+            fi
             if on_node; then
                 bad "This account is not signed in to ${agent_name} on ${BB_NODE:-this node}." \
                     "Open the Agents page, pick ${BB_NODE:-this node}, and press Sign in under" \
@@ -1457,6 +1609,8 @@ case "$target" in
             # Its own updater off: the copy on the node is the one its
             # Agents page installed (agentcode.py).
             copilot) cmd=(copilot --no-auto-update) ;;
+            # Its updater off in the launcher's environment, as Copilot's.
+            grok)    cmd=(grok) ;;
         esac
         if [ -n "$resume" ] && [ "$agent" != claude ]; then
             # Another agent's conversation resumes below, once its tree is
@@ -1475,11 +1629,21 @@ case "$target" in
             # account's conversations (B613): one started elsewhere, or
             # carried on elsewhere since, comes down first. Asked only of a
             # node; on the share the file is the controller's own.
+            # In the folder of the tree it will run in, which is where Claude
+            # Code looks for it (B348: the project directory's was checked,
+            # and a worktree's session found nothing to resume).
+            rtd="$HOME/.claude/projects/$(tree_slug "$(session_dir "$proj" "$account" "$agent" "$slot")")"
             if on_node; then
                 ( cd "$dir" 2>/dev/null && BB_PROJECT="$proj" bb transcripts fetch "$resume" \
-                      --into "$HOME/.claude/projects/${dir//\//-}" >/dev/null 2>&1 ) || true
+                      --into "$rtd" >/dev/null 2>&1 ) || true
             fi
-            if [ ! -f "$HOME/.claude/projects/${dir//\//-}/${resume}.jsonl" ]; then
+            # ...and from another of this account's trees when it was had
+            # there: another slot's (R143), or the project directory's.
+            if [ ! -f "$rtd/${resume}.jsonl" ]; then
+                rf="$(find "$HOME/.claude/projects" -mindepth 2 -maxdepth 2 -name "${resume}.jsonl" 2>/dev/null | head -1)"
+                [ -z "$rf" ] || { ( umask 077; mkdir -p "$rtd" ) && cp -p "$rf" "$rtd/"; } 2>/dev/null || true
+            fi
+            if [ ! -f "$rtd/${resume}.jsonl" ]; then
                 bad "No transcript ${resume} for ${proj}." \
                     "It may have been cleaned up; start a new conversation instead."
             fi
@@ -1540,7 +1704,7 @@ case "$target" in
                 # (COPILOT_CUSTOM_INSTRUCTIONS_DIRS), as AGENTS.md there.
                 case "$agent" in
                     claude) prompt=(--append-system-prompt-file "$pref") ;;
-                    codex)  export BB_AGENT_BRIEFING="$pref" ;;
+                    codex|grok) export BB_AGENT_BRIEFING="$pref" ;;
                     copilot)
                         idir="$(cache_project_dir "$proj")/copilot-instructions"
                         if ( umask 077; mkdir -p "$idir" ) && cp -f "$pref" "$idir/AGENTS.md" 2>/dev/null; then
@@ -1561,7 +1725,20 @@ case "$target" in
         # directory; anybody else gets a worktree of their own on a branch of
         # their own, so two people on one project cannot overwrite each other,
         # commit each other's half-finished work, or share a dist/.
-        dir="$(session_dir "$proj" "$account" "$agent")"
+        dir="$(session_dir "$proj" "$account" "$agent" "$slot")"
+        # ...and in each other repository of its project (R136), the same:
+        # its own tree for the owner, a worktree on the same branch name for
+        # anybody else, so one session's work is one branch everywhere.
+        BB_WORK_DIRS=""
+        for w in ${BB_WORKS:-}; do BB_WORK_DIRS+="$(session_dir "$w" "$account" "$agent" "$slot") "; done
+        export BB_WORK_DIRS
+        # ...each with its token kept where bb in that tree reads it.
+        while read -r w t; do
+            [ -n "$w" ] && [ -n "$t" ] || continue
+            wd="$(cache_project_dir "$w")"
+            ( umask 077; printf '%s\n' "$t" > "$wd/token.new" ) 2>/dev/null \
+                && mv -f "$wd/token.new" "$wd/token" 2>/dev/null || true
+        done <<< "${BB_WORK_TOKENS:-}"
         # Another agent's conversation, resumed in that agent and no other
         # (R95 step 8): its log is the copy its Stop hook keeps in the tree's
         # folder of the account's transcripts (bb-agent-hook keep), fetched
@@ -1593,6 +1770,13 @@ case "$target" in
                             || bad "Could not put ${resume} back where Copilot keeps its sessions."
                     fi
                     cmd+=(--resume "$resume") ;;
+                # Grok keeps a session under a folder named by its own
+                # encoding of the tree: resumed where this node has it.
+                grok)
+                    find "${GROK_HOME:-$HOME/.grok}/sessions" -path "*/${resume}/updates.jsonl" 2>/dev/null | grep -q . \
+                        || bad "Grok's conversation ${resume} is not on this node." \
+                               "Grok resumes a session where it ran; start a new one here instead."
+                    cmd+=(--resume "$resume") ;;
             esac
         fi
         # Claude Code's first run asks three things at the keyboard (a
@@ -1613,6 +1797,12 @@ case "$target" in
             # The other agents ask whether to trust the folder too; the
             # session's own tree is answered for them the same way.
             agent_first_run "$agent" "$dir" || true
+            # ...and its project's other repositories (R136), trusted and
+            # writable to it as Claude's settings make them.
+            for wd in ${BB_WORK_DIRS:-}; do
+                agent_first_run "$agent" "$wd" || true
+                cmd+=(--add-dir "$wd")
+            done
         elif ! claude_first_run "$dir"; then
             echo "WARNING: could not record ${dir} as trusted in ${HOME}/.claude.json." >&2
             echo "Claude Code ignores a workspace's own permission rules until it is," >&2
@@ -1655,7 +1845,7 @@ case "$target" in
         # as subprocesses, so a session busy running a build reports `bash`
         # and would have been killed here, mid-conversation. The start command
         # is what the pane was created with and does not move.
-        mysess="$(sess "${agent}-${proj//[.:]/_}")"
+        mysess="$(sess "${agent}-${proj//[.:]/_}${slot_tail}")"
         if tmux has-session -t "=$mysess" 2>/dev/null \
            && ! tmux list-panes -t "=$mysess" -F '#{pane_start_command}' 2>/dev/null \
                 | grep -qi "$agent"; then
@@ -1697,10 +1887,10 @@ case "$target" in
         # goes to tmux directly, which is what used to happen and is still
         # right for a short one.
         if launcher="$(LAUNCH_AGENT="$agent" claude_launcher "$proj" \
-                          "$HOME/.claude/projects/${dir//\//-}" \
+                          "$HOME/.claude/projects/$(tree_slug "$dir")" \
                           "${cmd[@]}" "${prompt[@]}")"; then
             in_view "$proj" "$dir" "$launcher"
-            start "$(sess "${agent}-${proj}")" "$dir" "${RUN[@]}"
+            start "$(sess "${agent}-${proj}${slot_tail}")" "$dir" "${RUN[@]}"
         else
             # Nowhere to write it. The command without the block still fits on
             # tmux's command line, and a session that starts knowing less is
@@ -1712,13 +1902,13 @@ case "$target" in
             echo "Everything else about it is the same. Check that ${HOME:-\$HOME}/.cache" >&2
             echo "is writable." >&2
             in_view "$proj" "$dir" "${cmd[@]}"
-            start "$(sess "${agent}-${proj}")" "$dir" "${RUN[@]}"
+            start "$(sess "${agent}-${proj}${slot_tail}")" "$dir" "${RUN[@]}"
         fi
         ;;
     # ctr:NAME:INSTANCE:CONTAINER: a shell inside one container of a dev
     # instance on this controller's own daemon (R218 step 4), the container
-    # the URL's, since this ttyd is loopback-only behind the proxy that
-    # checked it. bash when the image has one, sh otherwise; the session ends
+    # the URL's, since on the controller only the dashboard, which checked
+    # it, starts this. bash when the image has one, sh otherwise; the session ends
     # when it does. A node's is the block near the top.
     ctr:*)
         # On a node it is the agent's container terminal server's (above):

@@ -449,7 +449,14 @@ gap between expected and actual, which are exactly its fields, plus a notes
 field the analysis accumulates in (`bb bug note N "..."` appends, dated,
 rather than replacing: the last analysis is how the next one starts). Either
 side writes it: you report from the view, a session files what it trips over
-with `bb bug add "..." --sev high --area "..." --repro "..."`. It is
+with `bb bug add "..." --sev high --area "..." --repro "..." --reproduces
+sometimes`. Beside how to make it happen, a report says whether that works:
+**always**, **sometimes**, **once** (seen the one time) or **not tried**,
+which is what every report from before the question says. A session that
+gives the steps answers it; the form asks it under the steps, the opened row
+says it as *Happens*, a chip narrows the list by it, and the Sort orders by
+it. `bb bug add --report N` files BuilderBot's diagnostics report N (`bb
+diag reports`) with its words, area, repro and that answer. It is
 write-through, not staged: a report is a form submitted once. Each report
 is stamped with the project's version as `bb version` prints it, on filing
 (*in 0.4.0-dev.390+045bb5a* on the row) and again on closing (*closed in*),

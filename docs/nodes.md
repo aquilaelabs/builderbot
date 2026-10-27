@@ -44,7 +44,10 @@ Four rules prevent both, and every section below is written against them:
    defaulted. Enterprise is *configuration*: Postgres instead of SQLite, OIDC
    instead of one password, approval instead of auto-approval. Config, never
    a fork. (This rule used to say "the local node; nothing to set"; §18 says
-   why the local node stopped being a place work runs.)
+   why the local node stopped being a place work runs.) One install bends
+   it: a controller installed bare metal may enroll its own machine as a
+   node, an ordinary agent row behind the node wall (§18, R90); the
+   container install's `local` row still runs nothing.
 3. **Enterprise features are additive planes, not modifications.** Audit is a
    table every mutation writes; RBAC is a check in front of the same handlers;
    metrics are a read-only endpoint. If a feature needs the core to behave
@@ -84,8 +87,8 @@ the parts that decide the phasing.
 - The GitHub Actions runner runs **in this container**, registered at the org
   level with fixed labels.
 - The dashboard's server is stdlib-only Python on `ThreadingHTTPServer`, one
-  thread per open request. It can *relay* a websocket (it does, to ttyd) but
-  does not implement one.
+  thread per open request. It answers a websocket of its own (the terminals,
+  at `/termws`) and relays one, byte for byte, to a node.
 
 So the machine already does five jobs: dashboard, session host, build box,
 Actions runner, and Docker client. The node model is what lets four of those
@@ -1035,7 +1038,7 @@ the pieces stack:
    own, which it never sees, and sends a container's data home in pieces
    under the edge's request limit (Cloudflare's is 100 MB;
    `Controller.upload_pieces`, `relocate.data_put`). Such a node is hosting
-   only by construction: the controller cannot reach its session ports back
+   only by construction: the controller cannot reach its screen relay back
    through the tunnel.
 1a. *Its journal is kept across boots* (R185): the provisioner writes a
    journald drop-in (`Storage=persistent`), and the agent does the same on
@@ -1340,19 +1343,6 @@ variables: the address is what the node dialed in from, and the path mapping
 lives on the node record (`config.paths`, edited on an agent node's page under Advanced, read
 by `devapp.host_map` through the node being addressed).
 
-**Check, beside it (roadmap #13).** Under the identity mapping: the shipped
-default and the rule; nothing verified that the two machines actually mean
-the same directory by `/workspace`: this container's mount table says nothing
-about the other machine's, and docker answers a missing bind source by
-creating an empty directory, so the failure was silent twice over (it cost
-three rounds on 27 Aug, when the share was repointed on one side only). Check
-makes a marker directory under the share here and asks the node's daemon
-whether it can see it, through the same guarded one-shot container the
-dev-data directory is made with (`devapp.check_paths`, a `test -d` on the
-share root). Three answers and never a guess: the same directory, NOT the
-same directory with what that would cost, or "could not ask" with the
-daemon's own words. Off the poll; it is for when something changed.
-
 There is one node kind, the agent: `node_add` is a refusal naming
 enrollment, and the controller never runs a job on another machine over a
 key. The `ssh_addr` column stays, written empty and read by nothing:
@@ -1505,7 +1495,7 @@ rule, the nginx container written for it). Without them the machine keeps
 those and can be enrolled again, here or on another controller, from Enroll
 node. What stays is shared with the rest of the machine:
 docker and the packages the provisioner installed (nfs-common, python3,
-tmux, jq, curl, a distribution's ttyd), the empty mountpoint directories, and
+tmux, jq, curl), the empty mountpoint directories, and
 everything on the shares, which other nodes may be using. The row's verb
 deregisters the node's runners on their forges first, while the agent can
 still ask the controller for the tokens; the two on-machine forms cannot,
@@ -1644,6 +1634,15 @@ jobs are *offered only* to nodes that carry the stamp: a machine enrolled
 as a plain builder never shows the mounts-and-network panel at all, which is
 the capability rule (§2) applied to the most privileged thing the agent
 does.
+
+*On the controller's own machine* (a controller installed bare metal that
+is a node of itself, R90, §18) the provisioner runs as it does anywhere,
+bb-sandbox and its stamp included, with `--beside-controller`: the docker
+daemon is not labeled a sandbox and the job account is kept out of the
+docker group, so the row is offered builds, sessions and the
+mounts-and-network panel and never containers. That panel there changes
+the controller's own machine, its address included, and the node reaches
+its controller at that address: a new one there is the controller moving.
 
 *Where phase 5 landed it:* the desired config lives on the node record
 (`config.desired`: mounts, stores, network), validated to its shape when it
@@ -2232,6 +2231,21 @@ nothing, with everything through `bb`. The self-hosted runner on this
 container, and everything CLAUDE.md says about CI sharing the box, goes with
 phase 7.
 
+**One install where the machine runs work: a controller installed bare
+metal (R90, the operator, 21 and 22 Oct 2026).** `nodes/install-controller.sh`
+lays the controller out on a machine of its own, as the image does, and
+then provisions that machine as a node of itself with
+`provision-linux.sh` as it is (`--beside-controller`), enrolled as an
+ordinary agent row the Nodes page marks as this machine. Everything above
+still holds of the controller's process: it runs no session, no build and
+no runner. What runs them is the node half, under accounts the controller
+is walled off from: its state, env file, secrets and loopback ports are out
+of every session's view and network, its job account is out of the docker
+group, and a session there refuses to start when any of that does not
+check out (the wall, [decisions.md](decisions.md), "A controller installed
+bare metal, and its own node"). The container install is unchanged: its
+`local` row still runs nothing.
+
 ## 19. The session runs on the node
 
 Decided 4 September, and it moves the destination again: further, and in a
@@ -2277,7 +2291,7 @@ each is a real fork rather than a detail:
    volume. Per node, or mounted, or synced; and the login is one credential
    being placed on more machines.
 4. **The terminal.** `bb-tty` makes a tmux session locally and the dashboard
-   frames ttyd at it. A session on the VM means the tmux is there, so the
+   opens a terminal on it. A session on the VM means the tmux is there, so the
    dashboard has to reach across: ssh, or the agent proxying a PTY over the
    job channel. Roadmap #8 (pop-out windows) is in the same code and should
    land after this, not before.
@@ -2342,19 +2356,22 @@ above, in order:
    and the original kept beside the link, renamed, for the operator to
    delete. The share carries a `.bbignore`; bb-tty walls every other
    account's directory in it as it walls a sibling project.
-4. **The terminal is the same ttyd, on the node.** The agent keeps two of
-   them up (writable, and the read-only twin) running bb-tty from the bb
+4. **The terminal is the same bb-tty, on the node.** The agent's screen
+   relay, on the node's LAN address at port 7684, opens a pty for each
+   terminal the controller carries to it (writable, the read-only twin, or a
+   container's shell as the docker account), running bb-tty from the bb
    bundle the controller ships (refetched when the bundle's digest moves in
-   hello), bound on the node's LAN address; the controller's `/term` proxy
-   dials that instead of the loopback (phase 10b), stamping the account, its
-   name and a session token into the URL exactly as it stamps the account
-   locally. On the node that URL is only a claim: a session there reaches
-   the same ttyd over loopback, so bb-tty shows the token to the controller
+   hello). The controller's `/termws` carries the browser's socket there
+   instead of to a pty of its own (phase 10b), signed with the node's screen
+   key, with the account, its name and a session token in bb-tty's words
+   exactly as it gives them locally. On the node those words are only a
+   claim, so bb-tty shows the token to the controller
    (`POST /api/v1/tty-grant`) before anything starts, and the account, its
    name and whether it is the owner come from that answer, which also runs
-   the proxy's own checks (the project is the token's, the account may open
-   it, a writable terminal is for an account with a shell). No answer, no
-   terminal (B166). The tmux server is the node's; a dropped browser detaches.
+   the controller's own checks (the project is the token's, the account may
+   open it, a writable terminal is for an account with a shell). No answer,
+   no terminal (B166). The tmux server is the node's; a dropped browser
+   detaches.
 5. **bb's notebook verbs are relayed**: `POST /api/v1/bb` with the session's
    token carries the words (`roadmap add …`, `bug show 3`, `version --file`),
    the controller runs its own bb in that project's tree and returns what it
@@ -2375,9 +2392,9 @@ above, in order:
 Phase 10b is built too: `server.session_target` decides per project:
 local, the node (`reported.session.up` and `/workspace` mounted), or
 refused with the reason (offline, no session half, no mount) rather than
-quietly started on the wrong machine, and `_term_proxy` dials the node's
-ttyd on the address it enrolled from, stamping `tok:` and `name:` after the
-account. The project's card carries the same decision (`session_at`,
+quietly started on the wrong machine, and `/termws` carries the terminal to
+the node's screen relay on the address it enrolled from, with `tok:` and
+`name:` after the account. The project's card carries the same decision (`session_at`,
 `session_why`), so Start agent is dead with the sentence before
 anything is asked. Two of its refusals are passing and say to wait rather
 than to unbind: the agent not answering (a reboot, an update), and a node
@@ -2392,18 +2409,19 @@ go"), and refuses a node taken off its copy (R164). A mount the server
 refused is neither: the agent tries an unmounted fstab entry when it takes
 the census and reports what mount said (`mounts[].error`), the row and the
 button repeat it, and Apply network asks each NFS server's exports
-(`showmount -e`) before moving to an address they do not admit. provision-linux.sh filters 7681, 7682 and 7683 (the container terminal) to the controller's
+(`showmount -e`) before moving to an address they do not admit. provision-linux.sh filters 7684, the screen relay's port, to the controller's
 address and loopback with an nftables table of its own, re-applied at boot by
 a unit. The filter keeps the LAN out; it cannot keep a session on the node
-out, which is why the grant above is the check and not the firewall.
+out, which is why the grant above and the relay's signature are the check
+and not the firewall.
 Addresses move, and the design survives it without anybody re-enrolling:
 the node dials out, so a node whose own address changes is reached by the
 controller at whatever address its next hello or work poll arrived from
 (`agent.addr` follows every one, and `route_host` reads it); the agent
-compares the address its ttyds are bound to against the machine's current
-one each loop and restarts them onto a new one (`session_check`); and once
+compares the address its screen relay listens on against the machine's
+current one each loop and rebinds it onto a new one (`session_check`); and once
 a minute it resolves the controller's hostname again and rewrites the
-session-ports rule (the nftables file, or firewalld's rich rules) when
+session-port rule (the nftables file, or firewalld's rich rules) when
 the answer moved (`session_firewall_check`). A controller named by a bare
 IP in the node's `node.json` cannot be followed that way; that is the one
 case that wants `enroll` again.
@@ -2418,7 +2436,7 @@ The two hooks a session runs post from a node too: `POST /api/v1/hook`
 with the session's token takes a `note` (the file an edit is about to
 touch, answered with who else has it open: `bb work` reads the same
 record), an `asked` line for the project's feed, and `started`, which
-bb-tty sends when it is about to make the session, since the proxy cannot
+bb-tty sends when it is about to make the session, since the controller cannot
 see one start on a node. The account is the token's, never the request's.
 Keys reach a node's session the same way: the key row, the read-only
 console's line, a macro: as tmux commands queued for the agent
@@ -2443,9 +2461,9 @@ controller with no node for the project refuses and says where it runs.
 A node's sessions outlive a controller restart on purpose (the tmux is the
 node's) and, since B107, an AGENT restart too: the unit is installed with
 `KillMode=process`, because systemd's default takes the whole cgroup and the
-agent's cgroup holds the ttyds, the tmux servers under them and the Claude
+agent's cgroup holds the terminals, the tmux servers under them and the Claude
 sessions inside those, so Update agent ended every conversation on the
-machine. The agent stops what is its own on SIGTERM, its ttyds and its jobs,
+machine. The agent stops what is its own on SIGTERM, its terminals and its jobs,
 and leaves the tmux alone. What must NOT outlive anything is the idle rule:
 Controller settings' Idle sessions, "end any agent's session after N idle minutes", rides the
 hello reply into node.json and the agent enforces it on its own tmux,

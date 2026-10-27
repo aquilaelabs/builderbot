@@ -37,7 +37,7 @@ const EFFORTS = [["", "Claude's default"], ["low", "low"], ["medium", "medium"],
 // a menu.
 let rnPrefWas = {git_name: "", git_email: "",
                  node: "", nodes: "", hosts: "", reads: "", tc_off: "", packs_on: "", sees: "", reaches: "", build: "", test: "", outputs: "",
-                 capture_days: "7", snapshot_days: "14", snapshots_on: "1", dev_keep: "3", gate: "", debug: ""};
+                 capture_days: "7", snapshot_days: "14", snapshots_on: "1", dev_keep: "3", gate: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -52,14 +52,15 @@ const colorAttrs = name => {
   return tone ? {cls: " pc", style: ` style="--pc:${tone}"`} : {cls: "", style: ""};
 };
 // This account's color for a project (the operator, 18 Oct: a person's own,
-// set from its card), or "".
-const projectColor = name =>
-  (state?.projects || []).find(x => x.name === name)?.color || "";
+// set from its card), or "", by its project's key or any of its repositories.
+const projectColor = name => state?.repos?.[name]?.color
+  ?? (state?.projects || []).find(x => x.name === name)?.color ?? "";
 // The name a project is shown under (R154): its directory is `name` and the
 // key everywhere, and what a person reads is the registry's `label`. A name
-// not in the poll (a project since deleted) is shown as it is.
+// not in the poll (a project since deleted) is shown as it is. A project's
+// own key (R138) reads as the project's name.
 const projLabel = name =>
-  (state?.projects || []).find(x => x.name === name)?.label || String(name ?? "");
+  (state?.projects || []).find(x => x.name === name)?.label || state?.repos?.[name]?.name || String(name ?? "");
 // The project a tab is about, for its color: a notebook's, the project whose
 // Claude session a terminal tab holds, or for a shell the project its label
 // names, the directory it is in (sessionLabels), so a tab that reads
@@ -100,9 +101,9 @@ function rnPrefsOf(p){
                tc_off: (p?.prefs?.tc_off || []).join(","), packs_on: (p?.prefs?.packs_on || []).join(","),
                agents_off: (p?.prefs?.agents_off || []).join(","),
                agent_default: p?.prefs?.agent_default || "claude",
+               agent_slots: String(p?.prefs?.agent_slots ?? 3),
                sees: (p?.prefs?.sees || []).join(", "),
                reaches: JSON.stringify(p?.prefs?.reaches || []),
-               debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
@@ -113,7 +114,7 @@ function rnPrefsOf(p){
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
                gpu: p?.prefs?.gpu || "on",
-               reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
+               reply: p?.yours?.reply || "", asks: p?.yours?.asks || "", term_scheme: p?.yours?.term_scheme || "",
                devbuild: devClaudeMode(p?.name || rnFor),
                makevms: p?.prefs?.makevms || "deny",
                vm_caps: rnVmCapsOf(p),
@@ -131,6 +132,11 @@ function rnFillPrefs(p){
   const nm = $("rnNodesMore");
   if (nm) delete nm.dataset.drawn;
   rnPrefWas = rnPrefsOf(p);
+  // A select with no value of its own reads as its first option, and the
+  // form collects every field whichever section is saved: set here, with the
+  // rest that are always on the form, so saving another section never takes
+  // the cap down to 1 (R143).
+  $("rnAgentSlots").value = rnPrefWas.agent_slots;
   $("rnGitName").value = rnPrefWas.git_name;
   $("rnGitEmail").value = rnPrefWas.git_email;
   // Said where it is typed: the Profile is the default, this is the exception,
@@ -147,7 +153,6 @@ function rnFillPrefs(p){
   rnFillPrefsRest(p);
   rnFillReads();
   rnFillAgents();
-  rnFillDebug();
   rnLoadTools(p);
   rnLockSettings(p);
 }
@@ -198,7 +203,7 @@ function rnFillNode(){
       && (n.state !== "disabled" || n.id === rnPrefWas.node) && !removed.has(n.id) && !n.config?.host_only);
     if (nodesList === null){
       const opened = rnFor;
-      loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnFillDebug(); rnBars(); } });
+      loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnBars(); } });
     }
     // Hidden with the rest of the project's own settings when this dialog was
     // opened by the chain, which asks about the remote and nothing else.
@@ -222,7 +227,7 @@ function rnFillNode(){
     sel.innerHTML = `<option value="">none: no builds, tests or sessions until one is picked</option>`
       + gone
       + pick.map(n => `<option value="${esc(n.id)}"${n.id === rnPrefWas.node ? " selected" : ""}>${
-          esc(n.name)} (${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
+          esc(n.name)} (${n.config?.own ? "this machine, " : ""}${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
           tools(n).length ? " · " + esc(tools(n).slice(0, 4).join(", ")) : ""})</option>`).join("");
     sel.value = gone ? rnPrefWas.node : pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
     // The closed picker is italic while the removed node is the one shown.
@@ -354,27 +359,6 @@ function rnFillNodesMore(){
 // The projects a session here may read: every other project this account
 // sees, a listbox row each, ticked from the settings. Read-only there by
 // construction (users.with_reads), so the hint under it can say so plainly.
-// What a session here may read for debugging (the operator, 6 Oct): the
-// controller's diagnostics, then each node's machine logs, a listbox row
-// each. The debug grant's, and not drawn at all for an account without it.
-const rnDebugKey = (diag, from) => (diag ? "diag;" : "") + [...(from || [])].sort().join(",");
-function rnFillDebug(){
-  const box = $("rnDebug"), wrap = $("rnDebugField");
-  if (!box) return;
-  const p = (state?.projects || []).find(x => x.name === rnFor);
-  const was = new Set(p?.prefs?.log_from || []);
-  const rows = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
-  // ...and only where debug mode is on, which needs a controller started
-  // with DEBUG_MODE=1 (settings.debug_available).
-  wrap.hidden = rnMode === "git" || state?.can?.debug === false || !state?.settings?.settings?.debug_mode?.value;
-  box.innerHTML = lrow("@diag", "The controller's diagnostics", "bb diag", !!p?.prefs?.diag)
-    + rows.map(n => lrow(n.id, n.name, "machine logs", was.has(n.id))).join("");
-}
-function rnDebugNow(){
-  const on = [...$("rnDebug").querySelectorAll("input:checked")].map(i => i.value);
-  return {diag: on.includes("@diag"), log_from: on.filter(v => v !== "@diag")};
-}
-
 // ---- the Toolchains group (R77) -------------------------------------------
 // The toolchains installed on the project's node, as its Toolchains page
 // lists them, and every tool pack: a row each, ticked when its sessions may
@@ -446,16 +430,30 @@ function rnFillAgents(off = rnPrefWas.agents_off, dflt = rnPrefWas.agent_default
 function rnFillReads(){
   const box = $("rnReads"), wrap = $("rnReadsField");
   if (!box) return;
-  const was = new Set(rnPrefWas.reads.split(",").filter(Boolean));
-  const others = (state?.projects || []).filter(p => p.name !== rnFor)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // What it reads is projects (R138): every other one, by its name, the
+  // value its key, which is what a read names; a read written as one of its
+  // repositories ticks it too.
+  const was = new Set(rnPrefWas.reads.split(",").filter(Boolean).map(r => reposOf(r) || r));
+  const own = reposOf(rnFor);
+  const others = projectList().filter(c => c.key !== own).sort((a, b) => a.name.localeCompare(b.name));
   wrap.hidden = rnMode === "git" || !others.length;
-  box.innerHTML = others.map(p => lrow(p.name, projLabel(p.name), p.branch ? `git: ${p.branch}` : "", was.has(p.name))).join("");
+  box.innerHTML = others.map(c => lrow(c.key, c.name,
+    c.rows.length === 1 && c.rows[0].branch ? `git: ${c.rows[0].branch}` : c.rows.length ? `${c.rows.length} repositories` : "no repository yet",
+    was.has(c.key))).join("");
   // BuilderBot's owner's alone (the operator, 6 Oct): shown to everybody,
   // changed by the owner, and why not said on the row (not a tooltip).
   const mine = state?.can?.reads !== false;
   box.querySelectorAll("input").forEach(i => { i.disabled = !mine; });
   $("rnReadsWhy").hidden = mine;
+}
+
+// How this person's terminals here look with the colors picked, their
+// Profile's look and their own changes to that scheme with it.
+function rnTermPreview(){
+  const box = $("rnTermPreview");
+  if (!box) return;
+  const look = state?.term_look || {}, scheme = $("rnTermScheme").value || look.scheme || "default";
+  box.innerHTML = termPreview(termPalette(scheme, (look.colors || {})[scheme]), look);
 }
 
 function rnFillPrefsRest(p){
@@ -471,6 +469,9 @@ function rnFillPrefsRest(p){
   $("rnGpu").value = p?.prefs?.gpu || "on";
   $("rnReply").value = p?.yours?.reply || "";
   $("rnAsks").value = p?.yours?.asks || "";
+  $("rnTermScheme").value = p?.yours?.term_scheme || "";
+  rnTermPreview();
+  $("rnTermScheme").onchange = rnTermPreview;
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
   $("rnSnapDays").value = String(p?.prefs?.snapshot_days ?? 14);
@@ -529,7 +530,7 @@ function rnDrawPrefs(){
   // starts on the ones picked in the agent's menu each time (the operator,
   // 12 Oct).
   const shut = !!p?.locked_me;
-  $("rnReply").disabled = $("rnAsks").disabled = shut;
+  $("rnReply").disabled = $("rnAsks").disabled = $("rnTermScheme").disabled = shut;
   $("rnPrefHint").textContent = shut
     ? lockedWhy(p) + "."
     : "Applied the next time Claude starts here. The model and effort are picked each time a session starts, in the Claude button's menu.";
@@ -630,7 +631,7 @@ const RN_LIST = {
   claude: "what its sessions do on their own, ask about, or may not",
   yours: "your replies, questions and commit name here",
   repo: "how it pushes and pulls", runs: "where it builds, tests and runs",
-  build: "commands, outputs, and what is kept", sees: "other projects, shares, addresses, logs",
+  build: "commands, outputs, and what is kept", sees: "other projects, shares, addresses",
   tools: "the toolchains and tool packs its sessions use",
   files: "its files over FTP and in an editor", snapshots: "the days kept, and putting one back",
   sessions: "every account's sessions here, to end",
@@ -642,8 +643,12 @@ function rnSplit(box, name){
   splitSects(box, "rn:" + name, {says: RN_LIST, sel: ':scope > details.rngroup:not([data-sect="rn:claude"])', back: "Settings",
     marks: k => RN_SECTS.includes(k) && rnSectChanges(k).said.length > 0});
 }
-// A project's settings: its notebook's Settings view.
-function openProjectSettings(name){ openNotebook(name, "settings"); }
+// A project's settings: its notebook's Settings view, at one of its sections
+// when `sect` names it (a node's Projects section opens Where it runs).
+function openProjectSettings(name, sect = ""){
+  if (sect) SPLIT["rn:" + name] = {pick: sect, open: true};
+  openNotebook(name, "settings");
+}
 
 // The Agents may section, lent to a notebook's Permissions view
 // (nb-permissions.js), goes back to its place in the form, marked by this
@@ -708,7 +713,7 @@ function renameProject(name, mode = "all"){
         + "until the switch below says to use it."
     : p?.has_token
       ? "Replaces this project's token. Kept for it alone; a shell here can read it."
-      : "Kept for this project alone; a shell here can read it.";
+      : "Kept for this repository alone; a shell here can read it.";
   // Nothing to set is an answer, not an empty box: a linked project with no
   // token and no push rights has a remote it can only read.
   $("rnGitNone").hidden = !(git && $("rnTokenField").hidden);
@@ -832,7 +837,7 @@ function rnDrawPeople(){
     <label class="ndcap"><input type="checkbox" id="rnInviteOnly"${only ? " checked" : ""}${v.may_manage ? "" : " disabled"}>
       Invite only</label>
     <div class="sub whoson">On it: ${v.members.length ? v.members.map(n => v.may_manage
-      ? `<button type="button" class="link" data-rnaccess="${esc(n)}" title="what ${esc(n)} holds here and everywhere">${esc(n)}</button>`
+      ? `<button type="button" class="namelink" data-rnaccess="${esc(n)}" title="what ${esc(n)} holds here and everywhere">${esc(n)}</button>`
       : esc(n)).join(", ") : "nobody yet"}</div>
     ${v.invites.map(i => `<div class="rninvite">${esc(i.name)} <span class="dim">invited${i.role ? ` as ${esc(i.role)}` : ""} by ${esc(i.by || "somebody")} ${esc(ago(i.at))}</span>
       <button type="button" class="link" data-withdraw="${i.id}">Withdraw</button></div>`).join("")}
@@ -1100,6 +1105,7 @@ function rnLoadAuth(name){
       $("rnTestField").hidden = !j.url;
       rnDrawAuth();
       rnDrawKey();
+      rnDrawStore(name);
       rnBars();
     })
     .catch(() => {});                          // the rename itself still works
@@ -1108,6 +1114,35 @@ function rnLoadAuth(name){
 // The project's own deploy key (the operator, 12 Oct): made or pasted here,
 // shown by its public half with where the host takes it, forgotten here.
 // Shown wherever the token is: a project that may push.
+// The person's own key store, for this remote's host (R154): a token they
+// gave another repository can be this one's too, and the project says whose
+// store its token is in. Acts at the press.
+function rnDrawStore(name){
+  const box = $("rnStore");
+  if (!box) return;
+  const o = rnAuthOpts || {};
+  let host = "";
+  try{ host = new URL(String(o.url || "").replace(/^git@([^:]+):/, "https://$1/")).host.toLowerCase(); }catch(e){ host = ""; }
+  const mine = (o.store || []).filter(f => f.host === host);
+  const lk = o.linked || {};
+  const said = lk.uid ? `<div class="hint">Its token is kept in ${lk.mine ? "your" : esc(lk.name) + "'s"} key store.</div>` : "";
+  const rows = mine.filter(f => !(lk.mine && lk.id === f.id)).map(f => `<div class="setrow ctlrow"><span class="grow">Your ${
+    esc(f.host)} token${f.login ? `, as ${esc(f.login)}` : ""}</span>
+    <button type="button" data-rnstore="${esc(f.id)}">Use for this project</button></div>`).join("");
+  const none = "";
+  box.innerHTML = said + rows + none;
+  box.hidden = !(said || rows || none);
+  box.querySelectorAll("[data-rnstore]").forEach(b => b.onclick = async () => {
+    busy(b, "Linking");
+    try{
+      const j = await (await postJSON("/api/rename", {name, link_account: b.dataset.rnstore})).json();
+      if (j.error) notify(j.error, true);
+      else notify(`${projLabel(name)} now uses that token`);
+    }catch(e){ notify("link: " + failWords(e), true); }
+    rnLoadAuth(name);
+  });
+}
+
 function rnDrawKey(){
   const f = $("rnKeyField");
   if (!rnAuthOpts || $("rnTokenField").hidden){ f.hidden = true; return; }
@@ -1310,14 +1345,14 @@ const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "tools",
 // Which section each of rnPrefWas's fields is in, and what it is called.
 const RN_WAS = {
   node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"],
-  reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"], debug: ["sees", "Debugging"],
+  reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"],
   tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
   capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], snapshots_on: ["build", "Daily snapshots"], dev_keep: ["build", "Dev builds kept"],
-  gate: ["claude", "Agents may"], test_change: ["claude", "During a test run, a change asked for"], agents_off: ["claude", "Coding agents"], agent_default: ["claude", "Start opens"],
+  gate: ["claude", "Agents may"], test_change: ["claude", "During a test run, a change asked for"], agents_off: ["claude", "Coding agents"], agent_default: ["claude", "Start opens"], agent_slots: ["claude", "Sessions of one agent"],
   devbuild: ["claude", "Agents may"], makevms: ["claude", "Agents may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Agents may"], sign: ["claude", "Agents may"],
   keys: ["claude", "Agents may"], release: ["claude", "Agents may"], pc: ["claude", "Agents may"], version: ["claude", "Move the version"],
-  reply: ["yours", "Replies"], asks: ["yours", "Questions"],
+  reply: ["yours", "Replies"], asks: ["yours", "Questions"], term_scheme: ["yours", "Terminal colors"],
   git_name: ["yours", "Commit name and email"], git_email: ["yours", "Commit name and email"],
 };
 // What a running session takes only when it starts (the briefing, the launch
@@ -1334,7 +1369,6 @@ function rnEnc(){
   // bar on every open under load (the gate, 10 Oct).
   const drawn = nodesList !== null;
   const node = drawn ? $("rnNode").value : rnPrefWas.node;
-  const dbg = $("rnDebugField").hidden ? null : rnDebugNow();
   return {git_name: $("rnGitName").value.trim(), git_email: $("rnGitEmail").value.trim(),
           node, nodes: !drawn ? rnPrefWas.nodes
             : (node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value).filter(id => !rnHostIds().has(id))] : []).join(","),
@@ -1350,9 +1384,9 @@ function rnEnc(){
             : rnRowsList(rnPrefWas.packs_on, $("rnTools").querySelectorAll("input[data-pack]"), i => i.checked),
           agents_off: [...$("rnAgents").querySelectorAll("input:not(:checked)")].map(i => i.value).join(","),
           agent_default: $("rnAgentDefault")?.value || "claude",
+          agent_slots: $("rnAgentSlots")?.value || "3",
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),
-          debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
           build: $("rnBuildCmd").value.trim(), test: $("rnTestCmd").value.trim(),
           outputs: $("rnOutputs").value.trim(),
           capture_days: $("rnCaptureDays").value.trim(), snapshot_days: $("rnSnapDays").value.trim(),
@@ -1360,6 +1394,7 @@ function rnEnc(){
           dev_keep: $("rnDevKeep").value.trim(), gate: gateKey(rnGateNow()),
           tests_in: $("rnDevTest").value || "node", test_change: $("rnTestChange").value || "wait",
           gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
+          term_scheme: $("rnTermScheme").value || "",
           devbuild: $("rnGateDocker").value || "deny", makevms: $("rnGateVms").value || "deny", vm_caps: rnVmCapsNow(), report: $("rnGateReport").value || "auto",
           sign: $("rnGateSign").value || "ask", release: $("rnGateRelease").value || "ask",
           keys: $("rnGateKeys").value || "ask", pc: $("rnGatePc").value || "deny", version: $("rnGateVersion").value || "locked"};
@@ -1457,10 +1492,6 @@ function rnRevertSect(sect){
     $("rnReachRows").innerHTML = "";
     rnReachDraft = JSON.parse(w.reaches || "[]");
     rnDrawReach();
-    rnFillDebug();
-    const on = new Set(String(w.debug).replace(/^diag;/, "").split(",").filter(Boolean));
-    $("rnDebug").querySelectorAll("input").forEach(i => {
-      i.checked = i.value === "@diag" ? String(w.debug).startsWith("diag;") : on.has(i.value); });
   } else if (sect === "build"){
     $("rnBuildCmd").value = w.build; $("rnTestCmd").value = w.test; $("rnOutputs").value = w.outputs;
     $("rnCaptureDays").value = w.capture_days; $("rnSnapDays").value = w.snapshot_days;
@@ -1471,11 +1502,12 @@ function rnRevertSect(sect){
     Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
     $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild; $("rnGateVms").value = w.makevms; rnVmCapsSet(w.vm_caps);
     rnFillAgents(w.agents_off, w.agent_default);
+    $("rnAgentSlots").value = w.agent_slots;
     $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
     $("rnGatePc").value = w.pc; $("rnGateVersion").value = w.version;
   } else if (sect === "yours"){
-    $("rnReply").value = w.reply; $("rnAsks").value = w.asks;
+    $("rnReply").value = w.reply; $("rnAsks").value = w.asks; $("rnTermScheme").value = w.term_scheme;
     $("rnGitName").value = w.git_name; $("rnGitEmail").value = w.git_email;
     rnDrawPrefs();
   }
@@ -1493,7 +1525,6 @@ function rnBarSay(sect, msg, bad = true){
 
 // rnPrefWas's shape back into what the server is sent.
 function rnDec(w){
-  const dk = String(w.debug || "");
   const g = String(w.gate || "").split(",");
   return {...w,
     nodes: String(w.nodes || "").split(",").filter(Boolean),
@@ -1501,8 +1532,6 @@ function rnDec(w){
     reads: String(w.reads || "").split(",").filter(Boolean),
     sees: String(w.sees || "").split(",").map(x => x.trim()).filter(Boolean),
     reaches: JSON.parse(w.reaches || "[]"),
-    dbg: $("rnDebugField").hidden ? null
-      : {diag: dk.startsWith("diag;"), log_from: dk.replace(/^diag;/, "").split(",").filter(Boolean)},
     gate: Object.fromEntries(Object.keys(GATE_IDS).map((k, i) => [k, g[i] || "auto"]))};
 }
 
@@ -1570,14 +1599,14 @@ async function rnSubmit(sect, end = false){
       // This section's own fields alone (the operator, 17 Oct): every field
       // went with every save, the others as this window last read them, so a
       // save here put back what somebody had changed in another section.
-      const only = new Set(mine.flatMap(k => k === "debug" ? ["diag", "log_from"] : [k]));
+      const only = new Set(mine);
       const pick = o => Object.fromEntries(Object.entries(o).filter(([k]) => only.has(k)));
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({project: name, restart: restartNow, ...pick({git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
-                              tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default,
-                              build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
-                              tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
+                              tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default, agent_slots: v.agent_slots,
+                              build: v.build, test: v.test, gate: v.gate,
+                              tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks, term_scheme: v.term_scheme,
                               devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(v.capture_days !== "" ? {capture_days: +v.capture_days} : {}),
@@ -1591,10 +1620,10 @@ async function rnSubmit(sect, end = false){
       if (running && start.length && !j.ended)
         notify(restartNow
                  ? `${projLabel(name)}: saved, but the session was not ended: ` + (j.why || "it is still on what it started with")
-                 : `${projLabel(name)}: saved. Its running session keeps what it started with until you end it and press Claude again.`,
+                 : `${projLabel(name)}: saved. Its running session keeps what it started with until you end it and press Start agent again.`,
                restartNow);
       else if (restartNow && j.ended)
-        notify(`${projLabel(name)}: saved, and its session ended: press Claude to start one on it, resuming the conversation`);
+        notify(`${projLabel(name)}: saved, and its session ended: press Start agent to start one on it, resuming the conversation`);
     }
     if (sect === "people" && rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
         || (rnPeopleDraft.invite_only !== undefined && rnPeopleDraft.invite_only !== rnPeople.invite_only))){
@@ -1647,11 +1676,16 @@ async function rnSubmit(sect, end = false){
 // touched at all. Putting one back is a mv. Friction proportionate to a
 // reversible act, and the dialog names the path so the reversal is obvious.
 async function deleteProject(name){
+  // What keeps running with no project while it is in the trash (the
+  // operator, 26 Oct), said before it is asked.
+  const own = await postJSON("/api/repos", {action: "owned", name}).then(r => r.json()).catch(() => ({}));
+  const left = [own.containers?.length ? `Its container${own.containers.length === 1 ? "" : "s"} ${own.containers.join(", ")} keep${own.containers.length === 1 ? "s" : ""} running, given to no project until it is put back.` : "",
+                own.vms?.length ? `Its VM${own.vms.length === 1 ? "" : "s"} ${own.vms.join(", ")} keep${own.vms.length === 1 ? "s" : ""} running under No project, an administrator's to act on.` : ""].filter(Boolean).join(" ");
   if (!await askYes(`Delete ${projLabel(name)}?\n\n`
       + `It moves to /workspace/.trash/${name}, with every file kept. Its `
-      + `roadmap, bugs, versions, memories and containers stay where they are, `
-      + `and Put back in the trash returns all of it.\n\n`
-      + `Close its terminals first, and bring its dev instance down.`)) return;
+      + `roadmap, bugs, versions and memories stay where they are, `
+      + `and Put back in the trash returns all of it.${left ? "\n\n" + left : ""}\n\n`
+      + `Close its terminals first.`)) return;
   try{
     const r = await postJSON("/api/trash", {name});
     const j = await r.json();

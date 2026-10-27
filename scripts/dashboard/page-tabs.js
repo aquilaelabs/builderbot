@@ -87,17 +87,12 @@ function nextShell(proj){
   return null;
 }
 
-// Same origin, not ttyd's own port: the server proxies /term to ttyd, so the
-// one sign-in that opened this page covers every terminal too: no second
-// credential prompt, and no second port for the router to publish.
-// A Claude terminal's URL carries the boot it was opened in. It is fixed into
-// the iframe's src at that moment and a reattach reuses the string, so a page
-// left open across a container restart asks for a session under the *old*
-// boot, which bb-tty refuses. That is the hole the boot-time tab prune could
-// not close: pruning the stored layout does nothing about a browser already
-// holding the tab, and a phone waking up reloads its terminal iframe, which
-// spawns whatever the URL names. A shell carries no marker, because a shell
-// is safe to recreate in the same directory and always was.
+// A Claude terminal's words carry the boot it was opened in, so a tab left
+// open across a container restart asks for a session under the *old* boot,
+// which bb-tty refuses rather than starting a new one behind the person's
+// back: a phone waking up reconnects its terminal, which spawns whatever the
+// words name. A shell carries no marker, because a shell is safe to
+// recreate in the same directory and always was.
 // The boot is the machine the session runs ON: for a project bound to a node
 // it is that node's (the row carries it), because bb-tty there compares
 // against its own run, and a tab stamped with this container's boot was
@@ -110,11 +105,15 @@ const bootFor = arg => {
   const onNode = picked ? (row?.session_nodes || []).find(x => x.id === picked)?.boot : "";
   return onNode || row?.session_boot || state?.boot || "";
 };
-const ttydUrl = (arg) => arg.startsWith("screen:")
-  // A VM's screen (R99): noVNC's own page, speaking to this controller's
-  // relay for that VM, scaled to the dock's size.
+// A tab's words as its terminal opens with them: the argument, and the boot
+// stamped on a Claude session's.
+const termArg = arg => agentOfArg(arg) && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg;
+// A tab on a page of its own: a VM's screen (R99), noVNC's own page speaking
+// to this controller's relay for that VM, scaled to the dock's size; any
+// other, BuilderBot's terminal page (terminal.html), for a tab popped out.
+const tabUrl = (arg, label) => arg.startsWith("screen:")
   ? `/novnc/vnc_lite.html?scale=true&path=${encodeURIComponent(`screen/ws?vm=${arg.split(":")[1]}/${arg.split(":")[2]}`)}`
-  : `/term/?arg=${encodeURIComponent(agentOfArg(arg) && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
+  : `/terminal?arg=${encodeURIComponent(termArg(arg))}${label ? "&label=" + encodeURIComponent(label) : ""}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 
@@ -195,6 +194,11 @@ const TOOL_ICONS = {
   vms: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><rect x="4.5" y="5" width="7" height="4" rx="0.6"/>
     <path d="M5.5 14h5"/><path d="M8 11.5V14"/></svg>`,
+  // A clock, for the Schedules page (R117).
+  keys: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="8" r="2.5"/><path d="M7.5 8H14M11.5 8v2.5M13.5 8v2"/></svg>`,
+  debug: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 5.5a2.5 2.5 0 0 1 5 0v4a2.5 2.5 0 0 1-5 0z"/><path d="M8 7v5M3 6.5h2.5M10.5 6.5H13M3 10h2.5M10.5 10H13M6 3.5 5 2M10 3.5 11 2"/></svg>`,
+  schedules: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <circle cx="8" cy="8" r="5.8"/><path d="M8 4.6V8l2.4 1.6"/></svg>`,
   // A drive: two platters, for the Storage tab.
   storage: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <ellipse cx="8" cy="4.2" rx="5.5" ry="2"/><path d="M2.5 4.2v7.6c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2V4.2"/>
@@ -249,7 +253,7 @@ const TABKINDS = {
   sessions: { multi: false, label: () => "Sessions",
               render: (i) => renderSessionsInto(i), live: "always" },
   projects: { multi: false, label: () => "Projects",
-              render: (i) => renderProjectsInto(i), live: "always" },
+              render: (i) => renderProjectsInto(i), open: () => projectsShown(), live: "always" },
   // nodesRev as well as dockerRev: the node PICKER on this tab is drawn from
   // the node list, and that list arrives on its own schedule. Watching only
   // dockerRev meant a fresh page whose first tab was this one drew before
@@ -280,13 +284,23 @@ const TABKINDS = {
   // The VMs page (R91): its records, and the census a node's hello carries.
   vms:      { multi: false, label: () => "VMs",
               icon: TOOL_ICONS.vms,
-              render: (i) => renderVmsInto(i), live: () => `${vmsRev}`,
+              render: (i) => renderVmsInto(i), live: () => `${vmsRev}|${vmView}|${vmsNode}|${vmsChip}|${vmsSearch}`,
               open: () => loadVms() },
   // nodesRev as well as its own: a hello carries a fresh walk.
   storage:  { multi: false, label: () => "Storage",
               icon: TOOL_ICONS.storage,
               render: (i) => renderStorageInto(i), live: () => `${storageRev}/${nodesRev}`,
               open: () => loadStorage() },
+  // From the status read and the node list: drawn on every poll, painted
+  // only when it changed.
+  debug:    { multi: false, label: () => "Debug",
+              icon: TOOL_ICONS.debug,
+              render: (i) => renderDebugInto(i), live: "always" },
+  // jobsRev as well as its own: a schedule's run is a job.
+  schedules: { multi: false, label: () => "Schedules",
+              icon: TOOL_ICONS.schedules,
+              render: (i) => renderSchedulesInto(i), live: () => `${schedRev}/${jobsRev}`,
+              open: () => loadSchedules() },
   jobs:     { multi: false, label: () => "Jobs",
               icon: TOOL_ICONS.jobs,
               render: (i) => renderJobsInto(i), live: () => jobsRev,
@@ -302,6 +316,11 @@ const TABKINDS = {
               icon: TOOL_ICONS.runner,
               render: (i) => renderRunnerInto(i), live: () => `${nodesRev}/${(state?.node_runners || []).length}`,
               open: () => loadNodes() },
+  // The install key and what is kept under it (R154).
+  keys:     { multi: false, label: () => "Keys",
+              icon: TOOL_ICONS.keys,
+              render: (i) => renderKeysInto(i), live: () => keysRev,
+              open: () => loadKeys() },
   settings: { multi: false, label: () => "Controller settings",
               render: (i) => renderSettingsInto(i), live: settingsLive,
               open: () => loadApps() },
@@ -312,7 +331,7 @@ const TABKINDS = {
               render: (i) => renderRolesInto(i), live: () => rolesRev,
               open: () => loadRoles() },
   profile:  { multi: false, label: () => "Profile",
-              render: (i) => renderProfileInto(i), live: () => profileRev,
+              render: (i) => renderProfileInto(i), live: () => `${profileRev}/${keyMineRev}`,
               open: () => loadProfile() },
   apps:     { multi: false, label: () => "Apps",
               render: (i) => renderAppsInto(i), live: () => devAppsRev,
@@ -366,25 +385,44 @@ function untitleWatch(){
   }).observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["title"]});
 }
 
-// A ? and the line of words it opens under its label: the line goes after
-// the label (or the ?'s own parent where there is no label), and comes off
-// again on the second press.
-function helpToggle(h){
+// A ? and its words in a tooltip beside it (the operator, 26 Oct, where on
+// 11 Oct they were a line on the page: a tooltip then was clipped by the
+// pane it sat in and a phone never showed one). Fixed to the window, so no
+// pane clips it, under the ? or above it near the screen's foot, inside the
+// screen's edges; a press on the ? (a tap on a phone) opens and shuts it,
+// never a hover (the operator, 26 Oct: a press works on a phone too), and a
+// press elsewhere, Escape or a scroll shuts it. One at a time.
+let helpAt = null;
+function helpShow(h){
   const words = h.dataset.help || h.getAttribute("aria-label") || "";
-  const at = h.closest("label, .lbl") || h.parentElement;
-  const next = at.nextElementSibling;
-  if (h.classList.contains("on") && next?.classList.contains("helptext")){
-    next.remove();
-    h.classList.remove("on");
-    h.setAttribute("aria-expanded", "false");
-    return;
+  if (!words) return;
+  let tip = document.getElementById("helpPop");
+  if (!tip){
+    tip = document.createElement("div");
+    tip.id = "helpPop"; tip.className = "helppop"; tip.setAttribute("role", "tooltip");
+    document.body.appendChild(tip);
   }
-  const line = document.createElement("span");
-  line.className = "helptext";
-  line.textContent = words;
-  at.after(line);
+  if (helpAt && helpAt !== h) helpHide();
+  helpAt = h;
+  tip.textContent = words;
+  tip.hidden = false;
   h.classList.add("on");
   h.setAttribute("aria-expanded", "true");
+  h.setAttribute("aria-describedby", "helpPop");
+  const r = h.getBoundingClientRect(), t = tip.getBoundingClientRect(), gap = 6, edge = 8;
+  const below = r.bottom + gap + t.height <= innerHeight - edge || r.top - gap - t.height < edge;
+  tip.style.top = `${Math.round(below ? r.bottom + gap : r.top - gap - t.height)}px`;
+  tip.style.left = `${Math.round(Math.max(edge, Math.min(r.left + r.width / 2 - t.width / 2, innerWidth - edge - t.width)))}px`;
+}
+function helpHide(){
+  const tip = document.getElementById("helpPop");
+  if (tip) tip.hidden = true;
+  if (helpAt){ helpAt.classList.remove("on"); helpAt.setAttribute("aria-expanded", "false"); helpAt.removeAttribute("aria-describedby"); }
+  helpAt = null;
+}
+function helpToggle(h){
+  if (helpAt === h) return helpHide();
+  helpShow(h);
 }
 
 // ---- a menu somebody has open ---------------------------------------------
@@ -448,7 +486,9 @@ function renderDoc(i, t, pane){
 // half-drawn state the throw left.
 function renderGuarded(spec, i, t){
   try{
+    const f = typingIn(i);
     spec.render(i, t);
+    typingBack(i, f);
     // ...and its jump bar, whatever it drew: a page waiting on its read
     // draws its sections' template, and waits as itself with the bar the
     // loaded page will have (sectJump; the templates rule).
@@ -461,6 +501,29 @@ function renderGuarded(spec, i, t){
       ${esc(String(e && e.message || e))}</div>`;
     setTimeout(() => { throw e; });
   }
+}
+
+// A box being typed in keeps the caret across its page's redraw (B156,
+// B158): the page writes the box again with what was typed (each page keeps
+// its fields' values), but the focus stayed on the box the redraw threw
+// away, so the next keys went nowhere, and a paste landing in that moment
+// was lost. Found by id, so only a box the page names; given back only when
+// the redraw left nothing else focused.
+function typingIn(i){
+  const a = document.activeElement, doc = $("doc" + i);
+  if (!a?.id || !doc?.contains(a) || !/^(INPUT|TEXTAREA)$/.test(a.tagName)) return null;
+  let s = null, e = null;
+  try{ s = a.selectionStart; e = a.selectionEnd; }catch(x){ /* a box with no caret */ }
+  return {id: a.id, s, e};
+}
+function typingBack(i, f){
+  if (!f) return;
+  const a = document.activeElement;
+  if (a && a !== document.body && a.isConnected) return;
+  const el = $("doc" + i)?.querySelector("#" + CSS.escape(f.id));
+  if (!el || el.disabled) return;
+  el.focus({preventScroll: true});
+  try{ if (typeof f.s === "number") el.setSelectionRange(f.s, f.e ?? f.s); }catch(x){ /* a box with no caret */ }
 }
 
 // The same guard for a card on the Dashboard side. A card's draw that throws
@@ -519,8 +582,7 @@ function openTab(spec){
   show(t);
 }
 
-// Each terminal tab is an iframe running a full xterm.js over its own
-// websocket. Past a point the page stops being usable and the container is
+// Each terminal tab is a full xterm.js over its own websocket. Past a point the page stops being usable and the container is
 // carrying sessions nobody is reading, so refuse rather than degrade.
 // Only terminals count (R78): a document tab is a draw from state and costs
 // nothing to keep, so a Nodes tab beside twelve shells was never the load
@@ -609,15 +671,15 @@ function dropTab(id){
 
 // tmux attaches many clients to one session by design; what it does not do
 // is size a session for two of them, so the tab here must not stay a live
-// terminal while the window has it: its frames are torn down and the pane
-// shows a placeholder with Reattach. The window is the terminal's own URL,
-// its own /term connection, so closing this page leaves it working, and the
+// terminal while the window has it: its socket is closed and the pane
+// shows a placeholder with Reattach. The window is the terminal's own page,
+// its own /termws connection, so closing this page leaves it working, and the
 // session outlives both. Desktop only: a phone has nowhere to put a window.
 function popOut(id, ev){
   ev?.stopPropagation();
   const t = tabOf(id);
   if (!t || t.kind !== "term" || isPhone()) return;
-  const w = window.open(ttydUrl(t.arg), "bb-pop-" + id, "popup=yes,width=1000,height=640");
+  const w = window.open(tabUrl(t.arg, tabLabel(t)), "bb-pop-" + id, "popup=yes,width=1000,height=640");
   if (!w){ notify("the browser blocked the window: allow pop-ups for this page and try again", true); return; }
   popWins.set(id, w);
   t.popped = true;

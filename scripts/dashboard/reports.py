@@ -93,16 +93,24 @@ def conversation(rid):
 
 def _view(r):
     return {k: r.get(k) for k in ("id", "at", "project", "by", "node", "build", "text",
-                                  "area", "repro", "conversation")}
+                                  "area", "repro", "reproduces", "conversation")}
 
 
-def add(project, text, *, by="", node="", area="", repro="", conversation=None):
+# Whether its steps reproduce it (R124): the tracker's words (bugs.REPRODUCES),
+# so a report taken into a tracker carries the answer across.
+REPRODUCES = ("always", "sometimes", "once", "untried")
+
+
+def add(project, text, *, by="", node="", area="", repro="", reproduces="", conversation=None):
     """A new report from `project`'s session, or from a person on it; a
     person's about no project in particular has `project` "" (the header's
     Report a bug). {"ok", "id"} or {"error"}."""
     text = _clean(text, MAX_TEXT)
     if not text:
         return {"error": "say what happened: a report with no words is nothing to act on"}
+    reproduces = str(reproduces or "untried")
+    if reproduces not in REPRODUCES:
+        return {"error": f"whether it reproduces is one of: {', '.join(REPRODUCES)}"}
     with _lock:
         d = _load()
         mine = [r for r in d["reports"] if r.get("project") == project]
@@ -120,7 +128,8 @@ def add(project, text, *, by="", node="", area="", repro="", conversation=None):
         d["reports"].append({"id": rid, "at": int(time.time()), "project": str(project)[:100],
                              "by": str(by or "")[:100], "node": str(node or "")[:100],
                              "build": str(made or "")[:80], "text": text,
-                             "area": _clean(area, MAX_AREA), "repro": _clean(repro, MAX_TEXT)})
+                             "area": _clean(area, MAX_AREA), "repro": _clean(repro, MAX_TEXT),
+                             "reproduces": reproduces})
         # The reporter's latest conversation on the project, when they chose
         # to send it: its end, redacted like everything else here, kept
         # beside the store and named on the report.
@@ -181,6 +190,25 @@ def clear():
     return {"ok": True, "cleared": n}
 
 
+def delete(ids):
+    """The reports named deleted, with the conversations they carry: one
+    taken out before the diagnostics are downloaded (the operator, 26 Oct).
+    The sequence is kept, as clear keeps it."""
+    want = set()
+    for x in ids if isinstance(ids, list) else [ids]:
+        try:
+            want.add(int(x))
+        except (TypeError, ValueError):
+            continue
+    with _lock:
+        d = _load()
+        gone = [r for r in d["reports"] if r.get("id") in want]
+        for r in gone:
+            (_files() / f"{r.get('id')}.txt").unlink(missing_ok=True)
+        write_json(FILE, {"seq": int(d.get("seq") or 0), "reports": [r for r in d["reports"] if r.get("id") not in want]})
+    return {"ok": True, "deleted": [r.get("id") for r in gone]}
+
+
 # ---- the dashboard's verbs, one call each ------------------------------------
 
 def _answer(r):
@@ -192,14 +220,15 @@ def own_verb(act, proj, req, *, by):
     caller at the project (a session only at its own) and its Report
     BuilderBot bugs dial. (payload, status)."""
     return _answer(add(proj, req.get("text"), by=by, node=node_name(proj) if proj else "",
-                       area=req.get("area"), repro=req.get("repro"),
+                       area=req.get("area"), repro=req.get("repro"), reproduces=req.get("reproduces"),
                        conversation=req.get("_conversation")))
 
 
 def diag_verb(act, req, *, by, principal):
     """Every project's reports, behind the diagnostics' own gate, since that
     is where they are read (bb diag reports): list, read one or the
-    conversation it carries, count, or clear them all. (payload, status)."""
+    conversation it carries, count, delete the ones named, or clear them
+    all. (payload, status)."""
     if act == "list":
         return {"reports": listing()}, 200
     if act == "get":
@@ -212,6 +241,12 @@ def diag_verb(act, req, *, by, principal):
         return ({"text": text}, 200) if text else ({"error": "that report carries no conversation"}, 400)
     if act == "count":
         return counts(), 200
+    if act == "delete":
+        r = delete(req.get("ids") if "ids" in req else req.get("id"))
+        if not r["deleted"]:
+            return {"error": "no such report"}, 400
+        audit(principal, "reports-delete", "reports", {"ids": r["deleted"]})
+        return r, 200
     if act == "clear":
         r = clear()
         audit(principal, "reports-clear", "reports", {"cleared": r["cleared"]})

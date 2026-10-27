@@ -79,10 +79,13 @@ function nbGitView({$, nb, project}){
       : args?.branch ? `the branch ${args.branch} (${kind})`
       : args?.sha ? `the commit ${String(args.sha).slice(0, 7)} (${kind})`
       : `the ${kind}`;
-    if (!args?.confirmed && !await sendSure(project, what)) return;
+    // With several of your sessions running, which one is the question
+    // (R143); with one, whether to send at all.
+    const to = await pickSend(project);
+    if (to === null || (!to && !args?.confirmed && !await sendSure(project, what))) return;
     if (btn) busy(btn, "Sending");
     try{
-      const r = await postJSON("/api/git", {project, action: "ask", kind, args: args || {}});
+      const r = await postJSON("/api/git", {project, action: "ask", kind, args: args || {}, session: to});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
       if (!j.sent) notify("Not sent: the session is busy. Press Enter in its tab when it is free.", true);
@@ -106,10 +109,10 @@ function nbGitView({$, nb, project}){
     try{
       const r = await fetch("/api/git?project=" + encodeURIComponent(project) + "&what=all");
       git = await r.json();
-    }catch(e){ viewGlance(hint, [], esc("git: " + e)); return; }
+    }catch(e){ viewGlance(hint, [], esc("git: " + e), "", "bad"); return; }
     if (git.error){
       const none = git.error === "not a git repository";
-      viewGlance(hint, [], none ? "no repository yet" : esc("git: " + git.error));
+      viewGlance(hint, [], none ? "no repository yet" : esc("git: " + git.error), "", none ? "" : "bad");
       // The way on, where the dead end was: Init makes the repository here
       // (a project adopted from a directory, or unpacked from an archive
       // without one), and a session then commits and pushes as anywhere.
@@ -227,7 +230,8 @@ function nbGitView({$, nb, project}){
     const body = `<div class="sub dim">${ci.at ? `Looked ${esc(ago(ci.at))}${ci.repo ? ` at ${esc(ci.repo)} on GitHub` : ""}.${run}` :
         "Not looked at yet."}${none ? " The tree has no workflow in .github/workflows, .gitea/workflows or .forgejo/workflows, so there is no CI here to watch." : ""} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
       ci.error ? `<div class="sub bad">${esc(ci.error)}</div>` : ""}${rows}
-      <div class="actbar"><button type="button" id="gitCiLook">Look now</button></div>`;
+      <div class="actbar"><button type="button" id="gitCiLook">Look now</button>${ci.run?.id
+        ? `<button type="button" data-cilog="${esc(String(ci.run.id))}" title="its jobs and the end of each one's log, in the dock">Its log</button>` : ""}</div>`;
     return docSection("git", "ci", "CI", status, body, {cls, open: red, loud: red});
   }
 
@@ -428,6 +432,9 @@ function nbGitView({$, nb, project}){
       if (!e.target.closest("button, a, input, select, .more")) gitGoCompare(l.parentElement.dataset.branch);
     });
     body.querySelectorAll("[data-cifix]").forEach(b => b.onclick = () => gitAct("ci-fix", {where: b.dataset.cifix}, b, "Fixing"));
+    // The newest run's log in the dock (R133 step 12), as a job's is.
+    body.querySelectorAll("[data-cilog]").forEach(b => b.onclick = () =>
+      openLogTab(`log:ci:${project}:${b.dataset.cilog}`, `CI: ${projLabel(project)} #${b.dataset.cilog}`));
     const cl = $("gitCiLook");
     if (cl) cl.onclick = async () => {
       busy(cl, "Looking");

@@ -42,7 +42,7 @@ class Agent:
     transcripts: str        # its conversations, under the account's home
     live: bool = False      # wired end to end: parsed, offered, started
     tool: str = ""          # its row on a node's Toolchains page, "" when it has none yet
-    latest_url: str = ""    # where the newest release is asked (an npm registry `latest`)
+    latest_url: str = ""    # where the newest release is asked (an npm registry `latest`, or a plain version)
 
     @property
     def arg(self):
@@ -91,6 +91,16 @@ TABLE = (
           briefing="instructions-file", guards="hooks", state="hooks",
           transcripts=".copilot/session-state", tool="copilot-cli", live=True,
           latest_url="https://registry.npmjs.org/@github/copilot/latest"),
+    # Grok Build (R95 step 21): xAI's coding agent, checked against its user
+    # guide on 25 Oct (xai-org/grok-build, Apache-2.0). Its hooks are
+    # Claude's events (PreToolUse, UserPromptSubmit, Stop), its sign-in a
+    # device code into ~/.grok/auth.json, its sessions under ~/.grok/sessions.
+    Agent(id="grok", name="Grok", product="Grok Build", command="grok",
+          provider="xAI", reported="grok", update_job="grok-update",
+          login_job="grok-login", logout_job="grok-logout",
+          briefing="system-prompt-file", guards="hooks", state="hooks",
+          transcripts=".grok/sessions", tool="grok-build", live=True,
+          latest_url="https://x.ai/cli/stable"),
     Agent(id="open", name="Any model", product="OpenCode", command="opencode",
           provider="", reported="opencode", update_job="opencode-update",
           login_job="", logout_job="",
@@ -133,15 +143,38 @@ def default():
     return TABLE[0]
 
 
+# A second session of one agent on one project is a slot of its own (R143):
+# `claude-alpha` is the first, as every session was named before, and
+# `claude-alpha~2` the second. tmux keeps `~` as it is (names.tmux_name
+# rewrites `.` and `:` alone), and no project's name carries one.
+SLOT_SEP = "~"
+_SLOT = re.compile(r"~([2-9])$")
+
+
+def _split_slot(stem):
+    m = _SLOT.search(stem)
+    return (stem[:m.start()], int(m.group(1))) if m else (stem, 1)
+
+
 def of_session(base):
     """(agent, stem) for a session name with its account prefix already off
     (`claude-alpha` -> (Claude, "alpha")), or (None, "") for a shell or
-    anything else. Only a live agent's names are read as an agent's."""
+    anything else. Only a live agent's names are read as an agent's. The
+    stem is the project's as tmux writes it, whichever slot the session is
+    (`claude-alpha~2` -> (Claude, "alpha")): slot_of says which."""
     base = str(base or "")
     for a in live():
         if base.startswith(a.session) and len(base) > len(a.session):
-            return a, base[len(a.session):]
+            stem = _split_slot(base[len(a.session):])[0]
+            return (a, stem) if stem else (None, "")
     return None, ""
+
+
+def slot_of(base):
+    """Which slot an agent's session name is (R143): 1 for `claude-alpha`,
+    2 for `claude-alpha~2`; 0 for a name that is no agent's."""
+    a, _stem = of_session(base)
+    return _split_slot(str(base)[len(a.session):])[1] if a else 0
 
 
 def is_session(base):
@@ -159,18 +192,34 @@ def of_arg(arg):
     return None, ""
 
 
+def slot_of_arg(arg):
+    """The slot a terminal argument opens (R143): its `:s:N`, 1 when it
+    names none, as every argument from before slots does."""
+    a, rest = of_arg(arg)
+    m = re.search(r":s:([0-9]{1,2})(?::|$)", rest) if a else None
+    n = int(m.group(1)) if m else 1
+    return n if 1 <= n <= MAX_SLOTS else 1
+
+
 def project_of_arg(arg):
     """The project an agent's argument names, or ""."""
     a, rest = of_arg(arg)
     return rest.split(":")[0] if a else ""
 
 
-def session_name(agent_id, project):
+# The most slots of one agent a person may have on one project, whatever a
+# project's own cap says (R143): what the names can carry.
+MAX_SLOTS = 9
+
+
+def session_name(agent_id, project, slot=1):
     """The tmux session an agent's conversation on a project runs in,
     before the account prefix a node puts in front of it. tmux rewrites
-    `.` and `:` to `_` (names.tmux_name)."""
+    `.` and `:` to `_` (names.tmux_name). A slot past the first carries its
+    number (R143)."""
     a = get(agent_id) or default()
-    return re.sub(r"[.:]", "_", a.session + str(project))
+    n = int(slot or 1) if str(slot or 1).isdigit() else 1
+    return re.sub(r"[.:]", "_", a.session + str(project)) + (f"{SLOT_SEP}{n}" if 1 < n <= MAX_SLOTS else "")
 
 
 def installable():

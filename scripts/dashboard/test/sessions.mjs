@@ -41,6 +41,9 @@ ok((await btn('shell-9').textContent()).trim() === 'Minimize',
 ok(await page.evaluate(() => sessionOf(tabOf(panes[1]).arg) === 'shell-9' && dockUp), '...and goes to it, the dock up');
 // PgUp from the keys row is how a finger scrolls: at a prompt it enters copy
 // mode a page up; PgDn pages back and copy mode ends itself at the bottom.
+// Pressed once the terminal shows the session, as a person would: before
+// its client attaches, keys reach bb-tty still starting, not tmux.
+for (const t0 = Date.now(); Date.now() - t0 < 15000 && tmuxFmt('shell-9', '#{session_attached}') === '0';) await sleep(200);
 await page.evaluate(() => sendKey('pgup'));
 await page.waitForFunction(() => true); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '1', 'PgUp at a prompt enters copy mode (scrolls back)');
@@ -120,17 +123,18 @@ const resumed = await page.evaluate(() => {
   return {
     tabs: tabs.filter(t => sessionOf(t.arg) === 'claude-alpha').length,
     arg: tabs.find(t => sessionOf(t.arg) === 'claude-alpha')?.arg,
-    src: document.querySelector('#pane1 .slot.on iframe')?.src,       // the dock's (R218 step 4)
     slots: [...document.querySelectorAll('#pane1 .slot')].map(c => c.dataset.key),
   };
 });
 ok(resumed.tabs === 1 && resumed.arg === 'claude:alpha:r:abc123'
-     && (resumed.src || "").includes(encodeURIComponent('claude:alpha:r:abc123'))
-     // ...and the frame the old tab had is gone with it. A pane keeps
+     // The dock's terminal is the tab's words, the transcript id in them
+     // (R218 step 4)...
+     && resumed.slots.some(k => k.includes('|claude:alpha:r:abc123|'))
+     // ...and the terminal the old tab had is gone with it. A pane keeps
      // terminals alive behind the visible one; one whose tab has closed is
      // still an attached client, on a session nothing is showing.
      && !resumed.slots.some(k => k.includes('|claude:alpha') && !k.includes(':r:')),
-   `Resume on a dead session's tab carries the transcript id into the frame (${JSON.stringify(resumed)})`);
+   `Resume on a dead session's tab carries the transcript id into its terminal (${JSON.stringify(resumed)})`);
 await page.evaluate(() => { const t = tabs.find(x => sessionOf(x.arg) === 'claude-alpha');
                             if (t) hideTab(t.id); });
 
@@ -290,7 +294,8 @@ const ndx = page.dialogs.length;
 await page.waitForFunction(() => withMe('ep.silon').includes(state.me), { timeout: 30000 });
 await unfold(page, 'ep.silon');
 await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-lock]', { state: 'visible', timeout: 10000 });
-const lockSaid = await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-lock]', b => b.textContent.trim());
+// A named icon on the card's back (R138): its name is its label.
+const lockSaid = await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-lock]', b => b.getAttribute('aria-label') || b.textContent.trim());
 const lockAnswer = page.waitForResponse(r => r.url().includes('/api/lock'), { timeout: 15000 })
   .then(r => r.text()).catch(e => `no answer: ${e.message.split('\n')[0]}`);
 await page.click('.pgrid .pcard[data-row="ep.silon"] [data-lock]');         // lock: asks, then the server ends the others' sessions
@@ -308,18 +313,22 @@ tmuxKill('claude-ep_silon');                                  // what follows st
 // node says it carries no Claude Code (the operator, 21 Oct).
 await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row="ep.silon"] :is([data-c], [data-tcinst])'), { timeout: 15000 });
 
-// A back/forward-cache restore (persisted pageshow) reloads the terminal
-// iframe so a dead socket reconnects instead of sitting on ttyd's prompt.
-// .slot.on: a pane keeps the terminals behind the visible one loaded, so
-// there is more than one frame in it and only one is on screen.
-// A terminal in front again: the lock checks above opened the Projects page.
-await page.evaluate(() => { const t = tabs.find(x => x.kind === 'term'); if (t) focusTab(t.id); });
-await page.waitForSelector('.slot.on iframe');
-await page.evaluate(() => { window.__loads = 0;
-  document.querySelector('.slot.on iframe').addEventListener('load', () => window.__loads++); });
+// A back/forward-cache restore (persisted pageshow) opens a dropped
+// terminal's socket again, rather than leaving it on "the connection
+// dropped". A shell of its own, so what it reconnects to is there.
+await page.evaluate(() => { openTab({kind: 'term', arg: 'sh:5:alpha', label: 'bfcache'}); dockUp = true; render(); });
+await page.waitForFunction(() => [...TERMS.values()].some(r => r.t.arg === 'sh:5:alpha' && r.ws?.readyState === 1),
+                           null, { timeout: 20000 });
+await page.evaluate(() => { const r = [...TERMS.values()].find(x => x.t.arg === 'sh:5:alpha');
+  const ws = r.ws; ws.onclose({ code: 1006, reason: '' }); ws.close(); });
+const dropped = await page.evaluate(() => [...TERMS.values()].find(x => x.t.arg === 'sh:5:alpha').ended);
 await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
-await page.waitForFunction(() => window.__loads > 0, { timeout: 10000 });
-ok(true, 'a bfcache restore reloads the terminal iframe to reconnect it');
+const back = await page.waitForFunction(() => { const r = [...TERMS.values()].find(x => x.t.arg === 'sh:5:alpha');
+  return r && !r.ended && r.ws?.readyState === 1; }, null, { timeout: 10000 }).then(() => true, () => false);
+ok(dropped === 'the connection dropped' && back, 'a bfcache restore opens a dropped terminal\'s socket again');
+await page.evaluate(() => dropTab(tabs.find(t => t.arg === 'sh:5:alpha').id));
+// A terminal in front again, for what follows.
+await page.evaluate(() => { const t = tabs.find(x => x.kind === 'term'); if (t) focusTab(t.id); });
 const nd2 = page.dialogs.length;
 const tb = await (await page.$('#pane1 .dtab.on')).boundingBox();
 await page.mouse.click(tb.x + 20, tb.y + 12, { button: 'middle' });
@@ -425,7 +434,7 @@ const bapi = async (path, body, hdrs) => (await fetch(URL.replace(/\/$/, '') + p
 const deskbox = await bapi('/api/v1/nodes', { action: 'enroll', name: 'deskbox' });
 const deskAgent = await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
     cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
-    session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
+    session: { up: true, term: true, user: 'bb',
                workspace: true, writable: true, boot: '9.9', up_s: 5000, claude: '1.0.0 (Claude Code)' } } },
   { Authorization: 'Bearer ' + deskbox.token });
 // ...with alpha's synced copy there (R163), as its agent's heartbeat says;
@@ -449,7 +458,7 @@ await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
 // before the poll reads deskbox back. So the hello is repeated between
 // shorter waits rather than one long wait on a liveness that lapses.
 const deskboxCensus = { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
-  session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
+  session: { up: true, term: true, user: 'bb',
              workspace: true, writable: true, boot: '9.9', up_s: 5000, claude: '1.0.0 (Claude Code)' } };
 for (let tries = 0; ; tries++){
   try {
@@ -522,10 +531,13 @@ await phone.waitForSelector('.resumemenu', { timeout: 5000 }).catch(async () => 
   await pressAlpha();
   await phone.waitForSelector('.resumemenu', { timeout: 10000 });
 });
+// Its Resume band reads your conversations as it opens (R143).
+await phone.waitForFunction(() => document.querySelector('.resumemenu .rmconvs'), null, { timeout: 10000 }).catch(() => {});
 const chooser = await phone.$eval('.resumemenu', el => ({ shown: getComputedStyle(el).display !== 'none',
-  buttons: [...el.querySelectorAll('button')].map(b => b.textContent.trim()), text: el.textContent.trim().slice(0, 120) }));
-ok(chooser.shown && chooser.buttons.length === 2 && /^Resume/.test(chooser.buttons[0]) && chooser.buttons[1] === 'New',
-   `phone: Claude on a project with history shows the Resume/New chooser (${chooser.buttons.join(' | ') || chooser.text})`);
+  start: [...el.querySelectorAll('.rmline:not(.rmconv) button')].map(b => b.textContent.trim()),
+  resume: [...el.querySelectorAll('.rmconv button')].map(b => b.textContent.trim()), text: el.textContent.trim().slice(0, 120) }));
+ok(chooser.shown && chooser.start.join() === 'New' && chooser.resume.length >= 1 && chooser.resume.every(b => b === 'Resume'),
+   `phone: Claude on a project with history shows New, and its conversations to resume under it (${chooser.start.join(' | ')}; ${chooser.resume.length} to resume; ${chooser.text})`);
 // ...where it can be seen. The sidebar scrolls, the chooser is placed inside
 // the card, and pressing Claude on a project whose session has ended opens
 // this and NOTHING ELSE, so one drawn below the fold is a press with no
@@ -701,8 +713,8 @@ await closePage(land);
 
 // ---- a tab that outlived its container ---------------------------------
 // A browser left open across a restart still holds its Claude tabs, and a
-// phone waking up reloads the terminal iframe, which spawns whatever the URL
-// names. Pruning the saved layout at boot cannot stop that, because the page
+// phone waking up reconnects its terminal, which spawns whatever the words
+// name. Pruning the saved layout at boot cannot stop that, because the page
 // never re-read it. So the URL carries the boot it was opened in, and bb-tty
 // refuses to *start* a session for one from a previous run. Attaching to a
 // session that is already there is untouched: that is how a tab comes back.

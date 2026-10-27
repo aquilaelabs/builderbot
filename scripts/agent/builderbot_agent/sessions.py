@@ -1,4 +1,4 @@
-"""The session half (roadmap #24): Claude's sessions on this node, their ttyds, tokens, firewall and upkeep."""
+"""The session half (roadmap #24): Claude's sessions on this node, their terminals, tokens, firewall and upkeep."""
 import contextlib
 import glob
 import hashlib
@@ -7,7 +7,6 @@ import os
 import pwd
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import threading
@@ -30,12 +29,10 @@ from .base import (
     SESSION_BIN,
     SESSION_BIND,
     SESSION_NFT,
-    SESSION_PORT,
-    SESSION_RETRY_S,
-    TTYD_BIN,
+    SCREEN_PORT,
+    SHARE,
     _probe,
     _run,
-    _zombie,
     log,
     log_once,
 )
@@ -116,7 +113,7 @@ class SessionWatch:
             time.sleep(2)
 
     def step(self):
-        if not self.agent.ttyd:
+        if not self.agent.session_up:
             return
         rows = self.agent.sessions_now() or []
         key = sorted((r.get("name", ""), r.get("title", "")) for r in rows)
@@ -252,7 +249,7 @@ class SessionsMixin:
             return os.environ.get("USER") or str(os.geteuid())
 
     def session_env(self, into):
-        """What every session on this node inherits, through ttyd: this
+        """What every terminal on this node inherits: this
         node's toolchains (sdk_env), the bundle's scripts and the account's
         own bin directories on PATH, the role, and how to reach the
         controller: the URL and the certificate pin the agent enrolled
@@ -264,8 +261,8 @@ class SessionsMixin:
             env.update({"HOME": os.path.expanduser("~"), "USER": self.session_account(),
                         "LOGNAME": self.session_account()})
         home = env["HOME"]
-        # The SYMLINK on PATH, not the digest it points at (bug #66). A ttyd
-        # restart onto a new bundle only reaches new connections: a tmux
+        # The SYMLINK on PATH, not the digest it points at (bug #66). A new
+        # bundle only reaches terminals opened after it: a tmux
         # session's shell was started whenever it was started and keeps the
         # PATH it was given, so a session that has been open since before an
         # update went on running the bundle it began with. What that looks
@@ -297,7 +294,7 @@ class SessionsMixin:
         env.update({"BUILDER_HOME": home, "BUILDERBOT_ROLE": "node",
                     "BB_CONTROLLER": self.ctl.url, "BB_CONTROLLER_PIN": self.state.get("pin", ""),
                     "BB_NODE": self.state.get("name") or "", "BUILDERBOT_NODE": self.state.get("node_id", ""),
-                    "WORKSPACE": "/workspace", "LANG": "C.UTF-8"})
+                    "WORKSPACE": SHARE, "LANG": "C.UTF-8"})
         return env, who
 
     def session_bind(self):
@@ -313,195 +310,77 @@ class SessionsMixin:
                 return a.split("/")[0]
         return "0.0.0.0"
 
-    def session_start(self, into, retry=False):
-        """The two ttyds (writable, and the read-only twin an account
-        without a shell is shown), running bb-tty from the bundle, as the
-        session account, on the LAN address. What 15-dashboard.sh does on
-        the controller, done here by the process that is already up."""
+    def session_start(self, into):
+        """The session half (roadmap #24): what a terminal here runs, bb-tty
+        from the bundle as the session account (or through bb-session tty as
+        the account's own user, R125), recorded for the screen relay's
+        terminal server (term.py), which opens one for each signed /term the
+        controller sends. Nothing is started: there is no process to keep up
+        and no port of its own, only the relay's."""
         self.session_stop()
         bbtty = os.path.join(into, "scripts", "dashboard", "bb-tty")
         user = self.session_account()
         if not user or not os.path.isfile(bbtty):
-            SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
+            SESSION.update(up=False, user=user, bundle=self.session_bundle,
                            why="no session account" if not user else "the bundle carries no bb-tty")
-            return
-        if not shutil.which(TTYD_BIN) and not os.access(TTYD_BIN, os.X_OK):
-            SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
-                           why="ttyd is not installed here")
             return
         env, who = self.session_env(into)
         bind = self.session_bind()
         self.session_bound = bind
-        logf = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "ttyd.log")
-        # The canvas renderer, not WebGL: desktop Firefox made a WebGL context
-        # that never painted, so every terminal there went from gray to black
-        # with nothing for ttyd to fall back from (the operator, 23 Oct, B259).
-        base = [TTYD_BIN, "--interface", bind, "--url-arg", "--max-clients", "16",
-                "-t", "reconnect=5", "-t", "disableLeaveAlert=true", "-t", "rendererType=canvas"]
         self.session_stale = ""
-        try:
-            out = open(logf, "ab")
-            # The twin is told it is read-only: bb-tty then says where the
-            # sign-in happens instead of prompting for a code nobody can
-            # type into it (B137).
-            # Where accounts are their own users (R125) a terminal starts
-            # through bb-session tty, which asks the controller whose it is
-            # and runs as that account from the root-owned bundle; the ttyd
-            # itself stays the session account, which may become nobody.
-            mine = getattr(self, "account_users_ready", None)
-            if mine and mine():
-                self.tty_env_write()
-            starts = {SESSION_PORT: ["sudo", "-n", SESSION_BIN, "tty"],
-                      SESSION_PORT + 1: ["sudo", "-n", SESSION_BIN, "tty-ro"]} if mine and mine() else \
-                     {SESSION_PORT: [bbtty], SESSION_PORT + 1: [bbtty]}
-            for port, extra, more in ((SESSION_PORT, ["--writable"], {}),
-                                      (SESSION_PORT + 1, [], {"BB_TTY_RO": "1"})):
-                self.ttyd.append(subprocess.Popen(
-                    base[:1] + ["--port", str(port)] + base[1:] + extra + starts[port],
-                    cwd=env["HOME"] if os.path.isdir(env["HOME"]) else "/",
-                    env=dict(env, **more), stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who))
-            out.close()
-        except (OSError, RuntimeError) as e:
-            self.session_stop()
-            SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
-                           why=f"ttyd could not start: {e}"[:120])
-            log(f"sessions: ttyd could not start: {e}")
-            return
-        # STARTED IS NOT UP. A ttyd whose port is taken exits at once, and
-        # reporting it up on the strength of the Popen is how a node served
-        # sessions from a bundle four deliveries old for a day: the agent's
-        # self-update re-executed this process and the ttyds it had started
-        # stayed on the ports as orphans, every later start failed the same
-        # way in silence, and the census named the bundle nobody was
-        # running. So the start is watched for a moment; one that died has
-        # its port looked at, and a stray bb-tty ttyd there (one of ours,
-        # from a process that is gone) is ended and the start tried once
-        # more. Anything else on the port is named and left alone.
-        died = self._session_died()
-        if died and not retry:
-            stray = [self._port_holder(pt) for pt in died]
-            ours = [(pid, cmd) for pid, cmd in stray
-                    if pid and "ttyd" in cmd and "bb-tty" in cmd]
-            if ours and len(ours) == len(stray):
-                for pid, _ in ours:
-                    log(f"sessions: port held by a ttyd of an earlier agent process (pid {pid}); ending it")
-                    self._end_pid(pid)
-                self.session_stop()
-                return self.session_start(into, retry=True)
-        if died:
-            held = "; ".join(f"port {pt}: " + (f"pid {pid} ({cmd[:40]})" if pid else "taken")
-                             for pt, (pid, cmd) in zip(died, [self._port_holder(pt) for pt in died]))  # noqa: B905 (3.9 on Rocky)
-            self.session_stop()
-            SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
-                           why=f"ttyd could not bind: {held}"[:160])
-            log(f"sessions: ttyd could not bind: {held}")
-            return
-        SESSION.update(up=True, port=SESSION_PORT, ro_port=SESSION_PORT + 1, user=user,
-                       home=env["HOME"], bind=bind, bundle=self.session_bundle, why="")
-        log(f"sessions: ttyd on {bind}:{SESSION_PORT} (read-only twin on {SESSION_PORT + 1}) "
-            f"as {user}, bb {self.session_bundle[7:19]}")
-        self.ctr_start(into, bbtty, bind, base, logf)
+        # Where accounts are their own users (R125) a terminal starts
+        # through bb-session tty, which asks the controller whose it is and
+        # runs as that account from the root-owned bundle.
+        mine = getattr(self, "account_users_ready", None)
+        if mine and mine():
+            self.tty_env_write()
+            rw, ro = ["sudo", "-n", SESSION_BIN, "tty"], ["sudo", "-n", SESSION_BIN, "tty-ro"]
+        else:
+            rw, ro = [bbtty], [bbtty]
+        cwd = env["HOME"] if os.path.isdir(env["HOME"]) else "/"
+        # The read-only kind is told so: bb-tty then says where the sign-in
+        # happens instead of prompting for a code nobody can type into it
+        # (B137).
+        self.term_kinds = {"rw": {"argv": rw, "env": dict(env), "who": who, "cwd": cwd},
+                           "ro": {"argv": ro, "env": dict(env, BB_TTY_RO="1"), "who": who, "cwd": cwd}}
+        self.session_up = True
+        SESSION.update(up=True, user=user, home=env["HOME"], bind=bind, bundle=self.session_bundle, why="",
+                       term=True, screen=SCREEN_PORT)
+        log(f"sessions: terminals open as {user}, bb {self.session_bundle[7:19]}")
+        self.ctr_start(bbtty)
 
-    def ctr_start(self, into, bbtty, bind, base, logf):
-        """The third ttyd (R218 step 4): a shell inside a container and
-        nothing else, as the docker account, which jobs already run as and
-        the session account is kept apart from (that one is in no docker
+    def ctr_start(self, bbtty):
+        """The container terminal (R218 step 4): a shell inside a container
+        and nothing else, as the docker account, which jobs already run as
+        and the session account is kept apart from (that one is in no docker
         group: docker is root on the machine). bb-tty under BB_TTY_CTR opens
         only a ctr: terminal the controller's grant names, and only docker
-        exec into that one running container. Started after the session
-        half is up and never at its cost: one that will not start leaves
-        ctr_port at 0 with why, and the sessions as they are."""
+        exec into that one running container. One that cannot be set up
+        leaves ctr false with why, and the sessions as they are."""
         user = self.state.get("user") or ""
         env = dict(sdk_env(self.state))
         try:
             who = self.as_user(env, user)
         except RuntimeError as e:
-            SESSION.update(ctr_port=0, ctr_why=str(e)[:120])
+            SESSION.update(ctr=False, ctr_why=str(e)[:120])
             return
         if not who:
             env["HOME"] = os.path.expanduser("~")
         store = tc_root(self.state)
         link = os.path.join(store, ".bb", "current") if store else ""
-        bbdir = link if link and os.path.isdir(link) else into
+        bbdir = link if link and os.path.isdir(link) else os.path.dirname(os.path.dirname(os.path.dirname(bbtty)))
         env["PATH"] = os.path.join(bbdir, "scripts") + ":" + env["PATH"]
         env.update({"BUILDERBOT_ROLE": "node", "BB_CONTROLLER": self.ctl.url,
                     "BB_CONTROLLER_PIN": self.state.get("pin", ""), "BB_NODE": self.state.get("name") or "",
                     "BUILDERBOT_NODE": self.state.get("node_id", ""), "LANG": "C.UTF-8", "BB_TTY_CTR": "1"})
-        port = SESSION_PORT + 2
-        try:
-            with open(logf, "ab") as out:
-                p = subprocess.Popen(base[:1] + ["--port", str(port)] + base[1:] + ["--writable", bbtty],
-                                     cwd=env["HOME"] if os.path.isdir(env["HOME"]) else "/", env=env,
-                                     stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who)
-        except (OSError, RuntimeError) as e:
-            SESSION.update(ctr_port=0, ctr_why=f"ttyd could not start: {e}"[:120])
-            return
-        for _ in range(6):
-            time.sleep(0.25)
-            if p.poll() is not None:
-                break
-        if p.poll() is not None:
-            SESSION.update(ctr_port=0, ctr_why=f"ttyd could not bind {bind}:{port}")
-            log(f"sessions: the container terminal could not bind {bind}:{port}")
-            return
-        self.ttyd.append(p)
-        SESSION.update(ctr_port=port, ctr_why="")
-        log(f"sessions: container terminal on {bind}:{port} as {user or 'this account'}")
-
-    def _session_died(self):
-        """The ports whose ttyd exited within the first moment of its start.
-        A bind failure shows as an exit in well under a second."""
-        for _ in range(6):
-            time.sleep(0.25)
-            if any(p.poll() is not None for p in self.ttyd):
-                break
-        return [SESSION_PORT + i for i, p in enumerate(self.ttyd) if p.poll() is not None]
-
-    @staticmethod
-    def _port_holder(port):
-        """(pid, cmdline) of what listens on a TCP port, or (0, "") when
-        nothing does or it cannot be told. ss is iproute2's and is on every
-        node this runs on; the pid needs this process to own the socket or
-        be root, which it is on a VM."""
-        try:
-            p = subprocess.run(["ss", "-Hltnp", f"sport = :{port}"], capture_output=True,
-                               text=True, timeout=5, check=False)
-        except (OSError, subprocess.SubprocessError):
-            return 0, ""
-        m = re.search(r"pid=(\d+)", p.stdout or "")
-        if not m:
-            return 0, "taken" if (p.stdout or "").strip() else ""
-        pid = int(m.group(1))
-        try:
-            with open(f"/proc/{pid}/cmdline", "rb") as f:
-                cmd = f.read().replace(b"\0", b" ").decode("utf-8", "replace").strip()
-        except OSError:
-            cmd = ""
-        return pid, cmd
-
-    @staticmethod
-    def _end_pid(pid):
-        """SIGTERM, a moment, then SIGKILL; reaped if it was this process's
-        child; an orphan left over from before a re-exec still is."""
-        for sig, wait in ((signal.SIGTERM, 3.0), (signal.SIGKILL, 1.0)):
-            with contextlib.suppress(OSError):
-                os.kill(pid, sig)
-            end = time.time() + wait
-            while time.time() < end:
-                with contextlib.suppress(OSError):
-                    os.waitpid(pid, os.WNOHANG)
-                if not os.path.exists(f"/proc/{pid}") or _zombie(pid):
-                    return
-                time.sleep(0.1)
+        self.term_kinds = dict(getattr(self, "term_kinds", None) or {},
+                               ctr={"argv": [bbtty], "env": dict(env), "who": who,
+                                    "cwd": env["HOME"] if os.path.isdir(env["HOME"]) else "/"})
+        SESSION.update(ctr=True, ctr_why="")
 
     def session_stop(self):
-        for p in self.ttyd:
-            with contextlib.suppress(OSError):
-                p.terminate()
-        for p in self.ttyd:
-            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
-                p.wait(5)
-        self.ttyd = []
+        self.session_up = False
+        self.term_kinds = {}
 
     def session_try(self, digest=None):
         """session_refresh, never fatal: the session half must not take the
@@ -510,26 +389,26 @@ class SessionsMixin:
         # A hosting-only node runs no sessions and keeps no bb (the
         # controller's flag, said in every hello).
         if self.state.get("host_only"):
-            SESSION.update(up=False, port=0, ro_port=0, bundle="",
+            SESSION.update(up=False, bundle="",
                            why="this node hosts containers only, so it runs no sessions")
             return
         try:
             self.session_refresh(digest)
         except (OSError, RuntimeError, subprocess.SubprocessError) as e:
-            SESSION.update(up=False, port=0, ro_port=0, user=self.session_account(),
+            SESSION.update(up=False, user=self.session_account(),
                            bundle="", why=f"{e}"[:120])
             log(f"sessions: not started: {e}")
 
     def session_refresh(self, digest=None):
-        """The bundle the controller ships against the one the ttyds run
+        """The bundle the controller ships against the one the terminals run
         from: fetched and swapped in when they differ, and at the start of
         this process (no digest to compare, since the fetch answers with one),
         which is when sessions start."""
-        if self.ttyd and (digest is None or digest == self.session_bundle):
+        if self.session_up and (digest is None or digest == self.session_bundle):
             self.bundle_back()
             return
         if not self.session_account():
-            SESSION.update(up=False, port=0, ro_port=0, user="", bundle="",
+            SESSION.update(up=False, user="", bundle="",
                            why="no session account; provision with --session-user")
             return
         env = {}
@@ -716,9 +595,9 @@ class SessionsMixin:
             return None
         return rows[:64] if isinstance(rows, list) else None
 
-    def kill_sessions(self, names):
+    def kill_sessions(self, names, why="asked from the dashboard"):
         for name in names:
-            log(f"sessions: ending {name} (asked from the dashboard)")
+            log(f"sessions: ending {name} ({why})")
             self._tmux(["kill-session", "-t", "=" + name])
 
     def tell(self, job, spec):
@@ -786,13 +665,10 @@ class SessionsMixin:
 
     def tmux_ops(self, ops):
         """Keys into a session here, as the dashboard sends them into its
-        own tmux (server._keys, _say, _send). Only send-keys and copy-mode,
-        only at a session by exact name: the controller composed the
-        argv, and this node still decides what it will run. `page` and
-        `respawn` are the two decisions made here, because both depend on
-        something only this side can see: PgUp at a prompt enters copy mode
-        where inside a full-screen program it is the program's key, and a
-        respawn has to find the launcher."""
+        own tmux (server._say, _send). Only send-keys and copy-mode, only at
+        a session by exact name: the controller composed the argv, and this
+        node still decides what it will run. `respawn` is the one decision
+        made here, because only this side can find the launcher."""
         for op in ops[:16]:
             if not isinstance(op, dict):
                 continue
@@ -802,19 +678,6 @@ class SessionsMixin:
             # A bare name, not `=name`: these take a target-PANE, and the
             # exact-match prefix is target-session syntax, measured as
             # "can't find pane: =…". tmux tries the exact name first anyway.
-            page = op.get("page")
-            if page in ("up", "down"):
-                flags = self._tmux(["display-message", "-p", "-t", sess,
-                                    "#{alternate_on} #{pane_in_mode}"]) or ""
-                alt, mode = (flags.split() + ["0", "0"])[:2]
-                if page == "up":
-                    argv = ["send-keys", "-t", sess, "PPage"] if alt == "1" \
-                        else ["copy-mode", "-eu", "-t", sess]
-                else:
-                    argv = ["send-keys", "-t", sess, "-X", "page-down"] if mode == "1" \
-                        else ["send-keys", "-t", sess, "NPage"]
-                self._tmux(argv)
-                continue
             # Restart this session's own process onto its launcher, which is
             # what the dashboard asks for when a project's model, effort or
             # permission rung changes. `-k` replaces the pane's process and
@@ -994,8 +857,8 @@ class SessionsMixin:
                 job.say(f"installed {ver} for {who_name}, but could not pin it: {e}\n")
         else:
             job.say(f"installed {ver} for {who_name} (the agent is not root here, so the account's own copy is what runs)\n")
-        # New sessions get the PATH with the pinned copy on it; the ttyds are
-        # restarted onto it, tmux sessions untouched (there are none).
+        # New terminals get the PATH with the pinned copy on it, tmux
+        # sessions untouched (there are none).
         self.session_renew()
         job.say(f"{product} {ver} is what a session here runs now\n")
         # ...and the controller hears it now: the version it compares rides
@@ -1115,12 +978,12 @@ class SessionsMixin:
         return got or None
 
     def session_renew(self):
-        """Ask the loop to restart the ttyds onto the current bundle with a
-        freshly built environment. From a job's thread, so only the flag
+        """Ask the loop to make the terminals' environment again from the
+        current bundle. From a job's thread, so only the flag
         is set here."""
         store = tc_root(self.state)
         into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
-        if into and os.path.isdir(into) and self.ttyd:
+        if into and os.path.isdir(into) and self.session_up:
             self.session_stale = into
 
     def session_firewall_check(self):
@@ -1130,10 +993,10 @@ class SessionsMixin:
         name) would find the ports dropped for it from then on. So the name
         is resolved again here and the rule rewritten when the answer
         changed: the nftables file the Debian path wrote and re-applied, or
-        firewalld's rich rules replaced. The same rewrite brings in the
-        container terminal's port (R218 step 4, SESSION_PORT + 2) on a node
-        provisioned before it, so it is the controller's and nobody else's
-        on the LAN. Root only, which is a managed node; a guest has no such
+        firewalld's rich rules replaced. The same rewrite keeps the rule to
+        the screen relay's port alone, the one port a terminal or a VM's
+        screen comes in on, on a node provisioned while ttyd's three were
+        open too. Root only, which is a managed node; a guest has no such
         rule and skips."""
         if time.time() - self.fw_checked < FIREWALL_EVERY_S or os.geteuid() != 0:
             return
@@ -1141,8 +1004,7 @@ class SessionsMixin:
         ip = controller_ip(self.state.get("controller") or "")
         if not ip:
             return
-        # ...and the VMs' screens (R99), the same way.
-        want = [7681, 7682, 7683, 7684]
+        want = [SCREEN_PORT]
         ports = ", ".join(str(p) for p in want)
         fam = "ip6" if ":" in ip else "ip"
         if os.path.isfile(SESSION_NFT):
@@ -1170,7 +1032,7 @@ class SessionsMixin:
             return
         if _have(FIREWALL_CMD) and _run([FIREWALL_CMD, "--state"]) == "running":
             rules = _run([FIREWALL_CMD, "--permanent", "--list-rich-rules"], timeout=20).splitlines()
-            ours = [r for r in rules if any(f'port="{p}"' in r for p in want)]
+            ours = [r for r in rules if any(f'port="{p}"' in r for p in (7681, 7682, 7683, *want))]
             have = {re.search(r'source address="([^"]+)"', r).group(1)
                     for r in ours if re.search(r'source address="([^"]+)"', r)}
             found = [re.search(r'port port="(\d+)"', r) for r in ours]
@@ -1207,49 +1069,29 @@ class SessionsMixin:
                 last = float(act.strip())
             except ValueError:
                 continue
-            base = name.split("~", 1)[1] if "~" in name else name
+            # The account's prefix alone off: a second slot ends in ~2 (R143).
+            base = re.sub(r"^u_[0-9a-f]{8}~", "", name)
             if base.startswith(AGENT_PREFIXES) and time.time() - last > limit * IDLE_UNIT:
                 log(f"sessions: ending {name} (idle {limit} minute(s), the controller's rule)")
                 self._tmux(["kill-session", "-t", "=" + name])
 
     def session_check(self):
-        """Once a loop: a ttyd that died is started again, not more often
-        than SESSION_RETRY_S (a port already taken would otherwise
-        spin this loop on a failing exec), and ttyds running an older
-        bundle than the one a job just fetched are restarted onto it. The
-        sessions are tmux's either way and survive; a client attached at
-        that moment reconnects.
-
-        And a node whose own address moved (DHCP handed it another, the
-        interface came back on a new one) has ttyds bound to an address
-        nothing reaches any more, while the controller already dials the
-        new one (it follows every hello). So the bind is compared to the
-        machine's address now, and a change restarts the ttyds onto it."""
-        if self.ttyd and self.session_bound and not SESSION_BIND and not self.session_stale:
+        """Once a loop: the terminals' environment made again onto a newer
+        bundle a job just fetched, or onto the node's own address where it
+        moved (DHCP handed it another, the interface came back on a new
+        one), which the screen relay listens on. Sessions are tmux's and
+        are untouched; only the next terminal opened sees the change."""
+        if self.session_up and self.session_bound and not SESSION_BIND and not self.session_stale:
             now = self.session_bind()
             if now != self.session_bound:
                 store = tc_root(self.state)
                 into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
                 if into and os.path.isdir(into):
-                    log(f"sessions: this node's address moved ({self.session_bound} -> {now}); "
-                        "restarting ttyd onto it")
+                    log(f"sessions: this node's address moved ({self.session_bound} -> {now})")
                     self.session_stale = into
-        if self.session_stale and self.ttyd and os.path.isdir(self.session_stale):
-            log("sessions: the bundle or the store changed; restarting ttyd so new sessions see it")
+                    self.screen.rebind()
+        if self.session_stale and self.session_up and os.path.isdir(self.session_stale):
+            log("sessions: the bundle or the store changed; new terminals see it")
             self.session_bundle = self.session_digest
             self.session_tried = time.time()
             self.session_start(self.session_stale)
-            return
-        if not self.ttyd or all(p.poll() is None for p in self.ttyd):
-            return
-        if time.time() - self.session_tried < SESSION_RETRY_S:
-            return
-        log("sessions: a ttyd exited; starting again")
-        self.session_tried = time.time()
-        store = tc_root(self.state)
-        into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
-        if into and os.path.isdir(into):
-            # .bb/current is whatever was fetched last, so the census names
-            # what this start actually runs.
-            self.session_bundle = self.session_digest or self.session_bundle
-            self.session_start(into)

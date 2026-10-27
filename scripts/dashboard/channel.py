@@ -395,7 +395,7 @@ def verb(name, auth, req, addr):
     if name == "hello":
         r = nodes.hello(nid, req.get("census"), addr,
                         field(req, "version"), field(req, "digest"),
-                        req.get("running"), keep=req.get("keep"))
+                        req.get("running"), keep=req.get("keep"), rotates=req.get("rotates") is True)
         # A managed node whose store holds a toolchain it lacks the
         # system libraries for installs them itself (toolchains.py).
         # Broad because this rides every hello, and a fault in the

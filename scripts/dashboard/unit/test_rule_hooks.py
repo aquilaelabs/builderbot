@@ -153,7 +153,9 @@ class Store(unittest.TestCase):
         for line in ("bb tests unit", "bb tests log", "./run.sh", "bash run.sh", "bb dashboard trace 30",
                      "bb tests preflight --dry", "bb tests preflight --files a.py --dry 2>&1 | tail",
                      "sed -n 1,5p scripts/dashboard/test/run.sh",         # reading the runner is not running it (B700)
-                     "grep -n slow scripts/dashboard/test/run.sh | head"):
+                     "grep -n slow scripts/dashboard/test/run.sh | head",
+                     # A verb's usage runs nothing (B278).
+                     "bb dashboard test --help", "bb tests probe -h", "bb build --help 2>&1 | head"):
             self.assertIsNone(rules.refusing("alpha", line), line)     # --dry is the plan alone (B698)
 
     def test_a_wait_on_a_runs_log_is_refused_only_in_the_foreground(self):

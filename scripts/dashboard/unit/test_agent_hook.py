@@ -1,4 +1,4 @@
-"""bb-agent-hook (R95 step 6): Codex's and Copilot's hooks hold Claude's
+"""bb-agent-hook (R95 steps 6, 21): Codex's, Copilot's and Grok's hooks hold Claude's
 guards. Their payloads said again in Claude Code's shape, the same hooks run
 in the same order, and a refusal answered in each agent's own way; against
 stand-in hooks, never the real controller."""
@@ -44,6 +44,19 @@ class Shape(unittest.TestCase):
                                            "cwd": "/w"})
         self.assertEqual((got["session_id"], got["tool_name"], got["tool_input"], got["cwd"]),
                          ("s1", "Bash", {"command": "ls"}, "/w"))
+
+    def test_a_grok_call_comes_in_camel_case_with_its_own_tool_names(self):
+        got = self.h.as_claude("grok", {"sessionId": "g1", "toolName": "run_terminal_command",
+                                        "toolInput": {"command": "ls"}, "cwd": "/w"})
+        self.assertEqual((got["session_id"], got["tool_name"], got["tool_input"], got["cwd"]),
+                         ("g1", "Bash", {"command": "ls"}, "/w"))
+        got = self.h.as_claude("grok", {"toolName": "search_replace", "toolInput": {"file_path": "src/a.rs"}})
+        self.assertEqual((got["tool_name"], got["tool_input"]), ("Edit", {"file_path": "src/a.rs"}))
+
+    def test_grok_s_events_are_claude_s_names_without_the_asking_mark(self):
+        self.assertEqual(self.h.agent_events("grok"),
+                         [["PreToolUse", "pre", 120], ["PostCompact", "recall", 30],
+                          ["UserPromptSubmit", "prompt", 900], ["Stop", "stop", 3600]])
 
 
 class Runs(unittest.TestCase):
@@ -94,6 +107,10 @@ class Runs(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out), {"permissionDecision": "deny", "permissionDecisionReason": "a rule refuses rm -rf here"})
 
+    def test_grok_is_refused_as_claude_is_exit_2_and_the_reason(self):
+        code, _, err = self.call("grok", "pre", {"toolName": "run_terminal_command", "toolInput": {"command": "rm -rf build"}})
+        self.assertEqual((code, err.strip()), (2, "a rule refuses rm -rf here"))
+
     def test_an_edit_is_noted_and_a_plain_command_passes(self):
         self.assertEqual(self.call("codex", "pre", {"tool_name": "apply_patch", "tool_input": "*** Update File: a.py\n"})[0], 0)
         self.assertEqual(self.ran()[-1][0], "alpha")
@@ -113,6 +130,19 @@ class Runs(unittest.TestCase):
                                                     "tool_input": "*** Update File: src/a.py\n"}, env)[0], 0)
         self.assertEqual(self.call("codex", "pre", {"tool_name": "apply_patch",
                                                     "tool_input": "*** Add File: /tmp/scratch.txt\n"}, env)[0], 0)
+
+    def test_a_projects_other_repositories_are_its_trees_too(self):
+        # R136: a session of a project of several repositories writes in
+        # each, as Claude's walls let it, each one's VERSION held.
+        env = {"BB_PROJECT": "alpha", "BB_AGENT_WHO": "u_0123abcd", "WORKSPACE": "/workspace",
+               "BB_TREE": "/workspace/.worktrees/alpha/codex-u_0123abcd", "BB_CLAUDE_SHARE": "/workspace/.claude",
+               "BB_WORKS": "beta", "BB_WORK_DIRS": "/workspace/.worktrees/beta/codex-u_0123abcd "}
+        def edit(path):
+            return self.call("codex", "pre", {"tool_name": "apply_patch", "tool_input": f"*** Update File: {path}\n"}, env)[0]
+        self.assertEqual(edit("/workspace/.worktrees/beta/codex-u_0123abcd/main.py"), 0)
+        self.assertEqual(edit("/workspace/beta/main.py"), 0)
+        self.assertEqual(edit("/workspace/.worktrees/beta/codex-u_0123abcd/VERSION"), 2)
+        self.assertEqual(edit("/workspace/gamma/main.py"), 2, "a project it does not hold is still walled")
 
     def test_a_copilot_search_runs_the_map_hook_as_claudes_grep_does(self):
         self.assertEqual(self.call("copilot", "pre", {"toolName": "grep", "toolArgs": {"pattern": "def main"}})[0], 0)

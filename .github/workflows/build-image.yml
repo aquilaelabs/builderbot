@@ -199,6 +199,11 @@ jobs:
             IMAGE_REV=${{ github.sha }}
             IMAGE_BUILT=${{ steps.stamp.outputs.at }}
             IMAGE_VERSION=${{ steps.ver.outputs.v }}
+          # The workflow's own token for GitHub's release API, which the
+          # image's tool downloads are checked against (scripts/lib/gh-fetch):
+          # a secret mount, in no layer of the image.
+          secrets: |
+            gh_token=${{ secrets.GITHUB_TOKEN }}
           # Every trigger left publishes: a merge to main, the weekly refresh,
           # and a dispatch. Nothing builds here without meaning to ship.
           push: true

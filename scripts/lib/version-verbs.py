@@ -155,7 +155,9 @@ if argv and argv[0] == "release":
         print('bb version [--for DIR] release --why "..."   tag this commit, push the tag and publish the\n'
               "    forge's release (GitHub, Gitea or GitLab), as Release on the Artifacts view does. Under\n"
               "    Agents may: Tag and publish a release: auto releases at once, ask waits for the\n"
-              "    project's owner, deny refuses.\n"
+              "    project's owner, deny refuses. A release whose Android APK could not be signed (bb\n"
+              "    sign status) is refused before the tag; --without-apk releases it anyway, to be\n"
+              "    signed after with bb sign release.\n"
               'bb version [--for DIR] release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...\n'
               "    change the published release: its notes replaced whole (- reads stdin), a file from\n"
               "    dist/ or the committed tree attached (one of the same name replaced), (asset:NAME) in\n"
@@ -173,11 +175,15 @@ if argv and argv[0] == "release":
             fail("--why needs the sentence after it")
         why = rest[i + 1]
         rest = rest[:i] + rest[i + 2:]
+    # A release whose Android APK could not be signed is refused before the
+    # tag unless this says to go on (R134 step 4).
+    unsigned = "--without-apk" in rest
+    rest = [x for x in rest if x != "--without-apk"]
     if rest:
-        fail(f"bb version release takes --why \"...\" and nothing else, not {rest[0]}")
+        fail(f"bb version release takes --why \"...\" [--without-apk] and nothing else, not {rest[0]}")
     auth = os.environ.get("BB_VERSION_AUTH", "")
-    r = bbapi.call("/api/version", {"action": "release", "project": proj, "component": comp, "why": why},
-                   auth=auth, timeout=240)
+    r = bbapi.call("/api/version", {"action": "release", "project": proj, "component": comp, "why": why,
+                                    "unsigned": unsigned}, auth=auth, timeout=240)
     if r.get("error"):
         fail(f"[builderbot] ERROR: {r['error']}")
     if r.get("id") and not r.get("released"):

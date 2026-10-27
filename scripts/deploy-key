@@ -22,7 +22,7 @@ set -euo pipefail
 
 # Under /config so a key survives the container being recreated; root-only,
 # so the dashboard and every session reach it only through this script.
-STORE=/config/deploy-keys
+STORE="$(bb_root_state)/deploy-keys"   # /config in the container (R90)
 SOCK=/run/builderbot/ssh-agent.sock
 
 [ "$(id -u)" -eq 0 ] || die "must run as root (via sudo)"

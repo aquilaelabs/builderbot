@@ -61,13 +61,16 @@ function renderSessionsInto(i){
   if (!d) return;
   const ss = state?.sessions;
   if (!ss){
-    d.setBar(`<span class="dim">${skv(6)}</span>`);
+    d.setBar("");
     paint(d.list, skTpl(skTable(SESS_COLS, 3, "sesstbl", "row sessrow")));
     return;
   }
   const agentSs = ss.filter(s => agentOfSession(tmuxBase(s.name))), claudes = agentSs.length;
-  d.setBar(`<span class="dim">${ss.length} session${ss.length === 1 ? "" : "s"}${
-    claudes ? `, ${claudes} of them ${agentsWord(agentSs.map(s => s.name))}` : ""}</span>`);
+  // Its counts as tiles (the operator, 25 Oct: no loose words at a page's
+  // top), not a line in its bar.
+  d.setBar("");
+  const glance = statTiles([{label: ss.length === 1 ? "session" : "sessions", value: ss.length},
+                            {label: agentsWord(agentSs.map(s => s.name)), value: claudes, omit: !claudes}]);
   // Named exactly as its tab is: the tmux name and the full path are in the
   // name's description, where the detail belongs.
   const names = sessionLabels();
@@ -94,8 +97,8 @@ function renderSessionsInto(i){
         <button type="button" class="danger" data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}"
           title="${claude ? "end this session: the transcript is kept" : "end this session and what runs in it"}">End</button></div>`])}</div>`;
   }).join("");
-  const html = ss.length ? tblWrap(SESS_COLS, rows, "sesstbl")
-    : `<div class="hint">nothing is running: a terminal or an agent's session you open is listed here</div>`;
+  const html = ss.length ? glance + tblWrap(SESS_COLS, rows, "sesstbl")
+    : `<div class="empty">nothing is running: a terminal or an agent's session you open is listed here</div>`;
   if (!paint(d.list, html)) return;
   // Kept from the pane under the page: its click makes the page's pane the
   // active one, and the terminal just opened in the dock would lose the

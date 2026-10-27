@@ -123,6 +123,42 @@ ok(nv.ship === 'artifacts,docker,vms,signing' && nv.row && nv.newVm,
 await page.evaluate(() => openVmsTab());
 await page.waitForSelector('.vmtab [data-vm-key="alpha/db"]', { timeout: 10000 });
 
+// The head is Containers' (the operator, 26 Oct): the search, Cards and List
+// as their pictures at a desk, and New VM; List draws each VM as a line
+// that opens into its card, and Cards brings the card back.
+const head = await page.$eval('.vmtab .docbarrow', b => ({ search: !!b.querySelector('#vmSearch'), newVm: !!b.querySelector('#bVmNew'),
+  icons: [...b.querySelectorAll('.dmviewseg [data-vmview]')].map(x => !!x.querySelector('svg') && x.textContent.trim() === '' && x.getAttribute('aria-label')).join() }));
+ok(head.search && head.newVm && head.icons === 'Cards,List', `the VMs page's head has the search, Cards and List as pictures, and New VM (${JSON.stringify(head)})`);
+// Typed again if the page's own reload redrew the box under the typing.
+for (let i = 0; i < 3 && await page.evaluate(() => vmsSearch) !== 'zzz-no-such-vm'; i++){
+  await page.fill('.pane .doc.on .vmtab #vmSearch', 'zzz-no-such-vm');
+  await page.waitForTimeout(300);
+}
+const narrowed = await page.waitForFunction(() => !document.querySelector('.pane .doc.on .vmtab [data-vm-key="alpha/db"]') && /No VM matches/.test(document.querySelector('.pane .doc.on .vmtab')?.textContent || ''), null, { timeout: 5000 }).then(() => true, () => false);
+const said = await page.evaluate(() => ({ q: vmsSearch, live: TABKINDS.vms.live(), focus: document.activeElement?.id, text: document.querySelector('.vmtab')?.textContent.replace(/\s+/g, ' ').slice(0, 160) }));
+ok(narrowed && said.focus === 'vmSearch', `the search narrows the VMs as it is typed, keeping its focus (B368; ${JSON.stringify(said)})`);
+await page.fill('.pane .doc.on .vmtab #vmSearch', '');
+await page.waitForSelector('.vmtab [data-vm-key="alpha/db"]', { timeout: 5000 });
+const top = await page.$eval('.vmtab', t => ({ tiles: [...t.querySelectorAll('.tiles .tile .tl')].map(x => x.textContent).join(),
+  chips: [...t.querySelectorAll('[data-vmchip]')].map(c => c.textContent.replace(/\d+$/, '').trim()) }));
+ok(/^running,projects,snapshots/.test(top.tiles), `the VMs page counts what runs, its projects and snapshots in tiles, as Containers does (${JSON.stringify(top)})`);
+if (top.chips.length > 2){
+  const other = await page.$eval('.vmtab [data-vmchip]:not([data-vmchip=""]):not([data-vmchip="alpha"])', c => c.dataset.vmchip);
+  await page.click(`.vmtab [data-vmchip="${other}"]`);
+  await page.waitForFunction(() => !document.querySelector('.vmtab [data-vm-key="alpha/db"]'), null, { timeout: 5000 });
+  ok(true, `...and a project's chip narrows the VMs to its own (${top.chips.join(', ')})`);
+  await page.click('.vmtab [data-vmchip=""]');
+  await page.waitForSelector('.vmtab [data-vm-key="alpha/db"]', { timeout: 5000 });
+} else ok(top.chips.length === 0, `...with no chips while only one project has VMs (${top.chips.join(', ')})`);
+await page.click('.vmtab [data-vmview="list"]');
+await page.waitForSelector('.vmtab .dmtbl details.dmline[data-vm-key="alpha/db"] > summary', { timeout: 5000 });
+const line = await page.$eval('.vmtab details.dmline[data-vm-key="alpha/db"]', d => ({ open: d.open, sum: d.querySelector('summary').textContent.replace(/\s+/g, ' ').trim() }));
+ok(!line.open && /^db/.test(line.sum), `List draws a VM as one line, shut (${JSON.stringify(line)})`);
+await page.click('.vmtab details.dmline[data-vm-key="alpha/db"] > summary');
+ok(await page.$eval('.vmtab details.dmline[data-vm-key="alpha/db"]', d => d.open && !!d.querySelector('.dmbody .dmacts')), '...which opens into its card');
+await page.click('.vmtab [data-vmview="cards"]');
+await page.waitForSelector('.vmtab div.row[data-vm-key="alpha/db"] .dmacts', { timeout: 5000 });
+
 // Stop and Revert are vm jobs too; Remove asks first.
 page.dialogs.length = 0;
 await page.click('.vmtab [data-vm-key="alpha/db"] .dmacts [data-vm="stop"]:not([data-force])');

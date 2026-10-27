@@ -366,6 +366,7 @@ object Watch {
         "release" -> "Release ${a.str("project").ifBlank { "a project" }} ${a.str("tag")}"
         "release-edit" -> "Edit the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }}"
         "release-remove" -> "Remove files from the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }}"
+        "release-sign" -> "Sign the release APKs of ${a.str("project").ifBlank { "a project" }} again"
         // A VM a session asks to make, start or remove (R91), under its
         // project's Make VMs setting.
         "vm" -> "A VM in ${a.str("project").ifBlank { "a project" }}"
@@ -373,7 +374,7 @@ object Watch {
     }
     fun askCommand(a: JSONObject): String = when (a.str("kind")) {
         "root" -> "# "
-        "rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "vm" -> "bb "
+        "rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "release-sign", "vm" -> "bb "
         else -> "adb "
     } + a.strs("cmd").joinToString(" ")
 }

@@ -364,8 +364,9 @@ sdk_status_local() {
             continue
         fi
         if d="$(sdk_find "$t")"; then
-            printf '  %-11s %s%s\n' "$t" "$d" \
-                "$([ "${d#"$root"}" = "$d" ] && printf ' (home volume, not the share)')"
+            printf '  %-11s %s%s%s\n' "$t" "$d" \
+                "$([ "${d#"$root"}" = "$d" ] && printf ' (home volume, not the share)')" \
+                "$(sdk_verified_said "$d")"
         else
             printf '  %-11s not installed (bb toolchains install %s)\n' "$t" "$t"
         fi
@@ -866,6 +867,16 @@ sdk_update() {
     case "$what" in
         flutter)
             d="$(sdk_find flutter)" || die "flutter is not installed"
+            # Half of a clone an install cut short (no .git, or no
+            # bin/flutter) has nothing to fetch into: git stopped at the
+            # share's edge with "not a git repository". Installed again
+            # instead, as an install clears the same half.
+            if [ ! -e "$d/.git" ] || [ ! -x "$d/bin/flutter" ]; then
+                warn "flutter at ${d} is not a whole checkout: an earlier install did not finish; installing it again"
+                rm -rf "${d:?}"
+                sdk_install flutter
+                return
+            fi
             log "updating flutter to the head of stable"
             # The clone is shallow, so fetch the branch tip and move onto it;
             # `flutter upgrade` refuses to work in a shallow checkout.
@@ -1204,6 +1215,65 @@ sdk_install_android() {
     sdk_relink_android
 }
 
+# sdk_verified_said DIR: how the toolchain in DIR was checked when it was
+# installed (R137), as a few words after its row: "; checked: sha256 matched
+# go.dev's download index", "; not checked: why", nothing for one installed
+# before BuilderBot checked.
+sdk_verified_said() {
+    local f="$1/.bb-verified" algo rest
+    [ -r "$f" ] || return 0
+    IFS=$'\t' read -r algo rest < "$f" || return 0
+    case "$algo" in
+        none) printf '; not checked: %s' "$rest" ;;
+        sha1|sha256|sha512) printf '; checked: %s matched %s' "$algo" "${rest#*$'\t'}" ;;
+        gpg) printf '; checked: %s' "${rest#*$'\t'}" ;;
+    esac
+}
+
+# sdk_verify_download WHAT FILE URL VERSION DIR: the download held to what
+# its publisher says it is (R137), before anything unpacks or runs it: the
+# catalog row's source.checksum, answered by sdkmeta.py. A mismatch removes
+# the file and stops the install, naming both digests. A row whose publisher
+# states nothing says so on the install, and DIR keeps how it was checked
+# (.bb-verified), which the Toolchains page reads.
+sdk_verify_download() {
+    local what="$1" file="$2" url="$3" version="$4" d="$5" said algo want where got
+    said="$(sdk_meta checksum "$what" "$url" "$version")" \
+        || { rm -f "$file"; die "could not learn what ${what}'s download should be: ${said:-no answer}"; }
+    algo="${said%%$'\t'*}"; said="${said#*$'\t'}"; want="${said%%$'\t'*}"; where="${said#*$'\t'}"
+    if [ "$algo" = gpg ]; then
+        # The publisher signs the download itself (Swift): its signature
+        # checked with the publisher's keys shipped beside the catalog.
+        local sig keyring signer
+        sig="$(mktemp "${TMPDIR:-/tmp}/bb-sig.XXXXXX")"
+        sdk_fetch "$want" "$sig" >/dev/null 2>&1 || { rm -f "$file" "$sig"; die "could not fetch ${what}'s signature (${want})"; }
+        keyring="$(sdk_meta keyring "$where")" || { rm -f "$file" "$sig"; die "${what}: no keys to check its signature with"; }
+        if ! signer="$(gpgv --keyring "$keyring" "$sig" "$file" 2>&1)"; then
+            rm -f "$file" "$sig"
+            die "${what}'s download does not carry its publisher's signature: $(printf '%s' "$signer" | tail -2 | tr '\n' ' ')nothing was installed"
+        fi
+        rm -f "$sig"
+        signer="$(printf '%s' "$signer" | sed -n 's/.*Good signature from "\([^"]*\)".*/\1/p' | head -1)"
+        [ -n "$signer" ] || signer="a key of its publisher"
+        log "verified: signed by ${signer}"
+        printf 'gpg\t\tsigned by %s\n' "$signer" > "$d/.bb-verified" 2>/dev/null || true
+        return 0
+    fi
+    if [ "$algo" = none ]; then
+        log "not verified: ${where}"
+        printf 'none\t%s\n' "$where" > "$d/.bb-verified" 2>/dev/null || true
+        return 0
+    fi
+    case "$algo" in sha1|sha256|sha512) ;; *) rm -f "$file"; die "${what}: unknown checksum kind ${algo}" ;; esac
+    got="$("${algo}sum" "$file" | cut -d' ' -f1)"
+    if [ "$got" != "$want" ]; then
+        rm -f "$file"
+        die "${what}'s download is not what ${where} says it is (${algo} ${got}, expected ${want}): nothing was installed"
+    fi
+    log "verified: ${algo} matches ${where}"
+    printf '%s\t%s\t%s\n' "$algo" "$want" "$where" > "$d/.bb-verified" 2>/dev/null || true
+}
+
 # Fetch source.url into the directory, unpacking it there. `strip` drops the
 # tarball's top directory, which is named for the release and would otherwise
 # pin the version into every PATH that points at it.
@@ -1221,6 +1291,7 @@ sdk_install_tarball() {
     mkdir -p "$d"
     tmp="$(mktemp "${TMPDIR:-/tmp}/bb-${what}.XXXXXX")"
     sdk_fetch "$url" "$tmp" || { rm -f "$tmp"; die "could not download ${url}"; }
+    sdk_verify_download "$what" "$tmp" "$url" "$version" "$d"
     # -a: tar picks the decompressor from the file, so the catalog does not
     # have to say whether a release ships .gz or .xz this year.
     tar -xaf "$tmp" -C "$d" --strip-components="$strip" || { rm -f "$tmp"; die "could not unpack ${url}"; }
@@ -1248,6 +1319,7 @@ sdk_install_script() {
     tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/bb-${what}.XXXXXX")"
     tmp="$tmpdir/$(basename "${url%%\?*}")"
     sdk_fetch "$url" "$tmp" || { rm -rf "$tmpdir"; die "could not download ${url}"; }
+    sdk_verify_download "$what" "$tmp" "$url" "" "$d"
     [ -z "$(sdk_meta field "$what" source.chmod)" ] || chmod +x "$tmp"
     local -a cmd env
     sdk_meta_into cmd argv "$what" source.run "dir=$d" "script=$tmp"
@@ -1285,6 +1357,9 @@ sdk_install_git() {
         "${g[@]}" checkout -q --detach FETCH_HEAD
         [ "$("${g[@]}" rev-parse HEAD)" = "$commit" ] \
             || die "${what}: ${url} answered $("${g[@]}" rev-parse --short HEAD) where ${commit:0:12} was approved"
+        # The commit's hash is the check on what was fetched (R137): what the
+        # Toolchains page says of a pack's row.
+        printf 'sha1\t%s\tthe git commit an administrator approved\n' "$commit" > "$d/.bb-verified" 2>/dev/null || true
         sdk_mark_exec "$what" "$d"
     else
         log "cloning ${what} (${branch:-default}) into ${d}"

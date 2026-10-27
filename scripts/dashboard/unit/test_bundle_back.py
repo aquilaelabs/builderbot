@@ -22,7 +22,7 @@ class BundleBack(unittest.TestCase):
 
         class Fake(agent.SessionsMixin):
             state = {"stores": {"toolchains": self.store}}
-            ttyd = ["running"]
+            session_up = True
             session_bundle = "sha256:same"
 
             def session_account(self):

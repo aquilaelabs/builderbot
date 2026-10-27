@@ -53,7 +53,13 @@ class Socket extends EventEmitter {
       let data = b.subarray(at, at + n);
       if (key) data = Buffer.from(data.map((x, i) => x ^ key[i & 3]));
       this.buf = b.subarray(at + n);
-      if (op === 0x8) { this.close(); return; }
+      if (op === 0x8) {
+        // Its code and its words, which say why: the terminal's reason.
+        this.code = data.length >= 2 ? data.readUInt16BE(0) : 1005;
+        this.why = data.length > 2 ? data.subarray(2).toString('utf8') : '';
+        this.close();
+        return;
+      }
       if (op === 0x9) { this.raw(0xA, data); continue; }
       if (op === 0xA) continue;
       if (op === 0x1 || op === 0x2) { this.partOp = op; this.parts = []; }
@@ -86,7 +92,7 @@ class Socket extends EventEmitter {
   done() {
     if (this.closed) return;
     this.closed = true;
-    this.emit('close');
+    this.emit('close', this.code || 1006, this.why || '');
   }
 }
 

@@ -35,7 +35,7 @@ function openAgentsOn(id){
   openAgentsTab(id);
   agRev++;
   const to = routeOf(tabOf(panes[0]));
-  if (to && to !== was) history.pushState(null, "", to);
+  if (to && to !== was) shellPush(to);
 }
 
 // The node the page opens on: the one it showed last, else the first agent
@@ -104,7 +104,8 @@ function agSection(a, n, m){
     ["program", a.product],
     ["installed", m?.installed || (up ? "none" : "")],
     ["latest", m?.latest || ""],
-    ["signs in with", a.provider ? `${/^[AEIOU]/.test(a.provider) ? "an" : "a"} ${a.provider} account` : ""],
+    // "an" by the sound: a vowel, or xAI's x said as a letter.
+    ["signs in with", a.provider ? `${/^(?:[AEIOU]|x(?=[A-Z]))/.test(a.provider) ? "an" : "a"} ${a.provider} account` : ""],
   ], "agfacts");
   const verb = m?.installed ? (m.state === "update" ? "Update" : "") : "Install";
   const acts = !up || !m || !may || running ? ""
@@ -174,8 +175,13 @@ function renderAgentsInto(i){
     wireAgentsTab(d.el);
     return;
   }
-  const hint = `<div class="field"><div class="hint">The coding agents a session on ${esc(n.name)} can run, each installed for its session account and signed in to by each person who works there.</div></div>`;
-  paint(d.list, `<div data-agnode="${esc(n.id)}">${hint}${
+  // The node as a head, as the Nodes page draws it (the operator, 25 Oct:
+  // no loose words at a page's top): how many of the agents are here, for
+  // whom, and who signs in.
+  const have = shown.filter(a => agRows.find(m => m.agent === a.id)?.installed).length;
+  const head = pageHead({title: n.name, facts: [["Installed", `${have} of ${shown.length} coding agents`],
+    ["Installed for", "its session account"], ["Signed in", "by each person who works there, on this node alone"]]});
+  paint(d.list, `<div data-agnode="${esc(n.id)}">${head}${
     shown.map(a => agSection(a, n, agRows.find(m => m.agent === a.id))).join("")}</div>`);
   wireAgentsTab(d.el);
 }

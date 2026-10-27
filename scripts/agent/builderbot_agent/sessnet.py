@@ -43,7 +43,9 @@ def session_sudoers(user, accounts=False):
             f"# which starts a session inside a view of this node that holds only its project.\n"
             f"Defaults!{SESSION_BIN} !use_pty, !lecture\n"
             f"{user} ALL=(root) NOPASSWD: {SESSION_BIN}\n"
-            + (f"%bbu ALL=(root) NOPASSWD: {SESSION_BIN} enter *, {SESSION_BIN} check, {SESSION_BIN} check-net\n"
+            # ...and its worktree, made for it as the tree's owner (R125 step 7).
+            + (f"%bbu ALL=(root) NOPASSWD: {SESSION_BIN} enter *, {SESSION_BIN} check, {SESSION_BIN} check-net, "
+               f"{SESSION_BIN} worktree *\n"
                if accounts else ""))
 
 
@@ -461,7 +463,9 @@ def sessnet_ctl(url):
 # published ports of its own project and the projects it reads, and is
 # rejected otherwise. Nothing is marked: nothing of Docker's reads a mark on
 # this path, and a missing table leaves Docker's own rules, which is what
-# the row says (not in force), never a container cut off.
+# the row says (not in force), never a container cut off. A container an
+# administrator let onto the LAN (`lan` in the controller's map) passes to
+# the private ranges as well, and to nothing more of this node's.
 
 CTRNET_TABLE = "builderbot_ctrnet"
 
@@ -472,6 +476,7 @@ def ctrnet_table():
 	set bridges {{ typeof iifname; }}
 	set pairs {{ typeof iifname . oifname; }}
 	set ownports {{ typeof iifname . tcp dport; }}
+	set lanok {{ typeof iifname; }}
 	set ctl {{ type ipv4_addr . inet_service; }}
 	set dns {{ type ipv4_addr; }}
 	set local {{ type ipv4_addr; flags interval; elements = {{ {", ".join(SESSNET_LOCAL)} }}; }}
@@ -488,6 +493,7 @@ def ctrnet_table():
 		ct original ip daddr . ct original proto-dst @ctl accept
 		ip daddr @dns udp dport 53 accept
 		ip daddr @dns tcp dport 53 accept
+		iifname @lanok accept
 		ip daddr @local reject with icmpx type admin-prohibited
 		accept
 	}}
@@ -510,9 +516,9 @@ def ctrnet_reach(containers, ctr):
     controller's map {compose project: {owner, to: [compose projects]}}:
     every compose bridge, the (from, to) bridge pairs a container may
     cross (its own bridge among them), and the (bridge, host port) pairs
-    of the published ports it may reach by the node's address. A compose
-    project the controller does not name reaches its own bridge and ports
-    and nothing of the others'."""
+    of the published ports it may reach by the node's address, and the
+    bridges let onto the LAN. A compose project the controller does not
+    name reaches its own bridge and ports and nothing of the others'."""
     by = {}
     for c in containers:
         if c.get("compose"):
@@ -520,27 +526,29 @@ def ctrnet_reach(containers, ctr):
             e["bridges"].update(c.get("bridges") or [])
             e["ports"].update(c.get("ports") or [])
     bridges = sorted({b for e in by.values() for b in e["bridges"]})
-    pairs, ports = set(), set()
+    pairs, ports, lan = set(), set(), set()
     for comp, e in by.items():
         to = {comp} | {str(x) for x in ((ctr or {}).get(comp) or {}).get("to") or []}
         # BuilderBot's own (R180, the controller's `all`): every compose
         # project here, the ones the controller never heard of included.
         if ((ctr or {}).get(comp) or {}).get("all"):
             to |= set(by)
+        if ((ctr or {}).get(comp) or {}).get("lan"):
+            lan |= e["bridges"]
         for b in e["bridges"]:
             for other in to:
                 for b2 in by.get(other, {}).get("bridges", ()):
                     pairs.add((b, b2))
                 for hp in by.get(other, {}).get("ports", ()):
                     ports.add((b, hp))
-    return bridges, sorted(pairs), sorted(ports)
+    return bridges, sorted(pairs), sorted(ports), sorted(lan)
 
 
-def ctrnet_fill(bridges, pairs, ports, ctl, dns):
+def ctrnet_fill(bridges, pairs, ports, ctl, dns, lan=()):
     """The sets, replaced in one transaction."""
     t = f"inet {CTRNET_TABLE}"
     out = [f"flush set {t} bridges", f"flush set {t} pairs", f"flush set {t} ownports",
-           f"flush set {t} ctl", f"flush set {t} dns"]
+           f"flush set {t} lanok", f"flush set {t} ctl", f"flush set {t} dns"]
     q = '"%s"'.__mod__
     if bridges:
         out.append(f"add element {t} bridges {{ {', '.join(q(b) for b in bridges)} }}")
@@ -548,6 +556,8 @@ def ctrnet_fill(bridges, pairs, ports, ctl, dns):
         out.append(f"add element {t} pairs {{ {', '.join(q(a) + ' . ' + q(b) for a, b in pairs)} }}")
     if ports:
         out.append(f"add element {t} ownports {{ {', '.join(q(b) + ' . ' + str(p) for b, p in ports)} }}")
+    if lan:
+        out.append(f"add element {t} lanok {{ {', '.join(q(b) for b in lan)} }}")
     if ctl:
         out.append(f"add element {t} ctl {{ {', '.join(f'{a} . {p}' for a, p in ctl)} }}")
     if dns:
@@ -782,9 +792,9 @@ class SessionNet:
             self.ctl = sessnet_ctl(self.agent.state.get("controller") or "") or self.ctl
         ns, _ = sessnet_resolvers()
         ctr = (self.agent.state.get("session_net") or {}).get("ctr") or {}
-        bridges, pairs, ports = ctrnet_reach(self.containers, ctr)
+        bridges, pairs, ports, lan = ctrnet_reach(self.containers, ctr)
         self.ctr_bridges = bridges
-        fill = ctrnet_fill(bridges, pairs, ports, self.ctl, ns)
+        fill = ctrnet_fill(bridges, pairs, ports, self.ctl, ns, lan)
         if fill != self.ctr_filled:
             p = subprocess.run([NFT_BIN, "-f", "-"], input=fill, capture_output=True, text=True,
                                timeout=30, check=False)

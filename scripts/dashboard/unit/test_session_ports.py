@@ -1,8 +1,9 @@
-"""The session ports' rule takes in the container terminal's (R218 step 4):
-a node provisioned before it has 7681 and 7682 open to the controller, and
-on its next check the agent widens that to 7683, so the docker account's
-ttyd is the controller's and nobody else's on the LAN (nftables), and
-reachable by the controller at all (firewalld drops what no rule allows)."""
+"""The session port's rule is the screen relay's port alone (R133): a node
+provisioned while ttyd's ports were open to the controller has them on
+its next check narrowed to 7684, the one port its terminals and its VMs'
+screens come in on, the controller's and nobody else's on the LAN
+(nftables), and reachable by the controller at all (firewalld drops what
+no rule allows), with ttyd's old rules taken away."""
 import os
 import shutil
 import subprocess
@@ -44,7 +45,7 @@ class SessionPorts(unittest.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-    def test_nftables_takes_in_the_container_port(self):
+    def test_nftables_keeps_to_the_relays_port(self):
         nft = os.path.join(self.tmp, "session-ports.nft")
         with open(nft, "w") as f:
             f.write(OLD_NFT)
@@ -52,14 +53,15 @@ class SessionPorts(unittest.TestCase):
         Fake().session_firewall_check()
         with open(nft) as f:
             text = f.read()
-        self.assertEqual(text.count("tcp dport { 7681, 7682, 7683, 7684 }"), 3, text)
+        self.assertEqual(text.count("tcp dport { 7684 }"), 3, text)
+        self.assertNotIn("7681", text)
         self.assertIn("ip saddr 192.168.1.16 accept", text)
         before = os.stat(nft).st_mtime_ns
         a = Fake()
         a.session_firewall_check()
         self.assertEqual(os.stat(nft).st_mtime_ns, before, "a rule already right is left alone")
 
-    def test_firewalld_gets_a_rule_for_it(self):
+    def test_firewalld_trades_ttyds_rules_for_the_relays(self):
         self.g["SESSION_NFT"] = os.path.join(self.tmp, "none.nft")
         self.g["_have"] = lambda cmd: True
         rules = "\n".join(f'rule family="ipv4" source address="192.168.1.16" port port="{p}" protocol="tcp" accept'
@@ -70,8 +72,10 @@ class SessionPorts(unittest.TestCase):
                                subprocess.CompletedProcess(argv, 0)):
             Fake().session_firewall_check()
         added = [a for c in calls for a in c if a.startswith("--add-rich-rule=")]
+        removed = [a for c in calls for a in c if a.startswith("--remove-rich-rule=")]
         self.assertTrue(any('port="7684"' in a and 'address="192.168.1.16"' in a for a in added), added)
-        self.assertEqual(len(added), 4)
+        self.assertEqual(len(added), 1)
+        self.assertEqual(len(removed), 2, removed)
 
 
 if __name__ == "__main__":

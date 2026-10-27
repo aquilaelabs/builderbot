@@ -1,9 +1,10 @@
 // One login for everything: the /login landing page, the cookie it mints,
 // the challenge-free 401s that keep the browser's own dialog away, and the
-// /term proxy that puts the terminals behind the same sign-in. The proxy's
-// upstream is dead in the harness (nothing listens on the ttyd port), which
-// pins the 502 path; the live relay is covered by using the dashboard.
-import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection, member, splitPick } from './lib.mjs';
+// terminals (/termws, and terminal.html at /terminal) behind the same
+// sign-in. A plain request to /termws is answered with what the socket
+// would be (a refusal and why, or that a websocket is asked for), which is
+// how most checks here ask; the socket itself is covered by term.mjs.
+import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection, member, splitPick, projectKey } from './lib.mjs';
 import http from 'node:http';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -48,9 +49,9 @@ ok(!r.headers.get('www-authenticate'), '...with no basic-auth challenge anywhere
 r = await bare('/api/status');
 ok(r.status === 401 && !r.headers.get('www-authenticate'),
    'the API answers 401, challenge-free, so nothing pops a dialog');
-r = await bare('/term/');
+r = await bare('/terminal?arg=shell');
 ok(r.status === 302 && r.headers.get('location').startsWith('/login'),
-   'the terminal proxy is behind the same sign-in');
+   'the terminal is behind the same sign-in');
 r = await bare('/login');
 {
   const html = await r.text();
@@ -80,9 +81,9 @@ ok(r.status === 303 && cookie.startsWith('bb_session=') && cookie.length > 40,
 ok(/HttpOnly/i.test(r.headers.get('set-cookie')), '...that scripts cannot read');
 r = await bare('/api/status', { headers: { Cookie: cookie } });
 ok(r.status === 200, 'the cookie alone opens the API');
-r = await bare('/term/', { headers: { Cookie: cookie } });
-ok(r.status === 502 && (await r.json()).error.includes('not running'),
-   'the proxy answers for a dead ttyd instead of hanging');
+r = await bare('/termws?arg=shell', { headers: { Cookie: cookie } });
+ok(r.status === 400 && (await r.json()).error.includes('a websocket is asked for here'),
+   'the cookie alone opens a terminal, whose socket is what a plain request is told to ask for');
 r = await bare('/login', { method: 'POST',
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   body: 'username=test&password=test&next=//evil.example/' });
@@ -360,7 +361,7 @@ ${code}`], { encoding: 'utf8' });
   // on and no others. Driven against a node rather than tmux: the sessions
   // are a node's (R47), and its census is what says who has one open.
   {
-    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    const term = (h, arg) => bare('/termws?arg=' + encodeURIComponent(arg), { headers: h });
     const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
                 'Content-Type': 'application/json' };
     const napi = async (path, body, hdrs) => (await bare(path, {
@@ -370,7 +371,7 @@ ${code}`], { encoding: 'utf8' });
       ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: r.status, ...(await r.json().catch(() => ({}))) }; };
     const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
     const box = await napi('/api/v1/nodes', { action: 'enroll', name: 'talkbox' });
-    const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb',
+    const SE = { up: true, term: true, user: 'bb',
                  workspace: true, writable: true, boot: '3.3', up_s: 5000, claude: '1.0.0 (Claude Code)' };
     // Enrolling with the one-time token mints the node's own, which is what
     // every call after it carries.
@@ -478,7 +479,7 @@ ${code}`], { encoding: 'utf8' });
     ok(mine.can && mine.can.terminal === true,
        '...and an administrator is told the opposite, so nothing is drawn dead');
 
-    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    const term = (h, arg) => bare('/termws?arg=' + encodeURIComponent(arg), { headers: h });
     const shell = await term(other, 'sh:1:');
     ok(shell.status === 403 && /a shell needs .+ Write/.test((await shell.json()).error || ''),
        'a shell is refused at the proxy, not merely hidden on the page');
@@ -576,9 +577,11 @@ ${code}`], { encoding: 'utf8' });
     {
       const mine = () => (projects(owner)).then(ps => ps.find(p => p.name === 'alpha')?.mine);
       const list = (await (await bare('/api/users', { headers: owner })).json()).users.find(u => u.name === 'test').projects;
-      ok(!list.includes('*') && list.includes('alpha') && await mine() === true,
-         `the owner's "*" became the projects that exist, alpha among them (${list.join(', ')})`);
-      await post(owner, '/api/users', { action: 'projects', name: 'test', projects: list.filter(p => p !== 'alpha') });
+      // By project (R138): the list names alpha's project, by its key.
+      const ak = projectKey('alpha');
+      ok(!list.includes('*') && list.includes(ak) && await mine() === true,
+         `the owner's "*" became the projects that exist, alpha's among them (${list.join(', ')})`);
+      await post(owner, '/api/users', { action: 'projects', name: 'test', projects: list.filter(p => p !== ak) });
       const off = await post(owner, '/api/roadmap', { project: 'alpha', action: 'add', text: 'x' });
       ok(await mine() === false && off.status === 403,
          `...and off their own list, alpha is read-only to the owner too (${off.status})`);
@@ -592,7 +595,7 @@ ${code}`], { encoding: 'utf8' });
       const ownerUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
       const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
       mkdirSync(`${DIR}/ws/.claude/${ownerUid}/projects/${slug}`, { recursive: true });
-      writeFileSync(`${DIR}/ws/.claude/${ownerUid}/projects/${slug}/b489b489-0000-4000-8000-000000000000.jsonl`, '{}\n');
+      writeFileSync(`${DIR}/ws/.claude/${ownerUid}/projects/${slug}/b489b489-0000-4000-8000-000000000000.jsonl`, JSON.stringify({ type: 'user', message: { content: 'carry on' } }) + '\n');
       const theirs = (await projects(owner)).find(p => p.name === 'alpha')?.last_claude?.id;
       const notTheirs = (await projects(adm)).find(p => p.name === 'alpha')?.last_claude;
       ok(theirs === 'b489b489-0000-4000-8000-000000000000' && !notTheirs,
@@ -642,7 +645,7 @@ ${code}`], { encoding: 'utf8' });
       rmSync(`${theirs}/theirs.md`, { force: true });
       rmSync(`${owners}/owners.md`, { force: true });
     }
-    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    const term = (h, arg) => bare('/termws?arg=' + encodeURIComponent(arg), { headers: h });
     ok((await term(adm, 'claude:alpha')).status === 403,
        '...nor start a Claude session in it, which is the most write-shaped thing here');
     ok((await bare('/api/roadmap?project=alpha', { headers: adm })).status === 200,
@@ -1038,17 +1041,21 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.waitForSelector('.userstab #ueAccess #rolesAddProj', { timeout: 15000 });
   ok(!await page.$('.userstab #ueRole') && /on no project yet/.test(await page.$eval('.userstab #ueAccess', e => e.textContent)),
      'its settings set no built-in role, and say the account is on no project yet');
+  ok(await page.$$eval('.userstab #ueSave, .userstab #ueRevert', bs => bs.length === 2 && bs.every(b => b.disabled)),
+     'Save and Revert sleep while nothing on the account is unsaved');
   await page.fill('.userstab #ueFull', 'Tab Made');
+  ok(await page.$$eval('.userstab #ueSave, .userstab #ueRevert', bs => bs.every(b => b.disabled)), '...and stay asleep for a name typed as it was');
   await page.fill('.userstab #ueEmail', 'not-an-email');
+  ok(await page.$$eval('.userstab #ueSave, .userstab #ueRevert', bs => bs.every(b => !b.disabled)), '...and wake as something new is typed');
   await page.click('.userstab #ueSave');
   await page.waitForFunction(() => !document.getElementById('ueErr').hidden, null, { timeout: 10000 });
   ok(/not an email/.test(await page.$eval('#ueErr', e => e.textContent)),
      'Save refuses an email that is not one, and keeps what was typed');
   await page.fill('.userstab #ueEmail', 'tab@example.invalid');
-  await page.selectOption('.userstab #rolesAddProj', 'alpha');
+  await page.selectOption('.userstab #rolesAddProj', projectKey('alpha'));
   await page.selectOption('.userstab #rolesAddRole', 'reader');
   await page.click('.userstab #rolesAddOn');
-  await page.waitForSelector('.userstab [data-rproject="alpha"] [data-rprole="reader"]:checked');
+  await page.waitForSelector(`.userstab [data-rproject="${projectKey('alpha')}"] [data-rprole="reader"]:checked`);
   ok(await page.$eval('.userstab #ueEmail', e => e.value) === 'tab@example.invalid',
      '...and what is typed survives the roles fields being drawn again');
   await page.click('.userstab #ueSave');
@@ -1270,36 +1277,38 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
                                           && !!el.querySelector('#pfPasswd')),
      'the Profile page names the account and carries Save and Change password');
   // ...and says what the account may do, once (R255 step 5): its roles by
-  // name in the bar and every area it holds, with its level.
+  // name in its head and every area it holds, with its level.
   const wm = await page.$eval('.profiletab', el => ({ bar: el.closest('.doc')?.querySelector('.docbarrow')?.textContent || '',
     facts: Object.fromEntries([...el.querySelectorAll('.facts .fact')].map(f => [f.querySelector('dt').textContent, f.querySelector('dd').textContent])) }));
-  ok(/BuilderBot's owner/.test(wm.bar) && wm.facts['Accounts and roles'] === 'Write' && wm.facts.Projects === 'Write',
+  // Its roles a fact of the page's head now (the operator, 25 Oct).
+  ok(/BuilderBot's owner/.test(wm.facts.Roles || '') && wm.facts['Accounts and roles'] === 'Write' && wm.facts.Projects === 'Write',
      `...and what it may do: its roles by name, and each area with its level (${JSON.stringify(wm).slice(0, 160)})`);
   ok(await page.evaluate(() => !!document.querySelector('#rail [data-rail="people"]') && railAllows('settings') && railAllows('users')),
      'an administrator is offered People and the controller\'s settings on the rail');
-  // The ? beside a label opens its words as a line on the page under the
-  // label, at every width, and a second press folds them away (the operator,
-  // 11 Oct: no tooltips, which a pane clipped and a phone never had).
+  // The ? beside a label opens its words in a tooltip beside it (the
+  // operator, 26 Oct), fixed to the window so no pane clips it, and a second
+  // press shuts it.
   await page.click('.profiletab .help');
-  const said = await page.$eval('.profiletab .help.on', el => {
-    const at = el.closest('label, .lbl') || el.parentElement;
-    const line = at.nextElementSibling;
-    return { line: line?.classList.contains('helptext') ? line.textContent : '', ex: el.getAttribute('aria-expanded') };
+  const said = await page.evaluate(() => {
+    const h = document.querySelector('.profiletab .help.on'), tip = document.getElementById('helpPop');
+    const r = h?.getBoundingClientRect(), t = tip?.getBoundingClientRect();
+    return { text: tip && !tip.hidden ? tip.textContent : '', ex: h?.getAttribute('aria-expanded'), by: h?.getAttribute('aria-describedby'),
+             fixed: tip ? getComputedStyle(tip).position : '', near: !!(r && t) && Math.abs(t.top - r.bottom) < 12 };
   });
-  ok(/at least 8 characters|sign in with/.test(said.line) && said.ex === 'true',
-     `a tap on the ? opens its words as a line under its label (${said.line.slice(0, 40)})`);
+  ok(/at least 8 characters|sign in with/.test(said.text) && said.ex === 'true' && said.by === 'helpPop' && said.fixed === 'fixed' && said.near,
+     `a press on the ? opens its words in a tooltip under it (${JSON.stringify(said).slice(0, 120)})`);
   await page.click('.profiletab .help.on');
-  ok(!(await page.$('.profiletab .help.on')) && !(await page.$('.profiletab .helptext')),
-     '...and a second tap folds them away');
-  // ...and on a phone the line is inside the screen like any other.
+  ok(!(await page.$('.profiletab .help.on')) && await page.$eval('#helpPop', t => t.hidden),
+     '...and a second press shuts it');
+  // ...and on a phone it is inside the screen.
   await page.setViewportSize({ width: 393, height: 851 });
     // Profile on a phone opens on its list (a page of settings): a section first.
     await splitPick(page, 'you');
     await page.waitForSelector('.profiletab .help', { state: 'visible', timeout: 10000 });
   await page.click('.profiletab .help');
-  const fit = await page.$eval('.profiletab .helptext', el => { const r = el.getBoundingClientRect(); return { x: r.left, right: r.right, vw: innerWidth }; });
-  ok(fit.x >= 0 && fit.right <= fit.vw,
-     `on a phone the ?'s line is inside the screen (${Math.round(fit.x)}..${Math.round(fit.right)} of ${fit.vw})`);
+  const fit = await page.$eval('#helpPop', el => { const r = el.getBoundingClientRect(); return { x: r.left, right: r.right, vw: innerWidth, shown: !el.hidden }; });
+  ok(fit.shown && fit.x >= 0 && fit.right <= fit.vw,
+     `on a phone the ?'s tooltip is inside the screen (${Math.round(fit.x)}..${Math.round(fit.right)} of ${fit.vw})`);
   await page.click('.profiletab .help.on');
   await page.setViewportSize({ width: 1280, height: 800 });
   // No author, no terminal and no git: an account with no name and email
@@ -1312,7 +1321,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'add', name: 'noauthor', password: 'tabmadepw1', role: 'admin' }) })).json());
-    const sh = await bare('/term/ws?arg=sh:1:beta', { headers: noauthor });
+    const sh = await bare('/termws?arg=sh:1:beta', { headers: noauthor });
     ok(sh.status === 409 && /no name and email/.test((await sh.json()).error || ''),
        'an account with no author is refused a shell at the door, and told where to set one');
     // fetch writes with git and wants an author; a policy read and an
@@ -1357,23 +1366,22 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     ok(JSON.stringify(asUser.project_job) === '{}' && typeof asOwner.project_job?.running === 'boolean',
        `...and its status carries no project job to draw, while an administrator's does (${JSON.stringify(asUser.project_job)})`);
     // B172: a session is its owner's. The name says whose (u_<uid>~...),
-    // and the owner's own here keep bare names; nobody ends, keys or types
-    // into anybody else's. Decided before the session is looked up, so a
+    // and the owner's own here keep bare names; nobody ends or types into
+    // anybody else's. Decided before the session is looked up, so a
     // name is enough to ask with.
     const ownerAuth = { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
     const act = async (h, path, body) => {
       const r = await bare(path, { method: 'POST', headers: h, body: JSON.stringify(body) });
       return { status: r.status, error: ((await r.json().catch(() => ({}))).error || '') };
     };
-    for (const [path, body] of [['/api/keys', { session: 'claude-alpha', key: 'enter' }],
-                                ['/api/session', { action: 'kill', session: 'claude-alpha' }],
+    for (const [path, body] of [['/api/session', { action: 'kill', session: 'claude-alpha' }],
                                 ['/api/send', { session: 'shell-alpha-1', macro: 'lx-ls' }]]) {
       const r = await act(plainAuth, path, body);
       ok(r.status === 403 && /not yours/.test(r.error), `a plain account cannot use ${path} on the owner's session (${r.status})`);
     }
-    const other = await act(ownerAuth, '/api/keys', { session: 'u_0badf00d~claude-alpha', key: 'enter' });
-    ok(other.status === 403, `...nor can the owner press a key in another account's session (${other.status})`);
-    const own = await act(ownerAuth, '/api/keys', { session: 'claude-alpha', key: 'enter' });
+    const other = await act(ownerAuth, '/api/send', { session: 'u_0badf00d~claude-alpha', macro: 'lx-ls' });
+    ok(other.status === 403, `...nor can the owner type into another account's session (${other.status})`);
+    const own = await act(ownerAuth, '/api/send', { session: 'claude-alpha', macro: 'lx-ls' });
     ok(own.status !== 403, `...while the owner still reaches their own (${own.status}: ${own.error.slice(0, 40)})`);
     const { execFileSync: ef } = await import('node:child_process');
     const ownerUid = JSON.parse((await import('node:fs')).readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
@@ -1384,9 +1392,9 @@ u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
 u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
 print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim();
     const sessAuth = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + stok };
-    const across = await act(sessAuth, '/api/keys', { session: 'claude-beta', key: 'enter' });
+    const across = await act(sessAuth, '/api/send', { session: 'claude-beta', macro: 'lx-ls' });
     ok(across.status === 403, `a session's token cannot reach its own account's session on another project (${across.status})`);
-    const home = await act(sessAuth, '/api/keys', { session: 'claude-alpha', key: 'enter' });
+    const home = await act(sessAuth, '/api/send', { session: 'claude-alpha', macro: 'lx-ls' });
     ok(home.status !== 403, `...and does reach its own project's (${home.status})`);
     // B173-B175: what acts on a project by name asks the right as well as
     // the name. A plain account given alpha cannot lock it, move the shared
@@ -1496,6 +1504,29 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
          `...a session reads the keys without a secret, proposes a new one for the owner to allow, and at Deny is refused naming the setting (${keyAsk?.cmd?.join(' ')})`);
       for (const a of [keyAsk, rotAsk]) if (a) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: a.id }) });
       await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask', keys: 'ask', node: '' }) });
+      // A release's signing (R134): a session reads whether its APK can be
+      // signed and how the newest went, and asks for the look again under
+      // Sign a build; a project that hands over no APK has nothing to ask.
+      {
+        const none = await sign({ action: 'release-sign', why: 'the key was added' });
+        mkdirSync(`${DIR}/ws/alpha/.github/workflows`, { recursive: true });
+        writeFileSync(`${DIR}/ws/alpha/.github/workflows/app.yml`, 'jobs: {b: {steps: [{with: {name: bb-release-apk-x}}]}}\n');
+        const read = await sign({ action: 'release' });
+        const asked = await sign({ action: 'release-sign', why: 'the key was added' });
+        const ownerAsks = await (await bare('/api/phone', { headers: ownerAuth })).json();
+        const ask = (ownerAsks.asks || []).find(a => a.id === asked.body.id);
+        await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'deny' }) });
+        const denied = await sign({ action: 'release-sign', why: 'again' });
+        if (ask) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: ask.id }) });
+        await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask' }) });
+        rmSync(`${DIR}/ws/alpha/.github`, { recursive: true, force: true });
+        ok(none.status === 400 && /no unsigned APK/.test(none.body.error || '')
+           && read.status === 200 && read.body.release?.wanted === true && typeof read.body.release.why === 'string'
+           && Array.isArray(read.body.attention) && !JSON.stringify(read.body).includes('"pw"')
+           && asked.status === 200 && ask?.kind === 'release-sign' && ask.cmd.join(' ') === 'sign release'
+           && denied.status === 403 && /Sign a build/.test(denied.body.error || ''),
+           `...a session reads its release signing with no secret, asks the owner to sign a release again, and at Deny is refused naming the setting (${none.status}/${read.status}/${asked.status}/${denied.status})`);
+      }
       await bare('/api/signing', { method: 'POST', headers: ownerAuth,
         body: JSON.stringify({ action: 'backup-password', project: 'alpha', current: 'a-backup-password', new: '' }) });
       rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
@@ -1538,6 +1569,23 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
            && ask.tag === 'v1.2.3' && ask.sha === sha && !gitR('tag', '--list', 'v1.2.3'),
            `a session's bb version release is refused before anybody is asked when it could not happen, then waits on the project's owner naming the tag and its commit, and tags nothing until then (${ask?.tag} on ${ask?.sha}; ${noVersion.body.error || ''} | ${dirtyAsked.body.error || ''} | ${asked.body.error || ''})`);
         await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: asked.body.id }) });
+        // An Android APK the release could not have signed is said before
+        // the tag (R134 step 4), and --without-apk goes on to the ask.
+        {
+          mkdirSync(`${R}/.github/workflows`, { recursive: true });
+          writeFileSync(`${R}/.github/workflows/app.yml`, 'jobs: {b: {steps: [{with: {name: bb-release-apk-x}}]}}\n');
+          gitR('add', '.github'); gitR('commit', '-qm', 'an Android workflow');
+          const unsignable = await rel({});
+          const goOn = await rel({ unsigned: true });
+          const asks = await (await bare('/api/phone', { headers: ownerAuth })).json();
+          const a = (asks.asks || []).find(x => x.id === goOn.body.id);
+          if (a) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: a.id }) });
+          const page = await (await bare('/api/version?project=relproj', { headers: ownerAuth })).json();
+          ok(unsignable.status === 409 && /could not be signed/.test(unsignable.body.error || '') && /--without-apk/.test(unsignable.body.error || '')
+             && goOn.status === 200 && a?.kind === 'release' && !gitR('tag', '--list', 'v1.2.3')
+             && typeof page.release_sign === 'string' && page.release_sign.length > 0,
+             `...a release whose Android APK could not be signed is refused before the tag saying why, --without-apk asks anyway, and Release's confirm is told (${unsignable.status}: ${(unsignable.body.error || '').slice(0, 90)})`);
+        }
         await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'relproj', release: 'deny' }) });
         const denied = await rel({});
         const other = await rel({ project: 'alpha' });
@@ -1671,15 +1719,18 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       // (R135), the one difference from an administrator.
       {
         const list = (await (await bare('/api/users', { headers: ownerAuth })).json()).users.find(u => u.name === 'test').projects;
-        const without = list.filter(p => p !== 'gamma');
+        // By project (R138): the list names gamma's project by its key.
+        const GK = projectKey('gamma');
+        const without = list.filter(p => p !== GK);
         await post(ownerAuth, '/api/users', { action: 'projects', name: 'test', projects: without });
         const back = await post(ownerAuth, '/api/users', { action: 'projects', name: 'test', projects: [...without, 'gamma'] });
-        ok(back.status === 200 && (back.body.projects || []).includes('gamma'),
+        ok(back.status === 200 && (back.body.projects || []).includes(GK),
            `...while the owner adds themselves to it without an invitation (${back.status})`);
       }
       const inv = await post(ownerAuth, '/api/members', { action: 'invite', project: 'gamma', name: 'adminone', role: 'member' });
       const st = await (await bare('/api/status', { headers: adminAuth })).json();
-      const mine = (st.invites || []).find(i => i.project === 'gamma');
+      const isG = p => p === 'gamma' || p === projectKey('gamma');
+      const mine = (st.invites || []).find(i => isG(i.project));
       const acc = mine ? await post(adminAuth, '/api/members', { action: 'accept', id: mine.id }) : { status: 0, body: {} };
       const after = await post(ownerAuth, '/api/members', { action: 'view', project: 'gamma' });
       ok(inv.status === 200 && mine && mine.by === 'test' && acc.body.joined === true
@@ -1690,7 +1741,7 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       const moved = await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'adminone' });
       const offer = await post(adminAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'plainone' });
       const pst = await (await bare('/api/status', { headers: plainAuth })).json();
-      const off = (pst.invites || []).find(i => i.project === 'gamma' && i.kind === 'owner');
+      const off = (pst.invites || []).find(i => isG(i.project) && i.kind === 'owner');
       const took = off ? await post(plainAuth, '/api/members', { action: 'accept', id: off.id }) : { body: {} };
       const now = await post(ownerAuth, '/api/members', { action: 'view', project: 'gamma' });
       ok(moved.body.owner === 'adminone' && offer.body.owner === 'adminone' && offer.body.offered === 'plainone'
@@ -1700,9 +1751,16 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       // payload says whose it is, and the People section offers it under
       // gamma and no other project.
       const rl = await (await bare('/api/roles', { headers: ownerAuth })).json();
-      const gOwner = Object.values(rl.roles || {}).find(r => r.project === 'gamma');
-      ok(gOwner && /^owner of /.test(gOwner.label || '') && gOwner.scope === 'projects',
+      const gOwner = Object.values(rl.roles || {}).find(r => isG(r.project));
+      ok(gOwner && /^Owner of /.test(gOwner.label || '') && gOwner.scope === 'projects',
          `a project's owner role carries its project (${JSON.stringify(gOwner || {}).slice(0, 80)})`);
+      // One named before a rename is tied to its project by its note, and
+      // one whose project is gone is not offered at all (B369).
+      for (const [name, of] of [['gamma-was_owner', 'gamma'], ['vanished-xyz_owner', 'vanished-xyz']])
+        await post(adminAuth, '/api/roles', { action: 'set', name, scope: 'projects', perms: { projects: 'write' }, note: `the owner of ${of}` });
+      const rl2 = (await (await bare('/api/roles', { headers: adminAuth })).json()).roles || {};
+      ok(isG(rl2['gamma-was_owner']?.project) && !rl2['vanished-xyz_owner'],
+         `an owner role named before a rename is gamma's by its note, and one of a project gone is not listed (${JSON.stringify({ was: rl2['gamma-was_owner']?.project, gone: !!rl2['vanished-xyz_owner'] })})`);
       await page.evaluate(() => { loadRoles(); openUsersTab(); });
       await page.waitForSelector('.userstab [data-upick="plainone"]', { timeout: 15000 });
       await page.click('.userstab [data-upick="plainone"]');
@@ -1710,7 +1768,7 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       // Where the role is offered, as the Add to project row in an
       // account's settings fills its role picker for each project (R255 step 9).
       const where = await page.evaluate(n => (rolesData.projects || []).filter(pn => rolesOnProject(pn).some(r => r.name === n)), gOwner?.name || '');
-      ok(where.length === 1 && where[0] === 'gamma',
+      ok(where.length === 1 && isG(where[0]),
          `...and the People section offers it under gamma alone (${JSON.stringify(where)})`);
       await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'test' });
       const sessM = await act(sessAuth, '/api/members', { action: 'view', project: 'alpha' });
@@ -1725,7 +1783,7 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
        `a session's token cannot use the version panel, where it could loosen its own policy (${vs.status})`);
     await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
-    ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,
+    ok((await bare('/termws?arg=sh:1:beta', { headers: noauthor })).status !== 409,
        '...and a name and email on the Profile open the door');
     await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1789,13 +1847,9 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
   const set = (h, on) => bare('/api/settings', { method: 'POST', headers: h, body: JSON.stringify({ set: { maintenance_mode: on } }) });
   const SAID = /down for maintenance: only its owner can sign in/;
 
-  // Two terminals open before it starts, relayed to a stand-in for ttyd on
-  // the harness's port: the administrator's ends when maintenance starts,
-  // the owner's goes on.
+  // Two terminals open before it starts, shells on this controller: the
+  // administrator's ends when maintenance starts, the owner's goes on.
   const net = await import('node:net');
-  const ttyd = net.createServer(s => { s.on('error', () => {});
-    s.once('data', () => s.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')); });
-  await new Promise(res => ttyd.listen(7999, '127.0.0.1', res));
   const u0 = new globalThis.URL(URL);
   const openTerm = (cookie, n) => new Promise(res => {
     const t = { closed: false, status: '' };
@@ -1804,8 +1858,8 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
     c.on('error', () => {});
     c.on('close', () => { t.closed = true; res(t); });
     c.on('data', d => { got += d; if (!t.status && got.includes('\r\n\r\n')) { t.status = got.split('\r\n')[0]; t.sock = c; res(t); } });
-    c.write(`GET /term/ws?arg=sh%3A${n}%3Aalpha HTTP/1.1\r\nHost: ${u0.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n`
-      + `Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: tty\r\nCookie: ${cookie}\r\n\r\n`);
+    c.write(`GET /termws?arg=sh%3A${n}%3Aalpha&cols=80&rows=24 HTTP/1.1\r\nHost: ${u0.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n`
+      + `Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nCookie: ${cookie}\r\n\r\n`);
   });
   const cookieOf = async (u, pw) => ((await form(u, pw)).headers.get('set-cookie') || '').split(';')[0];
   // An author first: a terminal is refused to an account with none.
@@ -1816,7 +1870,37 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
 
   let r = await set(adm, true);
   ok(r.status === 403 && /only the owner/.test((await r.json()).error || ''), 'an administrator cannot switch maintenance mode on');
-  ok((await set(owner, true)).status === 200, '...and the owner can');
+  // Turning it on asks first, listing everybody else's sessions and
+  // terminals with what each is doing, since it ends them (the operator,
+  // 27 Oct); the owner's own are not in it.
+  // The terminal's session is made a moment after its socket opens: asked
+  // again until it is there, since an ask changes nothing.
+  let ask = {};
+  for (let i = 0; i < 20; i++){
+    r = await set(owner, true);
+    ask = r.status === 409 ? await r.json() : {};
+    if ((ask.sessions || []).some(x => x.who === 'maintadm')) break;
+    await sleep(500);
+  }
+  ok(ask.confirm === 'maintenance' && (ask.sessions || []).some(x => x.who === 'maintadm' && x.what === 'a terminal' && x.state === 'open' && x.project === 'alpha'),
+     `the owner is asked first, with the administrator's terminal listed (${r.status} ${JSON.stringify(ask.sessions || [])})`);
+  ok(!(ask.sessions || []).some(x => x.who === 'test'), "...and not the owner's own");
+  const confirmOn = () => bare('/api/settings', { method: 'POST', headers: owner,
+    body: JSON.stringify({ set: { maintenance_mode: true }, confirmed: true }) });
+  r = await confirmOn();
+  const onSaid = r.status === 200 ? await r.json() : {};
+  ok(onSaid.ended >= 1, `...and the owner can, which ends them (${r.status} ended ${onSaid.ended})`);
+  // Ended, not only shut out: off and on again lists it no more.
+  let gone = false;
+  for (let i = 0; i < 20 && !gone; i++){
+    await sleep(500);
+    await set(owner, false);
+    const again = await set(owner, true);
+    const j = again.status === 409 ? await again.json() : { sessions: [] };
+    gone = !(j.sessions || []).some(x => x.who === 'maintadm');
+    await confirmOn();
+  }
+  ok(gone, "...and the administrator's terminal is ended, not only kept out");
 
   r = await bare('/api/status', { headers: user });
   ok(r.status === 503 && SAID.test((await r.json()).error || ''), 'while it is on, another account is answered 503 with the sentence');
@@ -1836,18 +1920,58 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
      'the owner is answered, and the owner\'s own session too');
   await page.waitForFunction(() => document.getElementById('maintband') && !document.getElementById('maintband').hidden, null, { timeout: 15000 })
     .then(() => true, () => false).then(v => ok(v, "the owner's page shows the maintenance band"));
+  // ...whose link opens Controller settings at Maintenance, where it is
+  // switched off (the operator, 26 Oct).
+  await page.click('#maintband [data-maintgo]');
+  const went = await page.waitForFunction(() => tabOf(panes[0])?.kind === 'settings'
+      && document.querySelector('.settingstab .snav .rrow.on')?.dataset.spick === 'maint', null, { timeout: 10000 })
+    .then(() => true, () => false);
+  ok(went, "...and its link opens Controller settings at Maintenance");
+  // ...and sends it showing, so it is there at the first paint rather than
+  // once the first status read lands (the operator, 26 Oct).
+  const served = (await bigGet('/', owner)).body.toString();
+  ok(/<div class="banner maint" id="maintband" role="status">/.test(served),
+     "the page is served with the maintenance band already showing while it is on");
 
   for (let i = 0; i < 24 && !admTerm.closed; i++) await sleep(500);
   ok(/101/.test(admTerm.status) && admTerm.closed && /101/.test(ownTerm.status) && !ownTerm.closed,
      `a terminal another account had open ends when it starts, and the owner's goes on (${JSON.stringify({ adm: [admTerm.status, admTerm.closed], own: [ownTerm.status, ownTerm.closed] })})`);
   ownTerm.sock?.destroy();
-  await new Promise(res => ttyd.close(res));
 
   ok((await set(owner, false)).status === 200, 'the owner switches it off');
   ok((await bare('/api/status', { headers: { Cookie: theirCookie } })).status === 200,
      "...and the other account's cookie is good again: nobody was signed out");
   await page.waitForFunction(() => document.getElementById('maintband')?.hidden, null, { timeout: 15000 })
     .then(() => true, () => false).then(v => ok(v, '...and the band goes'));
+  ok(/id="maintband" role="status" hidden>/.test((await bigGet('/', owner)).body.toString()),
+     '...and the page is served with it hidden again');
+}
+
+// A terminal's socket opens from this dashboard's own page and no other
+// (B312): the sign-in cookie is SameSite=Lax, which a browser still sends
+// with a websocket from another hostname of the same site. A socket from
+// another origin is refused before anything is relayed; one from this
+// origin, or from a tool that sends no Origin, gets past that check.
+{
+  const u = new globalThis.URL(URL);
+  const ask = (path, origin) => new Promise(resolve => {
+    const headers = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+                      Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13',
+                      'Sec-WebSocket-Key': Buffer.from('0123456789abcdef').toString('base64'),
+                      ...(origin ? { Origin: origin } : {}) };
+    const req = http.request({ host: u.hostname, port: u.port, path, headers });
+    req.on('upgrade', (res, sock) => { sock.destroy(); resolve(101); });
+    req.on('response', res => { res.resume(); resolve(res.statusCode); });
+    req.on('error', () => resolve(0));
+    req.setTimeout(10000, () => { req.destroy(); resolve(-1); });
+    req.end();
+  });
+  const evil = 'http://app.example.test';
+  const got = {};
+  for (const path of ['/termws?arg=shell', '/screen/ws?vm=alpha/none'])
+    got[path] = [await ask(path, evil), await ask(path, `${u.protocol}//${u.host}`), await ask(path, '')];
+  ok(Object.values(got).every(([x, same, none]) => x === 403 && same !== 403 && none !== 403),
+     `a terminal's or a screen's socket from another origin is refused, and this origin's is not (${JSON.stringify(got)})`);
 }
 
 await done(browser);

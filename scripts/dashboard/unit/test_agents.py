@@ -22,9 +22,9 @@ node = agentpkg.load("builderbot_agent")
 
 
 class Table(unittest.TestCase):
-    def test_four_agents_with_claude_first_and_the_open_one_not_live_yet(self):
-        self.assertEqual([a.id for a in agents.TABLE], ["claude", "codex", "copilot", "open"])
-        self.assertEqual([a.id for a in agents.live()], ["claude", "codex", "copilot"])
+    def test_five_agents_with_claude_first_and_the_open_one_not_live_yet(self):
+        self.assertEqual([a.id for a in agents.TABLE], ["claude", "codex", "copilot", "grok", "open"])
+        self.assertEqual([a.id for a in agents.live()], ["claude", "codex", "copilot", "grok"])
         self.assertIs(agents.default(), agents.get("claude"))
 
     def test_every_row_is_well_formed(self):
@@ -68,6 +68,26 @@ class Names(unittest.TestCase):
         self.assertEqual(agents.of_session("open-alpha"), (None, ""))
         self.assertEqual(agents.of_arg("open:alpha"), (None, ""))
         self.assertFalse(idle.is_claude("open-alpha"))
+
+    def test_a_second_slot_is_its_project_s_in_its_own_name(self):
+        self.assertEqual(agents.session_name("claude", "ep.silon", 2), "claude-ep_silon~2")
+        self.assertEqual(agents.session_name("codex", "alpha", 1), "codex-alpha")
+        self.assertEqual(agents.session_name("codex", "alpha", 12), "codex-alpha")
+        a, stem = agents.of_session("claude-alpha~2")
+        self.assertEqual((a.id, stem, agents.slot_of("claude-alpha~2")), ("claude", "alpha", 2))
+        self.assertEqual((agents.of_session("claude-al~1")[1], agents.slot_of("claude-alpha")), ("al~1", 1))
+        self.assertEqual(agents.of_session("claude-~2"), (None, ""))
+        self.assertEqual([agents.slot_of_arg(x) for x in ("claude:alpha:s:3:b:x", "codex:alpha:r:abc", "claude:alpha:s:12")], [3, 1, 1])
+        every = names.agent_sessions("alpha")
+        self.assertEqual((every[0], "claude-alpha~9" in every, "grok-alpha~2" in every, len(every)),
+                         ("claude-alpha", True, True, agents.MAX_SLOTS * len(agents.live())))
+
+    def test_two_slots_of_one_agent_are_two_sessions_to_the_notes(self):
+        import overlap
+        self.assertEqual((overlap.key("u_1", "claude"), overlap.key("u_1", "claude", 2), overlap.key("u_1", "codex", 3)),
+                         ("u_1", "u_1#2", "u_1/codex#3"))
+        self.assertEqual(overlap.said("u_1#2", {"u_1": "sam"}), "sam (Claude Code 2)")
+        self.assertEqual(overlap.said("u_1/codex", {"u_1": "sam"}), "sam (Codex CLI)")
 
     def test_codex_and_copilot_sessions_are_read_as_theirs(self):
         a, stem = agents.of_session("codex-alpha")
@@ -169,16 +189,20 @@ class State(unittest.TestCase):
         said, scoped, asked = [], [], []
         users_stub = type("U", (), {"load": staticmethod(lambda: {"users": {}})})
         hooks.configure(users=users_stub, agent_state=lambda *a: said.append(a),
-                        turn_scope=lambda p, u, a="claude": scoped.append(a) or None,
+                        turn_scope=lambda p, u, a="claude", n=1: scoped.append((a, n)) or None,
                         asking_set=lambda *a: asked.append(a), asking_clear=lambda *a: asked.append(("clear",) + a))
         self.assertEqual(hooks.verb("turn", {"agent": "codex"}, {}, "u_0123abcd", "alpha"), ({"ok": True, "go": True}, 200))
         hooks.verb("turn-done", {"agent": "codex"}, {}, "u_0123abcd", "alpha")
         hooks.verb("asking", {"agent": "copilot", "text": "may I?"}, {}, "u_0123abcd", "alpha")
         hooks.verb("turn", {}, {}, "u_0123abcd", "alpha")
-        self.assertEqual(said, [("alpha", "u_0123abcd", "codex", "working"), ("alpha", "u_0123abcd", "codex", "waiting")])
-        self.assertEqual(scoped, ["codex", "codex", "claude"])
-        self.assertIn(("clear", "alpha", "u_0123abcd", "codex"), asked)
-        self.assertIn(("alpha", "u_0123abcd", "may I?", "copilot"), asked)
+        # A second slot says which it is (R143); a slot out of range is the first.
+        hooks.verb("turn", {"agent": "codex", "slot": "2"}, {}, "u_0123abcd", "alpha")
+        hooks.verb("turn", {"agent": "codex", "slot": "12"}, {}, "u_0123abcd", "alpha")
+        self.assertEqual(said, [("alpha", "u_0123abcd", "codex", "working", 1), ("alpha", "u_0123abcd", "codex", "waiting", 1),
+                                ("alpha", "u_0123abcd", "codex", "working", 2), ("alpha", "u_0123abcd", "codex", "working", 1)])
+        self.assertEqual(scoped, [("codex", 1), ("codex", 1), ("claude", 1), ("codex", 2), ("codex", 1)])
+        self.assertIn(("clear", "alpha", "u_0123abcd", "codex", 1), asked)
+        self.assertIn(("alpha", "u_0123abcd", "may I?", "copilot", 1), asked)
 
 
 class ByPath(unittest.TestCase):
@@ -220,6 +244,17 @@ class OtherTranscripts(unittest.TestCase):
         {"type": "assistant.message", "data": {"content": "Built."}},
     ]
 
+    # Grok Build's updates.jsonl: ACP session updates, a message streamed in
+    # chunks, a tool call and its update by toolCallId.
+    GROK = [
+        {"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "Fix "}},
+        {"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "the build"}},
+        {"sessionUpdate": "tool_call", "toolCallId": "g1", "title": "run_terminal_command", "rawInput": {"command": "make"}},
+        {"sessionUpdate": "tool_call_update", "toolCallId": "g1", "status": "completed",
+         "content": [{"type": "content", "content": {"type": "text", "text": "ok"}}]},
+        {"update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "Built."}}},
+    ]
+
     def setUp(self):
         import tempfile
         import transcripts
@@ -256,6 +291,46 @@ class OtherTranscripts(unittest.TestCase):
         self.assertIn("ChatGPT", text)
         self.assertIn("$ bb roadmap", text)
         self.assertTrue(name.startswith("codex-alpha-"))
+
+    def test_a_grok_conversation_joins_its_chunks_and_pairs_its_tools(self):
+        self.put(f"{self.ws}/.worktrees/alpha/u_0000aaaa-grok", "grok", "gk-1", self.GROK)
+        rows = {r["id"]: (r["agent"], r["first"]) for r in self.t.mine("u_0000aaaa", ["alpha"])}
+        self.assertEqual(rows, {"gk-1": ("grok", "Fix the build")})
+        got, st = self.t.turns("u_0000aaaa", "alpha", "gk-1")
+        self.assertEqual((st, got["agent_name"]), (200, "Grok"))
+        self.assertEqual([(t["who"], t["text"]) for t in got["turns"]],
+                         [("you", "Fix the build"), ("claude", ""), ("claude", "Built.")])
+        self.assertEqual((got["turns"][1]["tools"][0]["call"], got["turns"][1]["tools"][0]["result"]),
+                         ("run_terminal_command: $ make", "ok"))
+
+    def test_a_grok_turn_s_first_chunk_written_late_reads_in_its_place(self):
+        ev = lambda n, u: {"params": {"update": u}, "_meta": {"eventId": f"gk-2-{n}"}}  # noqa: E731
+        self.put(f"{self.ws}/.worktrees/alpha/u_0000aaaa-grok", "grok", "gk-2", [
+            ev(2, self.GROK[1]), ev(3, self.GROK[4]["update"]), ev(1, self.GROK[0])])
+        got, st = self.t.turns("u_0000aaaa", "alpha", "gk-2")
+        self.assertEqual([(t["who"], t["text"]) for t in got["turns"]],
+                         [("you", "Fix the build"), ("claude", "Built.")])
+
+    def test_grok_s_stop_hook_finds_its_log_by_the_session_id(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("bbah", os.path.join(HERE, "..", "bb-agent-hook"))
+        spec = importlib.util.spec_from_loader("bbah", loader)
+        h = importlib.util.module_from_spec(spec)
+        loader.exec_module(h)
+        home = os.path.join(self.root, "home")
+        sess = os.path.join(home, ".grok", "sessions", "enc-w", "0199bbbb-0000-7000-8000-000000000001")
+        os.makedirs(sess)
+        with open(os.path.join(sess, "updates.jsonl"), "w") as f:
+            f.write("\n".join(json.dumps(r) for r in self.GROK) + "\n")
+        os.makedirs(os.path.join(home, ".claude"))
+        os.makedirs(self.home, exist_ok=True)
+        os.symlink(self.home, os.path.join(home, ".claude", "projects"))
+        tree = f"{self.ws}/.worktrees/alpha/u_0000aaaa-grok"
+        with unittest.mock.patch.dict(os.environ, {"BB_TREE": tree, "HOME": home}):
+            h.keep("grok", {"sessionId": "0199bbbb-0000-7000-8000-000000000001"})
+        rows = [(r["id"], r["agent"]) for r in self.t.mine("u_0000aaaa", ["alpha"])]
+        self.assertEqual(rows, [("0199bbbb-0000-7000-8000-000000000001", "grok")])
 
     def test_the_stop_hook_keeps_the_log_where_the_list_reads_it(self):
         import importlib.machinery
@@ -312,7 +387,9 @@ class Copies(unittest.TestCase):
         with open(path) as f:
             kt = f.read()
         body = kt[kt.index("val LIVE = listOf("):kt.index("\n    )\n", kt.index("val LIVE = listOf("))]
-        rows = re.findall(r'Agent\("(\w+)", "([^"]+)", "([^"]+)",\s*listOf\((.*?)\), EFFORTS\)', body, re.S)
+        # An agent with no list of its own (Grok's, for now) is emptyList() twice.
+        rows = re.findall(r'Agent\("(\w+)", "([^"]+)", "([^"]+)",\s*(?:listOf\((.*?)\)|emptyList\(\)),\s*(?:EFFORTS|emptyList\(\))\)',
+                          body, re.S)
         self.assertEqual([r[:3] for r in rows], [(a.id, a.name, a.product) for a in agents.live()])
         for aid, _, _, models in rows:
             if aid in agents.MODELS:

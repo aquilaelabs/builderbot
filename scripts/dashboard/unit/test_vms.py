@@ -118,6 +118,21 @@ class Controller(unittest.TestCase):
         self.assertEqual(vms.view()[0]["state"], "making")
         self.assertIn("already", self.new()["error"])
 
+    def test_a_report_from_before_a_vm_was_made_is_an_earlier_vms(self):
+        # Made again under a name an earlier VM had: the node's report, taken
+        # before, describes that one (B319), and its address is nobody's now.
+        self.new()
+        d = vms._load()
+        rec = next(iter(d["vms"].values()))
+        rec.update(state="running", made_at=2000)
+        vms._save(d)
+        self.f.nodes["n1"]["reported"].update(at=1000, vms=[{"name": "bbvm-web-db", "state": "running",
+                                                             "ip": "10.232.0.9", "guest": {"hostname": "old"}}])
+        row = vms.view()[0]
+        self.assertEqual((row["state"], row["ip"], row["guest"]), ("running", "", {}))
+        self.f.nodes["n1"]["reported"].update(at=3000, vms=[{"name": "bbvm-web-db", "state": "running", "ip": "10.232.0.12"}])
+        self.assertEqual(vms.view()[0]["ip"], "10.232.0.12")
+
     def test_a_project_keeps_its_network_and_another_gets_its_own(self):
         self.new()
         vms.create("user:test", "api", {"name": "x", "os": "debian", "keys": [KEY]}, ["n1"])

@@ -10,8 +10,8 @@
 
 // ---- toasts -------------------------------------------------------------
 // One stack at a corner (R218 step 6, the design's the-dashboard/notifications
-// rule): the bottom left above the dock's line, beside a dialog when one is
-// open (toastPlace), the newest at the foot, at most TOAST_MAX on screen, each with its
+// rule): the bottom left above the dock's line, and there while a dialog is
+// open too, the newest at the foot, at most TOAST_MAX on screen, each with its
 // kind's icon and its own ×, gone after a while but held while the pointer
 // is over the stack, so a sentence being read does not leave mid-read. And
 // every one is on the record: the bell's latest for this page, and the
@@ -66,40 +66,7 @@ function toastAdd(text, lv){
                               {duration: 160, easing: "ease"});
   el.left = lv === "info" ? 4000 : 7000;
   toastTick(el);
-  toastPlace(stack);
   return el;
-}
-
-// Where the stack goes while a dialog is open. No corner of the page is
-// free of controls (a dialog's buttons sit at the left of its foot on some
-// and the right on others), and a refusal is most often said while one is
-// open, so the stack leaves the dialog's box: into the wider gutter beside
-// it at a desk, and where neither is wide enough (a phone, a narrow window)
-// to the top of the screen, letting every press through and going by its
-// clock, since what it said is on the record either way. With no dialog
-// open the stylesheet's corner holds.
-const TOAST_GUTTER = 240;
-// ...and again as a dialog opens or goes (page-motion.js armModal): a job's
-// toast stays while its job runs, and one up before the dialog stood over
-// the dialog's buttons and took their presses (the nodes suite's Cancel
-// under "Storage on shed: assigned").
-function toastReplace(){
-  const stack = $("toast");
-  if (stack && stack.children.length) toastPlace(stack);
-}
-function toastPlace(stack){
-  const box = [...document.querySelectorAll(".modal:not([hidden]):not(.inline):not(.leaving) > .box")].at(-1);
-  stack.style.cssText = "";
-  stack.classList.toggle("overdlg", false);
-  if (!box) return;
-  const r = box.getBoundingClientRect(), rail = $("rail")?.getBoundingClientRect().right || 0;
-  const right = innerWidth - r.right - 24, left = r.left - rail - 24;
-  if (Math.max(right, left) >= TOAST_GUTTER){
-    const w = Math.min(420, Math.max(right, left));
-    stack.style.cssText = right >= left ? `left:auto;right:12px;width:${w}px` : `right:auto;left:${rail + 12}px;width:${w}px`;
-    return;
-  }
-  stack.classList.add("overdlg");
 }
 
 // Each toast's own clock, which stops while the stack is held and goes on
@@ -271,6 +238,27 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bsign="${esc(a.project)}">Signing view</a></span></div></div>`;
   }
+  // A project whose git access was linked to an account's token, gone with
+  // that account's key store (R154): its settings, to give it another.
+  if (a.kind === "git-unlinked"){
+    return `<div class="bnote att bad">
+      <div class="bt">${esc(projLabel(a.project))} has no git access</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : ""}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bprojset="${esc(a.project)}">Its settings</a></span></div></div>`;
+  }
+  // A scheduled script (R117): a run that failed, could not be queued, or
+  // was skipped because the one before it was still going; its log where
+  // there is one, else the Schedules page.
+  if (a.kind === "schedule"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${esc(a.name || "A schedule")}: ${a.bad ? "its run did not work" : "a run was skipped"}</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : "on the Schedules page"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          ${a.job ? `<a href="#" data-bschedjob="${esc(a.job)}">Its log</a>` : `<a href="#" data-bsched>Schedules page</a>`}</span></div></div>`;
+  }
   // A container whose registry image moved (R195): one note per node, to
   // the Docker tab on that node, where Update is on each row.
   if (a.kind === "image"){
@@ -319,6 +307,16 @@ function attRow(a){
       <div class="bfoot"><span>${esc(ago(a.at))}; treat it as copied and end it at the provider</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bag="${esc(a.id)}">Agents page</a></span></div></div>`;
+  }
+  // A node's retired token presented again after its grace (R135 step 4): a
+  // copy of its credential is in use somewhere, and its tokens are revoked.
+  if (a.kind === "token-reuse"){
+    return `<div class="bnote att bad">
+      <div class="bt">${esc(a.node)}'s credential was used from a copy</div>
+      <div class="bsum">a token it had already replaced was presented again, so every token of ${esc(a.node)} is revoked: enroll it again from the Nodes page, and treat that machine's disk as copied</div>
+      <div class="bfoot"><span>${esc(ago(a.at))}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bnode="${esc(a.id)}" data-bwhat="node">Nodes page</a></span></div></div>`;
   }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
@@ -370,7 +368,8 @@ function needsRows(){
         <div class="bt">CI failing in ${esc(projLabel(c.project))}</div>
         <div class="bsum">${esc(c.text)}</div>
         <div class="bfoot"><span>until the check passes again</span>
-          <span class="acts">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
+          <span class="acts">${c.key ? `<a href="#" data-bdismiss="${esc(c.key)}">Dismiss</a>` : ""}
+            ${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
             <a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
     ...syncC.map(c => `<div class="bnote att">
         <div class="bt">Changed in two places: ${esc(projLabel(c.project))}</div>
@@ -391,6 +390,7 @@ function askTag(a){
           : a.kind === "sign-key" ? `a signing key change in ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : a.kind === "release" ? `release ${esc(a.project ? projLabel(a.project) : "a project")} ${esc(a.tag || "")}: needs your answer`
           : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "release-sign" ? `sign the release APKs of ${esc(a.project ? projLabel(a.project) : "a project")} again: needs your answer`
           : a.kind === "release-remove" ? `remove files from the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : a.kind === "phone-use" ? `your phone, from ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : a.kind === "push" ? `a push from ${esc(a.project ? projLabel(a.project) : "a project")} looks sensitive: needs your answer`
@@ -401,7 +401,7 @@ function askTag(a){
 // verbs, adb's for a phone.
 function askCmd(a){
   const pre = a.kind === "root" ? "# " : a.kind === "phone-use" ? ""
-    : ["rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "push"].includes(a.kind) ? "bb " : "adb ";
+    : ["rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "release-sign", "push"].includes(a.kind) ? "bb " : "adb ";
   return pre + esc((a.cmd || []).join(" "));
 }
 
@@ -709,6 +709,15 @@ function wireNeeds(root, after = () => {}){
     openNotebook(a.dataset.bci, "git");
   });
   // ...and a release's signing to the project's Signing view (R106).
+  root.querySelectorAll("[data-bschedjob]").forEach(a => a.onclick = e => {
+    e.preventDefault(); after(); openJob(a.dataset.bschedjob);
+  });
+  root.querySelectorAll("[data-bsched]").forEach(a => a.onclick = e => {
+    e.preventDefault(); after(); openSchedulesTab();
+  });
+  root.querySelectorAll("[data-bprojset]").forEach(a => a.onclick = e => {
+    e.preventDefault(); after(); openProjectSettings(a.dataset.bprojset);
+  });
   root.querySelectorAll("[data-bsign]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();

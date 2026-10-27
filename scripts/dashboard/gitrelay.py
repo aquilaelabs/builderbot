@@ -44,7 +44,7 @@ STATE = None
 paths = None              # set by server.py: paths.py, where what grows is kept
 WORKSPACE = None
 push_record = None      # project -> {"repo", "host", "how"} or None
-token_helper = None     # project -> "store --file=..." or ""
+token_helper = None     # (project, uid) -> the credential helpers, the acting account's first (R154)
 parse_url = None        # forges.parse
 host_of = None          # forges.host_of: the real host behind an ssh alias
 git_env = None          # projects._git_env: the environment every git job gets
@@ -311,7 +311,7 @@ def _shadow(project, sha256):
     return d
 
 
-def _write_config(d, project, sha256, name, kind, url, upstreams):
+def _write_config(d, project, sha256, name, kind, url, upstreams, uid=""):
     lines = ["[core]", f"\trepositoryformatversion = {1 if sha256 else 0}", "\tbare = true",
              f"\thooksPath = {_q(STATE / 'gitrelay' / 'no-hooks')}", "\tfsmonitor = false"]
     if sha256:
@@ -320,8 +320,7 @@ def _write_config(d, project, sha256, name, kind, url, upstreams):
               "[fetch]", "\trecurseSubmodules = false",
               '[protocol "ext"]', "\tallow = never",
               "[credential]", '\thelper = ""']
-    helper = token_helper(project) if kind == "net" else ""
-    if helper:
+    for helper in (token_helper(project, uid) if kind == "net" else []):
         lines.append(f"\thelper = {_q(helper)}")
     lines += [f'[remote "{name}"]', f"\turl = {_q(url)}",
               f"\tfetch = {_q(f'+refs/heads/*:refs/remotes/{name}/*')}",
@@ -421,14 +420,15 @@ def _lfs(root):
 
 # ---- the verbs --------------------------------------------------------------
 
-def run(project, cwd, verb, args, scan=True):
+def run(project, cwd, verb, args, scan=True, uid=""):
     """{code, out, err, apply?} for one relayed verb, or {error} when it
     was refused before any git ran. A push is read for secrets first
     (pushscan, R219): `scan` True holds one with findings ({held: [...]},
     no push), "only" answers {held: [...]} and pushes nothing, and False
-    pushes what a person has read and approved."""
+    pushes what a person has read and approved. `uid`: whose work it is,
+    whose own token is asked first (R154)."""
     try:
-        return _run(project, cwd, verb, [str(a) for a in args], scan=scan)
+        return _run(project, cwd, verb, [str(a) for a in args], scan=scan, uid=uid)
     except Refused as e:
         return {"error": str(e)}
 
@@ -560,7 +560,7 @@ def _scan(d, project, name, pos, head_ref, branch, tree_refs):
     return pushscan.fresh(project, uniq)
 
 
-def _run(project, cwd, verb, args, scan=True):
+def _run(project, cwd, verb, args, scan=True, uid=""):
     if verb not in VERBS:
         raise Refused(f"bb git takes {', '.join(VERBS)} or policy; plain git does everything else")
     why = bad_args(args)
@@ -604,7 +604,7 @@ def _run(project, cwd, verb, args, scan=True):
             raise Refused(f"'{merge_ref}' is not a branch name git accepts")
     with _lock(project):
         d = _shadow(project, sha256)
-        _write_config(d, project, sha256, name, kind, where, _upstreams(cfg, name))
+        _write_config(d, project, sha256, name, kind, where, _upstreams(cfg, name), uid)
         _mirror(d, common, tree_refs, head_ref)
         _old_bundles(common)
         net = [f for f in flags if f not in PULL_ONLY]

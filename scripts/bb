@@ -74,12 +74,15 @@ bb version unbump      take the last unreleased bump or set back; its
                    stays. Once: the bump before it is not taken back too.
                    A section dated under the wrong number is fixed with
                    unbump, then set to the number meant
-bb version release --why "..."
+bb version release --why "..." [--without-apk]
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
                    credentials. The project's settings say whether an agent may
                    (Tag and publish a release): auto releases, ask waits for
-                   the project's owner, with --why as the reason
+                   the project's owner, with --why as the reason. A release
+                   whose Android APK could not be signed is refused before the
+                   tag, saying why; --without-apk goes on, and bb sign release
+                   signs it once that is put right
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
                    change the published release under the same setting, each
                    edit its own ask: the notes replaced whole (- reads stdin),
@@ -110,10 +113,13 @@ bb changelog add "..." --cat NAME   log what a change means for the person using
                    category is required, and the tool is where the rule lives:
                    Added (somebody can do something they could not), Changed
                    (already here, now different), Deprecated (going away),
-                   Removed (gone), Fixed (was wrong, now right), Security
-                   (act on it because of what it exposed). When two fit, the
-                   one a reader would look under; something nobody using the
-                   product would notice gets no entry. Run without a category
+                   Removed (gone), Fixed (was wrong in a released version,
+                   now right), Security (act on it because of what it
+                   exposed). When two fit, the one a reader would look under;
+                   something nobody using the product would notice gets no
+                   entry, and neither does a fix to something no release has
+                   carried yet: the changelog is read by somebody upgrading
+                   from a release, who never met that bug. Run without a category
                    and it prints this. A name that means one of the six is
                    spelled the one way (`fix` files under Fixed), the six keep
                    their usual order among themselves, and a project that
@@ -205,9 +211,10 @@ bb nodes           the machines enrolled as nodes, each with the agent it runs,
                    read-only in a terminal; the Nodes page is where they are edited
 bb nodes show NAME one of them in full, by name or id: its agent against the one
                    this controller ships, and what Update agent would fix
-bb nodes enroll-token NAME [--user U]
+bb nodes enroll-token NAME [--user U] [--own]
                    a new node's enrollment token, printed once, from a shell on
-                   the controller: Enroll node's Just a token, for a scripted setup
+                   the controller: Enroll node's Just a token, for a scripted setup;
+                   --own is the controller's own machine, on a bare-metal install
 bb projects adopt FOLDER [--name NAME]
                    a folder already under the projects share made a project, as
                    if BuilderBot had made it, from a shell on the controller: a
@@ -288,7 +295,7 @@ bb devapp override FILE|none
                    (compose's -f after -f), or none; the next rebuild takes it, and a
                    service it adds is asked about as any new one is. On ask it is a
                    person's, in the container's settings
-bb devapp ls       every container that belongs to this project on its node
+bb devapp ls       every container that belongs to this project, on every node it has one
 bb devapp log NAME one of those containers' log
 bb devapp start|stop|restart NAME [--why "..."]
                    one of those, under the same setting; --container NAME on the
@@ -315,6 +322,15 @@ bb sign rotate OLD NEW --why "..."
                    moves the apps OLD's sideload key signs to NEW's: builds go out
                    signed with both and a proof, Android 9 and newer take NEW,
                    older devices keep checking OLD, which is kept for good
+bb sign status [TAG]
+                   whether a release's APK can be signed (the sideload key, the
+                   node with its tools) and how the newest went: handed over,
+                   signed and attached with the key's fingerprint, or what
+                   stopped it, in the bell's words
+bb sign release --why "..."
+                   look for unsigned release APKs now and sign a failed one
+                   again, as the Signing view's Look for unsigned APKs now,
+                   under Sign a build: auto starts it, ask waits for the owner
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -361,7 +377,10 @@ bb bug find TEXT   search the reports themselves: area, repro and notes too
 bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
 bb bug pending     reports a session filed that are waiting for your approval
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
-                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
+                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`. With
+                   --repro, --reproduces always|sometimes|once|untried says how
+                   often those steps showed it; --report N files diagnostics
+                   report N with its words, area, repro and that answer
 bb tests run [ARGS]  run the project's test command, time it, and record the run: says first when it should
                    finish, and ends by NAMING what went wrong: the failed assertions per file, and for a file
                    that CRASHED the line it died on, the assertions that had already failed before it did,
@@ -394,7 +413,10 @@ bb tests lab       the lab suites (test/lab-*.mjs) against real services rather 
                    one you are willing to have that happen to. A VM host there as well
                    (`BB_LAB_VMHOST`, with `BB_LAB_KEY` an ssh public key) walks every Linux
                    system Enroll node offers as a VM made a node, enrolled to Uninstall
-                   (lab-systems, slow: each system takes its ten to twenty minutes)
+                   (lab-systems, slow: each system takes its ten to twenty minutes);
+                   with `BB_LAB_SSH` (that key's private half, a path on the VM host) and
+                   `BB_LAB_REF` (a pushed ref) it installs a controller bare metal in a VM
+                   and tries the wall around its own node (lab-baremetal)
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours
@@ -419,7 +441,9 @@ bb design          what this project looks like, from the notebook's Design view
                    its design language in a line, and its pages
 bb design show [ID|NAME]   the prompt for one page, or for the language alone:
                    the colors as tokens, the type, the shape, the layout
-bb design file     docs/design-language.md as the notebook writes it
+bb design file [--from FILE]   docs/design-language.md as the notebook writes it;
+                   --from renders it from a record (bb design json, edited) instead
+                   of the saved design, so a branch writes the file from its own
 bb design json     the record: the language, the pages, and the presets by key
 bb design schema   the record's shape with every limit, for a save that lands first time
 bb design save FILE   write a record of that shape back, whole: how a session
@@ -443,6 +467,14 @@ bb transcripts show ID [--tz ZONE] [--all]   one of them as text: what was said,
 bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
                    for it: how a node holding its projects as a synced copy
                    resumes a conversation it does not have (bb-tty runs it)
+bb memory          your memories on this repository, kept for every coding agent:
+                   the index, newest first (bb -p REPO for another repository
+                   of the project, which keeps them when it moves)
+bb memory show NAME   one of them whole
+bb memory add NAME --type user|feedback|project|reference --about "one line" "what to remember"
+                   save one, with its line in the index: a fact about one
+                   repository on that repository
+bb memory forget NAME   take one out
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -543,10 +575,10 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
-bb logs --node NAME [--agent|--runner|--terminal|--nginx|--system|--kernel|--crash] [N]
-                   a machine's own log: the agent's journal, the CI runner's,
-                   the terminal server's, its nginx's where the nginx page put
-                   one, this boot's system journal, its kernel ring, and the
+bb logs --node NAME [--agent|--runner|--nginx|--system|--kernel|--crash] [N]
+                   a machine's own log: the agent's journal (its terminals'
+                   among it), the CI runner's, its nginx's where the nginx
+                   page put one, this boot's system journal, its kernel ring, and the
                    previous boot's last lines (--crash: what the box said
                    before it went). Root's on that box: the enrolled
                    account is in neither `adm` nor `systemd-journal`, so a
@@ -567,11 +599,11 @@ bb diag [--json] [SECTION...]
                    trail, with anything shaped like a credential redacted. The
                    **debug** grant's: the owner's, or a role's that names it.
                    A session reads it only while **debug mode** is on, its
-                   project is granted **the controller's diagnostics** under
-                   Debug in its settings, and its account has the grant.
+                   project is granted **the controller's diagnostics** on
+                   the Debug page, and its account has the grant.
                    Its `reports` section is what sessions on any project
                    reported about BuilderBot, kept until a person clears them
-bb report "..." [--area A] [--repro "..."]
+bb report "..." [--area A] [--repro "..." --reproduces always|sometimes|once|untried]
                    a problem with BuilderBot itself, from a session on any
                    project: it goes into the controller's diagnostics rather
                    than the project's tracker (the briefing's notebook section
@@ -738,6 +770,7 @@ cmd_status() {
         version claude  claude --version
         version codex   codex --version
         version copilot copilot --version
+        version grok    grok --version
     fi
     version node   node --version
     version npm    npm --version
@@ -852,12 +885,13 @@ cmd_login() {
     # agent's pinned copy, then the session account's own). Each prints its
     # link and its one-time code and waits for the person to enter the code
     # on the provider's page; nothing is typed back here. Checked against
-    # Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct).
+    # Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct), Grok Build's
+    # device code from its user guide (25 Oct).
     if { [ "${1:-}" = --flow ] || [ "${1:-}" = --out ]; } && [ "${2:-}" = --agent ]; then
         local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}" ag="${3:-}"
         local pinned="${BB_AGENTS_PINNED:-/usr/local/lib/builderbot/agents}"
         case "$ag" in
-            codex|copilot) ;;
+            codex|copilot|grok) ;;
             *) die "no coding agent called '${ag}' signs in here" ;;
         esac
         [ -n "$uid" ] || die "a sign-in names the account it is for"
@@ -873,6 +907,8 @@ cmd_login() {
             # (its /logout): the account it signed in as is forgotten from
             # its config, and the token with it where it was kept there.
             --out:copilot)  python3 "$BB_LIB/login-list.py" --forget-copilot "$HOME" || die "the sign-out did not complete" ;;
+            --flow:grok)    GROK_DISABLE_AUTOUPDATER=1 grok login --device-auth || die "the sign-in did not complete" ;;
+            --out:grok)     GROK_DISABLE_AUTOUPDATER=1 grok logout || die "grok logout did not complete" ;;
         esac
         log "signed ${1#--} ${ag} on ${BB_NODE:-this machine}"
         # ...and said to the controller at once, as Claude's flow says its own.
@@ -1668,7 +1704,7 @@ cmd_emu() {
 # on a controller because it survives an image update, then the home.
 ci_log_dir() {
     if [ -n "${BB_CI_LOG_DIR:-}" ]; then printf '%s' "$BB_CI_LOG_DIR"
-    elif [ -w /config ]; then printf '/config/ci-logs'
+    elif [ -w "${DASHBOARD_STATE:-/config}" ]; then printf '%s/ci-logs' "${DASHBOARD_STATE:-/config}"
     else printf '%s/ci-logs' "$HOME"; fi
 }
 
@@ -2242,13 +2278,13 @@ cmd_logs() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --node) want_node="${2:-}"; shift ;;
-            --agent|--runner|--terminal|--nginx|--system|--kernel|--crash) stream="${1#--}" ;;
+            --agent|--runner|--nginx|--system|--kernel|--crash) stream="${1#--}" ;;
             -f) follow=1 ;;
             -l|--list)
                 # Every stream, newest first, so the top of the list is this
                 # boot. It used to list only builderbot.log's generations,
-                # which made the other three (the dashboard, docker and ttyd,
-                # all of which rotate the same way now) look like they did not
+                # which made the other two (the dashboard and docker, both of
+                # which rotate the same way now) look like they did not
                 # exist.
                 if ! ls -1t "$(bb_log_dir)"/*.log "$(bb_log_dir)"/*.log.[0-9]* 2>/dev/null; then
                     logs_are_the_controllers
@@ -2265,14 +2301,14 @@ cmd_logs() {
                 esac
                 ;;
             *[!0-9]*) die "bb logs: no such option \`$1'. Streams are --agent," \
-                   "--runner, --terminal, --nginx, --system, --kernel and --crash; see \`bb logs --list'" ;;
+                   "--runner, --nginx, --system, --kernel and --crash; see \`bb logs --list'" ;;
             [0-9]*) lines="$1" ;;
             # A flag this does not know used to fall straight through, so
             # `bb logs --node X --nope` quietly read the AGENT's journal and
             # looked like the stream had been honored. A wrong answer that
             # looks like an answer is the worst of the three outcomes.
             *) die "bb logs: no such option \`$1'. Streams are --agent," \
-                   "--runner, --terminal, --nginx, --system, --kernel and --crash; see \`bb logs --list'" ;;
+                   "--runner, --nginx, --system, --kernel and --crash; see \`bb logs --list'" ;;
         esac
         shift
     done
@@ -2282,7 +2318,7 @@ cmd_logs() {
     # the asking node's row. Both refusals say what would change them.
     if [ -n "$want_node" ] || [ -n "$stream" ]; then
         [ -n "$want_node" ] || want_node="${BB_NODE:-}"
-        [ -n "$want_node" ] || die "which node? bb logs --node NAME [--agent|--runner|--terminal|--nginx|--system|--kernel|--crash]"
+        [ -n "$want_node" ] || die "which node? bb logs --node NAME [--agent|--runner|--nginx|--system|--kernel|--crash]"
         # A node's log is read once through a job, so there is nothing to
         # follow: said, rather than -f quietly printing once.
         [ "$follow" = 0 ] || die "bb logs --node reads the last lines once; -f follows only the controller's own log"
@@ -2439,8 +2475,8 @@ cmd_history() {
 cmd_design() {
     local verb="${1:-list}" auth proj
     case "$verb" in list|show|file|json|schema|save) ;; -h|--help)
-        echo "bb design [list | show [ID|NAME] | file | json | schema | save FILE]: what this project looks like, from the notebook's Design view; bb design save -h prints the record's shape"; return 0 ;;
-        *) die "bb design [list | show [ID|NAME] | file | json | schema | save FILE]" ;; esac
+        echo "bb design [list | show [ID|NAME] | file [--from FILE] | json | schema | save FILE]: what this project looks like, from the notebook's Design view; bb design save -h prints the record's shape"; return 0 ;;
+        *) die "bb design [list | show [ID|NAME] | file [--from FILE] | json | schema | save FILE]" ;; esac
     proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
     auth="$(bb_auth_or_die)"
     BB_DESIGN_AUTH="$auth" BB_DESIGN_PROJECT="$proj" python3 "$BB_LIB/design-verbs.py" "$@"
@@ -2466,6 +2502,17 @@ cmd_transcripts() {
     proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
     auth="$(bb_auth_or_die)"
     BB_TRANSCRIPTS_AUTH="$auth" BB_TRANSCRIPTS_PROJECT="$proj" python3 "$BB_LIB/transcripts-verbs.py" "$@"
+}
+
+cmd_memory() {
+    local verb="${1:-list}" auth proj
+    local use='bb memory [list | show NAME | add NAME --type user|feedback|project|reference --about "one line" "what to remember" | forget NAME]'
+    case "$verb" in list|show|add|forget) ;; -h|--help)
+        echo "$use: your memories on this repository, kept for every coding agent; bb -p REPO memory for another repository of the project"; return 0 ;;
+        *) die "$use" ;; esac
+    proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
+    auth="$(bb_auth_or_die)"
+    BB_MEMORY_AUTH="$auth" BB_MEMORY_PROJECT="$proj" python3 "$BB_LIB/memory-verbs.py" "$@"
 }
 
 cmd_brief() {
@@ -2758,6 +2805,10 @@ cmd_tests() {
         if [ -n "${BB_LAB_CONTROLLER:-}" ] && [ -n "${BB_LAB_VMHOST:-}" ] && [ -n "${BB_LAB_TOKEN:-}" ] \
            && [ -n "${BB_LAB_KEY:-}" ]; then
             export BB_LAB_CONTROLLER BB_LAB_VMHOST BB_LAB_TOKEN BB_LAB_KEY
+            # ...and with the key's private half on the VM host and a ref of
+            # the repository, a controller installed bare metal (lab-baremetal).
+            [ -n "${BB_LAB_SSH:-}" ] && export BB_LAB_SSH
+            [ -n "${BB_LAB_REF:-}" ] && export BB_LAB_REF
             ok_vmhost="$BB_LAB_CONTROLLER ($BB_LAB_VMHOST)"
             # Each system boots and provisions itself: hours for all of them,
             # where a suite is otherwise given twenty-five minutes.
@@ -2954,7 +3005,15 @@ cmd_bug() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
-    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" BB_WORKSPACE="$WORKSPACE" \
+    # --report N files a diagnostics report: read through bb diag, whose
+    # gate is the diagnostics' own (R124).
+    local reports="" a
+    for a in "$@"; do
+        [ "$a" = --report ] || continue
+        reports="$(cmd_diag --json reports)" || die "the diagnostics reports could not be read: bb diag reports says why"
+        break
+    done
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" BB_WORKSPACE="$WORKSPACE" BB_BUG_REPORTS="$reports" \
         python3 "$BB_LIB/bug-verbs.py" "$py" "$proj" "$@"
 }
 
@@ -3108,22 +3167,6 @@ cmd_container() {
     esac
 }
 
-# bb devapp: this project's dev instance, and what a session may be given
-# over it.
-#
-# Up, Down and a container of any other shape are the operator's. What a
-# project can hand over, with one setting in its settings dialog (Agents may:
-# Run its container), is sending it to Docker (its own container, or another
-# beside it: 24 and 26 Sep), rebuilding its containers, changing their env
-# and removing one, because a project whose work IS the container has a loop
-# that a session cannot close otherwise: change it, rebuild it, look at what
-# it did. Three settings and `deny` is the default: `auto` is the loop, `ask`
-# puts the reason in front of a person and starts the build when they allow
-# it, `deny` refuses with the sentence that names the dial, so a session that
-# tries learns where the decision lives rather than guessing.
-#
-# The daemon is the controller's connection to the node, so this goes through
-# the API like `bb root` and `bb phone` rather than running docker anywhere.
 # bb sign (R106): a build in dist/ signed on the project's node with one of
 # its keys, which the session never receives. sign-verbs.py asks, follows an
 # ask to its answer and the job to its verdict.
@@ -3132,7 +3175,7 @@ cmd_sign() {
     local auth proj
     proj="${BB_PROJECT:-$(project_here 2>/dev/null || true)}"
     case "${1:-}" in
-        keys|key|map|rotate)
+        keys|key|map|rotate|status|release)
             local sub="$1"; shift
             local -a rest=()
             while [ $# -gt 0 ]; do
@@ -3149,7 +3192,7 @@ cmd_sign() {
     esac
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help) sed -n '/^bb sign FILE/,/which is kept for good/p' "$0"; return 0 ;;
+            -h|--help) sed -n '/^bb sign FILE/,/under Sign a build: auto starts it/p' "$0"; return 0 ;;
             --key) [ $# -ge 2 ] || die "--key needs a key's name after it"; key="$2"; shift 2 ;;
             --key=*) key="${1#--key=}"; shift ;;
             --for) [ $# -ge 2 ] || die "--for needs play or sideload after it"; route="$2"; shift 2 ;;
@@ -3169,6 +3212,22 @@ cmd_sign() {
         python3 "$BB_LIB/sign-verbs.py" "${file#dist/}" "$route" "$why"
 }
 
+# bb devapp: this project's dev instance, and what a session may be given
+# over it.
+#
+# Up, Down and a container of any other shape are the operator's. What a
+# project can hand over, with one setting in its settings dialog (Agents may:
+# Run its container), is sending it to Docker (its own container, or another
+# beside it: 24 and 26 Sep), rebuilding its containers, changing their env
+# and removing one, because a project whose work IS the container has a loop
+# that a session cannot close otherwise: change it, rebuild it, look at what
+# it did. Three settings and `deny` is the default: `auto` is the loop, `ask`
+# puts the reason in front of a person and starts the build when they allow
+# it, `deny` refuses with the sentence that names the dial, so a session that
+# tries learns where the decision lives rather than guessing.
+#
+# The daemon is the controller's connection to the node, so this goes through
+# the API like `bb root` and `bb phone` rather than running docker anywhere.
 cmd_devapp() {
     # --instance NAME before or after the verb, for a project with several;
     # with none named the controller answers for the project's only one.
@@ -3857,7 +3916,7 @@ cmd_nodes() {
             DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nodes-verbs.py" enroll-token "$py" "$@" ;;
         -h|--help) echo "bb nodes            the enrolled machines, each with the agent it runs"
                    echo "bb nodes show NAME  one of them in full, by name or id"
-                   echo "bb nodes enroll-token NAME [--user U]  a new node's enrollment token, from a shell on the controller" ;;
+                   echo "bb nodes enroll-token NAME [--user U] [--own]  a new node's enrollment token, from a shell on the controller" ;;
         *) die "bb nodes [show NAME|enroll-token NAME]: '$1' is not one of its forms" ;;
     esac
 }
@@ -4687,18 +4746,22 @@ is not running; see bb logs."
 # session asks itself after editing anything here.
 # bb map: the code map (lib/codemap.py, roadmap R75). Over the project tree
 # a session is in (BB_TREE on a node, else the working directory), rebuilt
-# by itself when a source is newer than the index.
+# by itself when a source is newer than the index. BB_REPO first, which is
+# how a worktree of a second branch is named to every test verb: BB_TREE is
+# the project's main checkout, and a worktree's own symbols were "nothing
+# defines" (B228).
 cmd_map() {
+    local root="${BB_REPO:-${BB_TREE:-$PWD}}"
     # `addresses` with nothing to read reads the roadmap: the plan is where
     # a session writes `file ~line`, and where those go stale (item 7).
     if [ "${1:-}" = addresses ] && [ $# -eq 1 ]; then
         # As a command of its own rather than cmd_roadmap in this process:
         # on a node the roadmap is the controller's, and only the dispatch a
         # command starts with relays it there (B293).
-        "$0" roadmap | python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" addresses -
+        "$0" roadmap | python3 "$BB_LIB/codemap.py" --root "$root" addresses -
         return
     fi
-    python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" "$@"
+    python3 "$BB_LIB/codemap.py" --root "$root" "$@"
 }
 
 cmd_drift() {
@@ -5036,8 +5099,8 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, trust, resize, settle, dr
   // ...and a real sign-in, for the cookie. A header added by routing does not
   // reach a WEBSOCKET handshake (Playwright does not intercept those) and
   // the terminal is a websocket on the dashboard's own origin now, so a
-  // shot of a page with a terminal in it came out holding ttyd's reconnect
-  // prompt. A cookie goes on the handshake like any other request.
+  // shot of a page with a terminal in it came out with the terminal
+  // refused. A cookie goes on the handshake like any other request.
   // Best-effort: a page that is not a BuilderBot dashboard has no /login,
   // and the header above is still what answers for it.
   if (username) {
@@ -5558,6 +5621,21 @@ cmd_doctor() {
         fi
     }
     echo "== doctor =="
+    # The install key (R135), on a controller: what seals the settings'
+    # tokens, the signing keys and the git credentials, and what derives
+    # the sign-in cookies' key. Said either way, since nothing else on the
+    # page says whether it is in force.
+    if ! on_node && [ -n "$(dashboard_pid)" ]; then
+        # A key the install made (R154) is in its own folder, not /run.
+        if [ -s "${BB_SIGNING_SECRET_FILE:-/run/builderbot-key}" ]; then
+            printf '  [ok]   an install key is loaded: the settings'"'"' tokens, the signing keys and the git credentials are sealed under it\n'
+            if [ "${BB_INSTALL_KEY_IN:-}" = state ]; then
+                printf '  [warn] the install key is kept beside the state, so a copy of /config carries it: map the secrets folder read-write and restart, and it moves there (docs/reference.md)\n'
+            fi
+        else
+            printf '  [warn] no install key: the settings'"'"' tokens, the signing keys and the git credentials are kept open in /config; one is made at the next start (docs/reference.md)\n'
+        fi
+    fi
     # Claude Code is a node's, so a controller has nothing to check for: a
     # failed check nobody can fix is worse than no check (R47).
     # The other agents are each a person's choice: one missing is said as
@@ -5565,7 +5643,7 @@ cmd_doctor() {
     if on_node; then
         check "claude on PATH" command -v claude
         local ag
-        for ag in codex copilot; do
+        for ag in codex copilot grok; do
             if command -v "$ag" >/dev/null 2>&1; then printf '  [ok]   %s on PATH\n' "$ag"
             else printf '  [skip] %s is not installed here: the Agents page installs it\n' "$ag"; fi
         done
@@ -5835,9 +5913,9 @@ cmd_doctor() {
     # warning: which agents a person signs in to is theirs.
     if on_node; then
         local ag nm who
-        for ag in codex copilot; do
+        for ag in codex copilot grok; do
             command -v "$ag" >/dev/null 2>&1 || continue
-            case "$ag" in codex) nm=ChatGPT ;; *) nm=Copilot ;; esac
+            case "$ag" in codex) nm=ChatGPT ;; grok) nm=Grok ;; *) nm=Copilot ;; esac
             if who="$(python3 "$BB_LIB/doctor-probes.py" signed "$ag" 2>/dev/null)"; then
                 printf '  [ok]   signed in to %s on this machine%s\n' "$nm" "$who"
             else
@@ -5887,6 +5965,12 @@ cmd_version() {
     # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
     # runs this in the caller's cwd, so a node's session gets the same.
     local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    # ...or, asked from the project's own directory, the worktree BB_REPO
+    # names, as preflight and the test runner read it (B233, B274: a
+    # worktree's gate run from the main checkout wrote there).
+    if [ -n "${BB_REPO:-}" ] && [ "$top" = "$WORKSPACE/$proj" ]; then
+        top="$(git -C "$BB_REPO" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$top")"
+    fi
     case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
     # A release is the controller's to make (R138): the verb asks it, with
     # this session's credential.
@@ -5912,6 +5996,12 @@ cmd_changelog() {
     # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
     # runs this in the caller's cwd, so a node's session gets the same.
     local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    # ...or, asked from the project's own directory, the worktree BB_REPO
+    # names, as preflight and the test runner read it (B233, B274: a
+    # worktree's gate run from the main checkout wrote there).
+    if [ -n "${BB_REPO:-}" ] && [ "$top" = "$WORKSPACE/$proj" ]; then
+        top="$(git -C "$BB_REPO" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$top")"
+    fi
     case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
     # ...and any other worktree of the project's repository, wherever it is
     # (a Claude Code worktree under the project's .claude/worktrees wrote the
@@ -5960,6 +6050,18 @@ if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
             # By the name it was asked by, never its directory (B58).
             [ -d "$BB_TREE" ] || die "$p_name's tree is not in this session's view: a project added to the reads comes into a session's view when it starts, so start a new one (its notebook answers already)" ;;
     esac
+# A session of a project of several repositories (R136) works in each of
+# them: bb answers for the one whose tree it is run in, the repository the
+# session started on (BB_PROJECT, from bb-tty) when it is run in none of them.
+# `-p` above has the last word.
+elif [ -n "${BB_WORKS:-}" ] && w_here="$(project_here 2>/dev/null)" && [ -n "$w_here" ] \
+        && [ "$w_here" != "${BB_PROJECT:-}" ] && [[ " $BB_WORKS " == *" $w_here "* ]]; then
+    export BB_PROJECT="$w_here"
+    # ...with that repository's token, which bb-tty keeps and the agent
+    # renews beside the first's: the one in the environment is the first's.
+    unset BB_TOKEN
+    w_top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    export BB_TREE="${w_top:-$WORKSPACE/$w_here}"
 fi
 
 # `bb VERB -h`: the verb's own entries in the reference above, answered here
@@ -6078,6 +6180,7 @@ case "${1:-help}" in
     preamble) shift; cmd_preamble "$@" ;;
     brief) shift; cmd_brief "$@" ;;
     transcripts) shift; cmd_transcripts "$@" ;;
+    memory) shift; cmd_memory "$@" ;;
     design) shift; cmd_design "$@" ;;
     wiki) shift; cmd_wiki "$@" ;;
     rules)    shift; cmd_rules "$@" ;;

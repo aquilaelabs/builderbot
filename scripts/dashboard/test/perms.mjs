@@ -5,7 +5,7 @@
 // (the operator, 17 Oct).
 // Honored by the gate where they hold and nowhere else; a project's owner
 // gives roles on the projects they own and nothing Global.
-import { launch, newPage, ok, done, ready, sleep, URL, DIR, openSection, faded } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, URL, DIR, openSection, faded, projectKey } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -40,7 +40,7 @@ ok(!await page.$('.rolestab .rlist input, .rolestab [data-rwho]') && !!await pag
    '...no account and no field in the list, and New role at the right of the page\'s bar');
 await page.click('.rolestab [data-rpick="admin"]');
 await faded(page);
-ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 16
+ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 17
      && [...t.querySelectorAll('[data-rread]')].every(c => c.disabled)),
    '...a built-in one reads as every area, with nothing to change and no Save');
 
@@ -57,6 +57,7 @@ await page.check('[data-rread="projects"]');
 await page.check('[data-rread="releases"]');
 await page.check('[data-rwrite="releases"]');
 await page.fill('#rolesNote', 'moves versions');
+ok(await page.$$eval('#rolesSave, #rolesRevert', bs => bs.every(b => !b.disabled)), 'a role with unsaved changes has Save and Revert awake');
 await page.click('#rolesRevert');
 ok(!(await page.$$eval('.rolestab .rrow', rs => rs.map(r => r.textContent))).some(t => /deployer/.test(t)),
    'Revert drops a role that was never saved');
@@ -101,17 +102,20 @@ ok(!(await page.$$('[data-ron]')).length && !(await page.$$('[data-rglobal="depl
    'a project role is given on a project alone, and there is no separate "on it" box');
 // Only the projects an account is on are listed; Add to project puts it on
 // one with a role there (R255 step 9).
-ok(!(await page.$$('.userstab [data-rproject]')).length && await page.$eval('#rolesAddProj', s => [...s.options].some(o => o.value === 'alpha')),
+// By the project's key (R138): a role is given on a project, not on one of
+// its repositories.
+ok(!(await page.$$('.userstab [data-rproject]')).length && await page.$eval('#rolesAddProj', (s, k) => [...s.options].some(o => o.value === k), projectKey('alpha')),
    'an account on no project lists none, and Add to project offers them');
-await page.selectOption('#rolesAddProj', 'alpha');
+await page.selectOption('#rolesAddProj', projectKey('alpha'));
 await page.selectOption('#rolesAddRole', 'deployer');
 await page.click('#rolesAddOn');
-await page.waitForSelector('.userstab [data-rproject="alpha"] [data-rprole="deployer"]:checked');
-await page.waitForFunction(() => document.querySelector('[data-rcan="releases"] [data-rcanp="alpha"]')?.textContent === 'Write'
-  && document.querySelector('[data-rcan="projects"] [data-rcanp="alpha"]')?.textContent === 'Read');
+const AK = projectKey('alpha');
+await page.waitForSelector(`.userstab [data-rproject="${AK}"] [data-rprole="deployer"]:checked`);
+await page.waitForFunction(k => document.querySelector(`[data-rcan="releases"] [data-rcanp="${k}"]`)?.textContent === 'Write'
+  && document.querySelector(`[data-rcan="projects"] [data-rcanp="${k}"]`)?.textContent === 'Read', AK);
 ok(true, 'What dep can do says it in its grid, alpha writing Releases and reading Projects, before Save');
 await page.click('.userstab #ueSave');
-await page.waitForFunction(() => rolesData?.people?.find(p => p.name === 'dep')?.project_roles?.alpha, null, { timeout: 10000 });
+await page.waitForFunction(k => rolesData?.people?.find(p => p.name === 'dep')?.project_roles?.[k], AK, { timeout: 10000 });
 const onAlpha = await api('/api/version', { project: 'alpha', action: 'nothing-much' }, depAuth);
 const onBeta = await api('/api/version', { project: 'beta', action: 'nothing-much' }, depAuth);
 // beta is no project of dep's at all now (R155: on a project is holding a
@@ -120,7 +124,7 @@ ok(onAlpha.status !== 403 && (onBeta.status === 403 || (onBeta.status === 400 &&
    `People gives the role on alpha and the gate holds it there alone (alpha ${onAlpha.status}, beta ${onBeta.status})`);
 {
   const p = (await api('/api/roles')).body.people.find(x => x.name === 'dep');
-  ok(JSON.stringify(p.projects) === JSON.stringify(['alpha']), `...and being on alpha follows the role (${JSON.stringify(p.projects)})`);
+  ok(JSON.stringify(p.projects) === JSON.stringify([AK]), `...and being on alpha follows the role (${JSON.stringify(p.projects)})`);
   const glob = await api('/api/roles', { action: 'assign', name: 'dep', roles: ['deployer'] });
   ok(glob.status === 400 && /on a project: give it on the project/.test(glob.body.error || ''),
      `a project role given among the Everywhere ones is refused by name (${glob.body.error})`);
@@ -135,7 +139,7 @@ ok((await api('/api/rename', { name: 'alpha', to: 'alpha2' }, depAuth)).status =
 // on alpha and nothing else, and no Global role (R152 (c)).
 await api('/api/members', { action: 'set', project: 'alpha', owner: 'dep' });
 const asOwner = await api('/api/roles', undefined, depAuth);
-ok(asOwner.status === 200 && JSON.stringify(asOwner.body.projects) === JSON.stringify(['alpha']) && !asOwner.body.admin,
+ok(asOwner.status === 200 && JSON.stringify(asOwner.body.projects) === JSON.stringify([AK]) && !asOwner.body.admin,
    `alpha's owner opens the tab with alpha alone (${asOwner.status} ${JSON.stringify(asOwner.body.projects)})`);
 ok(Object.keys(asOwner.body.roles).includes('alpha_owner') && !Object.keys(asOwner.body.roles).includes('admin'),
    '...offered the roles on a project, its owner role among them, and no Global one');
@@ -144,7 +148,7 @@ ok(gl.status === 403, `...and refused a Global role (${gl.status})`);
 const elsewhere = await api('/api/roles', { action: 'assign', name: 'dep', project_roles: { beta: ['deployer'] } }, depAuth);
 ok(elsewhere.status === 200 && !(elsewhere.body.project_roles || {}).beta,
    `...and beta, not theirs, is left as it was (${JSON.stringify(elsewhere.body.project_roles)})`);
-const ownerRole = (await api('/api/roles')).body.people.find(p => p.name === 'dep').project_roles.alpha || [];
+const ownerRole = (await api('/api/roles')).body.people.find(p => p.name === 'dep').project_roles[AK] || [];
 ok(ownerRole.includes('alpha_owner'), `the account that owns alpha holds alpha_owner on it (${ownerRole.join(', ')})`);
 await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
 
@@ -272,7 +276,7 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   }
   const phone = await page.evaluate(() => RAIL_PHONE.join());
   ok(homeAt === '#/home' && rail.startsWith('home,projects,build,containers,controller,machines') && phone === 'home,projects,build,containers'
-     && Object.values(at).every(v => v === '#/controller controller'),
+     && Object.values(at).every(v => v === '#/controller/settings controller'),
      `Controller is its own group after Containers, a phone's four unchanged, and both old addresses land on it (${JSON.stringify({ homeAt, rail, phone, at })})`);
   if (before) await page.evaluate(h => openRoute(h), before);
 }

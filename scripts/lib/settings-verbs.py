@@ -85,6 +85,13 @@ def show():
     prefs = dash.load("prefs", here)
     prefs.configure(state=state, write_json=lambda *a: None)
     rec = dict(prefs.get(proj) or {})
+    # The projects it reads as the repositories a session reads (R138): kept
+    # by project key, which `bb -p` and a person know by its repositories'
+    # names, not "beta-2".
+    with contextlib.suppress(Exception):
+        if prefs._rp() and rec.get("reads"):
+            _of, _members, _is = prefs._rp()
+            rec["reads"] = list(dict.fromkeys(t for n in rec["reads"] for t in (_members(n) if _is(n) else [n])))
     # The model, the effort and any commit-author override are the ACCOUNT's on
     # this project, not the project's (prefs.for_user): two people on one project
     # are two authors on two models. BB_ACCOUNT_UID names the seat; no seat means
@@ -236,7 +243,7 @@ def set_node():
     # network to tell is the dashboard's next look at the setting.
     prefs.WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
     prefs.pin_instances = lambda name: []
-    prefs.end_claude = lambda name: {}
+    prefs.end_agents = lambda name: {}
     prefs.net_nudge = lambda: None
     want = os.environ["BB_SET_VALUE"].strip()
     with contextlib.suppress(OSError, ValueError):

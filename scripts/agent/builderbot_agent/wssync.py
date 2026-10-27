@@ -80,7 +80,7 @@ def foreign_mount(path, mounts="/proc/self/mounts"):
 # named for where it lives under the projects root, as the controller names it.
 # ...or one of its agents' other than Claude's (u_xxxxxxxx-codex, R95): the
 # account's all the same, so the uid is still the group a check reads.
-WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})(?:-[a-z]+)?")
+WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})(?:-[a-z]+)?(?:-[2-9])?")
 
 
 def skipped(rel):
@@ -338,8 +338,16 @@ class WorkspaceSync:
         a second account's on first use), as unit names: sent up before the
         controller has heard of them, rather than kept on this node alone."""
         out = []
+        owner = self.owner()
         for proj in own:
             d = os.path.join(self.root, ".worktrees", proj)
+            # One made as root before the sync made each folder its owner's
+            # (B356), put right: an account's own user makes its worktree there.
+            if owner:
+                for x in (os.path.dirname(d), d):
+                    with contextlib.suppress(OSError):
+                        if os.lstat(x).st_uid == 0 and os.getuid() == 0:
+                            os.lchown(x, *owner)
             with contextlib.suppress(OSError):
                 for uid in sorted(os.listdir(d)):
                     name = f".worktrees/{proj}/{uid}"
@@ -549,9 +557,18 @@ class WorkspaceSync:
         own = self.owner()
         cur = top
         if not os.path.isdir(cur):
+            # Each folder made on the way the tree owner's, not the top's
+            # alone: a worktree's unit made .worktrees/PROJECT as root, and an
+            # account's own user, its tree mapped to it, could make no
+            # worktree beside it (B356).
+            made, up = [], cur
+            while up and not os.path.isdir(up) and up.startswith(self.root.rstrip("/") + "/"):
+                made.append(up)
+                up = os.path.dirname(up)
             os.makedirs(cur, exist_ok=True)
             if own:
-                os.lchown(cur, *own)
+                for d in made:
+                    os.lchown(d, *own)
         for part in [x for x in rel_dir.split("/") if x]:
             cur = os.path.join(cur, part)
             if not os.path.isdir(cur):

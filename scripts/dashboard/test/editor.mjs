@@ -5,10 +5,10 @@
 // project, a role that caps it at read, the editor's switch off, a session's
 // token, taken off the project or signed out partway. Then the extension's
 // own code, driven under a stand-in for VS Code's API against this server,
-// and its terminal through the dashboard's /term relay to a real ttyd.
+// and its terminal, BuilderBot's own on /termws.
 // No browser.
 import { ok, done, DIR, URL } from './lib.mjs';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, symlinkSync, existsSync, statSync, utimesSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import Module from 'node:module';
@@ -16,7 +16,7 @@ import Module from 'node:module';
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const require = createRequire(import.meta.url);
 const { Client, Refused, signIn, API } = require(`${REPO}/vscode/lib/client.js`);
-const { Ttyd } = require(`${REPO}/vscode/lib/ttyd.js`);
+const { Term } = require(`${REPO}/vscode/lib/term.js`);
 const base = URL.replace(/\/$/, '');
 const ADMIN = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
 const admin = async (path, body) => {
@@ -225,7 +225,8 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   ext.activate({ subscriptions: [], secrets: { get: async k => secrets.get(k), store: async (k, v) => secrets.set(k, v),
                                                 delete: async k => secrets.delete(k) } });
   // Any coding agent's session terminal (R128): its argument is the page's.
-  ok(ext.AGENTS.map(a => a.id).join() === 'claude,codex,copilot' && ext.sessionArg('codex', 'alpha') === 'codex:alpha'
+  ok(ext.AGENTS.map(a => a.id).join() === 'claude,codex,copilot,grok' && ext.sessionArg('codex', 'alpha') === 'codex:alpha'
+     && ext.sessionArg('grok', 'alpha') === 'grok:alpha'
      && ext.sessionArg('copilot', 'alpha') === 'copilot:alpha' && ext.sessionArg('nope', 'alpha') === 'claude:alpha'
      && ext.sessionArg('codex', 'alpha', '17.5') === 'codex:alpha:b:17.5',
      'the extension opens any live agent\'s session, by the argument the dashboard opens it with');
@@ -260,54 +261,56 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
      `...and a file a session writes is told to VS Code as created, for open editors to follow (${Date.now() - t0} ms)`);
 }
 
-// ---- the session's terminal, through the dashboard's relay ------------------------------
+// ---- the session's terminal, BuilderBot's own (R133) ---------------------------------
 {
-  const has = (() => { try { execFileSync('sh', ['-c', 'command -v ttyd'], { stdio: 'ignore' }); return true; } catch { return false; } })();
-  if (!has) {
-    console.log('SKIP  ttyd is not on this machine: the terminal bridge was not driven');
-  } else {
-    // Where the harness's server relays /term (DASHBOARD_TTYD_PORT and the
-    // read-only twin one above): a ttyd that says what it was handed.
-    const show = ['bash', '-c', 'echo "ARGS $*"; exec bash --norc', '_'];
-    const tty = [spawn('ttyd', ['-p', '7999', '-i', '127.0.0.1', '-a', '-W', ...show], { stdio: 'ignore' }),
-                 spawn('ttyd', ['-p', '8000', '-i', '127.0.0.1', '-a', ...show], { stdio: 'ignore' })];
-    await new Promise(r => setTimeout(r, 800));
-    try {
-      const owner = new Client(base, await signIn(base, 'test', 'test'));
-      const t = new Ttyd(owner, 'sh:1:alpha');
-      let out = '';
-      t.on('output', s => { out += s; });
-      await t.open(90, 20);
-      await new Promise(r => setTimeout(r, 600));
-      t.write('echo $((6*7))\r');
-      await new Promise(r => setTimeout(r, 800));
-      t.close();
-      const uid = uidOf('test');
-      ok(new RegExp(`ARGS u:${uid}:sh:1:alpha`).test(out) && /\b42\b/.test(out),
-         `the terminal is the dashboard's: the relay stamps whose it is before ttyd sees it, and what is typed runs (${
-           out.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '').replace(/\s+/g, ' ').slice(0, 80)})`);
-      // Another agent's session as Open Agent Session opens it (R128): the
-      // argument names the agent and carries the boot the status gives,
-      // which is what lets bb-tty start one that is not running. The
-      // fixture has no node, so the relay takes it as an agent's session
-      // and says there is nowhere to run one, before any ttyd.
-      {
-        const ext = require(`${REPO}/vscode/extension.js`);
-        const facts = await ext.sessionFacts(owner, 'alpha');
-        let no = null;
-        try { await new Ttyd(owner, ext.sessionArg('codex', 'alpha', facts.boot)).open(90, 20); } catch (e) { no = e; }
-        ok(typeof facts.boot === 'string' && facts.boot && facts.running instanceof Set
-           && /no node to run/.test(no?.message || ''),
-           `...and the extension asks the boot a new session needs and opens a ChatGPT one as an agent's (${
-             facts.boot}: ${String(no?.message).slice(0, 80)})`);
-      }
-      let no = null;
-      try { await new Ttyd(c['ed.out'], 'sh:1:alpha').open(80, 24); } catch (e) { no = e; }
-      ok(no && no.status >= 400, `...and the same relay refuses a terminal the account may not open (${no?.status} ${String(no?.message).slice(0, 80)})`);
-    } finally {
-      tty.forEach(p => p.kill());
+  // Opened, written to and ended through the extension's own client; the
+  // reason a terminal ends with, a refusal among them, is what it closes on.
+  const run = async (who, arg, type) => {
+    const t = new Term(who, arg);
+    let out = '', why = null;
+    t.on('output', s => { out += s; });
+    t.on('close', w => { why = w; });
+    await t.open(90, 20);
+    await new Promise(r => setTimeout(r, 1500));
+    if (type && why === null) {
+      t.write(type);
+      await new Promise(r => setTimeout(r, 1500));
     }
+    t.close();
+    await new Promise(r => setTimeout(r, 200));
+    return { out: out.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '').replace(/\s+/g, ' '), why };
+  };
+  const owner = new Client(base, await signIn(base, 'test', 'test'));
+  const sh = await run(owner, 'sh:1:alpha', 'echo walk-$((6*7))\r');
+  ok(/walk-42/.test(sh.out),
+     `the terminal is the dashboard's, and what is typed runs (${sh.out.slice(-80)})`);
+  // Another agent's session as Open Agent Session opens it (R128): the
+  // argument names the agent and carries the boot the status gives, which
+  // is what lets bb-tty start one that is not running. The fixture has no
+  // node, so the server takes it as an agent's session and says there is
+  // nowhere to run one.
+  {
+    const ext = require(`${REPO}/vscode/extension.js`);
+    const facts = await ext.sessionFacts(owner, 'alpha');
+    const ag = await run(owner, ext.sessionArg('codex', 'alpha', facts.boot));
+    ok(typeof facts.boot === 'string' && facts.boot && facts.running instanceof Set
+       && /no node to run/.test(ag.why || ''),
+       `...and the extension asks the boot a new session needs and opens a ChatGPT one as an agent's (${
+         facts.boot}: ${String(ag.why).slice(0, 80)})`);
   }
+  // The page the Android app's WebView and a popped-out tab load: the same
+  // terminal, on /termws, behind the same sign-in.
+  {
+    const auth = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+    const page = await fetch(`${base}/terminal?arg=sh%3A1%3Aalpha`, { headers: auth });
+    const body = await page.text();
+    const anon = await fetch(`${base}/terminal?arg=sh%3A1%3Aalpha`, { redirect: 'manual' });
+    ok(page.status === 200 && /\/termws\?/.test(body) && /vendor\/xterm\.js/.test(body) && anon.status !== 200,
+       `...and /terminal is that terminal on a page of its own, for the app and a popped-out tab, behind the sign-in (${
+         page.status}, signed out ${anon.status})`);
+  }
+  const no = await run(c['ed.out'], 'sh:1:alpha');
+  ok(no.why, `...and the same server refuses a terminal the account may not open, saying why (${String(no.why).slice(0, 80)})`);
 }
 
 await done();

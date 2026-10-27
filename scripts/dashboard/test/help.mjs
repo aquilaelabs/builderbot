@@ -65,6 +65,17 @@ for (const [W, H] of [[1280, 900], [393, 852]]){
   await page.goBack();
   await page.waitForFunction(() => location.hash === '#/help/install' || location.hash === '#/help', null, { timeout: 10000 });
   ok(true, `${at}: Back returns to the doc before (${await page.evaluate(() => location.hash)})`);
+  // An address naming a section opens its doc there (#/help/DOC/SECTION):
+  // the doctor's install key warning links to its fix (the operator, 26 Oct).
+  await page.evaluate(() => { location.hash = '#/help/reference/the-install-key'; });
+  const sect = await page.waitForFunction(() => {
+    const h = [...document.querySelectorAll('.helptab .wkarticle[data-name="reference"] .wkpage :is(h2, h3, h4)')].find(x => /The install key/.test(x.textContent));
+    if (!h) return null;
+    let sc = h.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight && /(auto|scroll)/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+    const top = h.getBoundingClientRect().top - (sc ? sc.getBoundingClientRect().top : 0);
+    return top >= -2 && top < 120 ? Math.round(top) : null;
+  }, null, { timeout: 10000 }).then(h => h.jsonValue()).catch(() => null);
+  ok(sect !== null, `${at}: an address naming a section opens its doc at it (#/help/reference/the-install-key, ${sect}px from the top)`);
   // A table with an empty head (| | |) draws no blank first row, and its
   // first column's words are never broken inside (B78: 'Playwrig ht').
   await page.evaluate(() => { location.hash = '#/help/how-it-works'; });

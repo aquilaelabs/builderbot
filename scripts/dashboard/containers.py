@@ -40,9 +40,6 @@ dial = None
 users = None
 ask_rebuild = None
 net_nudge = None
-# The hosting nodes a project names (prefs.hosts), handed in by the server: a
-# session reads its project's containers there too (B649).
-project_hosts = None
 # Whether a node's published ports are meant to stay on it (nodes.ports_local_on, R190).
 ports_local = None
 # Each container's last hour on a node, by name (nodes.ctr_spark, R218 step 9).
@@ -85,6 +82,9 @@ def _known_container(name):
 
 
 BOOT_CTL = ("boot-on", "boot-off")
+# Onto the LAN and off it again (R178): an administrator's, read by the wall
+# the node's agent keeps around each project's containers.
+LAN_CTL = ("lan-on", "lan-off")
 
 
 def container_ctl(name, what):
@@ -122,6 +122,22 @@ def container_ctl(name, what):
         return {"error": devapp._why_not(r["out"]) or f"{what} failed"}
     did = ", ".join(c.get("name") or c.get("id") for c in cs)
     return {"ok": True, "out": f"{what}ped {did}" if what == "stop" else f"{what}ed {did}"}
+
+
+def container_lan(name, nid, on):
+    """Let every container `name` means on node `nid` reach the LAN, or keep
+    it off again: kept by the key the wall names it by (an instance's
+    compose project, any other container's name), so a rebuild keeps it,
+    and told to the node at once."""
+    cs = _targets(name)
+    if not cs:
+        return {"error": f"no container called {name} on this daemon now: the list is "
+                         "read again before anything is acted on, and it has moved"}
+    keys = {(c.get("project") if c.get("ours") else "") or c.get("name") or c.get("id") for c in cs}
+    devapp.set_lan(nid or devapp._node_here(), keys, on)
+    net_nudge()
+    did = ", ".join(sorted(keys))
+    return {"ok": True, "out": f"{did} {'reaches' if on else 'no longer reaches'} the network around its node"}
 
 
 def owned_container(name):
@@ -556,18 +572,10 @@ def session_verb(sess, me, act, name, req, read_only=False):
     # containers live on any of them (R82), and asking the primary
     # alone refused the project's own dev instance on its second
     # node as not its own (B268).
+    # ...and on every node it hosts its containers on (R166, B649), and the
+    # node each of its instances was put on (B338): devapp.container_nodes.
     c, owner, nid = None, "", devapp.project_daemon(sess)
-    # ...and on every node the project names under Hosts its containers on
-    # (R166): the project is not on those, so they are not in the node set,
-    # and a session asking for the probe it had just shipped to one was told
-    # it had no containers (B649). The nodes the project names NOW, and no
-    # other: a container left on a node taken off the project stays the
-    # project's, and the session neither reads nor runs it until the node is
-    # named again or the operator moves or removes it (the operator, 11 Oct).
-    where = list(devapp.nodes_of(sess) or [nid])
-    for on in (project_hosts(sess) if project_hosts else []):
-        if on and on not in where:
-            where.append(on)
+    where = devapp.container_nodes(sess) or [nid]
     for cand in where:
         with devapp.on_node(cand or None):
             c, owner = owned_container(name)
@@ -593,8 +601,16 @@ def session_verb(sess, me, act, name, req, read_only=False):
     # A stranger's container and a missing one answer alike; one of the
     # project's own with nothing running under it is said as that.
     if owner != sess:
+        # An instance's name rather than a container's: its containers are
+        # named, so the next command can be the right one.
         row = devapp.row_named(name)
         if row and devapp.owner_of(*row) == sess:
+            pn = devapp.pname(*row)
+            with devapp.on_node(devapp.instance_node(*row) or None):
+                theirs = [x["name"] for x in devapp.containers().get("containers") or [] if x.get("project") == pn]
+            if theirs:
+                return {"error": f"{name} is an instance, not a container: its containers are "
+                                 f"{', '.join(theirs)}; bb devapp log takes one of them"}, 400
             return {"error": f"{name} has no containers on its node now: bb devapp says "
                              "whether it is built and up"}, 400
         return {"error": not_ours(name, sess)}, 403
@@ -636,6 +652,8 @@ def admin_verb(act, name, nid, under):
             return _answer(r)
         if act == "logs":
             return container_logs(name), 200
+        if act in LAN_CTL:
+            return _answer(container_lan(name, nid, act == "lan-on"))
         # The two prunes the Images and volumes section offers (R216):
         # `name` is which, images or volumes, and nothing is named.
         if act == "prune":

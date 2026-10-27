@@ -260,6 +260,7 @@ sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pa
 from pathlib import Path
 import projects, git as g
 projects.STATE = Path(${JSON.stringify(`${DIR}/state`)})
+import gitcreds; gitcreds.configure(state=projects.STATE)
 g.STATE = Path(${JSON.stringify(`${DIR}/state`)})
 seen = []
 class R:
@@ -278,9 +279,11 @@ print(json.dumps(next((a for a in seen if "fetch" in a), [])))
     mkdirSync(`${DIR}/state/gitcreds`, { recursive: true });
     writeFileSync(`${DIR}/state/gitcreds/beta`, 'https://oauth2:tok@example.invalid\n', { mode: 0o600 });
     const withTok = JSON.parse(argvFor(true));
-    ok(withTok.includes(`credential.helper=store --file=${DIR}/state/gitcreds/beta`)
+    // The controller's own helper (R135), which opens the token sealed or not
+    // and hands it over for the host it was written for.
+    ok(withTok.some(a => /^credential\.helper=!\S*git-credential-bb\S* \S*\/state\/gitcreds\/beta$/.test(String(a)))
        && withTok[withTok.indexOf('-c') + 1].startsWith('credential.helper='),
-       `...and one that has it runs git with the controller's own store (${
+       `...and one that has it runs git with the controller's own helper (${
          withTok.filter(a => String(a).includes('credential')).join(' ') || 'none'})`);
     rmSync(`${DIR}/state/gitcreds/beta`, { force: true });
   }
@@ -298,6 +301,7 @@ sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pa
 from pathlib import Path
 import projects, git as g
 projects.STATE = Path(${JSON.stringify(`${DIR}/state`)})
+import gitcreds; gitcreds.configure(state=projects.STATE)
 g.STATE = Path(${JSON.stringify(`${DIR}/state`)})
 said = {"code": 128, "out": "fatal: could not read Username for 'https://gitea.example': terminal prompts disabled"}
 print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))
@@ -1469,6 +1473,13 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
      && sect.rows.some(r => /^Runner: .*ubuntu-latest.*android\.yml:10/.test(r))
      && sect.rows.some(r => /^Action: .*setup-android.*v4 is out/.test(r)),
      `...each finding a row in words, with where it is (${JSON.stringify(sect.rows)})`);
+  // Its log in the dock (R133 step 12): the newest run's, a read-only tab
+  // the server writes the run into once and ends, saying so.
+  await page.click(`${NB} details.sect[data-sect="git:ci"] [data-cilog="11"]`);
+  const ciTab = await page.waitForFunction(() => tabs.find(t => t.kind === 'term' && t.arg === 'log:ci:beta:11'), null, { timeout: 10000 })
+    .then(h => h.jsonValue(), () => null);
+  ok(ciTab && /^CI: beta #11$/.test(ciTab.label), `Its log opens the run's log in the dock, a tab of its own (${ciTab?.label})`);
+  await page.evaluate(() => { const t = tabs.find(x => x.arg === 'log:ci:beta:11'); if (t) dropTab(t.id); });
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => (state?.ci_red || []).some(c => c.project === 'beta'), null, { timeout: 15000 });
   await page.evaluate(() => toggleBell(true));
@@ -1478,6 +1489,19 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
   ok(/The Android CI check failed on main/.test(bell) && /Git view/.test(bell) && /On GitHub/.test(bell)
      && link === 'https://github.com/o/beta/actions/runs/11',
      `the bell carries a row while main is red, with the way to the Git view (${bell.slice(0, 80)})`);
+  // Its buttons each one line tall, their words whole (B332), and Dismiss
+  // puts it away (B331: the run's key had a space, and the page split it).
+  const tall = await page.$eval('#bellPanel', p => {
+    const row = [...p.querySelectorAll('.bnote')].find(n => /CI failing in beta/.test(n.textContent));
+    return [...row.querySelectorAll('.acts a')].map(a => { const r = a.getBoundingClientRect(), lh = parseFloat(getComputedStyle(a).lineHeight) || 16;
+      return { text: a.textContent.trim(), lines: Math.round((r.height - 8) / lh) }; });
+  });
+  ok(tall.length === 3 && tall.every(b => b.lines <= 1), `the row's buttons keep their words on one line (${JSON.stringify(tall)})`);
+  await page.evaluate(() => { const row = [...document.querySelectorAll('#bellPanel .bnote')].find(n => /CI failing in beta/.test(n.textContent));
+    row.querySelector('[data-bdismiss]').click(); });
+  const gone = await page.waitForFunction(() => !(state?.ci_red || []).some(c => c.project === 'beta'), null, { timeout: 10000 }).then(() => true, () => false);
+  ok(gone, 'Dismiss puts the CI row away');
+  await page.evaluate(() => postJSON('/api/bell', { action: 'restore' }));
   await page.evaluate(() => toggleBell(false));
   // R117 step 4: the runner row carries Fix, which writes that one line into
   // the working tree, uncommitted, and Changes shows it; nothing is pushed.

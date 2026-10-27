@@ -234,7 +234,9 @@ ALWAYS = [
      "refuse": ["bb build", "bb test", "bb tests run", "bb tests preflight", "bb tests lab", "bb tests coverage",
                 "bb tests probe", "bb devapp rebuild",
                 "bb dashboard test", "*/dashboard/test/run.sh",
-                "!bb tests preflight* --dry*"],          # the plan only: nothing runs (B698)
+                "!bb tests preflight* --dry*",          # the plan only: nothing runs (B698)
+                # ...and a verb's usage, which runs nothing either (B278).
+                "!bb * --help*", "!bb * -h", "!bb *help"],
      "foreground": True},
     # ...and the wait for one is not a foreground loop either (the operator,
     # 16 Oct: a session went unresponsive while it watched a gate's log).

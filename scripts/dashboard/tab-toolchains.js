@@ -53,20 +53,29 @@ let tcSizeTimer = null;
 async function loadToolchains(){
   const asked = ++tcLoadSeq;
   if (nodesList === null || nodesStale) await loadNodes();
-  if (asked !== tcLoadSeq) return;           // the node changed under this load
+  if (asked !== tcLoadSeq) return;           // a later load asks instead
   if (!tcPick()){
     toolchains = {nonode: true};
     clearTimeout(tcSizeTimer); tcSizeTimer = null;
     tcRev++; drawPanes();
     return;
   }
+  // A reply is kept when it is still about the node on show and nothing
+  // asked after it has landed first. Dropping every reply a later ask had
+  // overtaken was a livelock on a loaded box: the revision watch, the
+  // sizing timer and the settling poll each ask again, and when they asked
+  // faster than one read came back, every reply was overtaken, the page sat
+  // on its template, and Forward to a node never said what it held (B154).
+  const node = tcNode;
+  const keep = () => tcNode === node && asked > tcLanded;
   try{
-    const r = await fetch("/api/toolchains" + (tcNode !== "local" ? `?node=${encodeURIComponent(tcNode)}` : ""));
+    const r = await fetch("/api/toolchains" + (node !== "local" ? `?node=${encodeURIComponent(node)}` : ""));
     if (!r.ok) throw new Error("HTTP " + r.status);
     const got = await r.json();
-    if (asked !== tcLoadSeq) return;
+    if (!keep()) return;
     toolchains = got;
-  }catch(e){ if (asked !== tcLoadSeq) return; toolchains = {error: String(e)}; }
+  }catch(e){ if (!keep()) return; toolchains = {error: String(e)}; }
+  tcLanded = asked;
   clearTimeout(tcSizeTimer); tcSizeTimer = null;
   // ...and while Claude Code's own job runs (R145), which is not a toolchain
   // job and so moves nothing the tab waits on otherwise.
@@ -92,7 +101,8 @@ let tcDots = 0, tcDotsTimer = null;
 // called (`bb toolchains install` from a shell and the suite address it) but
 // nothing on this page sets it.
 let tcNode = "";
-let tcLoadSeq = 0;         // a load that lands after the node changed is dropped
+let tcLoadSeq = 0;         // each load's number, in the order asked
+let tcLanded = 0;          // the newest load drawn: an older reply landing after it is dropped
 
 // The node the tab opens on: the one it showed last (remembered in this
 // browser), else the first live agent node, else nothing. Re-asked on every
@@ -273,6 +283,7 @@ function tcRow(p, busy, job, managed){
       ${tcSystemLine(p, managed)}
       ${tcNeedsLine(p)}
       ${p.installed && p.path && !mine ? `<span class="sub tcpath">at ${esc(p.path)}</span>` : ""}
+      ${tcVerifiedLine(p)}
       </span>
     </span>`,
     // Whatever version is known, installed or reported: a node's own
@@ -287,6 +298,17 @@ function tcRow(p, busy, job, managed){
       p.reopen && !mine ? `<span class="sub warn tcreopen">${p.reopen === 1 ? "1 session" : `${p.reopen} sessions`}
         open here started before this was installed: reopen ${p.reopen === 1 ? "it" : "them"} to use it</span>` : ""}
   </label>`;
+}
+// How an installed toolchain's download was checked when it was installed
+// (R137): against what its publisher states, or not, and why not. Nothing
+// for one installed before BuilderBot checked.
+function tcVerifiedLine(p){
+  const v = p.installed ? p.verified : null;
+  if (!v) return "";
+  return v.algo === "none"
+    ? `<span class="sub tcverified">Not checked when it was installed: ${esc(v.where)}</span>`
+    : v.algo === "gpg" ? `<span class="sub tcverified">Checked when it was installed: ${esc(v.where)}</span>`
+    : `<span class="sub tcverified">Checked when it was installed: its ${esc(v.algo)} matched ${esc(v.where)}</span>`;
 }
 // ---- tool packs (R77) -------------------------------------------------------
 // The packs an administrator added, as a table, a row each with Edit at its
@@ -456,7 +478,10 @@ function tpClose(){
 }
 
 // Drawn again on each step (looking, what came back, adding), the URL as
-// typed kept in tpForm across the redraws.
+// typed kept in tpForm across the redraws. The height its From panes share,
+// measured as it opens (holdPanes' way, the operator, 26 Oct), held on every
+// redraw since each draws the box anew.
+let tpHeld = 0;
 function tpDraw(first){
   let m = document.getElementById("tpmodal");
   if (!m){
@@ -468,6 +493,23 @@ function tpDraw(first){
   }
   m.innerHTML = tpModalHtml();
   m.hidden = false;
+  if (first){
+    tpHeld = 0;
+    if (m.querySelector("[data-tpfrom]")){
+      const was = tpForm.from;
+      let h = 0;
+      for (const k of [...m.querySelectorAll("[data-tpfrom]")].map(x => x.dataset.tpfrom)){
+        tpForm.from = k;
+        m.innerHTML = tpModalHtml();
+        h = Math.max(h, m.querySelector(".box").getBoundingClientRect().height);
+      }
+      tpForm.from = was;
+      m.innerHTML = tpModalHtml();
+      tpHeld = Math.ceil(h);
+    }
+  }
+  // Held while From is chosen; what a look brings back is a step of its own.
+  if (tpHeld && !tpForm.seen) Object.assign(m.querySelector(".box").style, {boxSizing: "border-box", height: tpHeld + "px"});
   m.onclick = e => { if (e.target === m) tpClose(); };
   const url = m.querySelector("#tpUrl");
   if (url){
@@ -674,11 +716,11 @@ function renderToolchainsInto(i){
     // Its template (R218 step 16): the bar, the tile's words and the table's
     // head are the page's own; the store and its rows are on their way.
     surf.setBar(skNodeBar([["Check for updates", "", "Check"], ["Install selected", "primary", "Install"]]));
-    // In the page's own order: its bar with its two buttons, its tiles, its
-    // status line, then the catalog's table.
+    // In the page's own order: its bar with its two buttons, its head, its
+    // tiles, then the catalog's table.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
-    surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
-      ${headLine(skv(22), "", "tcact")}
+    surf.list.innerHTML = skTpl(`${pageHead({title: GHOST, cls: "tcact", facts: [["Store", GHOST], ["Versions checked", GHOST]]})}
+      <div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
       ${tcSections("", skTable(TC_COLS, 6, "tcs"), "")}
       ${state?.can?.admin ? docSection("toolchains", "packs", "Tool packs", "", skTable(TP_COLS, 2, "tprecords")) : ""}`);
     return;
@@ -741,27 +783,28 @@ function renderToolchainsInto(i){
   // What the store is and where, said on the page's status line under the
   // tiles (the operator, 17 Oct: one order for every page's top).
   const working = busy && job.action !== "check";
-  const storeSaid = onNode
-      ? (d.root
-          // Nothing here about a shared store. Several nodes pointing at one
-          // share is an ordinary arrangement: three Linux sandboxes on one
-          // NFS export is the obvious way to run this, and it works without
-          // anybody being told. The one moment it matters is when a second
-          // install is refused because one is already running across the
-          // share, and that refusal says so at the press; a standing banner
-          // on every draw was explaining a thing that needs no explaining.
-          // Its free space is the tile's to say, once (R218 step 24).
-          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)}. An install is a job there.`
-          : `${esc(d.name || "the node")} reports no toolchain store yet.`)
-      : d.root
-      ? (d.shared
-          ? `Installed into <code>${esc(d.root)}</code>: a mapped share, so an image update never re-downloads them.`
-          : `Installed into <code>${esc(d.root)}</code>: the home volume. Map a toolchain store to keep them out of it.`)
-      : "No toolchain store found.";
   surf.list.innerHTML = `
     ${pstale ? `<div class="field"><div class="notice warn tcstale">${esc(staleWhy(
       pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div></div>` : ""}
     ${pro ? `<div class="field"><div class="notice warn tcro">${esc(d.name || "This node")}'s toolchain store is read-only to it, so nothing installs here: what is in it is what it has. Make it writable on the machine to install.</div></div>` : ""}
+    ${
+    // The page's status line under its tiles (the operator, 16 and 17 Oct):
+    // the store and when its versions were checked, or what is running; and
+    // what the bar's Remove would take, when it is there. A check is said
+    // on its own button, so the line keeps to the store while one runs.
+    // ...as a head (the operator, 25 Oct: what a page knows is said the way
+    // a node's head says it): the machine, the store's state or the job
+    // running as a pill, and the store, its check and what Remove takes as
+    // facts.
+    pageHead({title: onNode ? d.name || "" : "This controller", cls: "tcact",
+      pills: working ? `<span class="pill live state tcworking">${tcWorking(job, d.items)}</span>`
+        : d.root ? `<span class="pill ok">store found</span>` : `<span class="pill warn">no store yet</span>`,
+      facts: [["Store", d.root || ""],
+               ["Kind", !onNode && d.root ? (d.shared ? "a mapped share: an image update never downloads them again"
+                                                      : "the home volume: map a store to keep them out of it") : ""],
+               ["Versions checked", d.checked ? ago(d.checked) : "not yet"],
+               ["Remove takes", clean.length ? clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ") : "",
+                {html: true, cls: "tcclean"}]]})}
     ${
     // The store at a glance (R216): what is installed, what has an update
     // due, what a project needs that the store lacks, and the room left.
@@ -782,14 +825,6 @@ function renderToolchainsInto(i){
          sub: "on the store", omit: typeof d.free_mb !== "number"},
       ]);
     })()}
-    ${
-    // The page's status line under its tiles (the operator, 16 and 17 Oct):
-    // the store and when its versions were checked, or what is running; and
-    // what the bar's Remove would take, when it is there. A check is said
-    // on its own button, so the line keeps to the store while one runs.
-    headLine(working ? tcWorking(job, d.items) : `${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}`, "", "tcact",
-             {state: working ? "tcworking" : "", under: clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
-               clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</div>` : ""})}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap
       // R51): the libraries are the machine's own, outside the store, and
@@ -809,14 +844,14 @@ function renderToolchainsInto(i){
     })()}
     ${tcSections(onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
       d.machine.map(m => (m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : "",
-      tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
+      // The coding agents are the Agents page's (R95 step 15): said first
+      // inside the Toolchains section, never between sections (the
+      // operator, 25 Oct: nothing outside a section).
+      (onNode ? `<div class="field tcagents"><div class="hint">The coding agents (${
+        esc(AGENTS.filter(a => a.live).map(a => a.product).join(", "))}) are installed and updated on the ${pageLink("agents", "Agents page", `#/build/agents/${encodeURIComponent(d.node || tcNode)}`)}.</div></div>` : "")
+      + tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs"),
       `${(d.items || []).filter(i => i.installed).length} installed`)}
-    ${
-    // The coding agents arrive with the machine's rows and are the Agents
-    // page's (R95 step 15): one line at the foot says where.
-    onNode ? `<div class="field tcagents"><div class="hint">The coding agents (${
-      esc(AGENTS.filter(a => a.live).map(a => a.product).join(", "))}) are installed and updated on the ${pageLink("agents", "Agents page", `#/build/agents/${encodeURIComponent(d.node || tcNode)}`)}.</div></div>` : ""}
     ${state?.can?.admin ? tpSection(d.items) : ""}
 `;
 

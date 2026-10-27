@@ -82,6 +82,22 @@ def refresh():
     return True
 
 
+# A line that names the doc its fix is in, as bb doctor writes it for a
+# terminal ("... (docs/reference.md)"): on the page, a link to that doc's
+# section in Help (the operator, 26 Oct).
+DOC_LINKS = (("the install key is kept beside the state", "#/help/reference/the-install-key", "How"),
+             ("no install key:", "#/help/reference/the-install-key", "How it works"))
+
+
+def _doc_line(check):
+    for said, href, act in DOC_LINKS:
+        if said in check["text"] and "href" not in check:
+            # The doc named in the words is the link now, so the words keep
+            # what to do and leave the path to it out.
+            return dict(check, href=href, act=act, text=check["text"].replace(" (docs/reference.md)", ""))
+    return check
+
+
 def _run_once():
     r = run(["bb", "doctor"], timeout=180)
     checks = []
@@ -91,7 +107,7 @@ def _run_once():
             checks.append({"level": m.group(1), "text": m.group(2), "detail": ""})
         elif checks and line.strip() and not line.startswith("=="):
             checks[-1]["detail"] = (checks[-1]["detail"] + "\n" + line.strip()).strip()
-    checks = [_runner_line(c) for c in checks]
+    checks = [_doc_line(_runner_line(c)) for c in checks]
     with _lock:
         _verdict.update(when=int(time.time()), checks=checks, failed=r["code"] != 0)
 

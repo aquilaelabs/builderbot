@@ -110,7 +110,7 @@ ok(/no project called System|BuilderBot's own/.test(sysPick.error || ''),
 // The section is drawn after the answer lands, so its Remove is waited
 // for rather than read the moment the list moved.
 await page.waitForSelector(`${sect} [data-ngremove]`, { timeout: 15000 });
-ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill').textContent) && /1 route/.test(s.querySelector('.toolstate .sub').textContent)
+ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill').textContent) && /1 route/.test(s.querySelector('.toolstate').textContent)
      && s.querySelector('[data-ngremove]') && !document.querySelector('.nginxtab [data-ngdeploy]')),
    '...and the state row now says so, with Remove in place of Deploy');
 // A Save rebuilds it, and a read between its down and its up said "deployed,
@@ -140,7 +140,7 @@ ok(/already on the Containers page/.test((await api('/api/nginx', { action: 'dep
       && !s.querySelector('details[data-sect="nginx:routes"] [data-ngsave]') && !s.querySelector('.ngform'),
     foot: !!s.querySelector(':scope > .field .ngfoot [data-ngremove]') && !s.querySelector('details.sect [data-ngremove]'),
     form: s.querySelector('.ngcertform').hidden }));
-  ok(shape.sects.map(x => x.split(':')[0]).join() === 'Hostnames,Routes,Certificates,Image' && /1 route/.test(shape.sects[1])
+  ok(shape.sects.map(x => x.split(':')[0]).join() === 'Image,Hostnames,Routes,Certificates' && /1 route/.test(shape.sects[2])
      && shape.save && shape.foot && shape.form,
      `the deployed page is four sections with their states, the route a record with its Edit and no Save, Remove apart, and the certificate form rolled up (${shape.sects.join(' | ')})`);
   await page.click(`${sect} [data-ngcertopen]`);
@@ -150,6 +150,16 @@ ok(/already on the Containers page/.test((await api('/api/nginx', { action: 'dep
   await page.fill(`${sect} #ngKey`, '-----BEGIN PRIVATE KEY-----');
   const awake = await page.$eval(`${sect} [data-ngcertsave]`, b => !b.disabled);
   const routesQuiet = !(await page.$(`${sect} .ngform`));
+  // ...and the box being pasted in keeps its caret when a read draws the
+  // page again under it (B158): the focus went with the old box, and a
+  // paste landing in that moment went nowhere, leaving Add asleep.
+  await page.focus(`${sect} #ngKey`);
+  await page.evaluate(() => { nginxRev++; drawPanes(); });
+  await page.keyboard.press('End');
+  await page.keyboard.type('x');
+  const caret = await page.evaluate(id => ({ at: document.activeElement?.id, key: nginxDraft[id]?.key }), sandbox.node);
+  ok(caret.at === 'ngKey' && caret.key === '-----BEGIN PRIVATE KEY-----x',
+     `...and the box being pasted in keeps its caret across a redraw (${JSON.stringify(caret)})`);
   await page.click(`${sect} [data-ngcertcancel]`);
   await page.waitForFunction(s => document.querySelector(s + ' .ngcertform').hidden && !document.querySelector(s + ' #ngCert').value, sect, { timeout: 5000 });
   ok(asleep && awake && routesQuiet,
@@ -184,6 +194,9 @@ ok((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.som
 await page.waitForFunction(s => !document.querySelector(s + ' .ngform') && document.querySelectorAll(s + ' .ngrec').length === 2, sect, { timeout: 15000 });
 ok(await page.$eval(`${sect} .ngrec[data-i="1"]`, r => /api\.example\.com/.test(r.textContent) && /8081/.test(r.textContent)),
    '...and folds back to a row reading the route');
+ok(await page.$eval(`${sect} .ngrec[data-i="1"] a.namelink`, a => /^https?:\/\/api\.example\.com\//.test(a.href)
+     && a.target === '_blank' && /noopener/.test(a.rel) && a.textContent === 'api.example.com'),
+   "the route's hostname is a link opening its site in a new tab");
 // Edit opens that row in place, Cancel folds it back unchanged, Save
 // writes the one route and Delete takes it out.
 await page.click(`${sect} [data-ngedit="1"]`);
@@ -205,10 +218,13 @@ await page.fill(`${sect} .ngform [data-ng="port"]`, '8083');
   const slow = async r => { if (r.request().method() === 'GET') await new Promise(f => setTimeout(f, 4000)); await r.continue().catch(() => {}); };
   await page.route('**/api/nginx', slow);
   await page.click(`${sect} .ngform [data-ngsave]`);
-  const quick = await page.waitForFunction(s => !document.querySelector(s + ' .ngform')
-      && /8083/.test(document.querySelector(s + ' .ngrec[data-i="1"]')?.textContent || ''), sect, { timeout: 3000 })
-    .then(() => true, () => false);
-  const said = await page.$eval(sect, s => s.querySelector('.toolstate .pill')?.textContent || '');
+  // The row and the pill read in the same moment: the stub's rebuild ends
+  // quickly, and a pill read a step later on a loaded box said deployed.
+  const at = await page.waitForFunction(s => !document.querySelector(s + ' .ngform')
+      && /8083/.test(document.querySelector(s + ' .ngrec[data-i="1"]')?.textContent || '')
+      && (document.querySelector(s + ' .toolstate .pill')?.textContent || '-'), sect, { timeout: 3000, polling: 'raf' })
+    .then(h => h.jsonValue(), () => null);
+  const quick = at !== null, said = at || '';
   ok(quick && /rebuilding/.test(said),
      `a route's Save shows the saved port and "deployed, rebuilding" at once, before the tab is read again (${quick}, ${said})`);
   // Unrouted only once the held reads have gone on, or unroute answers

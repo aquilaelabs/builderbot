@@ -102,8 +102,8 @@ leaves it.
 
 **Screen** opens the VM's display in the dock: keyboard, mouse and all,
 drawn by noVNC, which the image carries. Every VM has one, on its host's
-loopback alone; the node's agent relays it on port 7684, which it opens to
-the controller alone beside the terminals' ports, and only for a request the
+loopback alone; the node's agent relays it on port 7684, the port its
+terminals come in on too, which it opens to the controller alone, and only for a request the
 controller signed for that VM within the last two minutes. It takes VMs
 Write on the VM's project, since seeing a screen is driving the machine.
 A screen password set at New VM is asked for when it opens.

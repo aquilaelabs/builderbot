@@ -15,7 +15,7 @@ import sys
 d, proj, op = sys.argv[1], sys.argv[2], sys.argv[3]
 arg = sys.argv[4] if len(sys.argv) > 4 else ""
 sys.path.insert(0, d)
-import statefile, rules, roadmap, bugs, preamble, prefs, design, registry
+import statefile, rules, roadmap, bugs, preamble, prefs, design, registry, repos
 state = os.environ.get("DASHBOARD_STATE", "/config")
 # Reading only: none of the callbacks a write would need are passed, and the
 # three stores take them as optional for exactly this case.
@@ -35,6 +35,15 @@ registry.configure(state=state, workspace=os.environ.get("WORKSPACE", "/workspac
                    write_json=statefile.write_json)
 preamble.label_of = registry.label
 preamble.id_of = registry.pid
+# ...and the project each repository is in (R138), as the server has it:
+# without it a session was briefed on its first repository alone, by that
+# repository's own name and id, its settings read where the project's are
+# kept (what it reads, its node), and never told the others are its own.
+repos.configure(state=state, write_json=statefile.write_json, registry=registry)
+prefs.configure_repos(project_of=repos.project_of, members=repos.members, is_repos=registry.is_repos)
+preamble.repos_fn = lambda p: ((registry.label(k), registry.pid(k), [(m, registry.label(m)) for m in repos.members(k)])
+                               if (k := repos.project_of(p)) and len(repos.members(k)) > 1 else None)
+preamble.project_fn = lambda p: (registry.label(k), registry.pid(k)) if (k := repos.project_of(p)) else None
 
 
 def _packs():
@@ -82,7 +91,8 @@ if op == "--topics":
     for slug, gist, _ in preamble.topics(proj):
         print(f"  {slug:<11}{gist}")
     sys.exit(0)
-p = preamble.payload(proj, reply=mine.get("reply") or "", asks=mine.get("asks") or "")
+p = preamble.payload(proj, reply=mine.get("reply") or "", asks=mine.get("asks") or "",
+                     uid=os.environ.get("BB_UID", ""), agent=os.environ.get("BB_AGENT", ""))
 # Which coding agent it is for (R95 step 5), where it matters: a session of
 # an agent other than Claude is told what it is and that the briefing holds
 # for it as for Claude, ahead of the rest. bb-tty names it (BB_AGENT).

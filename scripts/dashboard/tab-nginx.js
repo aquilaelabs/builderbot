@@ -216,10 +216,18 @@ function nginxRouteForm(n, r, i){
       <button type="button" class="primary" data-ngsave>Save</button></div>
   </div>`;
 }
+// A route's hostname opens the site it serves in a new tab, over https when
+// the route has TLS and http when it is 80 only; every name (*) has no one site.
+function nginxSite(r){
+  if (r.host === "*") return "every name (*)";
+  if (!r.host) return "";
+  const url = `${r.tls === false ? "http" : "https"}://${r.host}${r.path && r.path !== "/" ? r.path : "/"}`;
+  return `<a class="namelink" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="open ${esc(url)} in a new tab">${esc(r.host)}</a>`;
+}
 function nginxRoutesTable(n){
   const ed = nginxEdit && nginxEdit.node === n.node ? nginxEdit.i : null;
   const rec = (r, i) => `<div class="row ngrec${ed === i ? " open" : ""}" data-i="${i}">${tblLine(NG_ROUTE_COLS, [
-      r.host === "*" ? "every name (*)" : esc(r.host || ""), esc(r.path || "/"), esc(String(r.port)), nginxTls(n, r),
+      nginxSite(r), esc(r.path || "/"), esc(String(r.port)), nginxTls(n, r),
       ed === i ? "" : `<button type="button" data-ngedit="${i}">Edit</button>`])}${
       ed === i ? nginxRouteForm(n, nginxForm || r, i) : ""}</div>`;
   const fresh = ed === -1 ? `<div class="row ngrec open" data-i="-1">${nginxRouteForm(n, nginxForm || {host: "", path: "/", port: "", tls: true}, -1)}</div>` : "";
@@ -272,13 +280,12 @@ function nginxUndeployed(n){
   const count = (n.routes || []).length, certs = Object.keys(n.certs || {}).length;
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
-  // The page's status line (the operator, 17 Oct: one order for every
-  // page's top): not deployed and what Deploy brings; Deploy is in the bar
-  // with every header button.
+  // The page's head (the operator, 17 and 25 Oct): not deployed and what
+  // Deploy brings; Deploy is in the bar with every header button.
   return `<div data-ngnode="${esc(n.node)}">
-    ${headLine(`<span class="pill">not deployed</span> ${count || certs
-          ? `Deploy puts nginx on ${esc(n.name)} with the ${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
-          : `Deploy puts nginx on ${esc(n.name)}; its routes and certificates are set here once it is there`}`, "", "toolstate")}
+    ${pageHead({title: n.name || "", cls: "toolstate", pills: `<span class="pill">not deployed</span>`, facts: [
+      ["Deploy brings", count || certs ? `${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
+                                       : "nginx alone: its routes and certificates are set here once it is there"]]})}
     ${clash}
   </div>`;
 }
@@ -286,7 +293,8 @@ function nginxUndeployed(n){
 // The page's four sections, named once for the page and its placeholder
 // alike (R218, the operator 18 Oct: the nginx placeholder was a few gray
 // lines while every other page's waited as itself).
-const NG_TITLES = {hostnames: "Hostnames", routes: "Routes", certs: "Certificates", image: "Image"};
+// Image first (the operator, 26 Oct): an update due is the first thing said.
+const NG_TITLES = {image: "Image", hostnames: "Hostnames", routes: "Routes", certs: "Certificates"};
 function ngSect(key, status, body, opts){ return docSection("nginx", key, NG_TITLES[key], status, body, opts); }
 
 function nginxBody(n){
@@ -299,7 +307,9 @@ function nginxBody(n){
   const pill = n.state?.job?.running ? `<span class="pill">deployed, rebuilding</span>`
     : n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
     : `<span class="pill ok">deployed</span>`;
-  const sub = `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the ${pageLink("docker", "Containers page")}, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`;
+  const facts = [["Container", `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the ${pageLink("docker", "Containers page")}`, {html: true}],
+                 ["Routes", `${count} route${count === 1 ? "" : "s"}`],
+                 ["Node", n.host_only ? "hosting-only" : ""]];
   // The image it is pinned to, the newest line, and Update when behind
   // (R192): its own action bar, since Check now and Update are two verbs.
   const im = n.image || {}, lt = nginxLatest || {};
@@ -361,15 +371,14 @@ function nginxBody(n){
         <button type="button" class="primary" data-ngcertsave disabled>Add</button>
         <button type="button" data-ngcertcancel>Cancel</button></div></div>
     </div>`);
-  // The page's status line, deployed as undeployed (the page tops' one
-  // order): its state and what it runs, under the tiles.
+  // The page's head, deployed as undeployed: its state and what it runs.
   return `<div data-ngnode="${esc(n.node)}">
-    ${headLine(`${pill} <span class="sub">${sub}</span>`, "", "toolstate")}
+    ${pageHead({title: n.name || "", cls: "toolstate", pills: pill, facts})}
     ${clash}
+    ${image}
     ${hosts}
     ${routes}
     ${certs}
-    ${image}
     <div class="field"><div class="actbar ngfoot"><span class="sp"></span>
       <button type="button" class="danger" data-ngremove>Remove nginx</button></div></div>
   </div>`;
@@ -390,8 +399,8 @@ function renderNginxInto(i){
     // Its template (R218 step 16): the bar and the state row's words are
     // the page's own; the node and its routes are on their way.
     d.setBar(nginxBar(null));
-    d.list.innerHTML = skTpl(`${headLine(`${skv(5)} ${skv(24)}`, "", "toolstate")}${
-      ["hostnames", "routes", "certs", "image"].map(k => ngSect(k, "", `<div class="field">${skRows(2)}</div>`)).join("")}`);
+    d.list.innerHTML = skTpl(`${pageHead({title: GHOST, cls: "toolstate", facts: [["Container", GHOST], ["Routes", GHOST]]})}${
+      ["image", "hostnames", "routes", "certs"].map(k => ngSect(k, "", `<div class="field">${skRows(2)}</div>`)).join("")}`);
     loadNginx();
     return;
   }

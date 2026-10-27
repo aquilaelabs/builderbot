@@ -46,7 +46,7 @@ WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
 # are counts now (R202): a session read two hundred titles cut short on
 # every conversation and used few, and the items a prompt names arrive on
 # that prompt instead (mentioned).
-SHARES = {"rules": 16 * 1024}
+SHARES = {"rules": 16 * 1024, "memory": 8 * 1024}
 
 # Where the briefing's core ends (config/templates/briefing.md): the lines
 # that hold every time come first, then the house rules, then the rest of
@@ -64,6 +64,9 @@ _TOPIC = re.compile(r"^<!-- BUILDERBOT:TOPIC ([a-z][a-z0-9-]*): (.*?) -->$")
 
 
 live_fn = None
+# A project of several repositories (R136), the server's: repository ->
+# (the project's name, its id, [(repository, its shown name)]), or None.
+repos_fn = None
 
 
 def configure(*, rules_mod, roadmap_mod, bugs_mod, live=None, prefs_mod=None):
@@ -155,6 +158,9 @@ def sees_line(project):
 label_of = None
 # The project's id as it is written (registry.pid): P3.
 id_of = None
+# (repository) -> (the project's shown name, its id), or None for a
+# repository in no project (R138): the project a session is briefed as.
+project_fn = None
 
 
 def _shown(project):
@@ -167,9 +173,21 @@ def _shown(project):
 def identity_line(project):
     """The project's id, and its shown name where that is not the directory:
     the person says the name, every path takes the directory, and the id
-    names it for good, renamed or not."""
+    names it for good, renamed or not. A repository in a project is briefed
+    as that project (R138), with every repository in it named as its own."""
+    got = project_fn(project) if project_fn else None
+    several = repos_fn(project) if (got and repos_fn) else None
+    if several:
+        name, pid, members = several
+        where = ", ".join(f"{lab} at /workspace/{d}" for d, lab in members)
+        return (f"This project is shown as {name}; its id is {pid}, which never changes. Call it {name} when "
+                f"you speak of it. Its repositories are {where}: each is this project's own to work in, "
+                f"commit to and push, the session starts in /workspace/{project}, and `bb -p` takes a "
+                f"repository's directory to answer for that one.")
     lab = label_of(project) if label_of else project
     pid = id_of(project) if id_of else ""
+    if got:
+        lab, pid = got[0] or lab, got[1] or pid
     said = f"This project's id is {pid}, which never changes; `bb -p {pid}` names it." if pid else ""
     if not lab or lab == project:
         return said
@@ -182,9 +200,16 @@ def reads_line(project):
     reads = []
     if prefs_mod is not None:
         try:
-            reads = list((prefs_mod.get(project) or {}).get("reads") or [])
+            reads = list(prefs_mod.reads_trees(project) if hasattr(prefs_mod, "reads_trees")
+                         else (prefs_mod.get(project) or {}).get("reads") or [])
         except Exception:                                            # noqa: BLE001
             reads = []
+    # Its own project's other repositories are read as well (reads_trees),
+    # and they are its own to change: the identity line names them, and
+    # here they would be called read-only (the operator, 27 Oct).
+    several = repos_fn(project) if repos_fn else None
+    own = {d for d, _lab in (several[2] if several else [])}
+    reads = [r for r in reads if r not in own]
     if not reads:
         return ""
     names = ", ".join(_shown(r) for r in reads)
@@ -446,7 +471,53 @@ def _has(tree, pattern):
         return False
 
 
-def parts(project, reply="", asks=""):
+def memory_part(project, uid="", agent=""):
+    """The account's memories on each repository of the project (R152): the
+    index of each, as Claude Code loads its own at a session's start, so a
+    session of any coding agent starts knowing them, and the way to save
+    one on the repository it is about, which keeps it with that repository
+    when it moves to another project. A Claude session's own repository's
+    index is left out, since Claude Code loads it itself; its share is
+    split between the repositories. "" with nothing to say."""
+    if not uid:
+        return "", ""
+    got = repos_fn(project) if repos_fn else None
+    members = got[2] if got else [(project, (label_of(project) if label_of else "") or project)]
+    ws = os.environ.get("WORKSPACE", "/workspace")
+    share = SHARES["memory"] // max(1, len(members))
+    claude = agent in ("", "claude")
+    many = len(members) > 1
+    out, left = [], []
+    for d, label in members:
+        if claude and d == project:
+            continue
+        slug = re.sub(r"[^A-Za-z0-9]", "-", f"{ws}/{d}")
+        try:
+            text = (Path(ws) / ".claude" / uid / "projects" / slug / "memory" / "MEMORY.md").read_text(errors="replace").strip()
+        except OSError:
+            text = ""
+        if len(text.encode()) > share:
+            cut = text.encode()[:share].decode("utf-8", "ignore").rsplit("\n", 1)[0]
+            left.append(f"{label}'s index past {share // 1024} KB")
+            text = cut
+        out += ["", f"### {label}", "", text or "none yet"] if many else ["", text or "none yet"]
+    if claude and not many:
+        return "", ""
+    first = members[0][1]
+    head = ["## Memories", "",
+            "What you remember is each repository's, kept for your account across sessions and coding agents: "
+            "`bb memory` lists a repository's, `bb memory show NAME` reads one whole, and "
+            "`bb memory add NAME --type user|feedback|project|reference --about \"one line\" \"...\"` saves one, "
+            + ("with `bb -p REPO` on the repository it is about, so it stays with that repository if it moves to another "
+               f"project; one about the project as a whole goes on {first}."
+               if many else "so a session of any agent here starts knowing it.")]
+    if claude:
+        head += ["", "Claude Code's own memory here is this repository's index and folder; a fact about another "
+                    "repository of the project is saved with `bb -p REPO memory add`, not there."]
+    return "\n".join(head + out).strip(), "; ".join(left)
+
+
+def parts(project, reply="", asks="", uid="", agent=""):
     """The pieces, in the order a session reads them, each as (name, text,
     what it left out to keep to its share).
 
@@ -478,7 +549,9 @@ def parts(project, reply="", asks=""):
                      # step 5): a session argued from a build it assumed once.
                      ("live", lambda: (live_fn() if live_fn else "", "")),
                      ("roadmap", lambda: (roadmap_mod.brief(project), "")),
-                     ("bugs", lambda: (bugs_mod.brief(project), ""))):
+                     ("bugs", lambda: (bugs_mod.brief(project), "")),
+                     ("repos", lambda: (repos_part(project), "")),
+                     ("memory", lambda: memory_part(project, uid, agent))):
         try:
             text, left = fn()
             text = (text or "").strip("\n")
@@ -492,6 +565,35 @@ def parts(project, reply="", asks=""):
         if text:
             out.append((name, text, left))
     return out
+
+
+def repos_part(project):
+    """For a session on a project of several repositories (R136): what the
+    project is, each repository's tree, and each other repository's rules,
+    roadmap and bugs under its name, as this one's are above. Its rules
+    share the rules' room between them."""
+    got = repos_fn(project) if repos_fn else None
+    if not got:
+        return ""
+    name, pid, members = got
+    ws = os.environ.get("WORKSPACE", "/workspace")
+    lines = ["## The project's repositories",
+             "",
+             f"This session is {name} ({pid}), a project of {len(members)} repositories, and works in every one: "
+             f"each is its own repository with its own notebook, git host, CI and releases. Each tree below is "
+             f"yours to write (a worktree of it on this session's branch, where you have one); bb answers for "
+             f"the repository whose tree you run it in, and `bb -p NAME` for another.",
+             ""]
+    for d, label in members:
+        lines.append(f"- {label}: {ws}/{d}{' (this briefing is its own, above)' if d == project else ''}")
+    others = [(d, label) for d, label in members if d != project]
+    share = max(2048, SHARES["rules"] // max(1, len(others)))
+    for d, label in others:
+        lines += ["", f"### Repository {label}"]
+        for text in (rules_mod.fitted(d, share)[0], roadmap_mod.brief(d), bugs_mod.brief(d)):
+            if text and text.strip():
+                lines += ["", text.strip("\n")]
+    return "\n".join(lines)
 
 
 # ---- what a prompt names on the record (R202) ---------------------------------
@@ -587,19 +689,19 @@ def for_agent(agent_id, text):
             "the house rules, the project's Agents may settings and bb apply to you alike.\n\n" + text)
 
 
-def block(project, reply="", asks=""):
+def block(project, reply="", asks="", uid="", agent=""):
     """The whole thing, as a session is sent it."""
-    return "\n\n".join(t for _, t, _ in parts(project, reply, asks))
+    return "\n\n".join(t for _, t, _ in parts(project, reply, asks, uid, agent))
 
 
-def payload(project, reply="", asks=""):
+def payload(project, reply="", asks="", uid="", agent=""):
     """What the Briefing tab draws, and what `bb preamble --json` prints.
     `reply` and `asks` are the asker's own settings on the project (prefs
     USER_CHOICES): how Claude writes to them and how often it asks them.
     Each part carries its size, its share where it has one, and what it
     left out to keep to it; `notes` says the last in a sentence each, for
     whoever opens the terminal."""
-    ps = parts(project, reply, asks)
+    ps = parts(project, reply, asks, uid, agent)
     text = "\n\n".join(t for _, t, _ in ps)
     return {"text": text, "bytes": len(text.encode("utf-8")),
             # The name the project is shown under, which the launcher names

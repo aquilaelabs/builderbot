@@ -279,10 +279,22 @@ function dockReveal(bar){
     line.bbEdges = new ResizeObserver(() => dockEdges(line));
     line.bbEdges.observe(line);
   }
-  if (on){
+  // The ends' arrows first, since putting one there moves the tabs by the
+  // line's gap (B318), then the tab brought into view, then the ends again.
+  dockEdges(line);
+  // Only when the tab in front changed: a line scrolled along by its arrow
+  // or a finger stays there while a session's dot moves (B322).
+  const front = on?.dataset.id || "";
+  const moved = front !== bar.bbFront;
+  bar.bbFront = front;
+  if (on && moved){
     const lr = line.getBoundingClientRect(), r = on.getBoundingClientRect();
     if (r.left < lr.left) line.scrollLeft -= lr.left - r.left;
     else if (r.right > lr.right) line.scrollLeft += r.right - lr.right;
+    dockEdges(line);
+    const r2 = on.getBoundingClientRect();
+    if (r2.right > lr.right) line.scrollLeft += r2.right - lr.right;
+    else if (r2.left < lr.left) line.scrollLeft -= lr.left - r2.left;
   }
   dockEdges(line);
 }
@@ -291,9 +303,9 @@ function dockReveal(bar){
 // (the operator, 16 Oct, as the strip it replaced did): hard against an
 // end, that edge shows a whole tab and is left sharp.
 function dockEdges(line){
-  const max = line.scrollWidth - line.clientWidth;
-  line.classList.toggle("fadeL", line.scrollLeft > 1);
-  line.classList.toggle("fadeR", line.scrollLeft < max - 1);
+  // ...and on a desk, an arrow at that end and a mouse's drag, as a row of
+  // big chips has (the operator, 24 Oct): the chips' own ends (chipsEdge).
+  chipsEdge(line);
 }
 
 // The pane's classes and height for the dock's state, each draw.
@@ -302,6 +314,11 @@ function dockEdges(line){
 // dock, laid over it at the height it had, slides down until only its line
 // shows, then drops back into its row.
 let dockWasUp = null, dockDownTimer = 0;
+// The height a dock nobody has dragged takes: half the area as it was when it
+// went up, held in pixels, and measured again only for a new window height.
+// A percentage moved with the area, which the terminal's Commands bar and key
+// row under the panes shrink: the dock changed size between a shell and Chat.
+let dockAuto = {h: 0, vh: 0};
 function dockDress(){
   const el = $("panes");
   if (!el) return;
@@ -326,4 +343,11 @@ function dockDress(){
   el.classList.toggle("dockup", up);
   dockWasUp = up;
   if (dockH) el.style.setProperty("--dock-h", dockH + "px");
+  else if (up){
+    if (!dockAuto.h || dockAuto.vh !== innerHeight){
+      const under = [$("mobar"), $("keys")].reduce((n, x) => n + (x ? x.getBoundingClientRect().height : 0), 0);
+      dockAuto = {h: Math.round((el.getBoundingClientRect().height + under) / 2), vh: innerHeight};
+    }
+    if (el.style.getPropertyValue("--dock-h") !== dockAuto.h + "px") el.style.setProperty("--dock-h", dockAuto.h + "px");
+  }
 }

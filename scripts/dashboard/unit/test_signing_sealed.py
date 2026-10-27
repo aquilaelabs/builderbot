@@ -1,4 +1,4 @@
-"""The signing keys sealed at rest (R111 step 2): with a signing secret every
+"""The signing keys sealed at rest (R111 step 2): with an install key every
 keystore and its passwords are ciphertext in /config, opened in memory for
 the one who signs; a key sealed under another secret is locked and says so;
 without one they are kept as before; keys from before are sealed at start."""
@@ -63,7 +63,7 @@ class Sealed(unittest.TestCase):
         self.keep()
         self.master("b" * 64)
         self.assertIsNone(signing.secret("web", "sideload"))
-        self.assertIn("another signing secret", signing.locked("web", "sideload"))
+        self.assertIn("another install key", signing.locked("web", "sideload"))
         self.assertEqual(signing.at_rest("web"), "locked")
         self.assertEqual(signing.backup("web", "sideload")[1], 409)
 

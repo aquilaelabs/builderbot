@@ -1538,7 +1538,7 @@ def restore(project, item_id, at=None, by="you", who=""):
     return {"ok": True, "item": row}
 
 
-def send(project, item_id, step=None, sessions=(), also_told=False, note="", prefix=""):
+def send(project, item_id, step=None, sessions=(), also_told=False, note="", prefix="", want=""):
     """Hand one step to the running Claude session and mark it sent.
 
     Marked only when it actually went: a line left sitting in the input box
@@ -1615,7 +1615,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note="", pre
     # conversation and nobody else's. Sent without this, a second person's
     # step was typed into the owner's window, or refused as "no session is
     # running here" while their own sat there running (B194).
-    session = running_session(prefix, project, set(sessions))
+    session = running_session(prefix, project, set(sessions), want)
     r = tell(session, line, sessions)
     if r.get("error") or not r.get("sent"):
         return r
@@ -1994,7 +1994,7 @@ def verb(name, act, req, me, *, live, prefix):
     elif act == "send":
         r = send(name, req.get("id"), req.get("step"), live,
                  also_told=unsaved(name) if req.get("tell") else False,
-                 note=field(req, "note"), prefix=prefix)
+                 note=field(req, "note"), prefix=prefix, want=field(req, "session"))
         if r.get("sent") and req.get("tell"):
             mark_told(name)
     elif act == "edit":

@@ -4,7 +4,7 @@
 // `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point: something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, holdPoll, freePoll, URL, DIR, closePage, nbGo } from './lib.mjs';
+import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, holdPoll, freePoll, URL, DIR, closePage, nbGo, projectKey } from './lib.mjs';
 // The add band unrolls the box in its place (R119 step 4): typing a line
 // presses Add to roadmap first, as a person does.
 const unroll = async pg => { if (await pg.$eval('#roadmapForm', f => f.hidden)) await pg.click('#roadmapShow'); };
@@ -2208,7 +2208,8 @@ ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb 
   const me = await page.evaluate(async () => (await (await fetch('/api/users')).json()).users.find(u => u.name === 'test')?.projects || []);
   const setMine = ps => page.evaluate(async ps => (await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'projects', name: 'test', projects: ps }) })).status, ps);
-  await setMine(me.filter(n => n !== 'alpha'));
+  // By project (R138): the list names alpha's project by its key.
+  await setMine(me.filter(n => n !== projectKey('alpha')));
   const fin = await post({ action: 'finished', project: 'alpha' });
   const seen = page.errors.length;
   const add = await post({ action: 'add', project: 'alpha', text: 'not mine to add' });

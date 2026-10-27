@@ -221,12 +221,18 @@ sdk_find() {
     return 1
 }
 
-# run_as_builder CMD...: drop privileges when we happen to be root.
+# run_as_builder CMD...: drop privileges when we happen to be root, to the
+# controller's account: the image's builder through gosu, or the account a
+# bare-metal install made through setpriv (BB_ACCOUNT and BB_DROP, set by
+# lib/boot.sh's caller, R90).
 run_as_builder() {
-    if [ "$(id -u)" -eq 0 ]; then
-        gosu builder "$@"
-    else
+    if [ "$(id -u)" -ne 0 ]; then
         "$@"
+    elif [ "${BB_DROP:-gosu}" = setpriv ]; then
+        setpriv --reuid="${BB_ACCOUNT:-builder}" --regid="${PGID:-$(id -g "${BB_ACCOUNT:-builder}")}" \
+            --init-groups "$@"
+    else
+        gosu "${BB_ACCOUNT:-builder}" "$@"
     fi
 }
 
@@ -246,7 +252,7 @@ bb_log_dir() {
         [ -r "${DASHBOARD_STATE:-/config}/paths.json" ] && moved="$(python3 -c \
             'import json,sys; print(json.load(open(sys.argv[1])).get("logs") or "")' \
             "${DASHBOARD_STATE:-/config}/paths.json" 2>/dev/null || true)"
-        printf '%s' "${moved:-/config/logs}"
+        printf '%s' "${moved:-${DASHBOARD_STATE:-/config}/logs}"
     fi
 }
 
@@ -260,7 +266,28 @@ bb_log_dir() {
 #
 # /config, because the file has to survive the update it exists to record.
 bb_image_log() {
-    printf '%s' "${BB_IMAGE_LOG:-/config/image-log.tsv}"
+    printf '%s' "${BB_IMAGE_LOG:-${DASHBOARD_STATE:-/config}/image-log.tsv}"
+}
+
+# bb_root_state: the state folder as a root helper reached through sudo
+# (deploy-key, mint-runner-token) may believe it. sudo hands it no
+# environment worth trusting, so a bare-metal install's is read from its env
+# file, and only when that file is root's and nobody else may write it (R90);
+# anywhere else it is the container's /config.
+BB_CONTROLLER_ENV="${BB_CONTROLLER_ENV:-/etc/builderbot-controller/controller.env}"
+bb_root_state() {
+    local f="$BB_CONTROLLER_ENV" v="" mode
+    if [ -f "$f" ] && [ "$(stat -c %u "$f" 2>/dev/null)" = 0 ]; then
+        mode="$(stat -c %a "$f" 2>/dev/null || echo 777)"
+        if [ $(( 8#$mode & 8#022 )) -eq 0 ]; then
+            v="$(sed -n 's/^DASHBOARD_STATE=//p' "$f" | tail -1)"
+            v="${v//\"/}"
+        fi
+    fi
+    case "$v" in
+        /*) printf '%s' "$v" ;;
+        *)  printf '/config' ;;
+    esac
 }
 
 # git_branch DIR: current branch name, or '?'. Handles a freshly-init'd repo
@@ -652,9 +679,13 @@ BB_WORKTREES="${BB_WORKTREES:-${WORKSPACE:-/workspace}/.worktrees}"
 # other than Claude works in a worktree of its own on a branch of its own,
 # <agent>/<name>, the owner's included; Claude keeps claude/<name> and the
 # owner's project directory, so nothing that exists moves. Their work meets
-# through git, as two people's does.
+# through git, as two people's do.
+#
+# EACH SLOT ITS OWN TREE TOO (R143): a person's second session of one agent
+# on a project works in a worktree of its own on <agent>/<name>-N, the
+# owner's included, so the first slot is where it always was.
 session_dir() {
-    local proj="${1:-}" uid="${2:-}" agent="${3:-claude}" src="${WORKSPACE:-/workspace}/$1" wt branch
+    local proj="${1:-}" uid="${2:-}" agent="${3:-claude}" slot="${4:-1}" src="${WORKSPACE:-/workspace}/$1" wt branch
     [ -d "$src" ] || { printf '%s' "$src"; return 0; }
     case "$uid" in
         u_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
@@ -664,6 +695,7 @@ session_dir() {
         claude|'') agent=claude ;;
         *[!a-z]*) printf '%s' "$src"; return 0 ;;
     esac
+    case "$slot" in [1-9]) ;; *) slot=1 ;; esac
     # THE TREE RULE IS THE SAME ON BOTH MACHINES, unlike the home and the
     # session names: the project directory is on the share, so the owner
     # working in it from the node is the owner working in it, and, since a
@@ -673,18 +705,32 @@ session_dir() {
     # transcripts would not line up. A node has no users.json to say who the
     # owner is, so the controller says it in the terminal's URL (owner:1)
     # and bb-tty exports BB_TREE_OWNER.
-    if [ "$agent" = claude ] && { [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ] \
+    if [ "$agent" = claude ] && [ "$slot" = 1 ] && { [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ] \
        || { on_node && [ "${BB_TREE_OWNER:-}" = 1 ] && [ "${BB_ACCOUNT_UID:-}" = "$uid" ]; }; }; then
         printf '%s' "$src"; return 0
     fi
     # Not a git repo: there is no worktree to make, and refusing would be worse
     # than sharing: a directory nobody can branch is one nobody can conflict
     # in through git either.
-    git -C "$src" rev-parse --git-dir >/dev/null 2>&1 || { printf '%s' "$src"; return 0; }
+    # (safe.directory: an account that is its own user, R125, reads a tree
+    # that is another's, which git otherwise refuses as dubious.)
+    git -c safe.directory='*' -C "$src" rev-parse --git-dir >/dev/null 2>&1 || { printf '%s' "$src"; return 0; }
     wt="$BB_WORKTREES/$proj/$uid"
     [ "$agent" = claude ] || wt="$wt-$agent"
+    [ "$slot" = 1 ] || wt="$wt-$slot"
     if [ -d "$wt" ]; then printf '%s' "$wt"; return 0; fi
     branch="$agent/$(account_name "$uid" || printf '%s' "$uid")"
+    [ "$slot" = 1 ] || branch="$branch-$slot"
+    # An account that is its own user (R125) cannot make a folder beside the
+    # tree or run git in it as the tree's owner: bb-session makes it, as that
+    # owner, at this place and on this branch (R125 step 7).
+    case "$(id -un 2>/dev/null)" in
+        bbu-*)
+            local made
+            made="$(sudo -n "${BB_SESSION_BIN:-/usr/local/sbin/bb-session}" worktree "$proj" "$agent" "$slot" "$branch" 2>/dev/null)" || made=""
+            if [ "$made" = "$wt" ] && [ -d "$wt" ]; then printf '%s' "$wt"; return 0; fi
+            printf '%s' "$src"; return 0 ;;
+    esac
     mkdir -p "$(dirname "$wt")" 2>/dev/null || { printf '%s' "$src"; return 0; }
     # An existing branch is checked out rather than recreated: this is somebody
     # returning to work they left, and -b on a branch that exists fails.

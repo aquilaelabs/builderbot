@@ -41,10 +41,10 @@ const RAIL = [
   // BuilderBot behaves, with room for the pages a bare-metal install and
   // the USB edition add beside Settings (R90, R56). After Containers, so a
   // phone's bar keeps its four.
-  {key: "controller", label: "Controller", icon: "controller", tools: [["settings", "Settings"]]},
+  {key: "controller", label: "Controller", icon: "controller", tools: [["settings", "Settings"], ["keys", "Keys"], ["debug", "Debug"]]},
   {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
-  {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
+  {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"], ["schedules", "Schedules"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
   {key: "settings", label: "Settings", icon: "settings", tools: [["profile", "Profile"]]},
   {key: "help", label: "Help", icon: "help", tools: [["help", "Help"]]},
@@ -67,9 +67,12 @@ function groupOf(kind){
 // 3). Before the first poll everything is drawn, as the page always was.
 function railAllows(kind){
   const a = state?.areas;
+  // The Debug page (R147) only where DEBUG_MODE=1 started the controller,
+  // and for an account with the debug grant, whatever its areas say.
+  if (kind === "debug") return !!state?.settings?.debug_available && state?.can?.debug !== false;
   if (!a) return true;
   switch (kind){
-    case "settings": return !!a.controller;
+    case "settings": case "keys": return !!a.controller;
     case "users": case "roles": return !!a.accounts;
     // The Emulator's images are the toolchain store's, so the same area.
     case "toolchains": case "emulator": return !!a.toolchains;
@@ -77,6 +80,8 @@ function railAllows(kind){
     // signed in to by whoever works there, so either area draws it.
     case "agents": return !!a.toolchains || !!a.nodes;
     case "jobs": return !!a.jobs;
+    // An administrator's own cron (R117), its own area.
+    case "schedules": return !!a.schedules;
     // The nginx tab is the Nodes tab's area (R171); Storage its own (R169).
     case "nodes": case "nginx": return !!a.nodes;
     case "storage": return !!a.storage;
@@ -115,8 +120,8 @@ const OPENERS = {
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
   toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
-  runner: () => openRunnerTab(), jobs: () => openJobsTab(), users: () => openUsersTab(),
-  roles: () => openRolesTab(), settings: () => openSettingsTab(), profile: () => openProfileTab(),
+  runner: () => openRunnerTab(), jobs: () => openJobsTab(), debug: () => openDebugTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
+  roles: () => openRolesTab(), settings: () => openSettingsTab(), keys: () => openKeysTab(), profile: () => openProfileTab(),
   apps: () => openAppsTab(),
   sessions: () => openSessionsTab(), help: () => openHelp(),
 };
@@ -131,7 +136,17 @@ function railGo(key, tool){
   const was = location.hash;
   OPENERS[kind]?.();
   const to = routeOf(tabOf(panes[0]));
-  if (to && to !== was) history.pushState(null, "", to);
+  if (to && to !== was) shellPush(to);
+}
+
+// A history entry the page made itself, and shellSync told so: it leaves an
+// address alone that differs from the one it last saw (a hand-typed one,
+// B303), and an entry pushed here without saying so read as one, so the
+// next page opened left the old page's address under it and Back went
+// there (B313).
+function shellPush(to){
+  history.pushState(null, "", to);
+  shellSeen = to;
 }
 
 // A node page's picked node, read and set by the address (R256 step 3): the
@@ -162,7 +177,7 @@ function navPush(fn){
   const was = location.hash;
   fn();
   const to = routeOf(tabOf(panes[0]));
-  if (to && to !== was){ history.replaceState(null, "", was || location.pathname + location.search); history.pushState(null, "", to); }
+  if (to && to !== was){ history.replaceState(null, "", was || location.pathname + location.search); shellPush(to); }
 }
 
 // The address a tab is reached at: #/group, #/group/tool, #/projects/NAME,
@@ -190,7 +205,10 @@ function routeOf(t){
   // holds Controller settings too.
   if (t.kind === "home") return "#/home";
   const node = NODE_PICKED[t.kind]?.() || "";
-  return ((g.tools || []).length > 1 ? `#/${g.key}/${t.kind}` : `#/${g.key}`) + (node ? "/" + encodeURIComponent(node) : "");
+  // A page named as its group is (Jobs, beside Schedules since R117) keeps
+  // the group's own address, #/jobs/failed as Home links it, never
+  // #/jobs/jobs; the reader takes a segment that is no page's for its node.
+  return ((g.tools || []).length > 1 && t.kind !== g.key ? `#/${g.key}/${t.kind}` : `#/${g.key}`) + (node ? "/" + encodeURIComponent(node) : "");
 }
 
 // Open what an address names; nothing happens for one that names nothing.
@@ -218,6 +236,9 @@ function openRoute(hash){
     railWant = "help";
     const doc = a ? decodeURIComponent(a) : helpIndex?.home || "";
     if (doc && doc !== helpCur){ helpCur = doc; helpQ = ""; helpHits = null; helpRev++; }
+    // ...at a section of it when the address names one (#/help/reference/
+    // the-install-key): the doctor's links land on the fix itself.
+    if (b){ helpAnchor = decodeURIComponent(b); helpRev++; }
     openHelp();
     if (helpIndex && helpCur) helpRead(helpCur);
     return true;
@@ -348,6 +369,10 @@ function drawMaintBand(){
   const off = !(state?.can?.maintenance && state?.settings?.settings?.maintenance_mode?.value);
   // Written only when it changes: a poll that brings nothing new writes nothing.
   if (b && b.hidden !== off) b.hidden = off;
+  // Its link opens Controller settings at Maintenance, where it is switched
+  // off (the operator, 26 Oct).
+  const go = b?.querySelector("[data-maintgo]");
+  if (go && !go.onclick) go.onclick = e => { e.preventDefault(); SPLIT.settings = {pick: "maint", open: true}; openSettingsTab(); };
 }
 
 // ---- search: jump to a page, a project, a container or a node ---------------

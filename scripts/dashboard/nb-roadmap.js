@@ -48,6 +48,7 @@ function nbRoadmapView({$, nb}){
       return;
     }
     drawRoadmap(j);
+    reposAlso($("roadmapRepos"), nb.memProj, "roadmap");
   }
 
   // The send arrow. Crossing something out here does not mean "done"; it means
@@ -631,7 +632,9 @@ function nbRoadmapView({$, nb}){
     }
     // The note rides on the same line as the step rather than chasing it: two
     // messages into one input box is how the second ends up glued to the first.
-    const j = await postRoadmap({action: "send", id, step, tell: true, note});
+    const to = await pickSend(nb.memProj);
+    if (to === null){ unbusy(go, "Send"); return; }
+    const j = await postRoadmap({action: "send", id, step, tell: true, note, session: to});
     unbusy(go, "Send");
     if (!j) { drawSendBox(!!nb.roadmapSession); return; }
     if (!j.sent){

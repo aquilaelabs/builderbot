@@ -87,7 +87,7 @@ print(json.dumps(out))`));
 const shipped = (await call('/api/v1/nodes')).agent || {};
 const minted = await call('/api/v1/nodes', { action: 'enroll', name: 'turnbox' });
 const CENSUS = { cpu: 4, mem_mb: 8192, arch: 'x86_64', system: 'linux',
-                 session: { up: true, port: 7690, ro_port: 7691, user: 'builder', workspace: true,
+                 session: { up: true, term: true, user: 'builder', workspace: true,
                             writable: true, claude: '2.1.0', boot: 'b1' } };
 const en = await call('/api/v1/agent/enroll', { census: CENSUS, version: shipped.version,
   digest: shipped.digest, user: 'bb' }, bearer(minted.token));
@@ -213,7 +213,6 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   const ungranted = await asOwner({ node: 'nodeA' });
   ok(!/diagnostics/.test(ungranted.line || ''),
      `with the rule but no grant, the notice names nothing (${(ungranted.line || 'no line').slice(0, 60)})`);
-  await call('/api/settings', { set: { debug_mode: true } });
   await call('/api/prefs', { project: 'alpha', diag: true });
   await asOwner({ node: 'nodeA' });
   const r2 = await rep('the second report');
@@ -227,7 +226,6 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   ok(!/diagnostics/.test(plain.line || ''),
      `...and a plain account's session on the same project is told nothing (${(plain.line || 'no line').slice(0, 60)})`);
   await call('/api/prefs', { project: 'alpha', diag: false });
-  await call('/api/settings', { set: { debug_mode: false } });
 }
 {
   const free = await Promise.all([0, 1, 2, 3].map(i => hook(i, 'turn')));
@@ -386,7 +384,7 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   await page.waitForSelector(inp, { state: 'attached', timeout: 10000 });
   await openSection(page, 'nodes:sessions', row);
   const line = async () => page.$eval(`${row} [data-nd="sess-save"]`, b => b.parentElement.querySelector('.state').textContent.trim());
-  ok(/^0 working now$/.test(await line()), `the Sessions section says what is working now (${await line()})`);
+  ok(/^0 sessions working now$/.test(await line()), `the Sessions section says what is working now (${await line()})`);
   await page.fill(inp, '3');
   // A heartbeat repaints the tab; the number being typed survives it.
   await beat([{ name: `${uids[0]}~claude-alpha`, title: '◐ Work' }]);
@@ -395,7 +393,7 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   await page.click(`${row} [data-nd="sess-save"]`);
   await page.waitForFunction(r => /of 3/.test(document.querySelector(`${r} [data-nd="sess-save"]`)
     ?.parentElement.querySelector('.state')?.textContent || ''), row, { timeout: 10000 });
-  ok(/^1 working now of 3$/.test(await line()), `Save sets it, and the line counts against it (${await line()})`);
+  ok(/^1 session working now of 3$/.test(await line()), `Save sets it, and the line counts against it (${await line()})`);
   const rec = (await call('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
   ok(rec.config?.turns === 3, 'the limit is on the node\'s record');
   ok(page.errors.length === 0, `no console errors${page.errors.length ? ': ' + page.errors.slice(0, 2).join(' | ') : ''}`);

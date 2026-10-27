@@ -68,15 +68,31 @@ def _read(name, empty):
         return empty
 
 
+def _keyed(ps, merge=None):
+    """{project: value} by project key (R138): an entry written under a
+    repository's name before it was put in a project (an import, a clone, a
+    folder recorded since migration 0010 ran) counts for its project, the
+    project's own entry first; `merge` joins two that land on one key."""
+    out = {}
+    for k in sorted(ps, key=lambda k: users.key_of(k) != k):
+        key = users.key_of(k)
+        if key in out and merge:
+            out[key] = merge(out[key], ps[k])
+        else:
+            out.setdefault(key, ps[k])
+    return out
+
+
 def _owners():
     d = _read("project-owners.json", {})
-    d.setdefault("projects", {})
+    d["projects"] = _keyed(d.get("projects") if isinstance(d.get("projects"), dict) else {})
     return d
 
 
 def _invites():
     d = _read("invites.json", {})
-    d.setdefault("projects", {})
+    d["projects"] = _keyed(d.get("projects") if isinstance(d.get("projects"), dict) else {},
+                           merge=lambda a, b: (a if isinstance(a, list) else []) + (b if isinstance(b, list) else []))
     d.setdefault("next", 1)
     return d
 
@@ -90,8 +106,9 @@ def _name_of(uid):
 
 
 def owner_of(project):
-    """The owning account's uid: the record's, or BuilderBot's owner."""
-    rec = _owners()["projects"].get(project) or {}
+    """The owning account's uid: the record's, or BuilderBot's owner. Kept
+    by project (R138): a repository's owner is its project's."""
+    rec = _owners()["projects"].get(users.key_of(project)) or {}
     return rec.get("owner") or users.owner_uid()
 
 
@@ -101,7 +118,7 @@ def owner_name(project):
 
 
 def invite_only(project):
-    return bool((_owners()["projects"].get(project) or {}).get("invite_only"))
+    return bool((_owners()["projects"].get(users.key_of(project)) or {}).get("invite_only"))
 
 
 def _is_bb_owner(me):
@@ -143,6 +160,7 @@ def member_refusal(me, project, joining=False):
 
 def on_create(project, account):
     """Whoever made a project owns it."""
+    project = users.key_of(project)
     u = users.get(account) if account else None
     if not u or not u.get("uid"):
         return
@@ -152,6 +170,18 @@ def on_create(project, account):
         _write("project-owners.json", d)
     # ...and holds PROJECT_owner on it (R152).
     users.give_owner_role(project, u["uid"])
+
+
+def adopt(key, first):
+    """A project (R138) owned as the repository it was made from was, invite
+    only if that one was: what migration 0010 does for every repository."""
+    with _lock:
+        d = _owners()
+        was = d["projects"].get(first) or {}
+        rec = {k: was[k] for k in ("owner", "invite_only") if was.get(k)}
+        if rec:
+            d["projects"][key] = rec
+            _write("project-owners.json", d)
 
 
 def forget_account(uid):
@@ -225,9 +255,10 @@ def prune_gone(registry):
 
 def members(project):
     """The accounts this project is on, by name, BuilderBot's owner first."""
+    project = users.key_of(project)
     out = []
     for u in users.all_users():
-        have = u.get("projects") or []
+        have = {p if p == "*" else users.key_of(p) for p in u.get("projects") or []}
         if "*" in have or project in have:
             out.append(u.get("name") or "")
     return sorted(out, key=lambda n: (n != users.owner_name(), n.lower()))
@@ -236,6 +267,7 @@ def members(project):
 def view(me, project):
     """The project dialog's People: who owns it, whether it is invite only,
     who is on it, who is invited, and what `me` may do about any of it."""
+    project = users.key_of(project)
     o = owner_of(project)
     every = _invites()["projects"].get(project) or []
     rows = [r for r in every if r.get("kind") != "owner"]
@@ -266,6 +298,7 @@ def view(me, project):
 def set_owner(me, project, owner="", restrict=None):
     """Hand the project to another account, and/or make it invite only.
     (payload, status)."""
+    project = users.key_of(project)
     if not may_manage(me, project):
         return {"error": f"only {project}'s owner, or BuilderBot's, changes who owns it "
                          "and whether it is invite only"}, 403
@@ -308,6 +341,7 @@ def invite(me, project, name, role=""):
     """Invite an existing account to the project, as a role on it: being on
     a project is holding a role there (R155), so an invitation says which
     one, and accepting gives it. (payload, status)."""
+    project = users.key_of(project)
     if not (may_manage(me, project) or (users.is_admin(me) and not invite_only(project))):
         return {"error": member_refusal(me, project) or "you may not invite people to it"}, 403
     u = users.get(name)

@@ -4,7 +4,7 @@ recovery codes, per account.
 The store is two-factor.json in the state directory, 0600, keyed by the
 account's uid: {uid: {"totp": {...}, "passkeys": [...], "recovery": [...],
 "trusted": [...]}}. The authenticator's secret is sealed under the install's
-signing secret where it has one (signing.seal, as a keystore is), and kept
+install key where it has one (signing.seal, as a keystore is), and kept
 as it is otherwise, as signing keeps its keys then; recovery codes are kept
 as their SHA-256, each good once. An account with nothing here signs in with
 its password alone, as before.
@@ -33,9 +33,9 @@ import qr
 import statefile
 
 STATE = None              # pathlib.Path, set by configure()
-seal = None               # signing.seal, or None: an install without a signing secret
+seal = None               # signing.seal, or None: an install without an install key
 unseal = None
-sealing = None            # () -> whether a signing secret is loaded now
+sealing = None            # () -> whether an install key is loaded now
 
 _lock = threading.Lock()
 ISSUER = "BuilderBot"
@@ -135,6 +135,32 @@ def _secret_of(t):
     if t.get("sealed"):
         return unseal(unb64u(t["sealed"]))
     return base64.b32decode(t.get("plain", ""))
+
+
+def seal_all(again=False):
+    """Each account's authenticator secret sealed under today's install key:
+    one kept plain once there is a key, and with `again`, after the key
+    changed (R154), one sealed under the key before it. Returns how many."""
+    if not (seal and sealing and sealing()):
+        return 0
+    n = 0
+    with _lock:
+        d = load()
+        for r in d.values():
+            for slot in ("totp", "totp_pending"):
+                t = r.get(slot) if isinstance(r, dict) else None
+                if not isinstance(t, dict) or not (t.get("plain") or (again and t.get("sealed"))):
+                    continue
+                try:
+                    key = _secret_of(t)
+                except Exception:                           # noqa: BLE001 (one that cannot be opened stays as it is)
+                    continue
+                t.pop("plain", None)
+                t.update(_keep_secret(key))
+                n += 1
+        if n:
+            _save(d)
+    return n
 
 
 def totp_begin(uid, name):

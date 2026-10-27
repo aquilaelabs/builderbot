@@ -78,6 +78,7 @@ WORKSPACE = None
 STATE = None
 FILE = None
 OWNERS = None
+LANS = None             # docker-lan.json: {node: [container keys]} let onto the LAN (R178)
 node_for = None
 node_addr = None
 ENVDIR = None
@@ -208,6 +209,31 @@ def project_daemon(project):
     instance on the machine this project works on" is one comparison.
     """
     return (project_node(project) if project_node else "") or ""
+
+
+def container_nodes(project):
+    """Every node this project's containers may be on, its own first: the
+    nodes it works on (R82), the ones it hosts its containers on (R166), and
+    the node each of its instances was put on, which bb devapp new --node
+    makes one of neither. The one answer a session's container list, its
+    container verbs and an instance's address all read: asking the
+    project's own node alone left an instance on a hosting node unlisted
+    and unreachable to the session that made it (B338)."""
+    out = []
+
+    def add(n):
+        if n and n not in out:
+            out.append(n)
+    for n in nodes_of(project) or []:
+        add(n)
+    add(project_daemon(project))
+    for n in (hosts_of(project) if hosts_of else None) or []:
+        add(n)
+    for proj, insts in _load().items():
+        for inst, rec in insts.items():
+            if owner_of(proj, inst, rec) == project:
+                add(_instance_node(proj, inst))
+    return out
 
 
 def instance_node(project, instance):
@@ -590,6 +616,7 @@ def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
     # know it exists (25 Sep).
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["OWNERS"] = Path(state) / "docker-owners.json"
+    globals()["LANS"] = Path(state) / "docker-lan.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
 
 
@@ -1280,6 +1307,13 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     Both optional, and every short call still takes the simple path: a
     `docker version` does not need a reader thread.
     """
+    # Anything but a read changes what docker ps would say: the listing
+    # held for a press's own checks (containers) goes with it.
+    verb = argv[1] if len(argv) > 1 else ""
+    if not (verb in ("ps", "images", "inspect", "logs", "stats", "version", "info")
+            or (verb in ("volume", "system") and len(argv) > 2 and argv[2] in ("ls", "df"))):
+        if getattr(_ps_held, "by", None):
+            _ps_held.by = {}
     bad = _guard(argv)
     if bad:
         # Refused rather than raised: a build runs on a job thread, where an
@@ -1583,6 +1617,22 @@ def prune(kind):
     return {"ok": True, "out": r["out"].strip()[-2000:]}
 
 
+# The listing one press reads, by (node, addr), while one_listing() is open on
+# its thread.
+_ps_held = threading.local()
+
+
+@contextlib.contextmanager
+def one_listing():
+    """A block whose reads of the daemon's containers share one docker ps:
+    a press's checks and its action, never longer."""
+    _ps_held.by = {}
+    try:
+        yield
+    finally:
+        _ps_held.__dict__.pop("by", None)
+
+
 def containers():
     """Everything on the daemon, and whose it is.
 
@@ -1597,8 +1647,21 @@ def containers():
     listed and marked as not ours: started, stopped or restarted by name one
     at a time, and nobody's project until its row names one.
     """
-    r = _run([DOCKER, "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
-             timeout=25)
+    # One listing serves the checks one press makes in the same breath, inside
+    # one_listing() alone (the operator, 26 Oct: Start on boot read the
+    # daemon twice, the project's check and the targets, before it acted, each
+    # a trip to the node), dropped by any write (_run). Nowhere else: a job
+    # reads the daemon again to see what its own step did.
+    key = (getattr(_node_ctx, "node", None) or "", getattr(_node_ctx, "addr", None) or "")
+    mine = _ps_held.__dict__.get("by")
+    held = mine.get(key) if mine is not None else None
+    if held:
+        r = held
+    else:
+        r = _run([DOCKER, "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
+                 timeout=25)
+        if r["code"] == 0 and mine is not None:
+            mine[key] = r
     if r["code"] != 0:
         # From the TAIL, through the same reader availability uses. Cut from
         # the front, as this was, docker's connect error reads "command [ssh
@@ -2375,7 +2438,7 @@ def to_host(path, mapping=None):
 DEVDATA_IMAGE = "alpine"
 
 # Every operation this module will ask the daemon to perform on that share.
-_DEVDATA_OPS = {"mkdir": ["mkdir", "-p"], "mv": ["mv"], "test": ["test", "-d"]}
+_DEVDATA_OPS = {"mkdir": ["mkdir", "-p"], "mv": ["mv"]}
 
 # What may follow /d/. Components separated by single slashes (a compose
 # names /devdata/<instance>/config, which is two deep) with every component
@@ -2540,76 +2603,6 @@ def _agent_docker():
     return bool(n and n.get("kind") == "agent"
                 and ((n.get("reported") or {}).get("docker")))
 
-
-def check_paths(node_id=None):
-    """Do this container and the node's daemon mean the same directory by
-    the projects share? (roadmap #13)
-
-    Under an identity mapping host_map() accepts the pair unchecked and
-    problems() has nothing to say, which is correct, because this container's
-    mount table says nothing about the other machine's, so NOTHING verified
-    that the two sides still agree, and the failure is silent twice over: docker
-    answers a missing bind source by creating an empty directory, and the
-    row says nothing. It bit on 27 Aug: /workspace was repointed here while
-    the VM still mounted the parent directory, every project path was wrong
-    by one component, and it took three silent rounds to settle. Make dirs
-    raised the stakes since: a mismatch now builds a stray tree over there.
-
-    So: a marker directory is made under the share HERE, and the daemon is
-    asked whether it can see it at the path the mapping says the node calls
-    the share. Through the same one-shot container the dev-data directory is
-    made with (_devdata_argv, `test`), so the guard's rules cover it: the
-    mount is a share root and the name is under it. The marker is removed
-    whatever happens. Off the poll, because this is for when something changed.
-
-    Three answers, never a guess: True (found), False (a clean "not there"),
-    None with a sentence (the daemon could not be asked, or refused).
-    """
-    with on_node(node_id):
-        mapping = host_map()[0]
-        here = str(WORKSPACE).rstrip("/")
-        # The identity is the shipped default and the rule (path parity), so
-        # a mapping that says nothing about the share means "the same path".
-        there = (mapping.get(here) or here).rstrip("/")
-        out = {"same": None, "here": here, "there": there, "why": ""}
-        if not sandbox_daemon():
-            out["why"] = ("this node's daemon is not addressed as a sandbox, so "
-                          "nothing can be run on it to look")
-            return out
-        name = f"bb-path-check-{os.urandom(4).hex()}"
-        marker = Path(here) / name
-        try:
-            marker.mkdir()
-        except OSError as e:
-            out["why"] = f"could not make a marker under {here} here: {e}"
-            return out
-        try:
-            # The probe mounts a share ROOT and names the rest, which is the
-            # shape the guard rebuilds: /mnt/user/projects becomes the mount
-            # /mnt and the name user/projects/<marker>.
-            parts = there.strip("/").split("/")
-            root = "/" + parts[0]
-            rel = "/".join(parts[1:] + [name])
-            r = _run(_devdata_argv("test", rel, root=root), timeout=120)
-        finally:
-            try:
-                marker.rmdir()
-            except OSError:
-                pass
-        if r["code"] == 0:
-            out.update(same=True, why=(f"the same directory: a marker made under {here} "
-                                       f"here was found at {there} on the node"))
-        elif r["code"] == 1 and not r["out"].strip():
-            # `test -d` says no with nothing on its output; a daemon that
-            # could not be reached says so.
-            out.update(same=False, why=(f"NOT the same directory: a marker made under "
-                                        f"{here} here was not at {there} on the node. "
-                                        "A compose over there would bind an empty tree, "
-                                        "and Make dirs would build one"))
-        else:
-            out["why"] = ("could not ask the daemon: "
-                          + (r["out"].strip()[:200] or f"exit {r['code']}"))
-        return out
 
 def _build_env(project, instance=MAIN):
     """BB_BUILD_REV, BB_BUILD_AT, BB_BUILD_VERSION and BB_BUILD_TAG (the
@@ -2863,6 +2856,7 @@ def _overview_here(picked):
     # inside the availability memo answers the same as one that was never
     # there.
     blind = not got.get("on") or bool(cs["error"])
+    lan_here = lans(picked or _node_here())
     for project in sorted(store):
         # Once per PROJECT, not per instance: every instance of a project is
         # built from the same working copy, so the answer cannot differ
@@ -2910,6 +2904,8 @@ def _overview_here(picked):
                 # The project it belongs to, or "" for none: whose sessions
                 # may see it and work on it, and the group it is drawn in.
                 "owner": owner_of(project, inst, rec),
+                # Let onto the network around its node (R178).
+                "lan": pn in lan_here,
                 # Its project was deleted (moved to the trash): drawn as
                 # "X (deleted)" until X is restored or it is moved (8 Oct).
                 "owner_gone": owner_gone(owner_of(project, inst, rec)),
@@ -3024,7 +3020,7 @@ def _overview_here(picked):
             # above already account for those, and listing them twice would
             # make the page look like the daemon is running double. Each with
             # the project it was put under, read once for the node.
-            "containers": [c | {"owner": held.get(c["name"], ""),
+            "containers": [c | {"owner": held.get(c["name"], ""), "lan": c["name"] in lan_here,
                                 "owner_gone": owner_gone(held.get(c["name"], "")),
                                 "owner_label": owner_label(held.get(c["name"], ""))}
                            for held in [_owners().get(picked or _node_here()) or {}]
@@ -3333,6 +3329,63 @@ def move_instance(project, instance, to):
             "dropped_ref": ref or ""}
 
 
+def unassign(owner):
+    """Every instance and written container that belongs to `owner`, a
+    project or a repository going away (to the trash, or deleted), given to
+    no project rather than left naming one that is gone (the operator, 26
+    Oct): they keep running, and an administrator gives them to another.
+    The names of those it changed."""
+    owner = str(owner or "")
+    if not owner:
+        return []
+    out = []
+    with _lock:
+        d = _load()
+        for p, insts in d.items():
+            for inst, rec in (insts or {}).items():
+                if isinstance(rec, dict) and owner_of(p, inst, rec) == owner:
+                    rec["for"] = ""
+                    # ...remembered, so Put back gives them back (reassign).
+                    rec["was_for"] = owner
+                    out.append(_pname(p, inst))
+        if out:
+            write_json(FILE, d)
+    if out:
+        _bump()
+    return sorted(out)
+
+
+def reassign(owner):
+    """The ones unassign gave to no project when `owner` went to the trash,
+    given back to it as it is put back: those still with no project. The
+    names of those it changed."""
+    owner = str(owner or "")
+    out = []
+    with _lock:
+        d = _load()
+        for p, insts in d.items():
+            for inst, rec in (insts or {}).items():
+                if isinstance(rec, dict) and rec.get("was_for") == owner and rec.get("for") == "":
+                    rec.pop("was_for", None)
+                    if owner == ("" if rec.get("source") == "file" else p):
+                        rec.pop("for", None)
+                    else:
+                        rec["for"] = owner
+                    out.append(_pname(p, inst))
+        if out:
+            write_json(FILE, d)
+    if out:
+        _bump()
+    return sorted(out)
+
+
+def owned_by(owner):
+    """The names of the instances and written containers `owner` has: what a
+    delete of it would leave with no project, said before it is asked."""
+    return sorted(_pname(p, i) for p, insts in (_load() or {}).items() for i, rec in (insts or {}).items()
+                  if isinstance(rec, dict) and owner and owner_of(p, i, rec) == owner)
+
+
 def set_owner(project, instance, owner):
     """Which project an instance or a written container belongs to: a
     project's name, or "" for none. server.py has checked that the name is a
@@ -3462,7 +3515,9 @@ def container_net_own(node_id):
     those of the projects it reads (prefs.reads). The agent turns it into
     bridge pairs; a compose project not named here reaches its own and no
     other. A container the operator gave a project is named by its name,
-    which is its compose project when it was started by compose."""
+    which is its compose project when it was started by compose. `lan`
+    marks one an administrator let onto the network around the node,
+    with no project as much as with one."""
     owned = {}
     for project, insts in _load().items():
         for inst, rec in insts.items():
@@ -3471,7 +3526,7 @@ def container_net_own(node_id):
                 owned.setdefault(owner, set()).add(_pname(project, inst))
     for name, owner in (_owners().get(node_id) or {}).items():
         owned.setdefault(owner, set()).add(name)
-    out = {}
+    out, lan = {}, lans(node_id)
     for owner, comps in owned.items():
         to = set(comps)
         for r in (reads_of(owner) if reads_of and owner != SYSTEM else []) or []:
@@ -3479,19 +3534,26 @@ def container_net_own(node_id):
         # BuilderBot's own (R180) reaches every compose project here by
         # `all`, which covers a container nobody here knows of.
         for c in comps:
-            out[c] = {"owner": owner, "to": sorted(to)} | ({"all": True} if owner == SYSTEM else {})
+            out[c] = ({"owner": owner, "to": sorted(to)} | ({"all": True} if owner == SYSTEM else {})
+                      | ({"lan": True} if c in lan else {}))
+    for c in lan - set(out):
+        out[c] = {"owner": "", "to": [c], "lan": True}
     return dict(sorted(out.items()))
 
 
 def row_named(name):
-    """(project, instance) of the instance or written container the Docker
-    tab lists as `name`, or None. How a session names one that is not its
-    project's own (bb devapp --container)."""
-    for proj, insts in _load().items():
+    """(project, instance) of the instance or written container named
+    `name`, by the name the Containers page lists it under or by the
+    instance's own (bb devapp new NAME), or None. An instance renamed on
+    the page answers to both, which bb devapp --container and --instance
+    each knew only one of (B338)."""
+    store = _load()
+    for proj, insts in store.items():
         for inst in insts:
             if _pname(proj, inst) == name:
                 return proj, inst
-    return None
+    hits = [(proj, inst) for proj, insts in store.items() for inst in insts if inst == name]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _owners():
@@ -3508,6 +3570,42 @@ def _owners():
         return {}
     return {n: {c: p for c, p in v.items() if isinstance(p, str) and p}
             for n, v in d.items() if isinstance(v, dict)}
+
+
+def lans(node_id):
+    """The containers on `node_id` an administrator let onto the network
+    around the node (R178): their keys, the compose project for one of
+    BuilderBot's instances and the container's name for any other, the same
+    keys container_net_own names them by. Off for every one not listed."""
+    try:
+        with open(LANS) as f:
+            d = json.load(f)
+    except (OSError, ValueError, TypeError):
+        return set()
+    got = d.get(node_id) if isinstance(d, dict) else None
+    return {str(k) for k in got if isinstance(k, str)} if isinstance(got, list) else set()
+
+
+def set_lan(node_id, keys, on):
+    """Let these containers on `node_id` reach the LAN, or keep them off it
+    again: the wall around each project's containers rejects every private
+    address, which a container that talks to a machine on the LAN (a
+    controller to its nodes, an app to a device) cannot work behind."""
+    with _lock:
+        try:
+            with open(LANS) as f:
+                d = json.load(f)
+        except (OSError, ValueError, TypeError):
+            d = {}
+        if not isinstance(d, dict):
+            d = {}
+        have = set(d.get(node_id) or []) if isinstance(d.get(node_id), list) else set()
+        have = (have | set(keys)) if on else (have - set(keys))
+        if have:
+            d[node_id] = sorted(have)
+        else:
+            d.pop(node_id, None)
+        write_json(LANS, d)
 
 
 def _node_here():
@@ -3538,6 +3636,11 @@ def instances(project):
     """
     have = list((_load().get(project) or {}).keys())
     return have or [MAIN]
+
+
+def instance_nodes(project):
+    """{instance: the node it runs on} for this project's recorded ones."""
+    return {i: str((r or {}).get("node") or "") for i, r in (_load().get(project) or {}).items()}
 
 
 def only_instance(project):

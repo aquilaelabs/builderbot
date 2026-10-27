@@ -23,7 +23,7 @@ stopped by a hook when it runs, with the reason.
 - To see a screen: `bb capture shot` for one picture at rest, `bb capture reel` for change over time; a video the person sends is read with `bb capture reel --video FILE`, the frames that changed stamped with their times on one sheet.
 - The record, as you meet and finish things: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step add R4 "..."` for each piece of an item and `bb roadmap step done R4 2` as one lands (the steps are what is next; `info` is for the decisions behind them); `bb report "..."` for a problem with BuilderBot itself. A roadmap item is one goal with every step to reach it, written whole when it is added; more work toward the same goal is a step on its item, not a new item naming it.
 - `bb version policy` before moving the version; `bb changelog add "..." --cat NAME` for what a change means to the person using it.
-- Another account's branch (claude/<their name>, or codex/<their name> and the like for another agent) is theirs: merge, rebase or delete it only when asked. Your own other agents' branches meet yours through git, as two people's do.
+- Another account's branch (claude/<their name>, or codex/<their name> and the like for another agent) is theirs: merge, rebase or delete it only when asked. Your own other sessions' branches (another agent's, or `claude/<your name>-2` for a second session of the same agent) meet yours through git, as two people's do.
 - The house rules below are the operator's: follow them over your own habits, and say in your reply when one seems wrong. A named rule's text arrives on the turn its file or word comes up, and again after a summary.
 - The rest of this briefing is read by topic, `bb help TOPIC`, when the work reaches it; the index below names each.
 
@@ -84,7 +84,7 @@ project's containers, those of the projects its project reads, the
 controller, DNS, the node's 80 and 443 and the internet, and not another
 project's container by the node's address. A container answers at its node's
 address: `bb devapp status` prints it beside "answers at", `bb devapp ls`
-each container's ports. On a hosting-only node a published port binds to
+each container's ports on every node the project has one on, the node named. On a hosting-only node a published port binds to
 loopback unless the compose names an address, and the node's nginx answers
 for it; on one enrolled with its firewall, only 80 and 443 are reached from
 outside, whatever the compose names.
@@ -135,7 +135,7 @@ A project whose build or test command is not set refuses and says so: `bb
 settings set build|test|outputs "..."` fills the field in for the operator,
 under the project's gate. When the toolchain lacks what a build needs, say
 so; installing is the operator's, from the Toolchains page. `bb toolchains`
-says what is installed and where:
+says what is installed, where, and how each download was checked:
 this node carries git, tmux, jq, python3 and curl by itself, and nothing
 else is a given. That python3 has no pip and no venv: a project's own
 Python dependencies go in a venv made with the python toolchain's uv
@@ -161,7 +161,9 @@ down what a recording says, with times.
 instance alike, is the workers this node lets a run use: have the runner
 read it (`pytest -n "$BB_TEST_WORKERS"`, `node --test
 --test-concurrency="$BB_TEST_WORKERS"`, Gradle's `--max-workers`) rather
-than hard-coding a number.
+than hard-coding a number, and name every suite or file a change needs in
+one run rather than one run each in a loop, which leaves the workers but
+one idle.
 
 A `pkill -f PATTERN` or `pgrep -f PATTERN` run from a tool call matches
 the shell running that call, because the pattern is on its command line:
@@ -175,9 +177,10 @@ lists the jobs this project may see and `bb jobs ID [--all]` prints one's
 log; `bb tests log` is the last test run, `bb ci-log` a CI run's, `bb devapp
 log NAME` a container's, each with `-p NAME` for a project it reads. The
 diagnostics (`bb diag [SECTION]`) and a node's machine logs (`bb logs --node
-NAME --agent|--runner|--terminal|--system|--kernel|--crash [N]`) are the
-operator's to grant on the project's settings, with debug mode on; a refusal
-names the grant it needs, so say which in your reply.
+NAME --agent|--runner|--nginx|--system|--kernel|--crash [N]`) are read only
+with debug mode on, the project granted them and your account holding the
+debug grant, each the operator's; a refusal names which is missing, so say
+which in your reply.
 
 ## Cleaning up after a task
 <!-- BUILDERBOT:TOPIC tidy: bb tidy, what it ends and what it keeps -->
@@ -185,7 +188,8 @@ names the grant it needs, so say which in your reply.
 The node is shared. When a task or a batch of them is done, run `bb tidy`:
 it ends what this session left running (its emulator through `bb emu stop`,
 its work on the NVIDIA card, its Gradle and Kotlin daemons, headless
-browsers, background servers) and clears its own files from /tmp, which in a
+browsers, background servers, and the quick-boot snapshot of each of this
+project's phones not started for a week) and clears its own files from /tmp, which in a
 session is memory, then says what came back; it never touches Claude Code's
 folder in /tmp or anything a running process still has open. Keep something
 only with a reason the next task gives you (`bb tidy --keep emulator` when
@@ -284,11 +288,13 @@ run` for a phone connected here; `bb container new --why "..." --name NAME
 --compose FILE` for a container that does not exist yet. Every one of the
 project's dials (Agents may: add to the roadmap, file bugs, add rules, fill
 in build and test, add to the design, write the wiki, run its container,
-report BuilderBot bugs, sign a release, manage signing keys, use a lent PC)
-reads the same way: auto lands it, ask holds it for a person (the project's
-owner for the two signing dials, the person at the PC for a lent one), deny
+make VMs, report BuilderBot bugs, sign a build, manage signing keys, tag and
+publish a release, use a lent PC) reads the same way: auto lands it, ask
+holds it for a person (the project's owner for the signing and release
+dials, the person at the PC for a lent one), deny
 refuses it and names the setting; `bb settings` shows each dial as it
-stands. Never route around a refusal.
+stands, Move the version beside them as `bb version policy` says it. Never
+route around a refusal.
 
 A person's Windows PC can be lent to the project by its Windows companion,
 for what only runs there (a game engine's editor, a Windows build): `bb pc`
@@ -301,18 +307,25 @@ are in step already: the companion keeps its folder synced both ways, so a
 change you commit reaches the editor there in seconds.
 
 ## The notebook
-<!-- BUILDERBOT:TOPIC notebook: the record's verbs in full, bb design, the wiki, bb transcripts, bb rules, bb report -->
+<!-- BUILDERBOT:TOPIC notebook: the record's verbs in full, bb design, the wiki, bb transcripts, bb memory, bb rules, bb report -->
 
 `bb roadmap`, `bb bug`, `bb rules`, `bb tests`, `bb changelog`, `bb design`,
 `bb wiki`, and `bb <verb> -h` for the rest of any of them. `bb design` is
 what the project looks like as the operator laid it out on the notebook's
 Design view: `bb design show NAME` for one page, theme or rule
 (`nostromo/hull` for a theme's or a page's own), and `bb design file` prints
-the docs/design-language.md it writes. `bb transcripts` lists this account's
+the docs/design-language.md it writes; `bb design file --from FILE` prints it
+from a record of your own (what `bb design json` prints, edited), so a
+branch's file carries its design and not what another branch saved. `bb transcripts` lists this account's
 own earlier conversations here, from every coding agent it uses (Claude,
-ChatGPT, Copilot), each marked with its agent and never another account's,
-and `bb transcripts show ID` prints one whole, every command and its answer
-included.
+ChatGPT, Copilot, Grok), each marked with its agent and never another
+account's, and `bb transcripts show ID` prints one whole, every command and
+its answer included. `bb memory` is this account's memories on a repository,
+the same for every coding agent and where Claude Code keeps its own: `bb
+memory show NAME` reads one, `bb memory add NAME --type T --about "..." "..."`
+saves one with its index line, `bb memory forget NAME` takes one out, and
+`bb -p REPO memory` answers for another repository of the project, so a
+fact stays with the repository it is about when that repository moves.
 
 The project's wiki is the notebook's Wiki view, for the people who use or
 work on the project: `bb wiki` lists its pages, `bb wiki show NAME` prints
@@ -341,7 +354,8 @@ of it, and a set of findings from one walk is an item per surface they are
 about, each finding a step.
 
 The record's verbs, as you meet things: `bb bug add "..." --sev medium
---area "..." --repro "..."` for a bug, `bb roadmap add "..."` for work worth
+--area "..." --repro "..." --reproduces always|sometimes|once|untried` for a
+bug (how often those steps showed it), `bb roadmap add "..."` for work worth
 doing, `bb bug note B7 "..."` for what you learn about an open one, and `bb
 bug fix B7 "what fixed it"` or `bb roadmap step done R4 2` as you finish. A
 roadmap item the operator has shelved is parked: `bb roadmap unshelve N WHY`
@@ -349,7 +363,8 @@ asks for it back, and the work waits on their approval. `bb rules add NAME
 "..."` leaves a note for the next session, marked as yours; the operator's
 rules you cannot change, so say in the reply when one seems wrong. A problem
 with BuilderBot itself (a `bb` verb, the dashboard, a node, this briefing)
-goes to `bb report "what happened" [--area A] [--repro "..."]`, read by its
+goes to `bb report "what happened" [--area A] [--repro "..." --reproduces
+WORD]`, read by its
 maintainers, not this project's tracker; nothing comes back to follow up.
 Report every way BuilderBot does not work as this briefing says, even when
 you found a way round it: the way round is what the report should say. Where
@@ -365,7 +380,10 @@ moves it where the policy lets you, and `bb version set X.Y.Z` to a later
 version in one step where that allows the part it changes. `bb changelog add
 "..." --cat NAME` records what a change means for the person using the
 product, under Added, Changed, Deprecated, Removed, Fixed or Security; with
-no category it says when each applies. Tagging and publishing the release is
+no category it says when each applies. Fixed is for a bug a released
+version had: a fix to something no release has carried yet gets no line
+(the bug is still filed and closed), since the changelog is read by
+somebody upgrading from a release. Tagging and publishing the release is
 `bb version release --why "..."` under Agents may: Tag and publish a
 release, which asks the project's owner by default and runs on the
 controller with the project's own credentials, never yours. A published

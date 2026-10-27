@@ -107,4 +107,9 @@ def install(test, signing, data, store=None):
     test.addCleanup(setattr, agent, "tc_root", was_root)
     agent.os.geteuid = lambda: 0
     agent.tc_root = lambda st: node.store
+    # The job's own folder, on this machine's memory in a real node (B315):
+    # here beside the data store, so a test sees what is left in each.
+    was_work = agent.SIGN_WORK
+    test.addCleanup(setattr, agent, "SIGN_WORK", was_work)
+    agent.SIGN_WORK = os.path.join(os.path.dirname(data), "signwork")
     return node

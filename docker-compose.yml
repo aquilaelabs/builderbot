@@ -130,11 +130,12 @@ services:
 
       # Recommended for git ssh keys and any publishing token: a root-owned
       # (chmod 700) folder with an ssh/ subfolder of private keys and *.env
-      # files (NPM_TOKEN=..., SIGNING_SECRET=... to seal the signing keys at
-      # rest). Secrets provided here are shielded from Claude
+      # files (NPM_TOKEN=...). The first start makes the install key in it,
+      # which seals at rest what the install keeps (Controller, Keys), so it
+      # is mounted read-write. Secrets provided here are shielded from Claude
       # sessions (keys are served via a root-owned ssh-agent); keys in
       # home/.ssh are not.
-      # - /mnt/user/appdata/BuilderBot/secrets:/secrets:ro
+      # - /mnt/user/appdata/BuilderBot/secrets:/secrets
 
       # --- host Docker access (OFF by default) ------------------------------
 

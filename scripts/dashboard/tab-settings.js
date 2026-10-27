@@ -46,13 +46,13 @@ function settingsKeep(el){
   settingsWake(el);
 }
 // A section's Apply and Revert awake only while one of its fields differs
-// from what is saved, or a stored secret is ticked to go. Not the Logs
-// section's Apply: pressed with the days as they are, it crops now.
+// from what is saved, or a stored secret is ticked to go: the Logs section's
+// too (the operator, 26 Oct: every save bar asleep with nothing to save).
 function settingsWake(el){
   el.querySelectorAll("details.sect").forEach(sec => {
     const dirty = [...sec.querySelectorAll(SETTINGS_FIELDS)].some(i => i.id in settingsDraft)
       || !!sec.querySelector("[data-clear]:checked");
-    sec.querySelectorAll(".setApply, #idleApply, #pathsApply, [data-srevert]").forEach(b => {
+    sec.querySelectorAll(".setApply, #logApply, #idleApply, #pathsApply, [data-srevert]").forEach(b => {
       if (!b.dataset.busy && b.disabled !== !dirty) b.disabled = !dirty;
     });
   });
@@ -67,9 +67,9 @@ function openSettingsTab(){
 
 // Each section's line on the list beside it: what is in it.
 const SETTINGS_SAYS = {
-  logs: "days kept, downloads, diagnostics", reports: "what sessions reported about BuilderBot",
+  logs: "days kept, following, downloads", reports: "what was reported about BuilderBot, and the diagnostics",
   idle: "when an idle session is ended", paths: "the shares and disks this controller uses",
-  tunnel: "a hostname that reaches it from outside", debug: "debug mode and dev features",
+  tunnel: "a hostname that reaches it from outside",
   apps: "the apps your people install, kept current",
   reset: "start over at the setup page",
 };
@@ -80,8 +80,14 @@ function renderSettingsInto(i){
   // The build and the uptime live here now (R218 step 2, the top-bar rule):
   // facts in the facts voice, where the header carried them before.
   // ...and no sentence about the page beside them (the operator, 18 Oct).
-  d.setBar(`<span class="barfacts">up ${
-    esc(shortUptime(state?.uptime || 0))} · ${esc(state?.image?.version || (state?.image?.rev || "").slice(0, 7) || "unstamped")}</span>`);
+  // The controller's build and how long it has been up, as a node's head
+  // says what a machine is (the operator, 25 Oct: no loose words at the top).
+  d.setBar("");
+  const img = state?.image || {};
+  const head = pageHead({title: "This controller", facts: [
+    ["Version", img.version || "unstamped"],
+    ["Commit", (img.rev || "").slice(0, 7)],
+    ["Up", shortUptime(state?.uptime || 0)]]});
   // Sections, like every other tab's (the operator, 11 Oct): one fold per
   // group, its status on the heading, a jump bar over them, and each with
   // its own Apply and Revert. The groups' own markup is kept inside (the
@@ -89,17 +95,16 @@ function renderSettingsInto(i){
   const idle = state?.idle?.minutes;
   const paths = state?.paths?.paths || [];
   const t = state?.settings?.tunnel;
-  const dbg = state?.settings?.settings?.debug_mode?.value;
   const sect = (key, title, status, html, opts = {}) =>
     docSection("settings", key, title, status, html.replace(/<h4>[^<]*<\/h4>\s*/, ""), opts);
   const groups = settingsSections();
   // The logs are an administrator's: a poll that has landed without them
   // means this account has no Logs section, not one still on its way (B38).
   const logs = logSection();
-  d.list.innerHTML = `<div class="sectjump" data-sects></div>
+  d.list.innerHTML = `${head}<div class="sectjump" data-sects></div>
     ${logs || !state ? sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logs, "logs")
         || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`) : ""}
-    ${reportsSection() ? sect("reports", "BuilderBot bug reports", reportsCount === null ? "" : reportsCount ? `${reportsCount} report${reportsCount === 1 ? "" : "s"}` : "none", reportsSection()) : ""}
+    ${sect("reports", "BuilderBot bug reports", reportsCount() === null ? "" : reportsCount() ? `${reportsCount()} report${reportsCount() === 1 ? "" : "s"}` : "none", reportsSection())}
     ${sect("idle", "Idle sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
            `<div class="row stack2" data-group="Idle sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
@@ -127,7 +132,7 @@ function renderSettingsInto(i){
   wirePathsSection(d.el);
   wireSettingsSections(d.el);
   settingsKeep(d.el);
-  if (reportsCount === null && reportsSection()) countReports();
+  if (reportsList === null) loadReports();
   const ac = d.el.querySelector("#setAppsCheck");
   if (ac) ac.onclick = async () => {
     busy(ac, "Looking");
@@ -141,14 +146,11 @@ function renderSettingsInto(i){
   };
   const rs = d.el.querySelector("#setReset");
   if (rs) rs.onclick = () => askReset();
+  d.el.querySelectorAll("[data-repdel]").forEach(b => b.onclick = () => deleteReport(b));
   const rc = d.el.querySelector("#setReportsClear");
   if (rc) rc.onclick = () => clearReports(rc);
 }
 
-// What sessions on other projects reported about BuilderBot with bb report,
-// which the Diagnostics download under Logs carries. Counted on the press
-// rather than on the line: they arrive from sessions at any time, so a count
-// fetched when the tab opened would be stale by the time it was read.
 // A section's Revert beside its Apply: the first Apply button in the markup
 // gets one after it, wearing the section's key.
 function withRevert(html, key){
@@ -158,37 +160,58 @@ function withRevert(html, key){
   return html.replace(m[0], `${m[0]}<button type="button" class="caution" data-srevert="${esc(key)}" title="put this section's fields back to what is saved">Revert</button>`);
 }
 
-// Opens on what it holds (R218 step 32): its count the section's status,
-// one hint, Clear reports its action. Counted when the page draws it and
-// after a Clear, not on the poll.
-let reportsCount = null;
-async function countReports(){
+// What sessions and people reported about BuilderBot (bb report, the
+// header's Report a bug), every one listed with its delete, and the
+// diagnostics download under them, which carries what is left (the
+// operator, 26 Oct): a report taken out before the download is not in it.
+// Whoever reads Controller settings reads them; only a session reading them
+// is debug's. Read when the page draws it and after a delete, not on the poll.
+let reportsList = null;
+async function loadReports(){
   try{
-    const c = await (await postJSON("/api/reports", {action: "count"})).json();
-    if (c.error) return;
-    reportsCount = c.all || 0;
+    const j = await (await postJSON("/api/reports", {action: "list"})).json();
+    if (j.error) return;
+    reportsList = j.reports || [];
   }catch{ return; }
   settingsRev++;
   drawPanes();
 }
+const reportsCount = () => reportsList === null ? null : reportsList.length;
 function reportsSection(){
-  // The debug grant's, and not drawn without it (the operator, 6 Oct).
-  if (state?.can?.debug === false) return "";
-  return `<div class="field">
-      <div class="hint">What sessions reported about BuilderBot with <code>bb report</code>; the Diagnostics download under Logs carries them.</div>
-      <div class="actbar"><span class="sp"></span><button type="button" class="danger" id="setReportsClear">Clear reports</button></div>
-    </div>`;
+  const rows = reportsList || [];
+  const mayDelete = state?.can?.controller !== false;
+  const list = reportsList === null ? `<div class="row stack2"><div class="grow"><div class="sub dim">reading the reports…</div></div></div>`
+    : !rows.length ? `<div class="empty">No reports. A session's <code>bb report</code> and Report a bug in the header land here.</div>`
+    : rows.map(r => `<div class="row repline" data-report="${r.id}"><div class="grow">
+        <div class="name">#${r.id} ${esc(r.project || "no project")}<span class="dim"> · ${esc(ago(r.at))} · ${esc(r.by || "")}${r.area ? ` · ${esc(r.area)}` : ""}</span></div>
+        <div class="sub reptext">${esc(r.text || "")}</div></div>
+        ${mayDelete ? rmIcon(`data-repdel="${r.id}"`, `Delete report ${r.id}`, {title: "take it out: it is not in the diagnostics downloaded after"}) : ""}
+      </div>`).join("");
+  return `<div class="field"><div class="hint">What sessions and people reported about BuilderBot. Delete any you do not want in the diagnostics before downloading them.</div></div>
+    <div class="replist">${list}</div>
+    <div class="field"><div class="actbar"><span class="sp"></span>
+      <a class="btnish" href="/logs/download?what=diag" download title="the controller's diagnostics as one file, with the reports listed here">Download diagnostics</a>
+      ${mayDelete && rows.length ? `<button type="button" class="danger" id="setReportsClear">Clear reports</button>` : ""}</div></div>`;
+}
+
+async function deleteReport(btn){
+  const id = Number(btn.dataset.repdel);
+  busy(btn, "");
+  try{
+    const j = await (await postJSON("/api/reports", {action: "delete", id})).json();
+    if (j.error){ notify(j.error, true); unbusy(btn, ""); return; }
+    notify(`report #${id} deleted`);
+  }catch{ notify("could not delete the report", true); unbusy(btn, ""); return; }
+  await loadReports();
 }
 
 async function clearReports(btn){
-  let c;
-  try{
-    c = await (await postJSON("/api/reports", {action: "count"})).json();
-  }catch{ return notify("could not count the reports", true); }
-  if (c.error) return notify(c.error, true);
-  if (!c.all) return notify("there are no reports to clear");
-  const s = c.all === 1 ? "" : "s";
-  if (!await askYes(`Delete all ${c.all} report${s} sessions made about BuilderBot?`)) return;
+  // Read again first: a report may have come in, or gone, since the draw.
+  await loadReports();
+  const n = reportsList?.length || 0;
+  if (!n) return notify("there are no reports to clear");
+  const s = n === 1 ? "" : "s";
+  if (!await askYes(`Delete all ${n} report${s} about BuilderBot?`)) return;
   busy(btn, "Clearing");
   try{
     const j = await (await postJSON("/api/reports", {action: "clear"})).json();
@@ -196,7 +219,7 @@ async function clearReports(btn){
     else notify(`cleared ${j.cleared} report${j.cleared === 1 ? "" : "s"}`);
   }catch{ notify("could not clear the reports", true); }
   unbusy(btn, "Clear reports");
-  countReports();
+  loadReports();
 }
 
 // The settings that used to be environment variables (roadmap R29): what is
@@ -231,7 +254,7 @@ const SETTING_GROUPS = [
    headingCls: s => s?.tunnel?.connected ? "ok" : "",
    fields: [
     {key: "tunnel_host", label: "Hostname", type: "text", placeholder: "bb.example.com",
-     hint: "The name a node off your network dials the controller at, published by a tunnel from home. Enroll node fills it in."},
+     hint: "The name a node off your network dials the controller at, published by a tunnel from home. Enroll node offers it as the controller's address."},
     {key: "tunnel_token", label: "Tunnel token", type: "secret",
      hint: "From Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), the long eyJ… string in its install command. The controller runs the tunnel itself with it."},
     {key: "cf_api_token", label: "Cloudflare API token (optional)", type: "secret",
@@ -256,24 +279,22 @@ const SETTING_GROUPS = [
    headingCls: s => s?.settings?.maintenance_mode?.value ? "warn" : "",
    fields: [
     {key: "maintenance_mode", label: "Maintenance mode", type: "bool",
-     hint: "Only you can sign in and use BuilderBot, from the page, a phone or a session. Everybody else is told it is down for maintenance and stays signed in for after. Nodes keep running."}]},
-  {key: "debug", title: "Debugging", heading: s => s?.settings?.debug_mode?.value ? "on" : "off", fields: [
-    {key: "debug_mode", label: "Debug mode", type: "bool",
-     hint: "Shows the Debug settings button here, and lets a project's settings grant its "
-         + "sessions nodes' logs and the controller's diagnostics. Turning it on grants nothing by itself."}],
-   // What a developer of BuilderBot reaches for and nobody else should
-   // meet: behind a Debug settings button that opens a dialog while debug
-   // mode is on, the same way the node row's Debug settings does.
-   debug: [
-    // One tree behaves as two products (roadmap R54, step 6): production
-    // leaves this off and sees only what has been proven (alpha); a dev
-    // instance turns it on and sees everything, the unproven tagged dev.
-    // In the debug dialog rather than a group of its own: it is a switch a
-    // developer of BuilderBot reaches for, and a group headed by one switch
-    // read as a feature of the product rather than of its testing.
-    {key: "offer_unvetted", label: "Offer dev features", type: "bool",
-     hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."}]},
+     hint: "Only you can sign in and use BuilderBot, from the page, a phone or a session. Everybody else is told it is down for maintenance and stays signed in for after; their sessions and terminals are ended when it goes on, which it asks about first. Nodes keep running."}]},
 ];
+
+// Turning maintenance mode on: who is kept out, and the sessions and
+// terminals of theirs it ends, each with what it is doing (the operator, 27
+// Oct), so a working session is not ended unseen.
+const MAINT_STATE = {working: "working", waiting: "waiting for its person", asking: "asking for permission", open: "open"};
+async function maintAsk(rows){
+  const line = r => `${r.who}: ${r.what}${r.project ? ` on ${r.project}` : ""}, ${MAINT_STATE[r.state] || "idle"}, on ${r.node}`;
+  const busyN = rows.filter(r => r.state === "working").length;
+  const text = rows.length
+    ? `Everybody else is kept out until it is off, and these ${rows.length} session${rows.length === 1 ? "" : "s"} and terminal${
+        rows.length === 1 ? "" : "s"} of theirs end now${busyN ? `, ${busyN} of them in the middle of work` : ""}:\n\n${rows.map(line).join("\n")}`
+    : "Everybody else is kept out until it is off. Nobody else has a session or a terminal open.";
+  return askYes(text, {title: "Turn maintenance mode on?", verb: rows.length ? "End them and turn it on" : "Turn it on", danger: rows.length > 0});
+}
 
 // What the Apps section holds, over its switches, and Look now.
 function appsIntro(){
@@ -437,56 +458,10 @@ function resetGone(body, moved){
   setTimeout(() => { location.href = "/login"; }, 2500);
 }
 
-// The Debugging group's other half, in a dialog rather than a fold in the
-// group. Two reasons, and the first is the one that was wrong rather than
-// merely inconsistent: the fold's fields sat inside the group, so the
-// group's Apply saved them, and a person who ticked one and pressed the
-// Apply they could see had saved a debug setting without meeting a word
-// about it. The second is that the node row's Debug settings is a dialog,
-// and these are one idea in two places.
-function openDebugSettings(){
-  const modal = $("setdbgmodal"), body = $("setdbgBody");
-  const g = SETTING_GROUPS.find(x => x.debug);
-  if (!modal || !body || !g) return;
-  const s = state?.settings;
-  const shut = () => { modal.hidden = true; };
-  body.innerHTML = `<div class="field">
-      <div class="hint">For developing BuilderBot itself. Nothing here is on until saved.</div>
-      <div class="logset">${g.debug.map(f => `
-        <div class="logdays setrow ctlrow"><label class="ndcap">
-          <input type="checkbox" data-dbgset="${esc(f.key)}"${
-            s?.settings?.[f.key]?.value ? " checked" : ""}> ${esc(f.label)}${
-            helpIcon(f.hint)}</label></div>`).join("")}
-      </div>
-    </div>
-    ${dlgFoot(`<button type="button" id="setdbgCancel">Cancel</button>`, `<button type="button" class="primary" id="setdbgSave">Save</button>`)}`;
-  modal.hidden = false;
-  body.querySelector("#setdbgCancel").onclick = shut;
-  const go = body.querySelector("#setdbgSave");
-  go.onclick = async () => {
-    const set = {};
-    body.querySelectorAll("[data-dbgset]").forEach(i => { set[i.dataset.dbgset] = i.checked; });
-    busy(go, "Saving");
-    try{
-      const r = await fetch("/api/settings", {method: "POST",
-        headers: {"Content-Type": "application/json"}, body: JSON.stringify({set})});
-      const j = await r.json();
-      if (j.error){ notify(j.error, true); unbusy(go, "Save"); return; }
-      shut();
-      notify("saved");
-      refresh();
-    }catch(e){ notify("settings: " + failWords(e), true); unbusy(go, "Save"); }
-  };
-}
-
 function settingsSections(){
   const s = state?.settings;
   if (!s) return [{key: "wait", title: "Settings", status: "", html: `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`}];
   const src = k => s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
-  // The Debugging group is the debug grant's (roles.NAMED_ONLY): without it
-  // the page does not show it at all (the operator, 6 Oct).
-  // The Debugging group only on a controller started with DEBUG_MODE=1
-  // (settings.debug_available): without it there is nothing to turn on.
   // What this install switched off from its environment (R81), listed first
   // when there is any: set where the container starts, so nothing here
   // turns it back on.
@@ -494,8 +469,7 @@ function settingsSections(){
   const offSect = offs.length ? [{key: "off", title: "Switched off", status: String(offs.length), cls: "",
     html: `<div class="row stack2"><div class="grow"><div class="sub">Set where this container starts (FEATURES_OFF), so nothing here turns them back on.</div>${
       offs.map(w => `<div class="setrow">${esc(w)}</div>`).join("")}</div></div>`}] : [];
-  return offSect.concat(SETTING_GROUPS.filter(g => (!g.debug || (state?.can?.debug !== false && state?.settings?.debug_available))
-    && (!g.can || state?.can?.[g.can])).map(g => {
+  return offSect.concat(SETTING_GROUPS.filter(g => !g.can || state?.can?.[g.can]).map(g => {
     const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;
@@ -530,16 +504,6 @@ function settingsSections(){
                 <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${f.dev ? devMark() : ""}${helpIcon(f.hint)}</label>${src(f.key)}
               </div>`;
     };
-    // The button is a real control only while debug mode is SAVED on: what
-    // is behind it is debug's, and a draft tick that has not been applied
-    // yet is not debug mode.
-    const debugOn = !!s.settings.debug_mode?.value;
-    const fold = !g.debug ? "" : `
-          <div class="addbar ctlrow" data-add="debug"><button type="button" data-debugshow
-            ${debugOn ? "" : " disabled"}
-            title="${debugOn ? "the settings kept behind debug mode"
-                             : "turn Debug mode on and Apply first: these are its settings"}"
-            >Debug settings</button></div>`;
     // A group whose feature this install switched off (R81): its sentence
     // in place of its fields, which nothing could apply.
     if (g.off && featureOff(g.off)) return {key: g.key, title: g.title, status: "off", cls: "",
@@ -549,7 +513,7 @@ function settingsSections(){
       <div class="grow">
         <div class="logset">
           ${g.intro ? g.intro(s) : ""}
-          ${g.fields.filter(f => !f.dev || s.settings.offer_unvetted?.value).map(field).join("")}${fold}
+          ${g.fields.filter(f => !f.dev || s.settings.offer_unvetted?.value).map(field).join("")}
           <div class="actbar">
             <span class="state">${g.status ? g.status(s) : "applies at once"}</span>
             <button type="button" class="setApply" title="save">Apply</button>
@@ -562,8 +526,6 @@ function settingsSections(){
 
 function wireSettingsSections(el){
   el.querySelectorAll('[data-group]').forEach(box => {
-    const show = box.querySelector("[data-debugshow]");
-    if (show) show.onclick = () => openDebugSettings();
     const btn = box.querySelector(".setApply");
     if (!btn) return;
     const apply = async () => {
@@ -576,9 +538,15 @@ function wireSettingsSections(el){
       box.querySelectorAll("[data-clear]:checked").forEach(i => { set[i.dataset.clear] = ""; });
       busy(btn, "Applying");
       try{
-        const r = await fetch("/api/settings", {method: "POST",
-          headers: {"Content-Type": "application/json"}, body: JSON.stringify({set})});
-        const j = await r.json();
+        const post = extra => fetch("/api/settings", {method: "POST",
+          headers: {"Content-Type": "application/json"}, body: JSON.stringify({set, ...extra})});
+        let j = await (await post({})).json();
+        // Maintenance mode asks first, with every other account's sessions
+        // and what each is doing, since turning it on ends them.
+        if (j.confirm === "maintenance"){
+          if (!await maintAsk(j.sessions || [])) return;
+          j = await (await post({confirmed: true})).json();
+        }
         if (j.error) return notify(j.error, true);
         box.querySelectorAll("[data-set]").forEach(i => { delete settingsDraft[i.id]; });
         // What the tunnel did with it (R176): the record and rules written,

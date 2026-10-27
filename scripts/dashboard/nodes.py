@@ -638,6 +638,12 @@ def node_update(principal, node_id, fields):
             # run beside /config and the dashboard credential, and a docker
             # socket is not something this container mounts by default.
             return {"error": "the local node cannot be a docker host"}
+        if own_machine(n) and "docker-host" in caps:
+            # Nor is the controller's own machine, installed bare metal
+            # (R90): its job account is out of the docker group, since docker
+            # is root there and root holds the controller's state.
+            return {"error": "this machine is the controller's own, so it runs no containers as a node: "
+                             "docker is root here, and the wall keeps the controller's state from the node's accounts"}
         sets.append("capabilities = ?"); args.append(json.dumps(caps))
     if "labels" in fields and isinstance(fields["labels"], dict):
         clean = {str(k)[:40]: str(v)[:120]
@@ -879,6 +885,49 @@ def _token_mint(kind, node_id, ttl=None):
     return tid, TOKEN_PREFIX[kind] + secret
 
 
+# A node's token rotated (R135 step 4): each hello of an agent that rotates is
+# answered with a fresh token, held PENDING until the node first uses it,
+# which makes it the node's token and RETIRES the one before. A retired token
+# is still taken for GRACE_S, for calls that were already on their way; after
+# that, presenting it means a copy of the node's credential is in use
+# somewhere (a copied disk, a stolen file), and the node's tokens are revoked
+# and the bell says so. Kept in the revoked column: 0 live, 1 revoked.
+TOKEN_PENDING, TOKEN_RETIRED = 2, 3
+ROTATE_GRACE_S = 180
+RETIRED_KEEP_S = 30 * 86400
+
+
+def rotate_token(node_id):
+    """A fresh pending token for an agent that rotates, the bearer it holds.
+    A pending one it never used is dropped; retired ones older than a month
+    are forgotten."""
+    now = int(time.time())
+    _exec("UPDATE tokens SET revoked = 1 WHERE node_id = ? AND kind = 'node' AND revoked = ?",
+          (node_id, TOKEN_PENDING))
+    _exec("DELETE FROM tokens WHERE node_id = ? AND kind = 'node' AND revoked = ? AND created < ?",
+          (node_id, TOKEN_RETIRED, now - RETIRED_KEEP_S))
+    tid, bearer = _token_mint("node", node_id)
+    _exec("UPDATE tokens SET revoked = ? WHERE id = ?", (TOKEN_PENDING, tid))
+    return bearer
+
+
+def _token_reused(t):
+    """A retired token presented after its grace: every token of the node
+    revoked, and the bell told, with when and from where."""
+    nid = t["node_id"]
+    # Every one, live, pending and retired: a pending token the copy was
+    # handed must not come alive later.
+    _exec("UPDATE tokens SET revoked = 1 WHERE node_id = ? AND kind = 'node'", (nid,))
+    n = node(nid)
+    if n:
+        ag = dict(n.get("agent") or {})
+        ag["token_reuse"] = {"at": int(time.time()), "token": t["id"]}
+        _exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), nid))
+        _bump()
+    print(f"dashboard: node {nid} presented a retired token after its grace; its tokens are revoked "
+          "(a copy of its credential is in use somewhere)", flush=True)
+
+
 def authenticate(bearer):
     """A bearer credential to a principal, or the reason it is not one.
 
@@ -900,6 +949,19 @@ def authenticate(bearer):
     if not rows:
         return {"error": "unknown token"}
     t = rows[0]
+    if kind == "node" and t["revoked"] == TOKEN_PENDING:
+        # Its first use (R135 step 4): this token is the node's now, and
+        # the one before retires with its grace.
+        now = int(time.time())
+        _exec("UPDATE tokens SET revoked = ?, expires = ? WHERE node_id = ? AND kind = 'node' AND revoked = 0",
+              (TOKEN_RETIRED, now + ROTATE_GRACE_S, t["node_id"]))
+        _exec("UPDATE tokens SET revoked = 0 WHERE id = ?", (t["id"],))
+        t = dict(t, revoked=0)
+    elif kind == "node" and t["revoked"] == TOKEN_RETIRED:
+        if not (t["expires"] and t["expires"] >= time.time()):
+            _token_reused(t)
+            return {"error": "credential revoked"}
+        t = dict(t, revoked=0, expires=None)
     if t["revoked"]:
         return {"error": "credential revoked" if kind == "node"
                 else "enrollment token already used"}
@@ -924,8 +986,15 @@ def revoke_tokens(node_id, kinds=("node", "enroll")):
 # ---------------------------------------------------------------------------
 # enrollment
 
+def own_machine(n):
+    """Whether a node is the machine the controller itself runs on, a
+    controller installed bare metal enrolling itself (R90): an ordinary
+    agent row in every other way, and marked as this machine."""
+    return bool(n) and n.get("kind") == "agent" and bool((n.get("config") or {}).get("own"))
+
+
 def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host_only=False, nginx=False, door=None,
-                existing=None):
+                existing=None, own=False):
     """Add node, agent kind: a pending row and the one token that fills it.
     With `existing` (R177), no row: a node already here gets a new enroll
     token, its config brought to the answers, and the row's id and state
@@ -938,9 +1007,18 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host
     intended are on the row, so enrollment adds nothing the operator did not
     ask for. The id is minted now and kept; a token that expires unused
     leaves a pending row the tab offers to remove, never a reused id.
+
+    With `own` (R90), the row is the controller's own machine, installed
+    bare metal: builds and sessions and no containers (its job account is
+    out of the docker group), and each session in a network of its own from
+    its first hello, since the wall a session there meets needs one.
     """
     name = (name or "").strip()[:60] or "node"
     caps = [c for c in (capabilities or CAPABILITIES) if c in CAPABILITIES]
+    if own and not existing:
+        if any(own_machine(o) and o.get("state") != "retired" for o in node_list()):
+            return {"error": "this controller's own machine is a node already: Enroll script on its row runs it again"}
+        caps, host_only, nginx, tunnel, door = ["package-build"], False, False, None, None
     user = re.sub(r"[^a-z0-9_-]", "", (user or "bb").lower())[:32] or "bb"
     if existing:
         n = node(existing)
@@ -992,7 +1070,9 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host
                    **({"nginx": True} if nginx else {}),
                    # The door in for SSH the script sets up (R174): its kind
                    # and name, so the row knows before the machine reports.
-                   **({"door": door} if door else {})},
+                   **({"door": door} if door else {}),
+                   # The controller's own machine (R90).
+                   **({"own": True, "session_net": True} if own else {})},
     })
     tid, secret = _token_mint("enroll", nid, ENROLL_TTL)
     _touch(nid, principal, "node-enroll-mint", {"token": tid, "caps": caps})
@@ -1136,8 +1216,8 @@ def agent_window(version):
     m = re.match(r"^(\d+\.\d+)\.", str(version or ""))
     return m.group(1) if m else ""
 # Held below the 30s most proxies allow. Settable only so the suite can stop
-# waiting on it: an agent does its housekeeping (restarting a ttyd that died,
-# reporting a session that appeared) once per turn of this loop, so a test
+# waiting on it: an agent does its housekeeping (reporting a session that
+# appeared) once per turn of this loop, so a test
 # that watches for any of it waits a poll window per thing it watches, and
 # three of them were the slowest intervals in the suite. Nothing else sets it.
 POLL_S = int(os.environ.get("BB_NODE_POLL") or 25)
@@ -1239,6 +1319,27 @@ def _census(c):
                          "addr": str(t["addr"]), "up": bool(t.get("up"))}
     pv = c.get("toolchain_versions") if isinstance(c.get("toolchain_versions"), dict) else {}
     out["toolchain_versions"] = {str(k)[:40]: str(v)[:40] for k, v in list(pv.items())[:40]}
+    # How each was checked when it was installed (R137): the algorithm, or
+    # none, and where the publisher said it.
+    tv = c.get("toolchain_verified") if isinstance(c.get("toolchain_verified"), dict) else {}
+    # The coding agents' sign-ins sealed there (R126): the agent's public
+    # half for this boot and each seal's R with what its login said of
+    # itself, all public. Hex held to the group's width.
+    tk = c.get("tokseal") if isinstance(c.get("tokseal"), dict) else None
+    if tk and re.fullmatch(r"[0-9a-f]{1,520}", str(tk.get("E") or "")):
+        sealed = {}
+        for acct, seals in list((tk.get("sealed") or {}).items())[:500] if isinstance(tk.get("sealed"), dict) else []:
+            if not re.fullmatch(r"u_[0-9a-f]{8}", str(acct)) or not isinstance(seals, dict):
+                continue
+            for ag, v in seals.items():
+                if ag in ("claude", "codex") and isinstance(v, dict) and re.fullmatch(r"[0-9a-f]{1,520}", str(v.get("R") or "")):
+                    sealed.setdefault(acct, {})[ag] = {"R": v["R"], "K": re.sub(r"[^0-9a-f]", "", str(v.get("K") or ""))[:24],
+                                                       "email": str(v.get("email") or "")[:120],
+                                                       "plan": str(v.get("plan") or "")[:40]}
+        out["tokseal"] = {"E": tk["E"], "sealed": sealed}
+    out["toolchain_verified"] = {str(k)[:40]: {"algo": str(v.get("algo") or "")[:8], "where": str(v.get("where") or "")[:200]}
+                                 for k, v in list(tv.items())[:80] if isinstance(v, dict)
+                                 and str(v.get("algo") or "") in ("sha1", "sha256", "sha512", "gpg", "none")}
     # Kept only when the agent sent one: a listing that is there and empty
     # is a store with nothing in it (B671), a key that is absent is a node
     # that has not said, and the Toolchains tab reads the two apart.
@@ -1511,8 +1612,8 @@ def _census(c):
         "dns": re.sub(r"[^A-Za-z0-9.-]", "", str(ts.get("dns") or ""))[:200],
         # https port -> the local port it forwards to, as the node reports it
         "funnel": {str(k)[:6]: _mb(v) for k, v in list(fun.items())[:8]}}
-    # The session half (roadmap #24): whether this node runs sessions, on
-    # which ports, as which account, and whether /workspace, where its
+    # The session half (roadmap #24): whether this node runs sessions, the
+    # port its terminals come in on, as which account, and whether /workspace, where its
     # synced copy is, is there. Absent (not empty) until the node has
     # said, so the row can tell "no sessions here" from "did not say"; the
     # proxy relays a project's session to a node only on the
@@ -1520,13 +1621,18 @@ def _census(c):
     se = c.get("session")
     if isinstance(se, dict):
         out["session"] = {
-            "up": bool(se.get("up")), "port": _mb(se.get("port")) or 0,
-            "ro_port": _mb(se.get("ro_port")) or 0,
-            # The container terminal (R218 step 4): the agent's third ttyd,
-            # as the docker account; 0 from one that could not start it,
-            # with why.
-            "ctr_port": _mb(se.get("ctr_port")) or 0,
+            "up": bool(se.get("up")),
+            # The screen relay's port, which its terminals (R133) and its
+            # VMs' screens come in on: 7684 but in the suite.
+            "screen": _mb(se.get("screen")) or 0,
+            # The container terminal (R218 step 4), as the docker account;
+            # false from a node that could not set it up, with why.
+            "ctr": bool(se.get("ctr")),
             "ctr_why": str(se.get("ctr_why") or "")[:120],
+            # Whether its agent serves BuilderBot's own terminal (R133): one
+            # that does not (an agent before 0.8) opens no terminal until
+            # it is updated.
+            "term": bool(se.get("term")),
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
             "workspace": bool(se.get("workspace")),
             # None is "not probed", read as unknown rather than read-only:
@@ -1540,7 +1646,7 @@ def _census(c):
             **{a.reported: str(se.get(a.reported) or "")[:40] for a in agents.installable() if a.id != "claude"},
             "bundle": str(se.get("bundle") or "")[:80],
             # The agent's own sentence for a half that is down (no session
-            # account, no ttyd, a port taken), which the row's dead button
+            # account, no bb-tty in the bundle), which the row's dead button
             # repeats. Dropped once, and the button said only "runs none yet".
             "why": str(se.get("why") or "")[:120],
             # The node's own boot id, which a terminal's URL has to carry for
@@ -1794,8 +1900,6 @@ LOG_STREAMS = {
                "argv": ["tail", "-n", "{lines}", "{data}/runner.log"],
                "unit_argv": ["journalctl", "-u", "{unit}", "--no-pager",
                              "-n", "{lines}"]},
-    "terminal": {"what": "the terminal server's log", "store": "data",
-                 "argv": ["tail", "-n", "{lines}", "{data}/ttyd.log"]},
     # The node's nginx (R171), where the nginx tab put one: what each request
     # it routed met, which is what a session chasing a 502 on a route to its
     # container wants (R182). The container's name is the node's (nginx_for).
@@ -1847,6 +1951,12 @@ def node_session_net(principal, node_id, on):
         return {"error": "no such node"}
     if n["kind"] != "agent":
         return {"error": "only an agent node runs sessions"}
+    if own_machine(n) and not on:
+        # The wall (R90): on the controller's own machine a session's own
+        # network is what keeps it off the controller's loopback ports, and
+        # bb-session starts none without it.
+        return {"error": "this is the controller's own machine: its sessions run only in a network of their own, "
+                         "which is what keeps them off the controller's own ports"}
     conf = dict(n.get("config") or {})
     conf["session_net"] = bool(on)
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
@@ -1935,6 +2045,51 @@ def account_users_on(nid):
     return bool(n and (n.get("config") or {}).get("account_users")) and not host_only(nid)
 
 
+def node_token_seal(principal, node_id, on):
+    """Whether the coding agents' sign-ins are kept sealed on this node
+    (R126): the agent seals each with the account's public key and opens it
+    only for a terminal a person opened, so a copy of the node's disk opens
+    nothing. Needs accounts as their own users first (R125). An
+    administrator's; a dev feature until walked."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    if on and not unvetted_ok():
+        return {"error": "sealed sign-ins are a dev feature until walked on the dev pair: "
+                         "Offer dev features in Settings offers them"}
+    if on and not account_users_on(node_id):
+        return {"error": "sealed sign-ins need each account to be a user of its own there first: "
+                         "turn that on, then this"}
+    if on and not (can_seal and can_seal()):
+        return {"error": "sealed sign-ins need an install key, and this controller has none: "
+                         "one is made at its next start (Controller, Keys), then this"}
+    conf = dict(n.get("config") or {})
+    if on:
+        conf["token_seal"] = True
+    else:
+        conf.pop("token_seal", None)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-token-seal", {"on": bool(on)})
+    return {"ok": True, "on": bool(on)}
+
+
+def token_seal_on(nid):
+    n = node(nid)
+    return bool(n and (n.get("config") or {}).get("token_seal")) and account_users_on(nid)
+
+
+# Each account's public key for sealing on a node (R126): the server's,
+# made from the install key (tokenkeys.py). nid -> {uid: hex}, or {} where
+# the controller has no install key and so cannot ever open a seal.
+token_pubs = None
+# ...and how many of a node's seals are under a key before today's.
+token_stale = None
+# ...and whether there is an install key to make any of it from.
+can_seal = None
+
+
 def root_refused(n):
     """The sentence a node whose sessions may not ask for root refuses with,
     or "" when they may."""
@@ -1946,13 +2101,11 @@ def root_refused(n):
 
 def container_net_on(node_id):
     """Whether each project's containers on this node are kept to their own
-    network (R178): the config says, and a hosting-only node has it unless
-    switched off, since that is the node two web-facing projects share."""
-    n = node(node_id) or {}
-    conf = n.get("config") or {}
-    if "container_net" in conf:
-        return bool(conf.get("container_net"))
-    return bool(host_only(n))
+    network (R178): on unless the config switches it off, which is deprecated
+    in 0.8.0 and gone in 0.9.0 (the operator, 26 Oct: which projects reach
+    each other is their Reads, not a node's choice)."""
+    conf = (node(node_id) or {}).get("config") or {}
+    return bool(conf.get("container_net", True))
 
 
 def node_container_net(principal, node_id, on):
@@ -2007,8 +2160,12 @@ def node_ports_local(principal, node_id, on):
 
 
 def session_net_on(node_id):
-    """Whether that is set on a node."""
-    return bool(((node(node_id) or {}).get("config") or {}).get("session_net"))
+    """Whether each session on a node is kept to its own project's network
+    (R79): on unless the config switches it off, deprecated in 0.8.0 and gone
+    in 0.9.0 (the operator, 26 Oct); a hosting-only node runs no sessions."""
+    n = node(node_id) or {}
+    conf = n.get("config") or {}
+    return bool(conf.get("session_net", not host_only(n)))
 
 
 def session_net_nudge():
@@ -2018,7 +2175,7 @@ def session_net_nudge():
     for n in node_list():
         # ...and one keeping its containers apart (R178), whose map moves
         # with the same changes.
-        if n.get("kind") == "agent" and (((n.get("config") or {}).get("session_net")) or container_net_on(n["id"])):
+        if n.get("kind") == "agent" and (session_net_on(n["id"]) or container_net_on(n["id"])):
             ask_hello(n["id"])
 
 
@@ -2819,6 +2976,12 @@ def node_feature(principal, node_id, fid, op):
     if fid not in FEATURES or op not in ("install", "remove"):
         return {"error": f"no such feature verb: {op} {fid}"}
     name = FEATURE_NAMES[fid]
+    if op == "install" and fid == "vmhost" and own_machine(n):
+        # The controller's own machine (R90 step 14): VM host puts the job
+        # account in libvirt's group, which is root here, and root holds the
+        # controller's state, as docker-host would (node_update).
+        return {"error": f"{n['name']} is the controller's own machine, so it is no VM host: libvirt's group is root here, "
+                         "and the wall keeps the controller's state from the node's accounts"}
     rep = n.get("reported") or {}
     if n.get("kind") != "agent" or not rep.get("administers"):
         return {"error": f"{n['name']} was not provisioned as a managed node with its agent as root, so {name} cannot be "
@@ -3388,10 +3551,15 @@ def token_attention():
         out.append({"kind": "token-read", "node": n["name"], "id": n["id"], "at": last["at"],
                     "count": len(reads), "comm": last["comm"], "uid": last["uid"], "pid": last["pid"],
                     "path": last["path"], "account": last["account"]})
+    # ...and a node whose retired token was presented again (R135 step 4).
+    for n in node_list():
+        ru = (n.get("agent") or {}).get("token_reuse")
+        if isinstance(ru, dict) and ru.get("at"):
+            out.append({"kind": "token-reuse", "node": n["name"], "id": n["id"], "at": int(ru["at"])})
     return out
 
 
-def hello(nid, census, addr, version="", digest="", running=None, keep=None):
+def hello(nid, census, addr, version="", digest="", running=None, keep=None, rotates=False):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it: the
     transports, the poll window, the node's own capabilities (so it can
@@ -3471,6 +3639,10 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             "ports_local": ports_local_on(nid),
             # Each account a Unix user of its own there (R125).
             "account_users": account_users_on(nid),
+            # ...and its coding agents' sign-ins sealed there (R126), with
+            # each account's public key to seal them with.
+            "token_seal": token_seal_on(nid),
+            "token_pubs": (token_pubs(nid) if token_pubs and token_seal_on(nid) else {}),
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
@@ -3492,7 +3664,9 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             "session_net": session_net_for(nid),
             # The FTPS servers this node runs for its projects' file access
             # (R151): one per project, rooted at its tree.
-            "ftp": [] if host_only(nid) else ftp_for(nid)}
+            "ftp": [] if host_only(nid) else ftp_for(nid),
+            # Its next token, for an agent that rotates (R135 step 4).
+            **({"token": rotate_token(nid)} if rotates else {})}
 
 
 def store_merge(census, free, totals):
@@ -5646,6 +5820,10 @@ def verb(principal, req):
         # Each account a Unix user of its own there (R125).
         return node_account_users(principal, nid, req.get("on") is True)
 
+    def token_seal():
+        # Its coding agents' sign-ins sealed there (R126).
+        return node_token_seal(principal, nid, req.get("on") is True)
+
     def apply():
         return node_apply(principal, nid, field(req, "what"))
 
@@ -5725,13 +5903,6 @@ def verb(principal, req):
         # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
         return node_paths_set(principal, nid, field(req, "paths"))
 
-    def check_paths():
-        # Whether the two machines mean the same directory by the
-        # projects share (roadmap #13): a marker made here, looked for
-        # through the node's daemon. Off the poll, on purpose.
-        return ({"error": "no such node"} if not node(nid)
-                else devapp.check_paths(nid))
-
     def path_state():
         # What is at each path on the node before a store or a mount is
         # pointed there (R120): the page asks before it saves, so the
@@ -5806,7 +5977,7 @@ def verb(principal, req):
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net, "ports-local": ports_local,
-             "root-asks": root_asks, "account-users": account_users, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
+             "root-asks": root_asks, "account-users": account_users, "token-seal": token_seal, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
              "lockdown": lambda: node_lockdown(principal, nid),
@@ -5817,7 +5988,7 @@ def verb(principal, req):
              "storage": lambda: node_storage_measure(principal, nid),
              "sync-resume": sync_resume, "sync-clean": sync_clean, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
-             "paths": paths, "check-paths": check_paths, "path-state": path_state, "funnel": funnel,
+             "paths": paths, "path-state": path_state, "funnel": funnel,
              "update-agent": update_agent, "cache-clear": cache_clear,
              "exec": exec_, "test": test}
     if act not in verbs:
@@ -5943,7 +6114,7 @@ def _job_mine(j, mine):
     return bool(job_owner) and job_owner(j) in mine
 
 
-def jobs_view(jid, q, mine, system=None):
+def jobs_view(jid, q, mine, system=None, hidden=None):
     """The Jobs page's whole read surface, and a test's: one job with its log
     so far, or the recent ones narrowed by the query's node, project, type,
     active and n. `mine` is None for an administrator, or the projects this
@@ -5952,12 +6123,16 @@ def jobs_view(jid, q, mine, system=None):
     a store move) is an administrator's, with the same answer as a typo so
     the listing says nothing about what else is queued on the box. With
     `system` (a redactor), the node's own jobs are seen as well, through it:
-    the caller may read the controller's diagnostics, which list them. n counts
+    the caller may read the controller's diagnostics, which list them. A job
+    `hidden(job)` says is not this reader's (a schedule's run, to a session)
+    is not there at all, the same answer as a typo. n counts
     what this account sees, not the node's last n before the filter, which
     showed one job of twelve and read as history pruned (B321).
     (payload, status)."""
     def seen(j):
-        return _job_mine(j, mine) or (system is not None and not j.get("project"))
+        if hidden is not None and hidden(j):
+            return False
+        return mine is None or _job_mine(j, mine) or (system is not None and not j.get("project"))
 
     def scrub(v):
         # Every string inside, the shape kept: bb jobs and the Jobs tab read
@@ -5976,7 +6151,7 @@ def jobs_view(jid, q, mine, system=None):
         return {k: scrub(v) if k in ("log", "error", "label", "spec") else v for k, v in j.items()}
     if jid:
         j = job(jid)
-        if j and mine is not None and not seen(j):
+        if j and not seen(j):
             j = None
         return (shown(j), 200) if j else ({"error": "no such job"}, 404)
     try:
@@ -5993,7 +6168,7 @@ def jobs_view(jid, q, mine, system=None):
         project=q.get("project", [""])[0] or None,
         type=q.get("type", [""])[0] or None,
         active=q.get("active", [""])[0] == "1")
-    if mine is not None:
+    if mine is not None or hidden is not None:
         rows = [shown(j) for j in rows if seen(j)][:n]
     # The names of the nodes these rows run on, and for an account that
     # is not an administrator no other: the whole registry rode here
@@ -6018,6 +6193,11 @@ def tab_view(rows, admin):
             n["turns"] = turns_of(n)
             # Its last hour, for the charts on its page (R218 step 9).
             n["spark"] = spark_of(n["id"])
+            # Its sign-ins still sealed under the install key before a
+            # rotation (R126), for an administrator: what keeps the old one.
+            tk = (n.get("reported") or {}).get("tokseal")
+            if admin and tk and token_stale:
+                n["tokseal_stale"] = token_stale(n["id"], tk)
     import systems
     return {"nodes": rows, "agent": agent_shipped() if admin else {},
             "default": node_for() if admin else "",

@@ -41,8 +41,11 @@ runs.
    turn, a few minutes each on a large share and Trivy longest on its first
    run while it fetches its database, and says where it wrote its report.
    The Analysis page shows the findings on its next look.
-4. Run it weekly: the User Scripts plugin's Custom schedule (`0 4 * * 0`, Sundays at 4:00), or
-   a cron line elsewhere. Every run replaces the reports, and `bb findings
+4. Run it weekly: the Schedules page beside Jobs carries it as a built-in
+   schedule ([machines.md](machines.md#schedules)), off until you turn it on
+   with the node it runs on and its two paths, then Sundays at 4:00. The User
+   Scripts plugin's Custom schedule (`0 4 * * 0`) or a cron line elsewhere do
+   the same off BuilderBot. Every run replaces the reports, and `bb findings
    history` says what changed between them.
 
 `scan.sh semgrep` runs one of them; a scanner that fails leaves its last

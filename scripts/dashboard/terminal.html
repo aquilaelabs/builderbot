@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal</title>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<!--
+  One terminal on a page of its own (R133): a tab popped out of the dock
+  into its own window, and the Android app's session screen. The same
+  /termws socket the dock's tabs open, with the words this page was given
+  (?arg=, as many as the tab had), so the server decides whose and where
+  exactly as it does for a dock tab. To the server a type byte (0 keys, 1 a
+  resize as JSON cols/rows) and its body; from it the terminal's bytes. A
+  close says why, shown under the screen with Reconnect; a drop is opened
+  again when the page is back in view, and tmux redraws as it attaches.
+-->
+<style>
+:root{--ground:#2b2b2b;--ink:#d0d0d0;--dim:#9a9a9a;--line:#444;--btn:#3a3a3a}
+html,body{height:100%;margin:0;background:var(--ground);color:var(--ink);
+  font:14px/1.4 system-ui,sans-serif;overflow:hidden}
+body{display:flex;flex-direction:column}
+#screen{flex:1;min-height:0;padding:4px 0 0 6px}
+#end{display:flex;align-items:center;gap:12px;padding:8px 12px;border-top:1px solid var(--line)}
+#end[hidden]{display:none}
+#why{flex:1;color:var(--dim)}
+#end button{font:inherit;color:var(--ink);background:var(--btn);border:1px solid var(--line);
+  border-radius:6px;padding:6px 14px;min-height:36px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="screen"></div>
+<div id="end" hidden><span id="why"></span><button type="button" id="again">Reconnect</button></div>
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/addon-fit.js"></script>
+<script>
+"use strict";
+const words = new URLSearchParams(location.search).getAll("arg");
+const label = new URLSearchParams(location.search).get("label");
+if (label) document.title = label;
+const term = new Terminal({cursorBlink: true, fontSize: 14, scrollback: 5000,
+  fontFamily: 'ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace',
+  theme: {background: "#2b2b2b", foreground: "#d0d0d0"}});
+const fit = new FitAddon.FitAddon();
+term.loadAddon(fit);
+term.open(document.getElementById("screen"));
+const end = document.getElementById("end"), why = document.getElementById("why");
+let ws = null, ended = "";
+
+function send(kind, body){
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  const b = new Uint8Array(body.length + 1);
+  b[0] = kind; b.set(body, 1);
+  ws.send(b);
+}
+
+function size(){
+  try{ fit.fit(); }catch(e){ /* no size yet */ }
+  send(1, new TextEncoder().encode(JSON.stringify({cols: term.cols, rows: term.rows})));
+}
+
+function connect(){
+  try{ ws?.close(); }catch(e){ /* gone */ }
+  ended = ""; end.hidden = true;
+  term.reset();
+  try{ fit.fit(); }catch(e){ /* no size yet */ }
+  const q = new URLSearchParams();
+  for (const w of words) q.append("arg", w);
+  q.set("cols", term.cols); q.set("rows", term.rows);
+  const s = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/termws?${q}`);
+  s.binaryType = "arraybuffer";
+  ws = s;
+  s.onmessage = e => { if (ws === s) term.write(new Uint8Array(e.data)); };
+  s.onclose = e => {
+    if (ws !== s) return;
+    ended = e.reason || (e.code === 1006 ? "the connection dropped" : "the terminal ended");
+    why.textContent = ended;
+    end.hidden = false;
+  };
+  term.focus();
+}
+
+term.onData(d => send(0, new TextEncoder().encode(d)));
+term.onBinary(d => send(0, Uint8Array.from(d, c => c.charCodeAt(0) & 255)));
+new ResizeObserver(size).observe(document.getElementById("screen"));
+document.getElementById("again").onclick = connect;
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && ended === "the connection dropped") connect();
+});
+connect();
+</script>
+</body>
+</html>

@@ -1341,6 +1341,26 @@ def write_file(project, who=""):
     return {"ok": True, "path": FILE_PATH, "file": _file_state(project, rec)}, 200
 
 
+def render(req):
+    """bb design file --from FILE: docs/design-language.md from a record
+    given rather than the saved one, so a branch writes the file from its own
+    design without taking in what other branches saved to the notebook
+    (B227). Checked as a save is, and nothing is stored. (payload, status)."""
+    raw = req.get("pages") if isinstance(req.get("pages"), list) else []
+    bad = problems(req.get("language") or {}, raw)
+    if bad:
+        return {"error": "; ".join(bad), "problems": bad}, 400
+    lang = _clean_language(req.get("language") or {})
+    nxt = 1 + max([p["id"] for p in raw if isinstance(p, dict) and isinstance(p.get("id"), int)] + [0])
+    pages = []
+    for p in raw:
+        pid = p.get("id") if isinstance(p, dict) else None
+        if not isinstance(pid, int) or pid < 1:
+            pid, nxt = nxt, nxt + 1
+        pages.append(_clean_page(p, pid))
+    return {"text": file_text({"language": lang, "pages": pages})}, 200
+
+
 def verb(project, req, who, session):
     """POST /api/design. A person saves from the tab; a session saves the
     same record through `bb design save`, asked to put a design language
@@ -1377,6 +1397,8 @@ def verb(project, req, who, session):
         return save(project, req, who)
     if act == "write":
         return write_file(project, who)
+    if act == "render":
+        return render(req)
     return {"error": f"unknown action: {act}"}, 400
 
 

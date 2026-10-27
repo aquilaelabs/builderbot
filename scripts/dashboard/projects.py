@@ -40,6 +40,7 @@ import urllib.parse
 import zipfile
 from pathlib import Path
 
+import gitcreds
 import membership
 
 # Which git host a remote is on, and the two things a host can be asked that
@@ -64,14 +65,7 @@ import registry
 TOKEN_RE = re.compile(r"[A-Za-z0-9_.-]{8,255}")
 
 
-def _creds_dir():
-    d = STATE / "gitcreds"
-    d.mkdir(parents=True, exist_ok=True)
-    os.chmod(d, 0o700)
-    return d
-
-
-def write_token(project, token, host, scheme="https", user=""):
+def write_token(project, token, host, scheme="https", user="", uid=""):
     """Store one project's token for one host, and return the helper that
     reads it.
 
@@ -81,7 +75,6 @@ def write_token(project, token, host, scheme="https", user=""):
     required rather than defaulted; the username is a formality every host
     here accepts, and forges.cred_user picks the one this host wants.
     """
-    f = _creds_dir() / project
     # http is a real answer for a Gitea on somebody's own LAN, and git matches
     # the scheme as well as the host: a line written as https would be
     # ignored on an http remote, which is the same silent nothing as the wrong
@@ -91,34 +84,40 @@ def write_token(project, token, host, scheme="https", user=""):
     # Percent-encoded, the way git's own credential-store writes a line: it
     # decodes on the way back, and a token carrying a / or an @ written raw
     # would be read as part of the host, matching nothing.
+    # Kept by gitcreds, sealed under the install key where there is one
+    # (R135), and handed to git by its helper rather than git's own store.
     q = lambda x: urllib.parse.quote(x, safe="")  # noqa: E731
-    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(f"{scheme}://{q(user or 'oauth2')}:{q(token)}@{host}\n")
-    return f"store --file={f}"
+    line = f"{scheme}://{q(user or 'oauth2')}:{q(token)}@{host}"
+    # The person who gave it keeps it, in their own key store, and the
+    # project is linked to it (the operator, 27 Oct); with nobody, or no
+    # install key to seal their store with, it is the project's own.
+    if uid:
+        return gitcreds.keep_for(project, uid, line, user or "")
+    gitcreds.write_line(project, line)
+    return gitcreds.helper(project)
 
 
 def token_target(project):
     """The scheme and host a project's stored token was written for, or
     None: what an https remote has to be spelled with to use it."""
-    f = STATE / "gitcreds" / project
-    try:
-        line = f.read_text().strip().splitlines()[0]
-    except (OSError, IndexError):
-        return None
+    line = gitcreds.read_line(project)
     m = re.match(r"(https?)://[^@/]*@([A-Za-z0-9.:-]+)$", line)
     return {"scheme": m.group(1), "host": m.group(2)} if m else None
 
 
 def token_helper(project):
     """The helper line for a project that has a token, or "" if it has none."""
-    f = STATE / "gitcreds" / project
-    return f"store --file={f}" if f.is_file() else ""
+    return gitcreds.helper(project)
+
+
+def token_helpers(project, uid=""):
+    """The helpers for git work on the project, the acting account's own
+    first (R154), then the project's."""
+    return gitcreds.helpers(project, uid)
 
 
 def forget_token(project):
-    with contextlib.suppress(OSError):
-        (STATE / "gitcreds" / project).unlink()
+    gitcreds.forget(project)
 
 
 def unscope(dest):
@@ -248,6 +247,9 @@ def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
         PROJECT_NAME=project_name,
         STATE=Path(state), HOME=Path(home), write_json=write_json,
         after_create=after_create)
+    # The tokens' keeper, here for a caller with no server (a bb verb):
+    # where they are; the server adds the install key's seal (R135).
+    gitcreds.configure(state=state)
     # The peer library takes the same runner: it shells out to `ssh -G` to
     # resolve a deploy-key alias, and to nothing else.
     forges.configure(run=run, state=state, write_json=write_json)
@@ -273,6 +275,9 @@ def rename(req):
     # request that did would be asking to write a credential and delete it in
     # the same breath. The write is the intention worth honoring.
     clear = bool(req.get("clear_token")) and not token
+    # The project's git access linked to the asking account's own token for
+    # its remote's host (R154); `_uid` is the server's, never the page's.
+    link_mine = bool(req.get("link_account")) and not token and not clear
     # The same repository's new address, after its owner was renamed on the
     # host (set_address); "" leaves the remote where it points.
     address = _field(req, "address").strip()
@@ -290,7 +295,7 @@ def rename(req):
                          "digits, dots, dashes and underscores, no spaces"}, 400
     was = registry.label(old)
     renaming = bool(shown) and shown != was
-    if not renaming and not token and not auth and not clear and not address:
+    if not renaming and not token and not auth and not clear and not address and not link_mine:
         return {"error": f"{was} is already its name"}, 400
     moved, failed = [], []
     if renaming:
@@ -312,9 +317,22 @@ def rename(req):
         # ever points the remote at one.
         scheme = "http" if addr["scheme"] == "http" else "https"
         write_token(old, token, host, scheme,
-                    forges.cred_user(forge, host, token, scheme))
+                    forges.cred_user(forge, host, token, scheme), uid=str(req.get("_uid") or ""))
         _scope_to_token(src, token_helper(old))
         moved.append("its access token")
+    elif link_mine:
+        addr = forges.parse(origin_url(src))
+        if not addr:
+            return {"error": f"{was} has no remote to link your token to"}, 400
+        host = (forges.host_of(origin_url(src)) or addr["host"]).lower()
+        uid = str(req.get("_uid") or "")
+        fid = str(req.get("link_account") or "")
+        fg = gitcreds._accounts().forge_of(uid, fid) if uid and fid else None
+        if not fg or fg["host"] != host:
+            return {"error": f"that is not a {host} token in your key store"}, 400
+        gitcreds.link_account(old, uid, fid)
+        _scope_to_token(src, token_helper(old))
+        moved.append(f"its git access, your {host} token")
     elif clear:
         forget_token(old)
         unscope(src)
@@ -464,12 +482,11 @@ def scoped_to_token(dest, project):
     of having a token. Telling the two apart is what lets the dialog offer
     "disabled" as its own answer rather than as the absence of an answer.
     """
-    f = STATE / "gitcreds" / project
-    if not f.is_file():
+    if not gitcreds.path(project).is_file():
         return False
     r = run(["git", "-C", str(dest), "config", "--local",
              "--get-all", "credential.helper"], timeout=15)
-    return r["code"] == 0 and f"store --file={f}" in r["out"]
+    return r["code"] == 0 and gitcreds.names_helper(r["out"], project)
 
 
 def remote_auth(dest, project=""):
@@ -543,7 +560,10 @@ def auth_options(project, dest):
             "ssh": now == "ssh" or bool(_remembered_ssh(project)),
             # The deploy key made or pasted for it in these settings, if any:
             # its public half and where the host takes it.
-            "deploy": deploy_key_of(project, dest)}
+            "deploy": deploy_key_of(project, dest),
+            # ...or a person's own token, the project linked to their key
+            # store (R154): whose, and for which host.
+            "linked": dict(zip(("uid", "host"), gitcreds.linked_to(project), strict=True))}
 
 
 # ---- a project's own deploy key (the operator, 12 Oct) -----------------------
@@ -960,13 +980,18 @@ def trash_list():
         # somebody is looking for, and what a restore would put back.
         # Since R154 the directory is the project's own, never reused, and
         # goes back where it was; the name shown is the registry's.
+        # The project it was in (R138), and whether that one is still there
+        # to go back into, or a restore has to be told where.
+        was_in = registry.last_project(restore_dir(d.name))
         out.append({"name": d.name, "was": registry.label(d.name), "at": at,
-                    "taken": (WORKSPACE / _restore_dir(d.name)).exists()})
+                    "taken": (WORKSPACE / restore_dir(d.name)).exists(),
+                    "project": registry.label(was_in) if was_in else "",
+                    "project_key": was_in if registry.is_repos(was_in) else ""})
     out.sort(key=lambda e: -e["at"])
     return {"items": out}
 
 
-def _restore_dir(name):
+def restore_dir(name):
     """Where a directory in the bin goes back to: the directory it was.
     One deleted before ids (R154) and numbered then (X-2) was X, and goes
     back to X while X is free, its notebook being X's."""
@@ -984,7 +1009,7 @@ def trash_restore(req):
     src = _bin_path(name)
     if src is None:
         return {"error": "not something in the bin"}, 400
-    back = _restore_dir(name)
+    back = restore_dir(name)
     dest = WORKSPACE / back
     if dest.exists():
         return {"error": f"{back} exists again; move it first"}, 409
@@ -1331,7 +1356,7 @@ def create(req, env=None):
     _dest = dest
     cred_scheme = "http" if mode == "clone" and addr["scheme"] == "http" else "https"
     helper = (write_token(name, token, addr["host"], cred_scheme,
-                          forges.cred_user(forge, addr["host"], token, cred_scheme))
+                          forges.cred_user(forge, addr["host"], token, cred_scheme), uid=str(req.get("_uid") or ""))
               if mode == "clone" and token else "")
     if not _start("clone", name,
                   lambda: _clone(dest, key_url or url, helper, want_push)):
@@ -1725,7 +1750,7 @@ def link(req):
                 return {"error": f"{forge['name']} does not accept that "
                                  f"token"}, 400
         helper = write_token(name, token, host, addr["scheme"],
-                             user or forge["user"])
+                             user or forge["user"], uid=str(req.get("_uid") or ""))
         remote = f"{addr['scheme']}://{host}/{path}.git"
     elif keyname:
         match = next((k for k in agent_keys() if k["name"] == keyname), None)
@@ -1910,6 +1935,40 @@ def create_from_dialog(req, *, env, account, may_node):
     if code != 200 or not body.get("name"):
         return body, code
     name = body["name"]
+    # Every repository is in a project (R138): the one named (Add a
+    # repository on its card), which keeps its owner, node and dials, or
+    # else one made for it under its name, which it takes them from.
+    into = str(req.get("project") or "")
+    import repos
+    if into:
+        got = repos.add(into, name)
+        if got.get("error"):
+            body["note"] = f"{body.get('note') or 'ready'}; not put in {registry.label(into)}: {got['error']}"
+            into = ""
+    if not into and body.get("started"):
+        # A clone still running: its project is made when it lands and is
+        # first listed (the server's _place), so one that fails leaves no
+        # empty project behind; its owner and list come over then.
+        pass
+    elif not into:
+        made = repos.create(registry.label(name))
+        if made.get("error"):
+            made = repos.create(f"{registry.label(name)} ({registry.pid(name)})")
+        if made.get("ok"):
+            repos.add(made["key"], name)
+            body["project"] = made["key"]
+    else:
+        body["project"] = into
+        # The project's own: its owner, its node and the dials kept by
+        # project stay as they are; this repository's gates are its own.
+        if account:
+            take_on(account, name)
+        gate = req.get("gate")
+        if isinstance(gate, dict) and gate:
+            r = set_prefs(name, gate=gate)
+            if r.get("error"):
+                body["note"] = f"{body.get('note') or 'ready'}; gates not set: {r['error']}"
+        return body, code
     # Taken on by whoever made it (the operator, 24 Sep), before the
     # writes below: they ask whether this account may work on the
     # project, and an administrator's new one was not on their list, so
@@ -2016,7 +2075,7 @@ def load_project_pins(uid, fresh=False):
     if fresh and str(uid or "") not in d:
         return []
     v = d.get(str(uid or ""), d.get("*"))
-    return None if v is None else sorted(v)
+    return None if v is None else sorted({_key(x) for x in v})
 
 
 def save_project_pins(uid, names):
@@ -2034,11 +2093,8 @@ def pin(uid, name, on, fresh=False):
     one: until then there is no entry, which means "all of them", and
     saving a single removal would have read as "only this one is pinned".
     (payload, status)."""
-    try:
-        here = {d.name for d in WORKSPACE.iterdir()
-                if d.is_dir() and not d.name.startswith(".")}
-    except OSError:
-        here = set()
+    here = _projects_here()
+    name = _key(name)
     if name not in here:
         return {"error": f"unknown project: {name}"}, 400
     with lock:
@@ -2063,6 +2119,35 @@ def pin(uid, name, on, fresh=False):
 
 GROUP_MAX = 40
 MARK_FILES = {"group": "project-groups.json", "color": "project-colors.json"}
+# repos.key_of, handed over by the server (R138): pins, groups, colors,
+# locks and archives are a project's, kept by its key, and a repository
+# named is asked about through its project. Unset, every name is its own.
+key_of = None
+
+
+def _key(name):
+    return key_of(str(name or "")) if key_of else str(name or "")
+
+
+def _keyed(d):
+    """A {name: value} store by project key: an entry written under a
+    repository's name before that repository was put in a project (an
+    import, a clone) counts for the project, the project's own entry first."""
+    out = {}
+    for k in sorted(d, key=lambda k: _key(k) != k):
+        out.setdefault(_key(k), d[k])
+    return out
+
+
+def _projects_here():
+    """Every project a mark may be put on: each project's key (R138), and
+    each repository folder where there are none yet."""
+    keys = set(registry.repos_keys())
+    try:
+        here = {_key(d.name) for d in WORKSPACE.iterdir() if d.is_dir() and not d.name.startswith(".")}
+    except OSError:
+        here = set()
+    return keys | here
 
 
 def _marks(kind):
@@ -2074,7 +2159,7 @@ def _marks(kind):
 
 
 def _clean_marks(v):
-    return {k: x for k, x in (v or {}).items() if isinstance(k, str) and isinstance(x, str) and x}
+    return _keyed({k: x for k, x in (v or {}).items() if isinstance(k, str) and isinstance(x, str) and x})
 
 
 def load_marks(kind, uid, start=None):
@@ -2091,7 +2176,8 @@ def set_mark(kind, uid, name, value, start=None):
     """Set one project's mark of a kind for one account, or take it off with
     an empty value; the first one written keeps `start` beside it, so the
     rest are not lost. (payload, status)."""
-    if not name or name not in {d.name for d in WORKSPACE.iterdir() if d.is_dir() and not d.name.startswith(".")}:
+    name = _key(name)
+    if not name or name not in _projects_here():
         return {"error": f"unknown project: {name}"}, 400
     with lock:
         d = _marks(kind)
@@ -2193,6 +2279,33 @@ def _names(f):
         return []
 
 
+def rekey(old, new):
+    """Each person's pin, group and color and the archive and lock kept
+    under `old` (a repository, before it was put in a project) kept under
+    its project `new` instead (R138), as migration 0010 moves them."""
+    with lock:
+        pins = _load_pins()
+        if any(old in (v or []) for v in pins.values()):
+            write_json(_pins_file(), {u: sorted({new if x == old else x for x in (v or [])}) for u, v in pins.items()})
+        for kind in MARK_FILES:
+            d = _marks(kind)
+            if any(isinstance(v, dict) and old in v for v in d.values()):
+                for v in d.values():
+                    if isinstance(v, dict) and old in v:
+                        v.setdefault(new, v.pop(old))
+                write_json(STATE / MARK_FILES[kind], d)
+        arch = _names(_archived_file())
+        if old in arch:
+            write_json(_archived_file(), sorted({new if x == old else x for x in arch}))
+        try:
+            locks = json.loads(_locks_file().read_text())
+        except (OSError, ValueError):
+            locks = {}
+        if isinstance(locks, dict) and old in locks:
+            locks.setdefault(new, locks.pop(old))
+            write_json(_locks_file(), locks)
+
+
 def load_locks():
     """{name: {by, admin}}: every locked project and whose lock it is."""
     try:
@@ -2201,12 +2314,12 @@ def load_locks():
         return {}
     if not isinstance(v, dict):
         return {}
-    return {k: {"by": str(r.get("by") or ""), "admin": bool(r.get("admin"))}
-            for k, r in v.items() if isinstance(k, str) and isinstance(r, dict)}
+    return _keyed({k: {"by": str(r.get("by") or ""), "admin": bool(r.get("admin"))}
+                   for k, r in v.items() if isinstance(k, str) and isinstance(r, dict)})
 
 
 def load_archived():
-    return _names(_archived_file())
+    return sorted({_key(x) for x in _names(_archived_file())})
 
 
 # What a locked project refuses, in one place: every write and every session
@@ -2222,6 +2335,7 @@ HELD_REFUSAL = ("{name} is locked by an administrator: nobody starts a session "
 def locked_out(name, uid):
     """The refusal for a write into a locked project by `uid`, or None: an
     owner's lock never holds the owner, an administrator's holds everybody."""
+    name = _key(name)
     rec = load_locks().get(name or "")
     if not rec:
         return None
@@ -2234,10 +2348,7 @@ def locked_out(name, uid):
 
 
 def _here(name):
-    try:
-        return name in {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
-    except OSError:
-        return False
+    return _key(name) in _projects_here()
 
 
 def app_flags(name, uid):
@@ -2246,7 +2357,7 @@ def app_flags(name, uid):
     Files API, which carry neither otherwise. `locked_why` is the refusal
     when the lock holds this account out, "" when it does not."""
     held = locked_out(name, uid)
-    return {"archived": name in set(load_archived()), "locked": name in load_locks(),
+    return {"archived": _key(name) in set(load_archived()), "locked": _key(name) in load_locks(),
             "locked_why": (held or {}).get("error", "")}
 
 
@@ -2256,6 +2367,7 @@ def lock_verb(name, on, by="", admin=False):
     end, which sees every node's. (payload, status)."""
     if not _here(name):
         return {"error": f"unknown project: {name}"}, 400
+    name = _key(name)
     with lock:
         locks = load_locks()
         if on:
@@ -2274,6 +2386,7 @@ def archive_verb(name, on):
     out of sight, and nothing else. (payload, status)."""
     if not _here(name):
         return {"error": f"unknown project: {name}"}, 400
+    name = _key(name)
     with lock:
         names = set(load_archived())
         names.add(name) if on else names.discard(name)
@@ -2302,10 +2415,7 @@ def auth_answer(name):
 def _stored_token(project):
     """The token this project's credential file holds, decoded, or "". Read
     for the host's API in auth_test and never sent anywhere else."""
-    try:
-        line = (STATE / "gitcreds" / project).read_text().strip().splitlines()[0]
-    except (OSError, IndexError):
-        return ""
+    line = gitcreds.read_line(project)
     m = re.match(r"https?://[^:@/]*:([^@]*)@", line)
     return urllib.parse.unquote(m.group(1)) if m else ""
 

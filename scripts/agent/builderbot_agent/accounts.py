@@ -21,7 +21,7 @@ import re
 import subprocess
 import time
 
-from .base import ROOT_BUNDLE_DIR, SESSION, SESSION_BIN, log
+from .base import ROOT_BUNDLE_DIR, SESSION, SESSION_BIN, SHARE, log
 from .tokenwatch import TokenWatch
 
 GROUP = "bbu"
@@ -101,6 +101,7 @@ class AccountsMixin:
                     self._move_home(home, pw)
                 if os.lstat(home).st_uid == pw.pw_uid:
                     moved += 1
+                    self._own_share(name, pw)
                     # Its token files held at 600, and who else opens one
                     # said (R125 step 6).
                     self.token_watch().watch(home, pw)
@@ -127,6 +128,7 @@ class AccountsMixin:
                 left += 1
                 continue
             self._move_home(home, sa_pw)
+            self._own_share(name, sa_pw)
         return left
 
     def _account_group(self):
@@ -160,7 +162,26 @@ class AccountsMixin:
         """The accounts with a session still on the session account's tmux,
         whose homes wait: moving one under it would stop its next write."""
         out = self._tmux_as(self.session_account(), ["list-sessions", "-F", "#{session_name}"]) or ""
-        return {n.split("~", 1)[0] for n in out.split() if "~" in n}
+        return {m.group(1) for m in (re.match(r"^(u_[0-9a-f]{8})~", n) for n in out.split()) if m}
+
+    def _own_share(self, account, pw):
+        """The account's folder of conversations in the share (the link its
+        ~/.claude/projects is, lib/common.sh's claude_projects_link) its
+        user's too, made where it is missing: on a node's own disk (a synced
+        copy) the session account's 0700 folder was one the account's user
+        could not write, so its conversations stayed in its home and the
+        controller listed none (R125, the dev pair's walk of 24 Oct). On a
+        share squashed to one owner the change is refused and not needed:
+        the server takes the write as that owner."""
+        root = os.path.join(SHARE, ".claude")
+        if not os.path.isdir(root):
+            return
+        d = os.path.join(root, account)
+        with contextlib.suppress(OSError):
+            if not os.path.isdir(d):
+                os.makedirs(os.path.join(d, "projects"), mode=0o700)
+            if os.lstat(d).st_uid != pw.pw_uid:
+                self._move_home(d, pw)
 
     def _move_home(self, home, pw):
         """The home and everything in it to the account's user, 700 at the
@@ -176,7 +197,7 @@ class AccountsMixin:
 
     def tty_env_write(self):
         """The environment a terminal starts with, for bb-session tty: what
-        the ttyds get (session_env), less what is the account's own."""
+        a terminal gets (session_env), less what is the account's own."""
         if not self.account_users_on():
             return
         env = {}

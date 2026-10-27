@@ -16,6 +16,7 @@ given. Built-in roles are not edited: copy one into a role of your own.
 The operator, 5 Oct: the permission settings were too inconsistent, and a
 person should be given a group of permissions.
 """
+import contextlib
 import json
 import re
 import threading
@@ -80,6 +81,9 @@ AREAS = (
     ("nodes", "Nodes", "global", "the Nodes page", "configure nodes, and what a project's sessions reach"),
     ("toolchains", "Toolchains", "global", "the Toolchains page", "install and remove"),
     ("jobs", "Jobs", "global", "the Jobs page", "run a command on a node"),
+    # Scheduled scripts (R117): an administrator's own cron, given to no
+    # other role unless somebody says so.
+    ("schedules", "Schedules", "global", "the Schedules page and its runs", "add, change and run schedules"),
     ("runner", "CI runner", "global", "the runner tab", "install and configure runners"),
     ("accounts", "Accounts and roles", "global", "the Users and Roles pages", "add accounts, give roles"),
     ("newprojects", "New projects", "global", "the nodes a project may be made on", "make a project, and own it"),
@@ -113,6 +117,7 @@ CAP_AREA = {
     "git-auth": ("gitauth", "write"), "docker-write": ("containers", "write"),
     "terminal": ("terminal", "write"),
     "node": ("nodes", "write"), "toolchains-write": ("toolchains", "write"), "jobs": ("jobs", "write"),
+    "schedules": ("schedules", "write"), "schedules-read": ("schedules", "read"),
     "runner": ("runner", "write"),
     "command-pin": ("controller", "write"), "create": ("newprojects", "write"),
     "admin": ("accounts", "write"), "debug": ("controller", "write"),
@@ -141,9 +146,20 @@ BUILTIN = {
 OWNER_PERMS = {a: "write" for a in PROJECT_AREAS}
 
 
+# registry.label, handed over by the server (R138): a project's name as a
+# person reads it, which its owner role is named for. Unset, the name given.
+label_of = None
+
+
 def owner_role_name(project):
     """The role a project's owner holds on it: PROJECT_owner, in the letters a
-    role's name may use."""
+    role's name may use. Named for the project as a person reads it
+    (alpha_owner, as before projects), never its key: an owner role is the
+    same rights on whichever project it is given, so two projects of one
+    name sharing it give nobody anything more."""
+    if label_of:
+        with contextlib.suppress(Exception):
+            project = label_of(project) or project
     base = re.sub(r"[^A-Za-z0-9 ._-]", "-", str(project))[:33] or "project"
     if not base[0].isalpha():
         base = "p" + base[:32]
@@ -376,11 +392,25 @@ def roles_of(u):
     return rs
 
 
+# repos.key_of, handed over by the server (R138): a project's roles are kept
+# by project, and a repository is asked about through its project's.
+home_of = None
+
+
 def project_roles_of(u, project):
-    """The roles an account was given on `project` alone (R152)."""
+    """The roles an account was given on `project` alone (R152), a
+    repository's being its project's (R138)."""
     pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
-    got = pr.get(str(project)) if project is not None else None
-    return [str(r) for r in got] if isinstance(got, list) else []
+    if project is None:
+        return []
+    if not home_of:
+        got = pr.get(str(project))
+        return [str(r) for r in got] if isinstance(got, list) else []
+    # Each entry by its project's key, so one given as a repository's name
+    # before the repository was put in a project counts for that project.
+    key = home_of(str(project))
+    return list(dict.fromkeys(str(r) for k, rs in pr.items() if isinstance(rs, list) and home_of(str(k)) == key
+                              for r in rs))
 
 
 def level_of(u, area, project=None, on_project=None, node=None, everywhere=False, instance=None):

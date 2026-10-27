@@ -233,6 +233,15 @@ def look(project):
             # says nothing about the code (BuilderBot's android app run,
             # stopped by its successor, read as red on the first look).
             verdict = {}
+            # ...and a check that passed since on a release (a tag's run of
+            # the same workflow, the commit main was at) is passing again:
+            # a workflow that runs on main only when its own files change
+            # kept a failure from weeks before on the bell for good.
+            passed = {}
+            for r in runs:
+                if r["status"] == "completed" and r["conclusion"] == "success" \
+                        and (r["branch"] == main or r.get("event") == "release"):
+                    passed[r["name"]] = max(passed.get(r["name"], ""), r["at"])
             for r in runs:
                 if r["status"] != "completed" or (main and r["branch"] != main):
                     continue
@@ -245,7 +254,7 @@ def look(project):
             for r in verdict.values():
                 if newest is None or r["at"] > newest["at"]:
                     newest = r
-                if r["conclusion"] != "success":
+                if r["conclusion"] != "success" and passed.get(r["name"], "") <= r["at"]:
                     found.append({"kind": "run", "sev": "bad", "where": f"run {r['id']}",
                                   "text": f"The {r['name']} check {ended(r['conclusion'])} on {r['branch']}"
                                           f" ({_when(r['at'])}). A session can read why with "
@@ -382,11 +391,15 @@ def _cached(project):
 
 
 def red(projects):
-    """[{project, text, id}] for the projects whose main branch's newest
-    run failed, for the bell; drawn while true, nothing to dismiss."""
+    """[{project, text, id, key}] for the projects whose main branch's
+    newest run failed, for the bell: drawn while true, and put away by its
+    key (the run) until another run fails (bellseen)."""
     out = []
     for p in projects:
         for f in _cached(p).get("findings") or []:
             if f.get("sev") == "bad":
-                out.append({"project": p, "text": f["text"], "id": f.get("where", ""), "url": f.get("url", "")})
+                out.append({"kind": "ci", "project": p, "text": f["text"], "id": f.get("where", ""),
+                            # One word: the page sends a row's keys joined by
+                            # spaces, and "run N" was two (B331).
+                            "url": f.get("url", ""), "key": f"ci:{p}@{''.join(str(f.get('where', '')).split())}"})
     return out

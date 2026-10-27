@@ -2,7 +2,7 @@
 // BuilderBot's controller as the extension speaks to it: sign in as the
 // person, then every call carries their own cookie and nothing wider. What
 // they may do is decided by the server on every request (the Files API's
-// gate, the terminal relay's); this file only carries the answers back.
+// gate, the terminal's); this file only carries the answers back.
 const http = require('http');
 const https = require('https');
 const ws = require('./ws');
@@ -113,21 +113,13 @@ class Client {
     return j;
   }
 
-  // A session's terminal: the dashboard's own relay at /term, so the same
-  // checks decide whose terminal it is and whether it may be typed into.
-  async terminal(arg) {
-    const q = `?arg=${encodeURIComponent(arg)}`;
-    const tok = await request(this.base, `/term/token${q}`, { headers: this.headers(), rejectUnauthorized: this.tls });
-    let token = '';
-    if (tok.status === 200) {
-      try { token = JSON.parse(tok.body.toString()).token || ''; } catch { token = ''; }
-    } else if (tok.status >= 400) {
-      throw new Refused(tok.status, tok.body.toString().replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
-        || `the terminal was refused (${tok.status})`);
-    }
-    const url = this.base.replace(/^http/, 'ws') + `/term/ws${q}`;
-    const sock = await ws.connect(url, { headers: this.headers(), protocols: ['tty'], rejectUnauthorized: this.tls });
-    return { sock, token };
+  // A session's terminal: the dashboard's own at /termws (R133), so the same
+  // checks decide whose terminal it is and whether it may be typed into. A
+  // refusal is the socket closing with why.
+  async terminal(arg, cols, rows) {
+    const q = `?arg=${encodeURIComponent(arg)}&cols=${cols | 0}&rows=${rows | 0}`;
+    const url = this.base.replace(/^http/, 'ws') + `/termws${q}`;
+    return ws.connect(url, { headers: this.headers(), rejectUnauthorized: this.tls });
   }
 }
 

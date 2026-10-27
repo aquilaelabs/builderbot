@@ -17,10 +17,15 @@ takes no toolchains, and has nothing any section here configures, so with
 nothing enrolled the page says so and offers the one thing there is to do.
 (It does keep a node record of its own, which is how a share it mounts is
 recognized as the same store a node mounts; that is plumbing, not a node on
-the page.) The page shows one node, picked in its bar beside **Create
+the page.) A controller installed bare metal can be a node of itself
+([install.md](install.md#bare-metal)): its machine is then an ordinary row
+here, marked **this machine**, offered in a project's node pickers as such
+and in no container picker, its session network always on, and the Doctor
+says whether the wall between its sessions and the controller holds. The
+page shows one node, picked in its bar beside **Create
 sandbox VM** and **Enroll node**: a header with its state, and where it dials in from, which is the address of its
 last hello, so a node whose address moves is followed within a minute, its
-terminals rebound onto the new address by its agent and the session-ports
+screen relay rebound onto the new address by its agent and the session-port
 rule on the node rewritten if the controller's own address is what moved,
 and its agent (with
 **Update agent** when this container ships a newer one, busy until the node
@@ -87,17 +92,17 @@ pick per node: no "this one builds, that one deploys". A project names one
 node in its settings and its containers, builds, tests, CI and
 emulation all go there, so three projects on three VMs stay apart and three
 projects on one VM share it. **Its sessions too** (roadmap #24,
-docs/nodes.md §19): a node provisioned with a session account keeps two
-ttyds up beside the agent, running bb-tty from the bb the controller ships,
-so a session on a project bound to it works *on* that machine, with its
+docs/nodes.md §19): a node provisioned with a session account runs its
+terminals in the agent's screen relay, each a pty running bb-tty from the bb
+the controller ships, so a session on a project bound to it works *on* that machine, with its
 toolchains, in the copy of the project its agent keeps at `/workspace` in
 step with this container's (a synced copy, the one way a node holds its
 projects: nothing mounts the projects share on a node). The node's census
-says whether that half is up (`session`: ports, account, which agents the
-account has) and how far each copy is; `bb roadmap`, `bb bug`, `bb version` and the other verbs
+says whether that half is up (`session`: the screen relay's port, account,
+which agents the account has) and how far each copy is; `bb roadmap`, `bb bug`, `bb version` and the other verbs
 whose state is this container's are relayed back here over the API with the
-session's own token. The terminal proxy sends a bound project's session to
-that node when its census says the half is up and the project's copy is there, and
+session's own token. The controller carries a bound project's session to
+that node's screen relay when its census says the half is up and the project's copy is there, and
 refuses with the reason (on the project's Start agent and in the terminal) when
 the node cannot take one, rather than starting it on the wrong machine. A
 project with **no** node has no session at all: this container carries no
@@ -285,7 +290,8 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
 
 - **Logs**: how long logs are kept, and the downloads (see [Logs](#logs)).
 - **BuilderBot bug reports**: what sessions and people reported about
-  BuilderBot itself, and **Clear reports**.
+  BuilderBot itself, each with its delete, **Download diagnostics** and
+  **Clear reports**.
 - **Idle sessions**: the idle rule, which ends any agent's session after N minutes
   with nothing typed or written, here and on every node, where the node
   itself enforces it so the rule holds while this container is down.
@@ -312,12 +318,11 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   the owner signs in and is answered, from the page, the phone app or a
   session of theirs. Everybody else is told BuilderBot is down for
   maintenance, by the sign-in page, the API (503) and the app, and stays
-  signed in for when it ends. Nodes are not accounts and keep running, and a
-  band under the header reminds the owner it is on.
-- **Debugging**: one switch, *Debug mode*, and a *Debug settings* button
-  beside it that is live only while the switch is saved on: behind the button
-  are the settings a developer of BuilderBot reaches for and nobody else
-  should meet.
+  signed in for when it ends. Turning it on ends everybody else's coding
+  agent sessions and terminals, here and on the nodes; it asks first, listing
+  each with whose it is, its project, whether it is working or waiting, and
+  its node. Nodes are not accounts and keep running, and a band under the
+  header reminds the owner it is on.
 - **Reset BuilderBot**, last.
 
 The page says plainly what still comes from the environment and why (the
@@ -367,7 +372,7 @@ Which upgrades are supported, and how to roll one back, is
 
 ## Logs
 
-**One file per container start, per stream.** All four rotate together on
+**One file per container start, per stream.** All three rotate together on
 boot, so a generation number means the same boot in every one of them, and
 `.1` is the previous run of the container.
 
@@ -376,7 +381,6 @@ boot, so a generation number means the same boot in every one of them, and
 | Startup, the runner supervisor, and every later warning | `config/logs/builderbot.log` |
 | The dashboard server, in full | `config/logs/dashboard.log` |
 | Every compose call the Docker manager made | `config/logs/docker.log` |
-| The terminal server | `config/logs/ttyd.log` |
 | Runner diagnostics | `_diag/` under the runner's directory on its node (`/var/lib/builderbot/runner/<slot>/_work/`) |
 | CI job output | GitHub → Actions → the run |
 | Emulator | `home/.android/emulator.log` |
@@ -402,18 +406,19 @@ through every value the keyboard passes, so typing `30` over `300` would have
 pruned at `3` in passing. Pressing it without changing anything is a
 crop-now, which is the other thing you sometimes want. The same section
 downloads this session's logs as one file, or everything kept as a `.tar.gz`,
-or the controller's **diagnostics** as one JSON file (what `bb diag` prints,
-the reports sessions made about BuilderBot among it, redacted and on the audit
-trail), and **Clear** deletes the kept generations, the archived CI runs and
-every finished job's log without touching the ones being written. **Clear
-reports**, in the BuilderBot bug reports section, deletes every report sessions made about
-BuilderBot, after a confirmation that says how many; the numbers carry on, so a bug that names report #3 never meets a
-second one, and a session cannot clear them.
+and **Clear** deletes the kept generations, the archived CI runs and every
+finished job's log without touching the ones being written. The BuilderBot bug
+reports section lists every report made about BuilderBot, each with its own
+delete, and under them **Download diagnostics**, the controller's
+diagnostics as one file (what `bb diag` prints, with the reports left in the
+list, redacted and on the audit trail), so a report can be taken out before
+the diagnostics go to somebody. **Clear reports** deletes every one after a
+confirmation that says how many; the numbers carry on, so a bug that names
+report #3 never meets a second one. Whoever reads Controller settings reads
+the reports there; a session reads them only where its project is granted
+the diagnostics, and never deletes one.
 
-Two deliberate omissions from *this session*. `ttyd.log` is the terminal
-server's connection churn (22,000 lines against 4KB of boot log on this box),
-so it is in the archive and not in the thing you open to read what happened.
-And the **CI logs stay where they are**, under `config/ci-logs/<repo>/`, one
+One deliberate omission from *this session*: the **CI logs stay where they are**, under `config/ci-logs/<repo>/`, one
 file per run: a CI run is not a container session, it belongs to a workflow
 run and spans whatever session was up. They are already grouped the way you
 would want and `bb ci-log` reads them by run id; they are in the archive and
@@ -442,4 +447,34 @@ also what `bb diag` needs; a node's machine logs (`bb logs --node NAME`) are
 a grant of their own. The log is the only copy:
 a node buffers it and posts it here, and keeps nothing. `/api/v1/healthz` answers without a credential with
 the queue's counts, and `/metrics` answers with one in Prometheus text.
+
+## Schedules
+
+**Schedules**, beside Jobs in its group, is an administrator's own cron, as
+Unraid's User Scripts are: each schedule a name, when it runs (hourly, daily,
+weekly, monthly, or cron's five fields under Custom, said in words: `0 4 * * 0`
+is Sundays at 4:00), where it runs, and a script. It runs on the controller,
+as the controller's account with everything that account can read, or on a
+node as the node's jobs account; on a node provisioned as a sandbox it may
+run as root instead, as `bb root run` does. A run is stopped after a day.
+New schedule and a row's Edit open the same dialog. Every run is a job, its
+log on the Jobs page and linked from the schedule's row with how it ended;
+**Run now** runs one once, whatever its timetable says. One run of a schedule
+goes at a time: one still going when the next falls due is said on the bell
+and that run skipped, and a run the controller was down for is run once when
+it is back, said as late, never once per run it missed. A failed run is on the
+bell too, with its log.
+
+The scripts are kept in the controller's state and never on the share, and
+are a person's alone: the page is its own area of a role (Schedules), which
+administrators hold and no other role is given unless somebody says so, and
+a session's token is refused at it whatever it asks; bb has no verb for
+schedules, and a schedule's runs are not among the jobs a session reads.
+
+The static analysis scan ([scanners.md](scanners.md)) is built in: off until
+it is turned on, which asks for the node it runs on and where that node sees
+the projects and the reports folder the controller reads at `/reports`; then
+Sundays at 4:00 until its timetable is changed. On the container edition that
+is a node with Docker that sees the share; on a bare-metal install, the
+controller's own node.
 

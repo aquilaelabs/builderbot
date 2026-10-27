@@ -8,7 +8,6 @@ by hunting for a boundary in an appended stream:
     builderbot.log   the boot, and every warning or error after it
     dashboard.log    the dashboard server's own output, in full
     docker.log       every compose call the Docker manager made
-    ttyd.log         the terminal server
 
 The boot log is the one to read first, and the reason is the third line above:
 it used to end when the hooks finished, so anything that went wrong an hour
@@ -46,7 +45,7 @@ _lock = threading.Lock()
 # The streams this container writes. Anything else there is somebody else's and is
 # listed but never pruned or cleared: /logs may be a share the operator put
 # other things in.
-STREAMS = ("builderbot.log", "dashboard.log", "docker.log", "ttyd.log")
+STREAMS = ("builderbot.log", "dashboard.log", "docker.log")
 
 DEFAULT_DAYS = 30
 # A ceiling on generations, whatever the day count says. Rotation is per start,
@@ -62,7 +61,7 @@ def configure(*, state, write_json):
 # Set by server.py: every finished job's log in the node store, for Clear.
 clear_job_logs = None
 # The live generation's ceiling. Rotation is per start, so a controller up
-# for months wrote one dashboard.log and one ttyd.log for all of it; past
+# for months wrote one dashboard.log for all of it; past
 # this the sweep copies the file to its next generation and empties it in
 # place (copy-truncate: the writers hold it open with O_APPEND, so they go
 # on writing at the new end).
@@ -254,11 +253,8 @@ def sweep():
 
 # --- taking a copy ---------------------------------------------------------
 
-# In the archive but not in the session bundle. ttyd.log is the terminal
-# server's connection churn (22,000 lines and 1.5MB on this box against 4KB
-# of boot log), so bundling it means the thing somebody opens to read what
-# happened is 99% libwebsockets tagging its own sockets.
-SESSION_STREAMS = tuple(n for n in STREAMS if n != "ttyd.log")
+# What a session's bundle carries: every stream.
+SESSION_STREAMS = STREAMS
 
 
 def session_bytes():
@@ -325,7 +321,7 @@ def archive_bytes():
 # they were not in the archive and no retention reached them. Both now do.
 
 def ci_dir():
-    return Path(os.environ.get("BB_CI_LOG_DIR", "/config/ci-logs"))
+    return Path(os.environ.get("BB_CI_LOG_DIR") or f"{os.environ.get('DASHBOARD_STATE') or '/config'}/ci-logs")
 
 
 def _ci_entries():

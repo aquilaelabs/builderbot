@@ -142,3 +142,36 @@ class HelperFresh(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PowerEndsSessions(unittest.TestCase):
+    """B372: a reboot or a power-off ends every session on the machine first
+    and says so to the controller before the machine goes, so none is left
+    open on the record."""
+    def test_sessions_end_before_the_machine_goes(self):
+        import agentpkg
+        agent = agentpkg.load("builderbot_agent_power")
+        cp = sys.modules[agent.Agent.__module__.rsplit(".", 1)[0] + ".configplane"]
+        a = object.__new__(agent.Agent)
+        order = []
+        a.sessions_now = lambda: [{"name": "u_12345678~claude-alpha"}, {"name": "sh-alpha"}]
+        a.kill_sessions = lambda names, why="": order.append(("end", tuple(names), why))
+        a.hello_at = 5.0
+        a.hello_again = lambda why: order.append(("hello", why))
+        said = []
+
+        class Job:
+            def say(self, x):
+                said.append(x)
+        was = (cp.os.geteuid, cp.subprocess.Popen)
+        cp.os.geteuid = lambda: 0
+        cp.subprocess.Popen = lambda argv, **kw: order.append(("power", argv[-2:]))
+        try:
+            got = a._apply_power(Job(), "poweroff")
+        finally:
+            cp.os.geteuid, cp.subprocess.Popen = was
+        self.assertEqual(got, ("succeeded", 0))
+        self.assertEqual([o[0] for o in order], ["end", "hello", "power"])
+        self.assertEqual(order[0][1], ("u_12345678~claude-alpha", "sh-alpha"))
+        self.assertIn("before a power off", order[0][2])
+        self.assertTrue(any("ending 2 sessions first" in x for x in said))

@@ -200,14 +200,14 @@ class WorkspaceMixin:
                 for x in [d] + [os.path.join(d, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
-        # Fetched by a job while the ttyds run an older copy: leave the
-        # restart to the loop's session_check, which owns self.ttyd; this
-        # may be a job's thread. Without this the sessions ran whatever
-        # bundle the ttyds started on until the next hello, up to ten
+        # Fetched by a job while the terminals open an older copy: leave the
+        # change to the loop's session_check, which owns the session half;
+        # this may be a job's thread. Without this the terminals opened
+        # whatever bundle they were set up on until the next hello, up to ten
         # minutes, and a bb-tty that old looked for a transcript where the
         # bundle before it kept them.
         self.prune_bundles(bbdir, into)
-        if self.ttyd and self.session_bundle and digest != self.session_bundle:
+        if self.session_up and self.session_bundle and digest != self.session_bundle:
             self.session_stale = into
         self.session_digest = digest
         return into
@@ -299,7 +299,7 @@ class WorkspaceMixin:
         looked at, one per commit that touches bb. Small each, unbounded
         together.
 
-        What has to survive: the newest, which the ttyds run and `current`
+        What has to survive: the newest, which the terminals run and `current`
         names, and the three newest, which versions() probes for an SDK
         inventory. A shell holds `current` on its PATH, never a digest, so
         nothing older is run again.

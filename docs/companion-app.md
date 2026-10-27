@@ -37,8 +37,8 @@ which resumes the same conversation) and **End**; one that is not offers
 and effort it starts on; a new project's first session goes through its
 brief first. A node you have not signed in to that agent on says so: a
 sign-in is each node's own, made on the dashboard's Agents page. Open and
-Start are the session's terminal, the dashboard's own page opened in the
-app; closing it leaves the session running. Above the rows, each session
+Start are the session's terminal, the dashboard's own terminal page
+(`/terminal`) opened in the app; closing it leaves the session running. Above the rows, each session
 of yours has a box to say something to it, which goes into that session's
 input and nowhere else (`/api/say`). Under them are your conversations on
 the project, named for their agent: **Read the end** shows what was said

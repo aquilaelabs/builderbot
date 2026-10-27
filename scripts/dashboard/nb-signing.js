@@ -22,13 +22,13 @@ const fileB64 = f => new Promise((ok, bad) => {
 });
 
 // How the controller keeps a project's keys (R111 step 2), the Signing
-// view's status line: sealed under the install's signing secret, kept open
+// view's status line: sealed under the install's key, kept open
 // for want of one, or sealed under one this controller does not have.
 const AT_REST = {
-  sealed: "sealed on the controller under the install's signing secret",
-  mixed: "being sealed under the install's signing secret",
-  open: `<span class="warn">kept unsealed on the controller: SIGNING_SECRET in the secrets folder seals them</span>`,
-  locked: `<span class="bad">sealed under a signing secret this controller does not have: set it as it was, or import each key's backup</span>`,
+  sealed: "sealed on the controller under the install's key",
+  mixed: "being sealed under the install's key",
+  open: `<span class="warn">kept unsealed on the controller: the install has no key yet, and the next start makes one and seals them</span>`,
+  locked: `<span class="bad">sealed under an install key this controller does not have: set it as it was, or import each key's backup</span>`,
 };
 
 function nbSigningView({$, nb, project}){
@@ -49,7 +49,7 @@ function nbSigningView({$, nb, project}){
     let j;
     try{
       j = await (await postJSON("/api/signing", {action: "list", project})).json();
-    }catch(e){ viewGlance($("sgHint"), [], esc("signing: " + e)); return; }
+    }catch(e){ viewGlance($("sgHint"), [], esc("signing: " + e), "", "bad"); return; }
     if (mine !== gen) return;
     if (j.error){
       // The server's own words, where the keys would be (R255 step 4).
@@ -211,25 +211,31 @@ function nbSigningView({$, nb, project}){
           ${(r.signed || []).slice(0, 3).map(x => `<div class="sub">${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.tag)}</a>` : esc(x.tag)}:
             ${esc((x.files || []).join(", "))} signed with ${esc(x.key)} <span class="dim">${esc(signFp(x.cert))}, ${esc(ago(x.at))}</span></div>`).join("")}
           <div class="sub dim">The release's APK is built unsigned by its workflow and signed on ${r.node ? `the project's node, ${esc(r.node)}` : "the project's node"}, never in CI: no keystore or password is a GitHub secret.</div>
-          ${why ? "" : `<div class="rnsignbar actbar"><button type="button" class="link" id="sgRelGo">Look for unsigned APKs now</button></div>`}
+          ${why ? "" : r.looking
+            ? `<div class="rnsignbar actbar"><button type="button" class="link" id="sgRelGo" disabled>Looking for unsigned APKs…</button></div>`
+            : `<div class="rnsignbar actbar"><button type="button" class="link" id="sgRelGo">Look for unsigned APKs now</button></div>`}
         </div>`;
-    const relStatus = !r.wanted ? "off" : r.why ? "blocked" : (r.failed || []).length ? "failed"
+    const relStatus = !r.wanted ? "off" : r.why ? "blocked" : r.looking ? "looking" : (r.failed || []).length ? "failed"
       : (r.keys || []).map(k => k.key).filter((k, i, a) => a.indexOf(k) === i).join(", ") || "ready";
     const keyStatus = key => {
       const s = keys[key] || {}, n = SIGN_ROUTES.filter(([r]) => s[r]).length;
       return n ? `${n} of 2` : "none";
     };
     $("sgBox").innerHTML =
-      (why ? `<div class="field"><div class="hint">${esc(why)}</div></div>` : "")
-      // A key is checked and made on the project's node, never here: what
-      // keeps that node from it is said in its words (B232).
-      + (!tool && !why ? `<div class="field"><div class="hint" id="sgNode">${esc(nodeWhy)}</div></div>` : "")
-      + (!held && !why ? `<div class="field"><div class="hint nbempty">No keys yet: bb sign signs this project's builds on its node with the keys kept here, and a session never sees one.</div></div>` : "")
-      + docSection("signing", "lock", "Backup password", locked ? "set" : "none", lock, {cls: locked ? "" : "warn"})
       // The keys are the project's, as many as it has: big chips pick one,
-      // the small pills are for the view's own sections (R122).
-      + chipBar(names.map(key => ({key, label: key === "default" ? "Default key" : key, count: null})),
-                names.includes(keyPick) ? keyPick : "", "data-sgkey")
+      // the small pills are for the view's own sections (R122). The chips
+      // come first and the view's own boxes under them (the operator, 26 Oct).
+      chipBar(names.map(key => ({key, label: key === "default" ? "Default key" : key, count: null})),
+              names.includes(keyPick) ? keyPick : "", "data-sgkey")
+      // What holds it back, in the notice voice; what it knows, as a head's
+      // facts (the operator, 25 Oct: no loose words at a view's top). A key is
+      // checked and made on the project's node, never here: what keeps that
+      // node from it is said in its words (B232).
+      + (why ? `<div class="field"><div class="notice warn">${esc(why)}</div></div>` : "")
+      + (why ? "" : pageHead({cls: "sghead", facts: [
+          ["Node", tool ? "" : nodeWhy, {cls: "sgnode"}],
+          ["Keys", held ? "" : "none yet: bb sign signs this project's builds on its node with the keys kept here, and a session never sees one"]]}))
+      + docSection("signing", "lock", "Backup password", locked ? "set" : "none", lock, {cls: locked ? "" : "warn"})
       + names.filter(key => !keyPick || !names.includes(keyPick) || key === keyPick)
           .map(key => docSection("signing", `key:${key}`, key === "default" ? "Default key" : `Key: ${key}`,
           keyStatus(key), `<div class="field">${SIGN_ROUTES.map(([route, word, about]) => slot(key, route, word, about)).join("")}</div>`
@@ -309,7 +315,10 @@ function nbSigningView({$, nb, project}){
       const j = await (await postJSON("/api/signing", {action: "release-sign", project})).json();
       if (j.error) return notify(j.error, true);
       notify(`${projLabel(project)}: looking for unsigned release APKs to sign`);
-      setTimeout(loadSigning, 4000);
+      // The answer says the look is going; its end moves the releasesign
+      // token, which re-reads this view.
+      if (j.release) rel = j.release;
+      drawSigning();
     });
     const lo = $("sgLockOpen");
     if (lo) lo.onclick = () => { lockOpen = !lockOpen; drawSigning(); };

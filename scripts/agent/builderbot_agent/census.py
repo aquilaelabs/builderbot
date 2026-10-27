@@ -29,7 +29,7 @@ from .base import (
 )
 from .stores import _stores, noexec, store_dirs, tc_root
 from .backends import _have, net_backend, pkg_backend
-from .toolchains import _toolchains, sdk_images, sdk_versions, sysdeps_now
+from .toolchains import _toolchains, sdk_images, sdk_verified, sdk_versions, sysdeps_now
 from .gpu import (
     _gpu_card,
     _gpu_container,
@@ -329,6 +329,8 @@ def census(state):
         # The same report the controller makes for itself, so one store is
         # not described two ways (roadmap #19).
         "toolchain_versions": sdk_versions(state),
+        # ...and how each was checked when it was installed (R137).
+        "toolchain_verified": sdk_verified(state),
         "services": services_now(),
         # The session half (roadmap #24), as this process is holding it.
         "session": session_now(state),

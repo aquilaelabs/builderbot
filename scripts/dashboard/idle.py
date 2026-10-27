@@ -20,6 +20,7 @@ is the thing that costs, and the thing that was found still running the
 morning after.
 """
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -82,8 +83,9 @@ def payload():
 def is_claude(name):
     """An agent's session by name: claude-<project>, or an account's
     u_xxxx~claude-<project>, for every live agent in the table (R95), so
-    the idle rule ends a Codex session as it ends a Claude one."""
-    return agents.is_session(name.split("~", 1)[1] if "~" in name else name)
+    the idle rule ends a Codex session as it ends a Claude one. Only the
+    account's prefix is taken off: a second slot's name ends in ~2 (R143)."""
+    return agents.is_session(re.sub(r"^u_[0-9a-f]{8}~", "", name))
 
 
 def idle_sessions(list_output, limit_min, now=None):

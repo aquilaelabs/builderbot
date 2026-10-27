@@ -31,7 +31,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/meta` | prefix | `_get_meta` | GET /api/meta. |  |
 | GET | `/api/welcome` | prefix | `_get_welcome` | GET /api/welcome: BuilderBot's own changelog for the welcome panel (changelog.welcome), and where this account last looked. |  |
 | GET | `/api/source?` | prefix | `_get_source` | GET /api/source: the code base as a zip, from the Artifacts view (artifacts.source_download). |  |
-| GET | `/logs/download` | prefix | `_get_logs_download` | GET /logs/download: the container's own log, every project's traffic in it, or the diagnostics whole (logs.download). | refused: controller-read, refused: debug |
+| GET | `/logs/download` | prefix | `_get_logs_download` | GET /logs/download: the container's own log, every project's traffic in it, or the diagnostics whole (logs.download): Controller settings' to read, the diagnostics with them, since they hold the bug reports a person read | refused: controller-read |
 | GET | `/api/phone/wait` | prefix | `_get_phone_wait` | GET /api/phone/wait?since=T: the companion app's live connection (R125). |  |
 | GET | `/api/phone` | prefix | `_get_phone` | GET /api/phone. |  |
 | GET | `/api/toolchains` | prefix | `_get_toolchains` | GET /api/toolchains. |  |
@@ -41,6 +41,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/users` | prefix | `_get_users` | GET /api/users. |  |
 | GET | `/api/nginx` | prefix | `_get_nginx` | The nginx page (nginxproxy.view): every node's nginx, for an account that may read the Nodes page; never a session's. |  |
 | GET | `/api/storage` | prefix | `_get_storage` | The Storage page (storage.view, R169): every node this account holds the Storage area on, what its disks hold, by project where the account sees the project and as one line otherwise. |  |
+| GET | `/api/schedules` | exact | `_get_schedules` | GET /api/schedules (R117): every schedule, its words, its next run and its last run's state, and the nodes it may run on. |  |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes page's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
 | GET | `/api/home` | prefix | `_get_home` | GET /api/home: home.read, the overview's numbers (R218 step 5). |  |
@@ -77,6 +78,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/v1/tty-grant` | exact | `_tty_grant` | Whose terminal a node's bb-tty is about to start, answered here (B166). |  |
 | POST | `/api/lock` | prefix | `_lock` | Lock or unlock a project (R119), never a session's. |  |
 | POST | `/api/archive` | prefix | `_archive` | Archive or unarchive a project (R119): out of sight, and nothing else; the project's owner or an administrator, never a session. |  |
+| POST | `/api/repos` | prefix | `_repos` | Projects and their repositories (R138): create (a project with a name and nothing in it), rename, move (a repository into another project) with move-check (what it changes, asked first: the nodes, containers and VMs it t | refused: create |
 | POST | `/api/project-pin` | prefix | `_project_pin` | Pin or unpin a project: whether the sidebar card shows it (projects.pin). |  |
 | POST | `/api/project-group` | prefix | `_project_group` | Put a project in one of this account's groups, take it out, or rename a group (projects.set_group, rename_group), or delete one (delete_group): a label for the Projects page, nothing more. |  |
 | POST | `/api/apps` | prefix | `_apps` | POST /api/apps: look at the release again now (apps.check_now). | refused: controller |
@@ -88,11 +90,10 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/vms` | exact | `_vms` | POST /api/vms (R91): new, start, stop, restart, remove, snapshot, revert, snapshot-rm. | refused: vms-write, refused: node |
 | POST | `/api/dockerctl` | prefix | `_docker_ctl` | Start, stop, restart or read the log of ONE container on a node. | refused: docker-write |
 | POST | `/api/rename` | prefix | `_rename` | Rename a project: projects.rename. | refused: rename |
-| POST | `/api/trash-restore` | prefix | `_trash_restore` |  | refused: trash |
+| POST | `/api/trash-restore` | prefix | `_trash_restore` | A repository out of the bin, back into the project it was in, or into the one named (`project`) where that one is gone or another is wanted (R138); one from before projects into a project of its own. | refused: trash |
 | POST | `/api/trash-purge` | prefix | `_trash_purge` | Delete a trashed project for good. | refused: trash |
 | POST | `/api/trash` | prefix | `_trash` | Move a project out of the workspace: projects.trash, once project_busy says nothing holds it (the same guards as renaming). | refused: trash |
 | POST | `/api/session` | prefix | `_session` | Kill a session. |  |
-| POST | `/api/keys` | prefix | `_keys` | Press one key from the tables in a session of the caller's: macros.press, here or on its node. |  |
 | POST | `/api/send` | prefix | `_send` | Type a macro's command lines into a shell session of the caller's and press Enter: macros.send. |  |
 | POST | `/api/say` | prefix | `_say` | Type a message into a CLAUDE session and press Enter. |  |
 | POST | `/api/chat` | prefix | `_chat` | Read a conversation, send into one, or mark one seen: chat.converse. |  |
@@ -102,6 +103,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove, check and update on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
 | POST | `/api/images` | exact | `_images` | Check for updates on the Containers page (imagecheck.py, R195): every container's registry images on one node, or all, asked now. | refused: docker-write |
 | POST | `/api/storage` | exact | `_storage` | Measure now on the Storage page: a node's disks walked at once (nodes.node_storage_measure). |  |
+| POST | `/api/schedules` | exact | `_schedules` | POST /api/schedules (R117): save (add or change, turning one on or off among them), remove, or run now. |  |
 | POST | `/api/pin` | prefix | `_pin` | Pin or unpin a command: macros.pin. | refused: command-pin |
 | POST | `/api/reset` | exact | `_reset` | POST /api/reset: start over at onboarding (settings.reset), and the dashboard re-executes itself so the next page is Create the owner. | refused: controller |
 | POST | `/api/create` | prefix | `_create` | New project: a fresh local repo, a clone or a link, and what the dialog chose besides (projects.create_from_dialog). | refused: create |
@@ -137,6 +139,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |
 | POST | `/api/signing` | exact | `_signing` | A project's Android signing keys (signing.verb, R106). | refused: signing |
+| POST | `/api/keys` | exact | `_keys` | POST /api/keys (R154): the install key and everything kept under it for an administrator (status, show, saved, change), and the account's own key for its sign-ins on the nodes (mine, change-mine). | refused: controller |
 | POST | `/api/members` | exact | `_members` | A project's owner, whether it is invite only, its people and its invitations, and an invitee's answer (membership.verb). |  |
 | POST | `/api/signing-backup` | exact | `_post_signing_backup` | POST /api/signing-backup: the same, with the project's backup password in the body, never in a URL that lands in a log. |  |
 | POST | `/api/artifacts` | prefix | `_artifacts` | Push an .xpi from a project's dist/ to the paired phone, install an .apk there, or stop a push: phone.artifact_verb, behind the gates here. |  |

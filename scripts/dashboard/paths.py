@@ -126,7 +126,13 @@ def set_path(name, path):
         if name in _moving and not _moving[name].get("error"):
             return {"error": f"{name} is still moving to {_moving[name]['to']}"}
     try:
+        made = not want.exists()
         want.mkdir(parents=True, exist_ok=True)
+        # The controller's alone (R90 step 15): a session or job account on
+        # the same machine, beside a controller installed bare metal, enters
+        # nothing it keeps, wherever on the machine it is kept.
+        if made or (want.stat().st_uid == os.getuid() and not any(want.iterdir())):
+            os.chmod(want, 0o700)
     except OSError as e:
         return {"error": f"cannot make {want}: {e.strerror or e}"}
     if not os.access(want, os.W_OK):

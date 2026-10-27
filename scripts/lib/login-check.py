@@ -111,14 +111,14 @@ def plan_now():
 
 
 def others():
-    """Codex's and Copilot's sign-ins here, each said to the controller,
+    """Codex's, Copilot's and Grok's sign-ins here, each said to the controller,
     signed in or not. login-list.py holds the one reading of their files."""
     spec = importlib.util.spec_from_file_location(
         "login_list", os.path.join(os.path.dirname(os.path.abspath(__file__)), "login-list.py"))
     ll = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ll)
     home = os.environ.get("HOME") or ""
-    for agent, read in (("codex", ll.codex_of), ("copilot", ll.copilot_of)):
+    for agent, read in (("codex", ll.codex_of), ("copilot", ll.copilot_of), ("grok", ll.grok_of)):
         got = read(home) if home else None
         if got and got.get("error"):
             # Unread is not signed out (B236): nothing is said for it.

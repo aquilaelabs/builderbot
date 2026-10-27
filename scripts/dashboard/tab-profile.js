@@ -59,6 +59,8 @@ const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
   twofactor: "an authenticator app, passkeys and recovery codes",
+  mykey: "your key, the tokens you gave repositories, and Purge",
+  terminal: "the size, cursor and colors of your terminals",
   devices: "your apps, to disconnect",
 };
 // The apps signed in as this account on its own machines (R272 step 1), the
@@ -86,26 +88,34 @@ function renderProfileInto(i){
     // A page of settings as it lands (skSplit): the sections listed, Who
     // you are picked beside them with its fields.
     const fld = label => skField(label, 18);
-    d.setBar(`<span class="barfacts">${skv(16)}</span>`);
+    d.setBar("");
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
-      ["Password", PROFILE_SAYS.password]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
+      ["Password", PROFILE_SAYS.password]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join(""),
+      pageHead({title: GHOST, facts: [["Roles", GHOST], ["Owner of", GHOST]]})));
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};
   const val = k => profileDraft[k] ?? p[k] ?? "";
   const dirty = PROFILE_FIELDS.some(([k]) => (profileDraft[k] ?? p[k] ?? "") !== (p[k] ?? ""));
   const wm = profile.what_may || {roles: [], may: []};
-  // Who this is, in the facts voice (R218 step 31): the name, the roles and
-  // each agent's account, one mono line.
-  d.setBar(`<span class="barfacts">${esc(profile.name)} · ${esc(wm.roles.length ? wm.roles.join(", ") : "no role")}${
-    agentLogins(profile) ? ` · ${agentLogins(profile)}` : ""}</span>`);
+  // Who this is, as a node's head says what it is (the operator, 25 Oct:
+  // a run-on mono line could not be read): the name, the roles as facts,
+  // the projects owned on a line of their own, each agent's account its own.
+  d.setBar("");
+  const owns = wm.roles.filter(r => /^Owner of /.test(r)).map(r => r.slice(9));
+  const held = wm.roles.filter(r => !/^Owner of /.test(r));
+  const by = {...(profile.claude ? {claude: profile.claude} : {}), ...(profile.agents || {})};
+  const head = pageHead({title: profile.name, facts: [
+    ["Roles", held.length ? held.join(", ") : "no role"],
+    ["Owner of", owns.join(", ")],
+    ...AGENTS.filter(a => by[a.id]).map(a => [a.name, by[a.id]])]});
   // A page of settings (page-docs.js splitSects, the operator, 16 Oct):
   // each block a section, the sections a list beside the one picked; who
   // you are first, since that is what is changed here most.
   const sec = (id, title, inner) => docSection("profile", id, title, "",
     `<div class="row stack2"><div class="grow">${inner}</div></div>`);
-  d.list.innerHTML = `
+  d.list.innerHTML = `${head}
     ${sec("you", "Who you are", `
         <div class="logset">
           ${PROFILE_FIELDS.map(([k, label, hint, type]) => `
@@ -147,12 +157,90 @@ function renderProfileInto(i){
           </div>
         </div>`)}
     ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
+    ${keyMineSection()}
+    ${sec("terminal", "Your terminal", profileTerminal())}
     ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   wireProfile(d.el);
   wireDeviceOut(d.el);
   wireTwoFactor(d.el);
+  wireKeyMine(d.el);
+  wireTerminalLook(d.el);
+}
+
+// Your terminal (R133 step 10): its text size, cursor and colors, yours in
+// every tab of BuilderBot's own terminal, applied as picked as the gear's
+// appearance is. A project's own colors, in your settings for it, win there.
+const PF_TERM = [
+  ["size", "Text size", [9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24].map(n => [String(n), `${n}px`]), "13"],
+  ["cursor", "Cursor", [["bar", "bar"], ["block", "block"], ["underline", "underline"]], "block"],
+  // Default first, as the page's own Default leads its schemes; the rest A to Z.
+  ["scheme", "Colors", [["default", "default"], ["amber", "amber"], ["blue", "blue"], ["dashboard", "the dashboard's scheme"],
+                        ["green", "green"], ["light", "light"], ["red", "red"]], "default"],
+];
+function profileTerminal(){
+  const look = state?.term_look || {}, scheme = look.scheme || "default";
+  const mine = (look.colors || {})[scheme] || {}, pal = termPalette(scheme, mine);
+  // Under the preset, each of its colors with its own swatch (the operator,
+  // 25 Oct): a change is this person's to that preset, Reset takes it away.
+  const swatch = ([k, name]) => `<label class="tcolor${k in mine ? " mine" : ""}">
+      <input type="color" data-pftcolor="${k}" value="${esc(pal[k] || "#000000")}" aria-label="${esc(name)}">
+      <span>${esc(name)}</span></label>`;
+  return `<div class="logset">${PF_TERM.map(([k, label, opts, dflt]) => `
+      <div class="logdays setrow col ctlrow">
+        ${lbl("pfTerm_" + k, label)}
+        <select id="pfTerm_${k}" data-pfterm="${k}">${opts.map(([v, w]) =>
+          `<option value="${v}"${String(look[k] ?? dflt) === v ? " selected" : ""}>${esc(w)}</option>`).join("")}</select>
+      </div>`).join("")}
+      <div class="logdays setrow ctlrow"><label class="ndcap"><input type="checkbox" data-pfterm="blink"${look.blink === false ? "" : " checked"}> The cursor blinks</label></div>
+    </div>
+    <div class="field">${lbl("pfTermColors", `The colors of ${PF_TERM[2][2].find(([v]) => v === scheme)?.[1] || scheme}`)}
+      <div class="tcolors" id="pfTermColors">${TERM_COLOR_NAMES.map(swatch).join("")}</div>
+      ${Object.keys(mine).length ? `<div class="actbar"><span class="state">${Object.keys(mine).length} of them yours</span>
+        <button type="button" data-pftreset>Reset to the preset</button></div>` : ""}</div>
+    <div class="field">${lbl("pfTermPreview", "How it looks")}<div id="pfTermPreview">${termPreview(pal, look)}</div></div>`;
+}
+// The look as the fields say it now, the colors changed of the scheme picked.
+function termLookPicked(root){
+  const term = {}, was = state?.term_look || {};
+  root.querySelectorAll("[data-pfterm]").forEach(x => {
+    const k = x.dataset.pfterm;
+    term[k] = k === "blink" ? x.checked : k === "size" ? Number(x.value) : x.value;
+  });
+  const colors = {...(was.colors || {})}, base = termPalette(term.scheme, {});
+  const mine = {};
+  root.querySelectorAll("[data-pftcolor]").forEach(i => { if (i.value.toLowerCase() !== String(base[i.dataset.pftcolor]).toLowerCase()) mine[i.dataset.pftcolor] = i.value; });
+  // The swatches are the scheme's that was showing: a new scheme brings its own.
+  if (term.scheme === (was.scheme || "default")){
+    if (Object.keys(mine).length) colors[term.scheme] = mine; else delete colors[term.scheme];
+  }
+  term.colors = colors;
+  return term;
+}
+function wireTerminalLook(root){
+  const save = async term => {
+    try{
+      const j = await (await postJSON("/api/users", {action: "prefs", prefs: {term}})).json();
+      if (j.error) return notify(j.error, true);
+    }catch(e){ return notify("could not reach the controller: " + failWords(e), true); }
+    refresh();
+  };
+  const preview = () => {
+    const t = termLookPicked(root), box = root.querySelector("#pfTermPreview");
+    if (box) box.innerHTML = termPreview(termPalette(t.scheme, t.colors[t.scheme]), t);
+  };
+  root.querySelectorAll("[data-pfterm]").forEach(el => el.onchange = () => { preview(); save(termLookPicked(root)); });
+  // A swatch redraws the preview as it is dragged and saves when it is let go.
+  root.querySelectorAll("[data-pftcolor]").forEach(el => {
+    el.oninput = preview;
+    el.onchange = () => save(termLookPicked(root));
+  });
+  root.querySelectorAll("[data-pftreset]").forEach(b => b.onclick = () => {
+    const t = termLookPicked(root);
+    delete t.colors[t.scheme];
+    save(t);
+  });
 }
 
 // Disconnect: asked, then that device signed out; the app finds its token

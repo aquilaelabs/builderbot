@@ -33,6 +33,10 @@ jobs:
 """
 
 
+# Runs a test adds after main's failure (a release's run of the same check).
+LATER = []
+
+
 class Forge(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -60,7 +64,7 @@ class Forge(BaseHTTPRequestHandler):
                 {"id": 12, "name": "Android CI", "head_branch": "claude/x", "status": "completed",
                  "conclusion": "success", "created_at": "2026-10-03T01:00:00Z"},
                 {"id": 11, "name": "Android CI", "head_branch": "main", "status": "completed",
-                 "conclusion": "failure", "created_at": "2026-10-03T00:44:51Z"}]})
+                 "conclusion": "failure", "created_at": "2026-10-03T00:44:51Z"}] + LATER})
         if p.startswith("/repos/o/app/actions/runs/11/jobs"):
             return self.answer({"jobs": [{"id": 111, "name": "build"}]})
         if p == "/repos/o/app/check-runs/111/annotations":
@@ -117,6 +121,29 @@ class Look(unittest.TestCase):
         self.assertEqual(ciwatch.read("app")["run"]["id"], 11)
         self.assertEqual([r["project"] for r in ciwatch.red(["app"])], ["app"])
         self.assertFalse(ciwatch.due("app"))
+
+    def test_a_release_that_passed_the_check_since_ends_main_s_red(self):
+        # A workflow that runs on main only when its own files change kept a
+        # failure from weeks before on the bell for good: the release's run
+        # of the same check, passing since, says it passes again.
+        self.addCleanup(LATER.clear)
+        LATER.append({"id": 14, "name": "Android CI", "head_branch": "v0.7.0", "event": "release",
+                      "status": "completed", "conclusion": "success", "created_at": "2026-10-04T10:00:00Z"})
+        rec = ciwatch.look("app")
+        self.assertFalse([f for f in rec["findings"] if f["kind"] == "run"])
+        self.assertEqual(ciwatch.red(["app"]), [])
+
+    def test_a_red_row_is_put_away_until_another_run_fails(self):
+        import bellseen
+        ciwatch.look("app")
+        rows = ciwatch.red(["app"])
+        self.assertEqual(rows[0]["key"], "ci:app@run11")
+        bellseen.configure(state=self.tmp, write_json=lambda p, d: Path(p).write_text(json.dumps(d)))
+        # As the page sends it: a row's keys joined by spaces, split on them
+        # (B331: "run 11" was two keys, and neither the row's).
+        bellseen.dismiss("u_00000001", rows[0]["key"].split(" "))
+        self.assertEqual(bellseen.filter_rows("u_00000001", rows)[0], [])
+        self.assertEqual(len(bellseen.filter_rows("u_00000002", rows)[0]), 1, "one account's, not everybody's")
 
     def test_a_finding_carries_its_fix_and_a_press_writes_only_that_line(self):
         # R117 step 4: the label and an action a major behind are one press.

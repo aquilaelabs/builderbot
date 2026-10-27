@@ -1,9 +1,10 @@
-"""A VM's screen for the dock (R99): a small websocket server on the
-session address's SCREEN_PORT that relays one connection to one of this
-machine's VMs' VNC, which libvirt listens for on the loopback alone.
+"""The node's one port for the controller's sockets: BuilderBot's own
+terminals (R133, term.py) at /term, and a VM's screen for the dock (R99),
+relaying one connection to one of this machine's VMs' VNC, which libvirt
+listens for on the loopback alone.
 
-The controller is the only caller: the port is opened to it alone, beside
-the terminals' (sessions' firewall check), and each request carries the
+The controller is the only caller: the port is opened to it alone (the
+sessions' firewall check), and each request carries the
 controller's signature over the VM and the minute, keyed with the hash of
 this node's own token, which both ends hold and nothing else does. The
 browser's noVNC speaks RFB over it; nothing here reads what passes.
@@ -11,7 +12,6 @@ browser's noVNC speaks RFB over it; nothing here reads what passes.
 import base64
 import hashlib
 import hmac
-import os
 import re
 import select
 import socket
@@ -20,11 +20,12 @@ import threading
 import time
 import urllib.parse
 
-from .base import _run, log, log_once
+from . import term
+from .base import SCREEN_PORT, _run, log, log_once
 from .vms import DOMAIN_RE, VIRSH
 
-SCREEN_PORT = 7684
 SKEW_S = 120
+PREV_KEY_S = 300
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
@@ -40,13 +41,15 @@ def sign(key, domain, when):
 
 
 def signed(key, domain, when, sig, now=None):
-    """Whether the signature is the controller's, for this VM, this minute."""
+    """Whether the signature is the controller's, for this VM, this minute.
+    `key` may be several, the current and the one before a rotation."""
     try:
         when = int(when)
     except (TypeError, ValueError):
         return False
     now = time.time() if now is None else now
-    return abs(now - when) <= SKEW_S and hmac.compare_digest(sign(key, domain, when), str(sig or ""))
+    keys = key if isinstance(key, list) else [key]
+    return abs(now - when) <= SKEW_S and any(hmac.compare_digest(sign(k, domain, when), str(sig or "")) for k in keys)
 
 
 def vnc_port(domain):
@@ -93,7 +96,11 @@ class _Frames:
                 return out
             mask = b[i:i + 4] if masked else b"\0\0\0\0"
             i += 4 if masked else 0
-            data = bytes(c ^ mask[k % 4] for k, c in enumerate(b[i:i + n]))
+            # Unmasked whole: the mask repeated over the payload, one XOR of
+            # two integers, rather than a byte at a time.
+            body = b[i:i + n]
+            key = (mask * (n // 4 + 1))[:n]
+            data = (int.from_bytes(body, "big") ^ int.from_bytes(key, "big")).to_bytes(n, "big") if n else b""
             self.buf = b[i + n:]
             out.append((op, data))
 
@@ -103,7 +110,43 @@ def _refuse(conn, code, why):
     conn.sendall(f"HTTP/1.1 {code} Refused\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body)
 
 
-def serve_one(conn, key):
+def _accept(conn, hdr):
+    """The websocket handshake's answer."""
+    # SHA-1 because RFC 6455 says so: the accept key is a handshake, not a secret.
+    accept = base64.b64encode(hashlib.sha1((hdr.get("sec-websocket-key", "") + WS_GUID).encode()).digest()).decode()  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+    proto = "binary" if "binary" in hdr.get("sec-websocket-protocol", "") else ""
+    conn.settimeout(None)
+    conn.sendall(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                  f"Sec-WebSocket-Accept: {accept}\r\n"
+                  + (f"Sec-WebSocket-Protocol: {proto}\r\n" if proto else "") + "\r\n").encode())
+
+
+def serve_term(conn, key, hdr, q, kinds):
+    """A terminal (R133): checked as the controller signed it, then its
+    kind's program in a pty, joined to the socket (term.relay)."""
+    blob = (q.get("a") or [""])[0]
+    if not term.signed(key, blob, (q.get("t") or [""])[0], (q.get("s") or [""])[0]):
+        return _refuse(conn, 403, "not signed by this node's controller")
+    spec = term.unpack(blob)
+    if spec is None:
+        return _refuse(conn, 400, "not a terminal")
+    ks = kinds() or {}
+    how = ks.get(spec["kind"])
+    if not how:
+        return _refuse(conn, 409, "this node's terminals are not up")
+    # The account's sealed sign-ins, opened for its session before the
+    # program starts (R126). One that cannot be opened leaves the terminal
+    # to start as it is: its agent then says it is not signed in here.
+    if spec.get("tk") and spec["kind"] in ("rw", "ro") and callable(ks.get("_open")):
+        try:
+            ks["_open"](spec["tk"])
+        except Exception as e:                                       # noqa: BLE001
+            log(f"term: could not open the account's sealed sign-ins: {type(e).__name__}: {e}")
+    _accept(conn, hdr)
+    term.relay(conn, _Frames(), _frame, spec, how)
+
+
+def serve_one(conn, key, kinds=None):
     """One browser's screen: the request read, checked and answered, then
     the bytes relayed both ways until either end closes."""
     conn.settimeout(10)
@@ -117,6 +160,8 @@ def serve_one(conn, key):
     path = lines[0].split(" ")[1] if len(lines[0].split(" ")) > 1 else ""
     hdr = {k.strip().lower(): v.strip() for k, _, v in (ln.partition(":") for ln in lines[1:])}
     q = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
+    if urllib.parse.urlsplit(path).path == "/term":
+        return serve_term(conn, key, hdr, q, kinds or (lambda: {}))
     domain = (q.get("vm") or [""])[0]
     if not DOMAIN_RE.fullmatch(domain):
         return _refuse(conn, 404, "no such VM")
@@ -125,15 +170,9 @@ def serve_one(conn, key):
     port = vnc_port(domain)
     if not port:
         return _refuse(conn, 409, "the VM is not running, or has no screen")
-    # SHA-1 because RFC 6455 says so: the accept key is a handshake, not a secret.
-    accept = base64.b64encode(hashlib.sha1((hdr.get("sec-websocket-key", "") + WS_GUID).encode()).digest()).decode()  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
-    proto = "binary" if "binary" in hdr.get("sec-websocket-protocol", "") else ""
     vnc = socket.create_connection(("127.0.0.1", port), timeout=5)
     vnc.settimeout(None)
-    conn.settimeout(None)
-    conn.sendall(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-                  f"Sec-WebSocket-Accept: {accept}\r\n"
-                  + (f"Sec-WebSocket-Protocol: {proto}\r\n" if proto else "") + "\r\n").encode())
+    _accept(conn, hdr)
     frames = _Frames()
     try:
         while True:
@@ -159,37 +198,72 @@ def serve_one(conn, key):
 
 
 class ScreenRelay:
-    """The listener, on the address the terminals listen on, while this
-    machine has VMs; a connection each in its own thread."""
+    """The listener, on the session address; a connection each in its own
+    thread: a terminal (R133), or a VM's screen. Up whether or not the agent
+    is root: a terminal as the agent's own account needs nothing more."""
     def __init__(self, agent):
         self.agent = agent
+        self.srv = None
 
     def start(self):
-        if os.geteuid() != 0:
-            return
         threading.Thread(target=self.run, name="screen", daemon=True).start()
+
+    def rebind(self):
+        """The node's address moved: the listener closed, so the loop binds
+        the new one."""
+        srv, self.srv = self.srv, None
+        if srv:
+            # shutdown wakes the accept blocked on it; close alone does not.
+            for f in (lambda: srv.shutdown(socket.SHUT_RDWR), srv.close):
+                try:
+                    f()
+                except OSError:
+                    pass
 
     def run(self):
         while True:
+            srv = None
             try:
                 srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 bound = self.agent.session_bind()
                 srv.bind((bound, SCREEN_PORT))
                 srv.listen(8)
-                log(f"screen: VMs' screens relayed on {bound}:{SCREEN_PORT}, to the controller alone")
+                self.srv = srv
+                log(f"screen: terminals and VMs' screens on {bound}:{SCREEN_PORT}, to the controller alone")
                 while True:
                     conn, _ = srv.accept()
-                    key = screen_key(self.agent.state.get("token"))
-                    threading.Thread(target=self._one, args=(conn, key), daemon=True, name="screen-one").start()
+                    key = self._keys()
+                    threading.Thread(target=self._one, args=(conn, key, self._kinds), daemon=True,
+                                     name="screen-one").start()
             except OSError as e:
+                if self.srv is None and srv is not None and srv.fileno() == -1:
+                    continue                    # closed by rebind: bind the new address now
                 log_once("screen-bind", f"screen: cannot listen on {SCREEN_PORT}: {e}")
                 time.sleep(60)
 
+    def _keys(self):
+        """The keys a request may be signed with: this node's token's, and
+        for a few minutes after a rotation the one before's (R135 step 4),
+        which the controller signs with until it has seen the new one used."""
+        keys = [screen_key(self.agent.state.get("token"))]
+        prev, at = getattr(self.agent, "prev_token", None) or ("", 0)
+        if prev and time.monotonic() - at < PREV_KEY_S:
+            keys.append(screen_key(prev))
+        return keys
+
+    def _kinds(self):
+        """The terminals' programs as the session half last recorded them,
+        and what opens an account's sealed sign-ins for one (R126)."""
+        ks = dict(getattr(self.agent, "term_kinds", None) or {})
+        if callable(getattr(self.agent, "token_open", None)):
+            ks["_open"] = self.agent.token_open
+        return ks
+
     @staticmethod
-    def _one(conn, key):
+    def _one(conn, key, kinds):
         try:
-            serve_one(conn, key)
+            serve_one(conn, key, kinds)
         except OSError:
             pass
         finally:

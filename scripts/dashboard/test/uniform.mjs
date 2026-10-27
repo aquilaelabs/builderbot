@@ -64,7 +64,7 @@ const DRIVERS = {
   },
   projects: {
     open: () => page.evaluate(() => openProjectsTab()),
-    readyWhen: '.projtab .pcard',
+    readyWhen: '.projtab .pcard:visible',
   },
   notebook: {
     open: () => page.evaluate(() => openNotebook('alpha', 'roadmap')),
@@ -120,6 +120,25 @@ const DRIVERS = {
     // before this one; either drawing carries the bar and the foot band.
     open: () => page.evaluate(() => openJobsTab()),
     readyWhen: '.jobstab .jbrow, .jobstab .empty',
+  },
+  // The Debug page (R147), the harness starting the controller with
+  // DEBUG_MODE=1: ready once its grants section says how many are granted,
+  // which it says once the node list its rows offer has landed (its heading
+  // shows on a phone, where every fold starts shut).
+  debug: {
+    open: () => page.evaluate(() => openDebugTab()),
+    readyWhen: '.debugtab details[data-sect="debug:grants"] > summary .sst',
+  },
+  // The Schedules page (R117): the built-in scan's row is always there.
+  schedules: {
+    open: () => page.evaluate(() => openSchedulesTab()),
+    readyWhen: '.schedulestab .schedrow',
+  },
+  // The Keys page (R154): the install key's section and what is kept under
+  // it, drawn whether the box has a key or none.
+  keys: {
+    open: () => page.evaluate(() => openKeysTab()),
+    readyWhen: '.keystab details[data-sect="keys:kept"]',
   },
   storage: {
     // A section per node, or the empty band on a box with none (R169).
@@ -228,7 +247,9 @@ async function measure(kind){
     // A list beside its detail (a project's Settings view, the Roles page's
     // shape) is two columns: the detail's bands start at one x of their own,
     // beside the list, and are measured apart from the page's.
-    const inCol = e => !!e.closest('.ssplit') && !e.closest('.snav');
+    // At a desk a settings page's head spans the list and the column both
+    // (the operator, 26 Oct), so it stands at the page's x, not the column's.
+    const inCol = e => !!e.closest('.ssplit') && !e.closest('.snav') && !(innerWidth > 900 && e.closest('.ssplit > .pghead'));
     const colLefts = [...new Set(bands.filter(inCol).map(leftOf))];
     const lefts = [...new Set(bands.filter(e => !inCol(e)).map(leftOf))];
     // Which band sits at each x, for the failure: three numbers say a view is
@@ -766,7 +787,7 @@ for (const kind of kinds){
   ok(m.flush, `[${kind}] fills its pane flush, like every document`);
   ok(m.maxw === '1080px',
      `[${kind}] caps at the document width (got ${m.maxw})`);
-  ok(m.bands > 0 && m.lefts.length === 1,
+  ok(m.bands > 0 && (m.lefts.length === 1 || !m.lefts.length && m.colLefts.length === 1),
      `[${kind}] every band starts at one x (${m.bands} bands at ${
        JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
   if (m.edges) ok(m.edges.length === 0,
@@ -779,6 +800,52 @@ for (const kind of kinds){
        m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${
        m.controls} checked)`);
   }
+  // Nothing between a page's sections, and its pills (its chips and its
+  // jump bar) before the first of them (the operator, 25 Oct: a line between
+  // Toolchains and Tool packs, and Storage's jump bar mid-page).
+  const shape = await page.evaluate(() => {
+    const host = document.querySelector('.doc.on');
+    if (!host) return { between: [], late: [] };
+    const vis = e => e.offsetHeight > 0 || e.offsetWidth > 0;
+    const named = e => String(e.className || e.tagName).split(/\s+/)[0] || e.tagName;
+    const between = [], late = [], seen = new Set();
+    host.querySelectorAll('details.sect').forEach(d => {
+      const p = d.parentElement;
+      if (!p || seen.has(p)) return;
+      seen.add(p);
+      const kids = [...p.children].filter(e => e.matches('details.sect') || vis(e));
+      const at = kids.map((e, i) => e.matches('details.sect') ? i : -1).filter(i => i >= 0);
+      for (let i = (at[0] ?? 0) + 1; i < (at.at(-1) ?? 0); i++)
+        if (!kids[i].matches('details.sect')) between.push(named(kids[i]));
+    });
+    const first = [...host.querySelectorAll('details.sect')].find(vis);
+    host.querySelectorAll('.sectjump, [data-chips]').forEach(b => {
+      if (first && vis(b) && !first.contains(b) && (first.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING))
+        late.push(named(b));
+    });
+    // Above the first section, only what a page's top is made of: its
+    // tiles, its chips and jump bar, and its head (the operator, 25 Oct: no
+    // loose words at a page's top; a page says what it knows the way a
+    // node's head does, its name, its state and its facts).
+    // Words at its top: a hint or a status line before its first section,
+    // or words in its bar beside the controls (a count, an uptime, a name);
+    // a notice keeps its own voice and box, and a head is where facts go.
+    const loose = [];
+    const list = first?.parentElement || host.querySelector('.doclist');
+    for (const e of list ? list.children : []){
+      if (e === first) break;
+      if (!vis(e) || e.closest('.pghead')) continue;
+      const w = e.matches('.hint, .headline, .tchead') ? e : e.querySelector(':scope > .hint, :scope > .headline, :scope > .tchead');
+      if (w && vis(w)) loose.push(`${named(w)}: ${w.textContent.replace(/\s+/g, ' ').trim().slice(0, 60)}`);
+    }
+    host.querySelectorAll('.docbarrow .barfacts, .docbarrow > .dim, .docbarrow > span.sub').forEach(w => {
+      if (vis(w) && w.textContent.trim()) loose.push(`bar: ${w.textContent.replace(/\s+/g, ' ').trim().slice(0, 60)}`);
+    });
+    return { between, late, loose };
+  });
+  ok(shape.loose.length === 0, `[${kind}] its top says what it knows in a head, not in loose words${shape.loose.length ? `; loose: ${shape.loose.join(' | ')}` : ''}`);
+  ok(shape.between.length === 0, `[${kind}] nothing stands between its sections${shape.between.length ? `; between: ${shape.between.join(', ')}` : ''}`);
+  ok(shape.late.length === 0, `[${kind}] its pills are at its top, before its first section${shape.late.length ? `; after it: ${shape.late.join(', ')}` : ''}`);
   const L = await language();
   ok(!L.err, `[${kind}] measurable for the button language (${L.err || 'ok'})`);
   if (!L.err){
@@ -876,7 +943,7 @@ if (runs('a')) {
     if (i <= schemes) return;                      // the tokens and the schemes define hex
     const t = l.replace(/\/\*.*?\*\//g, '');
     // Black and white inside a color-mix() are not colors of a scheme, and
-    // #2b2b2b is the terminal's own ground (see .pane iframe), never a page color.
+    // #2b2b2b is the terminal's own ground (see .slot.ownterm), never a page color.
     const hex = t.replace(/#000000|#ffffff|#2b2b2b/g, '');
     if (/#[0-9a-fA-F]{6}\b/.test(hex)) off.push(`${i + 1}: ${t.trim().slice(0, 60)}`);
     if (/border-radius:(8|6|4|10)px/.test(t)) off.push(`${i + 1}: ${t.trim().slice(0, 60)}`);
@@ -925,7 +992,9 @@ for (const kind of kinds){
     const name = e => e ? (e.id ? '#' + e.id : e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/)[0] : '')) : '?';
     const mo = new MutationObserver(ms => ms.forEach(m => {
       const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
-      if (t?.closest('#uptime, #docWhen')) return;
+      // A clock's text, and a terminal's own drawing (what it prints, its
+      // cursor), are not the page drawing again for a read.
+      if (t?.closest('#uptime, #docWhen, .xterm')) return;
       seen.push(`${name(t)} ${m.type === 'attributes' ? '@' + m.attributeName : m.type}`);
     }));
     // ...unless it did bring something: a token the page follows that moved
@@ -1471,10 +1540,16 @@ if (runs('b')) {
     const held = await switchHeld(id);
     // The page going out is still drawn in this frame, fading over it (a
     // crossfade, the operator, 16 Oct): set aside for the reading, so the
-    // frame read is the ground the arriving page stands on.
-    await page.evaluate(() => document.querySelectorAll('.pane .stack > .doc.leaving').forEach(e => { e.style.visibility = 'hidden'; }));
-    const first = await frame();
-    await page.evaluate(() => document.querySelectorAll('.pane .stack > .doc.leaving').forEach(e => { e.style.visibility = ''; }));
+    // frame read is the ground the arriving page stands on. Put back by the
+    // elements set aside, never by .leaving again: on a loaded box the
+    // screenshot outlasts the page's 150ms timer, .leaving was off by then,
+    // and the page set aside kept its hidden for good, so the crossfade
+    // check read it hidden and the projects page later came to the front
+    // with none of its cards visible (B219).
+    await page.evaluate(() => { window.__aside = [...document.querySelectorAll('.pane .stack > .doc.leaving')];
+      window.__aside.forEach(e => { e.style.visibility = 'hidden'; }); });
+    const first = await frame().finally(() => page.evaluate(() => {
+      (window.__aside || []).forEach(e => { e.style.visibility = ''; }); window.__aside = []; }));
     await release();
     await atRest();
     await sleep(150);
@@ -1627,27 +1702,24 @@ if (runs('b')) {
      `a modal leaves with a tween rather than vanishing (${left.join(', ') || 'nothing animated'})`);
 }
 await page.setViewportSize({ width: 393, height: 851 });
-// A card's menu on the Projects page comes in on a tween (R218 step 3);
-// the sidebar row that unfolded its controls went with the card.
+// A card turns over to its controls on a tween (R138): Edit, and the back
+// is on the screen whole, at a phone's width as at a desk's.
 {
   // The page on show's: the first card anywhere could be a page out of
   // sight's, never visible, and the wait ran out on it in a whole run.
   await page.evaluate(() => openProjectsTab());
-  await page.waitForSelector('.doc.on .pgrid .pcard [data-pmore]', { timeout: 10000 });
-  // The menu's entrance is the stylesheet's, which animatedDuring does not
-  // see: read the animation on the menu itself. It opens at its button on
-  // a phone as at a desk, rising when it opens above it and dropping below
-  // (menuRise, menuIn), and lands on the screen however soon after the
-  // page's own fade the press came.
-  await page.click('.doc.on .pgrid .pcard [data-pmore]');
-  await page.waitForSelector('.doc.on .pgrid .pcard .actmenu:not([hidden])', { timeout: 5000 });
-  await sleep(500);
-  const menu = await page.$eval('.doc.on .pgrid .pcard .actmenu:not([hidden])', m => { const r = m.getBoundingClientRect();
-    return { anim: getComputedStyle(m).animationName, up: m.classList.contains('up'),
-             on: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth }; });
-  ok(menu.anim === (menu.up ? 'menuRise' : 'menuIn') && menu.on,
-     `a card's menu comes in with a tween on a phone, moving the way it opened, on the screen (${JSON.stringify(menu)})`);
-  await page.keyboard.press('Escape');
+  await page.waitForSelector('.doc.on .pgrid .pcard .pcfront [data-pedit]', { timeout: 10000 });
+  const card = await page.$eval('.doc.on .pgrid .pcard', c => c.dataset.pkey);
+  const at = `.doc.on .pgrid .pcard[data-pkey="${card}"]`;
+  await page.click(`${at} .pcfront [data-pedit]`);
+  const mid = await page.$eval(`${at} .pcback`, e => getComputedStyle(e).transform);
+  await sleep(600);
+  const back = await page.$eval(at, c => { const r = c.querySelector('.pcback').getBoundingClientRect();
+    return { flipped: c.classList.contains('flipped'), settled: getComputedStyle(c.querySelector('.pcback')).transform,
+             on: r.left >= 0 && r.right <= innerWidth }; });
+  ok(back.flipped && back.on && mid !== back.settled && /^(none|matrix\(1, 0, 0, 1, 0, 0\))$/.test(back.settled),
+     `a card turns over on a tween on a phone, its back whole on the screen (${JSON.stringify({ mid, ...back })})`);
+  await page.click(`${at} .pcback [data-pedit]`);
 }
 await sleep(400);
 // The same width rule at phone width, on every tab: the cap is min(--ctl-w,
@@ -2144,17 +2216,9 @@ const DIALOGS = {
   senddocker: () => openSendToDocker('ep.silon'), devenv: () => openDevEnv('ep.silon', 'main'),
   relocate: () => openRelocate('ep.silon', 'main'),
   projsettings: () => renameProject('alpha'),
-  // The Debugging group's dialog. It draws from SETTING_GROUPS rather than
-  // from what is on screen, so it opens whether or not the Settings tab is
-  // the one showing, and debug mode decides the BUTTON rather than this.
-  setdebug: () => openDebugSettings(),
   // Reset BuilderBot (the operator, 12 Oct): the nodes to un-enroll first,
   // what un-enrolling does, and the word. Opened, measured, never pressed.
   reset: () => askReset(),
-  // One container's log. The stub daemon answers, so the dialog draws its
-  // real shape rather than an error band.
-  dockerlog: async () => { openDocker(); await new Promise(r => setTimeout(r, 1200));
-                           dmLogs('someone-elses'); },
   // A conversation read from a notebook's Sessions view (R83): the
   // account's newest on alpha if it has one, else the same box with nothing
   // said in it, never a 404 the console would count.

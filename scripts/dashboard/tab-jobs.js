@@ -238,7 +238,7 @@ function renderJobsInto(i){
   if (jobsList === null){
     // Its template (R218 step 16): the bar's filter and the table's head are
     // the page's own; the count and the rows are on their way.
-    d.setBar(`<span class="dim">${skv(4)}</span>`);
+    d.setBar("");
     d.list.innerHTML = skTpl(jobsSection(skTable(JOB_COLS, 6, "jbtbl"), ""));
     wireJobsTab(d.el);
     loadJobs();
@@ -248,9 +248,9 @@ function renderJobsInto(i){
     d.list.innerHTML = `<div class="hint bad">${esc(jobsErr)}</div>`;
     return;
   }
-  const live = jobsList.filter(j => !["succeeded", "failed", "canceled"].includes(j.state)).length;
-  d.setBar(`<span class="dim">${jobsList.length} job${jobsList.length === 1 ? "" : "s"}${
-      live ? `, ${live} not finished` : ""}</span>`);
+  // Its count is its tiles' (the operator, 25 Oct: no loose words at a
+  // page's top).
+  d.setBar("");
   const shown = jobsShown(jobsList);
   const rows = shown.map(j => {
     const open = jobsOpen.has(j.id);
@@ -273,7 +273,9 @@ function renderJobsInto(i){
           // with an empty log is not waiting for anything, and saying it
           // is sends somebody back to look again at nothing.
           esc((jobsLogs[j.id] || "").slice(-4000)
-              || (over ? "(this job wrote nothing)" : "(no output yet)"))}</pre>` : ""}
+              || (over ? "(this job wrote nothing)" : "(no output yet)"))}</pre>
+        <div class="actbar jbfollow"><button type="button" data-jbfollow="${esc(j.id)}" data-label="${esc(`${j.type || "job"} ${j.id}`)}"
+          title="its whole log in a tab of the dock, following it as it is written">Follow in the dock</button></div>` : ""}
     </div>`;
   }).join("");
   // The tab at a glance (R216, the tiles rule): of the jobs listed, how
@@ -301,6 +303,10 @@ function renderJobsInto(i){
                                    + ` <button type="button" data-jbshow="">Show every job</button>`
                                  : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>`,
     shown.length ? `${shown.length}` : "none");
+  d.list.querySelectorAll("[data-jbfollow]").forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    openLogTab(`log:job:${b.dataset.jbfollow}`, `Log: ${b.dataset.label}`);
+  });
   // Paged like every other long list here. This one grows without bound:
   // every compose action, exec and agent update lands on it forever, so it
   // was the tab most in need of it and the one that had it least.

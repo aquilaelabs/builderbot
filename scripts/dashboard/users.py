@@ -432,6 +432,16 @@ def stamp(u):
 # from "nobody is signed in" and must not be.
 ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
        "uid": "\u0000server"}
+# repos.key_of, handed over by the server (R138): the project a name stands
+# for, a repository's being its project's. An account's project list and its
+# project roles are kept by project, so every name is asked through it.
+# Unset, every name is its own.
+home_of = None
+
+
+def key_of(name):
+    """The project `name` stands for (repos.key_of), or `name`."""
+    return home_of(name) if home_of else name
 
 # What a `user` may not do to a project they DO have. Named, not derived: a
 # verb that should be restricted and is not listed is a decision somebody has
@@ -484,23 +494,31 @@ def may_work(u, name):
     # others in its list are the ones that project reads (prefs.reads),
     # there to be seen and never changed.
     if u.get("session"):
-        return name == u["session"]
+        return name == u["session"] or key_of(name) == key_of(u["session"])
     # "*" lists every project (sees_all) and takes none on (R135): the
     # owner works on what they added to their own list, like everybody,
     # as a safeguard against working on the wrong one by accident.
-    return name in (u.get("projects") or [])
+    # A repository is worked on by whoever is on its project (R138).
+    return key_of(name) in _keys(u)
+
+
+def _keys(u):
+    """The projects an account's list names, each as its project's key: an
+    entry written as a repository's name before that repository was put in
+    a project (an import, a clone) counts for the project it is in now."""
+    return {key_of(p) for p in ((u or {}).get("projects") or [])}
 
 
 def visible(u, names):
     """`names`, minus what this account may not see."""
     if sees_all(u):
         return list(names)
-    allow = set((u or {}).get("projects") or [])
-    return [n for n in names if n in allow]
+    allow = _keys(u)
+    return [n for n in names if key_of(n) in allow]
 
 
 def may_see(u, name):
-    return sees_all(u) or name in ((u or {}).get("projects") or [])
+    return sees_all(u) or key_of(name) in _keys(u)
 
 
 def is_admin(u):
@@ -811,7 +829,7 @@ def with_reads(u, reads):
     if not u or not u.get("session"):
         return u
     reads = [r for r in (reads or []) if r and r != u["session"]]
-    return {**u, "projects": [u["session"], *reads], "reads": reads}
+    return {**u, "projects": list(dict.fromkeys([u["session"], key_of(u["session"]), *reads])), "reads": reads}
 
 
 def session_principal(tok):
@@ -841,7 +859,7 @@ def session_principal(tok):
     if not hmac.compare_digest(sig, want):
         return None
     return {"name": f"session:{project}", "role": "user",
-            "projects": [project], "session": project, "uid": uid}
+            "projects": list(dict.fromkeys([project, key_of(project)])), "session": project, "uid": uid}
 
 
 # --- editing ---------------------------------------------------------------
@@ -897,6 +915,10 @@ def add(name, password, role="user", projects=None):
                             # wants (the operator, 7 Oct): see starts_unpinned.
                             "prefs": {}, "pins_empty": True}
         _save(d)
+    # Its own key made now, as every account's is at the start (R154).
+    import accountkeys
+    if accountkeys.STATE is not None:
+        accountkeys.key_of((d["users"].get(name) or {}).get("uid") or "")
     return {"ok": True, "name": name}
 
 
@@ -955,7 +977,8 @@ def set_projects(name, projects):
         u = d["users"].get(name)
         if not u:
             return {"error": f"no account called {name}"}
-        u["projects"] = [str(p)[:120] for p in (projects or [])][:200]
+        # By project (R138): a repository named stands for its project.
+        u["projects"] = list(dict.fromkeys(p if p == "*" else key_of(str(p)[:120]) for p in (projects or [])))[:200]
         _save(d)
     return {"ok": True, "name": name, "projects": u["projects"]}
 
@@ -983,6 +1006,7 @@ def migrate_star(names):
 def give_owner_role(project, new_uid, old_uid=""):
     """PROJECT_owner moves with the project (R152): off the account that
     owned it, onto the one that does, on that project alone."""
+    project = key_of(project)
     name = roles.ensure_owner_role(project)
     with _lock:
         d = load()
@@ -1032,6 +1056,7 @@ def give_project_role(project, uid, role):
         for u in d["users"].values():
             if u.get("uid") != uid:
                 continue
+            project = key_of(project)
             pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
             pr[project] = sorted(set((pr.get(project) or []) + [str(role)]))
             u["project_roles"] = pr
@@ -1091,9 +1116,10 @@ def take_on(name, project):
         if not u:
             return {"error": f"no account called {name}"}
         have = list(u.get("projects") or [])
+        project = key_of(str(project)[:120])
         if project in have:
             return {"ok": True, "name": name, "projects": have}
-        u["projects"] = (have + [str(project)[:120]])[:200]
+        u["projects"] = (have + [project])[:200]
         _save(d)
     return {"ok": True, "name": name, "projects": u["projects"]}
 
@@ -1126,6 +1152,14 @@ def remove(name):
     # Its invitations go, and what it owned falls back to BuilderBot's owner.
     import membership
     membership.forget_account(u.get("uid") or "")
+    # ...and its key store (R154): its own key, what it linked, and the
+    # projects linked to it, each then saying so.
+    import accountkeys
+    import gitcreds
+    if accountkeys.STATE is not None:
+        accountkeys.forget(u.get("uid") or "")
+    if gitcreds.STATE is not None and u.get("uid"):
+        gitcreds.unlink_account(u["uid"], name)
     return {"ok": True, "name": name}
 
 
@@ -1166,9 +1200,45 @@ def own_prefs(name, want):
         keep["tour_seen"] = sorted({str(k) for k in want["tour_seen"][:64] if re.fullmatch(r"[a-z][a-z0-9-]{0,30}", str(k))})
     if isinstance(want.get("tour_off"), bool):
         keep["tour_off"] = want["tour_off"]
+    # A terminal's look, this person's in every tab of BuilderBot's own
+    # terminal (R133 step 10): its text size, cursor and colors. Named and
+    # bounded, as everything here is.
+    if isinstance(want.get("term"), dict):
+        import prefs as project_prefs
+        t, look = want["term"], {}
+        if isinstance(t.get("size"), int) and 9 <= t["size"] <= 28:
+            look["size"] = t["size"]
+        if t.get("cursor") in ("block", "bar", "underline"):
+            look["cursor"] = t["cursor"]
+        if isinstance(t.get("blink"), bool):
+            look["blink"] = t["blink"]
+        if t.get("scheme") in project_prefs.TERM_SCHEMES:
+            look["scheme"] = t["scheme"]
+        # ...and each scheme's colors as this person changed them (the
+        # operator, 25 Oct): by scheme, each a terminal color's name and a
+        # #rrggbb, so a project given that scheme wears them too, and Reset
+        # is taking one scheme's away.
+        if isinstance(t.get("colors"), dict):
+            cols = {}
+            for sch, got in t["colors"].items():
+                if sch in project_prefs.TERM_SCHEMES and isinstance(got, dict):
+                    one = {k: v.lower() for k, v in got.items()
+                           if k in TERM_COLORS and isinstance(v, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", v)}
+                    if one:
+                        cols[sch] = one
+            look["colors"] = cols
+        keep["term"] = look
     if not keep:
         return {"error": "nothing here is a setting"}, 400
     return prefs_set(name, keep), 200
+
+
+# The colors a terminal's scheme is made of, as xterm.js names them: its
+# ground, text, cursor and selection, and the sixteen ANSI colors.
+TERM_COLORS = ("background", "foreground", "cursor", "selectionBackground",
+               "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+               "brightBlack", "brightRed", "brightGreen", "brightYellow",
+               "brightBlue", "brightMagenta", "brightCyan", "brightWhite")
 
 
 def _members_refused(name, want, may_change):
@@ -1177,8 +1247,8 @@ def _members_refused(name, want, may_change):
     an invite-only project's people are its owner's to change)."""
     if not may_change:
         return ""
-    have = set((get(name) or {}).get("projects") or [])
-    for p in sorted(have ^ set(want)):
+    have = {p if p == "*" else key_of(p) for p in (get(name) or {}).get("projects") or []}
+    for p in sorted(have ^ {p if p == "*" else key_of(str(p)) for p in want}):
         if p == "*":
             continue
         why = may_change(p)
@@ -1217,8 +1287,10 @@ def verb(act, req, seen, may_change=None):
     elif act == "projects":
         # Only projects this admin can see; otherwise the tab becomes a
         # way to learn what exists by handing it out.
-        mine = seen()
-        want = [p for p in (req.get("projects") or []) if p in mine]
+        # By project (R138): a project's key, or a repository's name, that
+        # stands for one this admin sees.
+        mine = {key_of(p) for p in seen()}
+        want = [p for p in (req.get("projects") or []) if key_of(str(p)) in mine]
         why = _members_refused(name, want, may_change)
         r = {"error": why} if why else set_projects(name, want)
     elif act == "rename":
@@ -1236,8 +1308,8 @@ def verb(act, req, seen, may_change=None):
         if not r.get("error") and isinstance(req.get("roles"), list):
             r = set_roles(name, req["roles"])
         if not r.get("error") and isinstance(req.get("projects"), list):
-            mine = seen()
-            want = [p for p in req["projects"] if p in mine]
+            mine = {key_of(p) for p in seen()}
+            want = [p for p in req["projects"] if key_of(str(p)) in mine]
             why = _members_refused(name, want, may_change)
             r = {"error": why} if why else set_projects(name, want)
         if not r.get("error") and pw:
@@ -1377,6 +1449,28 @@ def assign(me, name, global_roles=None, project_roles=None):
         _save(d)
         out = {k: u.get(k) for k in ("role", "roles", "projects", "project_roles")}
     return {"ok": True, "name": name, **out}, 200
+
+
+def rekey(old, new):
+    """Every account's list and roles that name `old` (a repository, before
+    it was put in a project) name its project `new` instead (R138): what
+    migration 0010 does, for a repository placed since (repos.place)."""
+    with _lock:
+        d = load()
+        changed = False
+        for u in d["users"].values():
+            have = list(u.get("projects") or [])
+            if old in have:
+                u["projects"] = list(dict.fromkeys(new if p == old else p for p in have))
+                changed = True
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            if old in pr:
+                was = pr.pop(old)
+                pr[new] = sorted(set(pr.get(new) or []) | set(was if isinstance(was, list) else []))
+                u["project_roles"] = pr
+                changed = True
+        if changed:
+            _save(d)
 
 
 def forget_project(project):

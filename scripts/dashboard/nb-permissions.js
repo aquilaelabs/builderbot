@@ -50,7 +50,7 @@ function nbPermsView({$, nb, project, root}){
         <div class="prefrow ctlrow">
           <label class="pick">Push its branches <select data-gitpol="push"${locked ? " disabled" : ""}>${optionList(["allow", "deny"], pol.push || "allow")}</select></label>
           <label class="pick">Push to its main branch <select data-gitpol="main"${locked ? " disabled" : ""}>${optionList(["allow", "deny"], pol.main || "deny")}</select></label>
-          <label class="pick">Hold a push that looks sensitive <select data-gitpol="scan"${locked ? " disabled" : ""}>${optionList(["hold", "off"], pol.scan || "hold")}</select></label>
+          <label class="pick">Hold a push that looks sensitive<span class="help" data-help="a push whose added lines look like a token, key, password, email or IP address waits until a person reads it and approves it" tabindex="0">?</span> <select data-gitpol="scan"${locked ? " disabled" : ""}>${optionList(["hold", "off"], pol.scan || "hold")}</select></label>
         </div>
         <div class="actbar">
           <span class="state">${locked ? "this project is locked: its owner changes these" : `its own branches, one at a time ${helpIcon("Applies to pushes only. Tags, deletions and remote-only branches stay yours; commits and merges here are always allowed.")}`}</span>

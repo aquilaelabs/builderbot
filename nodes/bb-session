@@ -50,11 +50,20 @@ the caller is the one sudo names, the project, account and paths are held to
 their shapes and checked as real directories, and the session's environment
 file is read only after the drop, as the session.
 
+On the controller's own machine (a controller installed bare metal that is a
+node of itself, R90) a session is walled off from the controller as well:
+the folders /etc/bb-session.wall names (its state, env file, secrets and
+agent socket) are covered in the view, the session must run in a network of
+its own, the session and job accounts must reach none of it, and the
+controller's loopback ports must refuse them. None starts unless all of
+that holds, and every cover is checked inside the view before the drop.
+
     bb-session check
-        exit 0 when this machine can build the view; root only
-    bb-session plan  --project P --account U --home H --cwd D [--reads R]... [--sees PATH]... [--cuda off]
+        exit 0 when this machine can build the view, and its wall holds
+        where it carries a controller; root only
+    bb-session plan  --project P --account U --home H --cwd D [--works W]... [--reads R]... [--sees PATH]... [--cuda off]
         the mounts, as JSON, without making any; anybody
-    bb-session enter --project P --account U --home H --cwd D [--reads R]... [--sees PATH]... --env FILE -- COMMAND...
+    bb-session enter --project P --account U --home H --cwd D [--works W]... [--reads R]... [--sees PATH]... --env FILE -- COMMAND...
         the session, inside the view; through sudo
     bb-session check-net
         exit 0 when this helper can give a session a network of its own; root
@@ -95,7 +104,7 @@ SYSTEM = frozenset(("bin", "boot", "dev", "etc", "home", "lib", "lib32", "lib64"
 # they load, and Claude Code. The rest of that home is its owner's.
 BASE_KEEPS = (".local/bin", ".local/lib", ".local/share/claude", ".npm-global")
 # What the pane itself knows better than the file bb-tty wrote: sudo keeps
-# these, and the terminal tmux gave the pane is not the one ttyd gave bb-tty.
+# these, and the terminal tmux gave the pane is not the one the pty gave bb-tty.
 FROM_PANE = ("TERM", "COLORTERM", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES")
 
 MS_RDONLY, MS_NOSUID, MS_NODEV, MS_NOEXEC = 1, 2, 4, 8
@@ -104,6 +113,13 @@ MS_BIND, MS_REC, MS_PRIVATE = 4096, 16384, 1 << 18
 MNT_DETACH = 2
 CLONE_NEWNS, CLONE_NEWIPC, CLONE_NEWPID = 0x00020000, 0x08000000, 0x20000000
 CLONE_NEWNET = 0x40000000
+CLONE_NEWUSER = 0x10000000
+# An idmapped bind (R125 step 7, B356): open_tree, move_mount and
+# mount_setattr, one number on x86_64 and aarch64 alike (the shared table).
+SYS_OPEN_TREE, SYS_MOVE_MOUNT, SYS_MOUNT_SETATTR = 428, 429, 442
+OPEN_TREE_CLONE, OPEN_TREE_CLOEXEC = 1, 0o2000000
+AT_FDCWD, AT_EMPTY_PATH, MOVE_MOUNT_F_EMPTY_PATH = -100, 0x1000, 0x4
+MOUNT_ATTR_IDMAP = 0x00100000
 PR_SET_NO_NEW_PRIVS = 38
 
 # The session network (R79). The folder is the agent's: its resolver file for
@@ -251,6 +267,174 @@ def net_conf(c):
     return {"base": base, "slots": (1 << bits) // NET_SLOT}
 
 
+# ---- the wall: a node on the controller's own machine (R90) -----------------
+#
+# A controller installed bare metal can be a node of itself
+# (nodes/install-controller.sh). Its installer writes WALL: the controller's
+# account, the node's job account, the folders that hold the controller's
+# state, env file, secrets and agent socket, and its loopback-only ports. A
+# session here is kept out of all of it, and none starts unless it holds.
+WALL = "/etc/bb-session.wall"
+# What only a controller installed bare metal leaves on a machine: where
+# one of them is, a wall has to be too, so a missing file is never taken
+# for "no controller here".
+CONTROLLER_MARKS = ("/etc/builderbot-controller", "/var/lib/builderbot-controller",
+                    "/etc/systemd/system/builderbot-controller.service", "/etc/init.d/builderbot-controller",
+                    "/etc/sv/builderbot-controller")
+NFT_BINS = ("/usr/sbin/nft", "/sbin/nft", "/usr/bin/nft")
+WALL_TABLE = "builderbot_wall"
+
+
+def wall_conf():
+    """The wall as {"ACCOUNT", "JOBS_USER", "COVER": [paths], "PORTS": [ints]},
+    "" when this machine carries no controller, or a Refused when it does and
+    the file is missing or not root's alone. Another file only for somebody
+    who is not root, which is the suite."""
+    path = os.environ.get("BB_SESSION_WALL", WALL) if os.geteuid() != 0 else WALL
+    marks = os.environ.get("BB_SESSION_MARKS", "").split(":") if os.geteuid() != 0 \
+        and os.environ.get("BB_SESSION_MARKS") is not None else CONTROLLER_MARKS
+    try:
+        st = os.stat(path)
+    except OSError:
+        if any(m and os.path.lexists(m) for m in marks):
+            raise Refused(f"bb-session: this machine carries a BuilderBot controller and no wall ({path}): "
+                          "run nodes/install-controller.sh --install again to write it") from None
+        return ""
+    if path == WALL and (st.st_uid != 0 or st.st_mode & 0o022):
+        raise Refused(f"bb-session: {path} is not root's alone, so it says nothing a session could be held to")
+    w = {"ACCOUNT": "", "JOBS_USER": "", "COVER": [], "PORTS": []}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            key, sep, value = line.strip().partition("=")
+            if not sep or line.startswith("#"):
+                continue
+            value = value.strip()
+            if key in ("ACCOUNT", "JOBS_USER"):
+                w[key] = value
+            elif key == "COVER":
+                w["COVER"] = [p.rstrip("/") for p in value.split(":") if p.startswith("/") and ".." not in p.split("/")]
+            elif key == "PORTS":
+                w["PORTS"] = [int(p) for p in value.split(",") if p.strip().isdigit()]
+    if not w["ACCOUNT"] or not w["COVER"]:
+        raise Refused(f"bb-session: {path} names no controller account or nothing to cover")
+    return w
+
+
+def _ids(name):
+    """(uid, gids) of an account, every group it is in, or None."""
+    try:
+        pw = pwd.getpwnam(name)
+    except KeyError:
+        return None
+    try:
+        gids = set(os.getgrouplist(name, pw.pw_gid))
+    except OSError:
+        gids = {pw.pw_gid}
+    return pw.pw_uid, gids
+
+
+def wall_faults(c, w, guard=None):
+    """What keeps the wall from holding, one sentence each; [] when it holds.
+    The session account and the job account may not own, read or enter a
+    folder it covers, may not be in the docker group or the controller's,
+    and a session here runs only in a network of its own (R79), with the
+    controller's loopback ports refused to everybody but it and root."""
+    if not w:
+        return []
+    faults = []
+    who = {}
+    for role, name in (("the session account", c.get("SESSION_USER", "")), ("the job account", w["JOBS_USER"])):
+        got = _ids(name) if name else None
+        if got:
+            who[role] = (name, *got)
+    # ...and each account's own user here (R125), which runs that account's
+    # sessions: held to the same groups as the session account.
+    for pw in pwd.getpwall():
+        if pw.pw_name.startswith(ACCOUNT_USER):
+            got = _ids(pw.pw_name)
+            if got:
+                who[f"the account user {pw.pw_name}"] = (pw.pw_name, *got)
+    ctl = _ids(w["ACCOUNT"])
+    banned = {}
+    if ctl:
+        banned[pwd.getpwnam(w["ACCOUNT"]).pw_gid] = f"{w['ACCOUNT']}'s group"
+    # ...nor in a group that is root on the machine by another door (R90 step
+    # 14): libvirt's runs VMs as root, disk's reads every disk raw, lxd's and
+    # incus-admin's start privileged containers.
+    try:
+        import grp
+        for g, said in (("docker", "the docker group"), ("libvirt", "the libvirt group"), ("disk", "the disk group"),
+                        ("lxd", "the lxd group"), ("incus-admin", "the incus-admin group")):
+            try:
+                banned[grp.getgrnam(g).gr_gid] = said
+            except KeyError:
+                pass
+    except ImportError:
+        pass
+    for role, (name, _uid, gids) in who.items():
+        for gid in sorted(set(gids) & set(banned)):
+            faults.append(f"{role} ({name}) is in {banned[gid]}")
+    for p in w["COVER"]:
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue                    # nothing there, nothing to read
+        for role, (name, uid, gids) in who.items():
+            if st.st_uid == uid:
+                faults.append(f"{p} is {role}'s ({name})")
+            elif st.st_mode & 0o007:
+                faults.append(f"{p} lets anybody in (mode {stat.S_IMODE(st.st_mode):o})")
+            elif st.st_mode & 0o070 and st.st_gid in gids:
+                faults.append(f"{p} lets {role} ({name}) in through its group")
+    if not net_conf(c):
+        faults.append("sessions here do not run in a network of their own, which is what keeps them off the "
+                      "controller's own ports (Each session to its own network, on this node's row)")
+    if w["PORTS"] and not (guard if guard is not None else _guard_ok()):
+        faults.append(f"the controller's loopback ports ({', '.join(map(str, w['PORTS']))}) are not refused to "
+                      "the node's accounts (the nftables table builderbot_wall is not there)")
+    out = []
+    for f in faults:
+        if f not in out:
+            out.append(f)
+    return out
+
+
+def _guard_ok():
+    for nft in NFT_BINS:
+        if os.access(nft, os.X_OK):
+            r = subprocess.run([nft, "list", "table", "inet", WALL_TABLE], capture_output=True, timeout=10,
+                               check=False)
+            return r.returncode == 0
+    return False
+
+
+def wall_hold(c):
+    """The wall, checked, or a Refused naming everything that keeps it from
+    holding: what check and enter both ask first. "" where there is none."""
+    w = wall_conf()
+    faults = wall_faults(c, w)
+    if faults:
+        # Short ahead of the faults: the node's census keeps 200 characters
+        # of it, and the faults are what says what to mend.
+        raise Refused("bb-session: the wall around this machine's controller does not hold: " + "; ".join(faults))
+    return w
+
+
+def wall_covered(w):
+    """Inside the view, before the drop: every folder the wall names is the
+    empty cover, and every file /dev/null, or the session does not start."""
+    for p in (w or {}).get("COVER", []):
+        try:
+            st = os.lstat(p)
+        except FileNotFoundError:
+            continue
+        if stat.S_ISDIR(st.st_mode):
+            if os.listdir(p):
+                raise Refused(f"bb-session: {p} is still there to read inside the view")
+        elif not stat.S_ISCHR(st.st_mode):
+            raise Refused(f"bb-session: {p} is still there to read inside the view")
+
+
 def args(argv):
     out, rest = {}, []
     i = 0
@@ -268,6 +452,13 @@ def args(argv):
         # line stays words a respawn can read back (RESPAWNABLE).
         if a == "--reads" and i + 1 < len(argv):
             out.setdefault("reads", []).append(argv[i + 1])
+            i += 2
+            continue
+        # Another repository of this project (R136), once each: its tree
+        # and its worktrees are in the view to write, as the project's own
+        # are, since one session works in every repository of a project.
+        if a == "--works" and i + 1 < len(argv):
+            out.setdefault("works", []).append(argv[i + 1])
             i += 2
             continue
         # A place on the node this project is set to see, once per place.
@@ -296,10 +487,13 @@ def args(argv):
     return out, rest
 
 
-def plan(c, a, uid):
+def plan(c, a, uid, wall=None):
     """The mounts that make the view, as a list of steps, after checking
     everything they rest on. Pure: it reads the file system and changes
-    nothing, so `plan` shows exactly what `enter` would do."""
+    nothing, so `plan` shows exactly what `enter` would do. `wall` is the
+    controller's, where this machine carries one (R90), read here when the
+    caller has not."""
+    wall = wall_conf() if wall is None else wall
     ws, home_root = c["WORKSPACE"].rstrip("/"), c["HOME_ROOT"].rstrip("/")
     project, account = a.get("project", ""), a.get("account", "")
     home, cwd = a.get("home", "").rstrip("/"), a.get("cwd", "").rstrip("/")
@@ -319,18 +513,26 @@ def plan(c, a, uid):
         raise Refused(f"bb-session: {home} does not exist") from None
     if not stat.S_ISDIR(st.st_mode) or (uid is not None and st.st_uid != uid):
         raise Refused(f"bb-session: {home} is not a directory the session account owns")
+    works = []
+    for w in a.get("works", []):
+        if not PROJECT.fullmatch(w) or w.startswith(".") or w == project:
+            raise Refused(f"bb-session: '{w}' is not a repository this session could work in")
+        if not _real_dir(f"{ws}/{w}"):
+            raise Refused(f"bb-session: {ws}/{w} is not a project directory")
+        if w not in works:
+            works.append(w)
     reads = []
-    for r in a.get("reads", []):
+    for r in [x for x in a.get("reads", []) if x not in works]:
         if not PROJECT.fullmatch(r) or r.startswith(".") or r == project:
             raise Refused(f"bb-session: '{r}' is not a project this one could read")
         if not _real_dir(f"{ws}/{r}"):
             raise Refused(f"bb-session: {ws}/{r} is not a project directory")
         if r not in reads:
             reads.append(r)
-    inside = (f"{ws}/{project}", f"{ws}/.worktrees/{project}")
+    inside = tuple(d for p in [project] + works for d in (f"{ws}/{p}", f"{ws}/.worktrees/{p}"))
     parts = cwd.split("/")
     if ".." in parts or not any(cwd == d or cwd.startswith(d + "/") for d in inside):
-        raise Refused(f"bb-session: {cwd} is not inside {project} or its worktrees")
+        raise Refused(f"bb-session: {cwd} is not inside {project}, its project's other repositories or their worktrees")
 
     base = home != home_root        # the account's home is under users; the base home is another's
     # BuilderBot's caches, by where they really are. An account's home links
@@ -341,7 +543,8 @@ def plan(c, a, uid):
     caches = {}
     # Everything under u/<account> is that account's and nobody else's (B159);
     # machine/ is this box's and is shared on purpose.
-    for h, keep in [(home, (f"u/{account}/project/{project}", f"u/{account}/account", "machine"))] \
+    for h, keep in [(home, tuple(f"u/{account}/project/{p}" for p in [project] + works)
+                     + (f"u/{account}/account", "machine"))] \
             + ([(home_root, ("machine",))] if base else []):
         path = f"{h}/.cache/builderbot"
         if os.path.lexists(path) and not _real_dir(path):
@@ -463,9 +666,13 @@ def plan(c, a, uid):
     # /workspace: this project, its worktrees, the account's transcripts,
     # and among those the other projects' transcripts empty.
     steps.append(("tmpfs", ws, "mode=0755"))
-    for rel in (project, f".worktrees/{project}", f".claude/{account}"):
+    # The trees mapped to the account's own user where it is one and they
+    # are another's (R125 step 7): bindmap, which main() makes a namespace
+    # for; its transcripts are its own already.
+    trees = [x for p in [project] + works for x in (p, f".worktrees/{p}")]
+    for rel in trees + [f".claude/{account}"]:
         if _real_dir(f"{ws}/{rel}"):
-            steps.append(("bind", f"{STAGE}/ws/{rel}", f"{ws}/{rel}"))
+            steps.append(("bindmap" if rel in trees else "bind", f"{STAGE}/ws/{rel}", f"{ws}/{rel}"))
     # The projects this one reads: their trees, read-only. Nothing of
     # theirs beyond the tree: no worktrees, no caches, no stores.
     for r in reads:
@@ -480,20 +687,21 @@ def plan(c, a, uid):
     # than on the cover and is kept.
     transcripts = f"{ws}/.claude/{account}/projects"
     if _real_dir(transcripts):
-        mine = {_slug(f"{ws}/{project}"), _slug(f"{ws}/.worktrees/{project}/{account}")}
+        mine = {_slug(f"{ws}/{p}") for p in [project] + works} \
+            | {_slug(f"{ws}/.worktrees/{p}/{account}") for p in [project] + works}
         # ...and the folder the session starts in, which is what Claude Code
         # names its folder after, where that is somewhere inside the two.
-        if cwd and _inside(cwd, (f"{ws}/{project}", f"{ws}/.worktrees/{project}/{account}")):
+        if cwd and _inside(cwd, [d for p in [project] + works for d in (f"{ws}/{p}", f"{ws}/.worktrees/{p}/{account}")]):
             mine.add(_slug(cwd))
         for name in sorted(mine):
             if not os.path.lexists(f"{transcripts}/{name}"):
                 steps.append(("make", f"{transcripts}/{name}"))
         entries = [e for e in sorted(os.listdir(transcripts)) if _real_dir(f"{transcripts}/{e}")]
         steps.append(("tmpfs", transcripts, "mode=0755,owned"))
-        for entry in sorted(mine | {e for e in entries if _ours(e, ws, project)}):
+        for entry in sorted(mine | {e for e in entries if any(_ours(e, ws, p) for p in [project] + works)}):
             steps.append(("bindmine", f"{STAGE}/ws/.claude/{account}/projects/{entry}", f"{transcripts}/{entry}"))
         for entry in entries:
-            if not _ours(entry, ws, project) and any(_ours(entry, ws, r) for r in reads):
+            if not any(_ours(entry, ws, p) for p in [project] + works) and any(_ours(entry, ws, r) for r in reads):
                 steps.append(("bindro", f"{STAGE}/ws/.claude/{account}/projects/{entry}", f"{transcripts}/{entry}"))
     # Homes: the account's own is the only one. The base home is another's
     # (on a node every account is homed under users/, and the session
@@ -617,6 +825,18 @@ def plan(c, a, uid):
     for hidden in [c["RUNNER_DIR"]] + [x for x in c["HIDE"].split(":") if x]:
         if _real_dir(hidden.rstrip("/")) and not _inside(hidden.rstrip("/"), out_of_sight):
             steps.append(("hide", hidden.rstrip("/")))
+    # ...and, on the controller's own machine (R90), everything the wall
+    # names: the controller's state, env file, secrets and agent socket.
+    # Under /var, /etc and /run, which are the system's own and stay in the
+    # view, so each is covered by name; one already out of sight is not
+    # there to cover. Whether each held is checked inside the view.
+    for p in (wall or {}).get("COVER", []):
+        if _inside(p, out_of_sight):
+            continue
+        if _real_dir(p):
+            steps.append(("hide", p))
+        elif os.path.lexists(p):
+            steps.append(("hidefile", os.path.realpath(p)))
     # ...and the toolchains this project's settings switch off (R77): a
     # session neither runs nor reads what is not there. Whether or not the
     # store sits under a cover: on a node it does, and is bound back into
@@ -729,6 +949,85 @@ def _mount(src, target, fstype, flags, data=None):
           data.encode() if data else None)
 
 
+class _MountAttr(ctypes.Structure):
+    _fields_ = [("attr_set", ctypes.c_uint64), ("attr_clr", ctypes.c_uint64),
+                ("propagation", ctypes.c_uint64), ("userns_fd", ctypes.c_uint64)]
+
+
+def _sys(nr, *argv):
+    global _libc
+    if _libc is None:
+        _libc = ctypes.CDLL(None, use_errno=True)
+    got = _libc.syscall(ctypes.c_long(nr), *argv)
+    if got < 0:
+        err = ctypes.get_errno()
+        raise OSError(err, f"syscall {nr}: {os.strerror(err)}")
+    return got
+
+
+def idmap_userns(owner, account):
+    """A user namespace that maps the trees' owner (uid, gid) onto the
+    account's user (uid, gid), as an fd, for an idmapped bind (R125 step 7):
+    made before the session's own namespaces, while /proc is the node's, by a
+    child that enters it and waits while this side writes its one-line maps.
+    None where the kernel will not."""
+    (ou, og), (au, ag) = owner, account
+    ready_r, ready_w = os.pipe()
+    hold_r, hold_w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        try:
+            os.close(ready_r)
+            os.close(hold_w)
+            _call("unshare", ctypes.c_int(CLONE_NEWUSER))
+            os.write(ready_w, b"1")
+            os.read(hold_r, 1)
+        finally:
+            os._exit(0)
+    os.close(ready_w)
+    os.close(hold_r)
+    try:
+        if os.read(ready_r, 1) != b"1":
+            return None
+        for name, line in (("setgroups", "deny"), ("uid_map", f"{ou} {au} 1\n"), ("gid_map", f"{og} {ag} 1\n")):
+            with open(f"/proc/{pid}/{name}", "w") as f:
+                f.write(line)
+        return os.open(f"/proc/{pid}/ns/user", os.O_RDONLY)
+    except OSError:
+        return None
+    finally:
+        os.close(hold_w)
+        os.close(ready_r)
+        with contextlib.suppress(ChildProcessError):
+            os.waitpid(pid, 0)
+
+
+def _bind_idmapped(src, target, userns):
+    """src bound onto target with its owner read as the account's user and
+    written as the owner (MOUNT_ATTR_IDMAP). False where the filesystem
+    will not have it (a share), and the caller binds it plainly."""
+    fd = -1
+    try:
+        fd = _sys(SYS_OPEN_TREE, ctypes.c_int(AT_FDCWD), src.encode(),
+                  ctypes.c_uint(OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC))
+        attr = _MountAttr(MOUNT_ATTR_IDMAP, 0, 0, userns)
+        _sys(SYS_MOUNT_SETATTR, ctypes.c_int(fd), b"", ctypes.c_uint(AT_EMPTY_PATH),
+             ctypes.byref(attr), ctypes.c_size_t(ctypes.sizeof(attr)))
+        _sys(SYS_MOVE_MOUNT, ctypes.c_int(fd), b"", ctypes.c_int(AT_FDCWD), target.encode(),
+             ctypes.c_uint(MOVE_MOUNT_F_EMPTY_PATH))
+        return True
+    except OSError:
+        return False
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+# The mapping's namespace for this session's view, made by main() before
+# the view's own namespaces when a bindmap step asks for it.
+_USERNS = None
+
+
 def _mkdirs(path, uid, gid):
     """Directories on a tmpfs this process mounted a moment ago, given to the
     session account so its own folders sit in folders it can use."""
@@ -742,7 +1041,7 @@ def _mkdirs(path, uid, gid):
 
 def apply(steps, uid, gid):
     for step in steps:
-        kind, target = step[0], step[-1] if step[0] in ("bind", "bindmine", "bindro", "bindrw", "bindfile") else step[1]
+        kind, target = step[0], step[-1] if step[0] in ("bind", "bindmap", "bindmine", "bindro", "bindrw", "bindfile") else step[1]
         if kind == "private":
             _mount(None, "/", None, MS_REC | MS_PRIVATE)
         elif kind == "proc":
@@ -758,6 +1057,18 @@ def apply(steps, uid, gid):
             if not os.path.isdir(target):
                 _mkdirs(target, uid, gid)
             _mount(src, target, None, MS_BIND | MS_REC)
+        elif kind == "bindmap":
+            # A tree of the session's project, its worktrees and its works,
+            # with their owner read as the account's own user and written as
+            # the owner (R125 step 7, B356): a session that runs as its own
+            # user can write its tree and its git reads it as its own. A plain
+            # bind where the filesystem will not map one (a share squashes
+            # every writer to one owner already).
+            src = step[1]
+            if not os.path.isdir(target):
+                _mkdirs(target, uid, gid)
+            if _USERNS is None or not _bind_idmapped(src, target, _USERNS):
+                _mount(src, target, None, MS_BIND | MS_REC)
         elif kind == "bindro":
             # A read-only bind of a directory onto itself: bind first, then
             # remount read-only, which is the only way the flag takes on a bind.
@@ -918,7 +1229,11 @@ def net_attach(net, pid, project, dfd):
         # old project for this address until ours lands: gone first.
         with contextlib.suppress(OSError):
             os.unlink(f"s{k}.json", dir_fd=dfd)
-        _ip("link", "add", host_if, "type", "veth", "peer", "name", "eth0", "netns", str(pid))
+        # By the namespace's file, not its pid: this side unshared a PID
+        # namespace before forking the init, so the ip it runs is in that
+        # namespace, where the init's pid here names nothing (B325). The
+        # file under this side's /proc is the init's whatever ip sees.
+        _ip("link", "add", host_if, "type", "veth", "peer", "name", "eth0", "netns", f"/proc/{pid}/ns/net")
         try:
             # IPv4 only out of a session: IPv6 is off on both ends of the
             # link, so nothing leaves by a route the table does not judge.
@@ -1077,6 +1392,65 @@ def caller(c, account=""):
     return pw.pw_name, pw.pw_uid, pw.pw_gid
 
 
+PROJECT_DIR = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+AGENT_IDS = ("claude", "codex", "copilot", "grok")
+BRANCH = re.compile(r"(?:claude|codex|copilot|grok)/[A-Za-z0-9][A-Za-z0-9._@-]{0,79}")
+
+
+def worktree(c, argv):
+    """A worktree of a project for the account that asks (R125 step 7):
+    where accounts are their own users, the project's tree is another's, so
+    its own user can neither run git in it nor make a folder beside it.
+    Made here, as root, with git run as the tree's owner, at the place and
+    on the branch lib/common.sh's session_dir names, and printed. The
+    account is the caller's own, never one it names."""
+    if os.geteuid() != 0 or c.get("ACCOUNT_USERS") != "on":
+        raise Refused("bb-session: worktrees are made here only where accounts are their own users")
+    try:
+        me = pwd.getpwuid(int(os.environ.get("SUDO_UID", "")))
+    except (KeyError, ValueError):
+        raise Refused("bb-session: worktree is asked for through sudo") from None
+    account = "u_" + me.pw_name[len(ACCOUNT_USER):] if me.pw_name.startswith(ACCOUNT_USER) else ""
+    if not ACCOUNT.fullmatch(account):
+        raise Refused("bb-session: only an account's own user asks for its worktree")
+    if len(argv) != 4:
+        raise Refused("bb-session worktree PROJECT AGENT SLOT BRANCH")
+    project, agent, slot, branch = argv
+    if not PROJECT_DIR.fullmatch(project) or agent not in AGENT_IDS or slot not in "123456789" or len(slot) != 1 \
+            or not BRANCH.fullmatch(branch) or not branch.startswith(agent + "/"):
+        raise Refused("bb-session worktree: not a project, an agent, a slot and a branch")
+    ws = c["WORKSPACE"].rstrip("/")
+    src = f"{ws}/{project}"
+    if not os.path.isdir(f"{src}/.git") and not os.path.isfile(f"{src}/.git"):
+        raise Refused(f"bb-session worktree: {project} is not a repository here")
+    wt = f"{ws}/.worktrees/{project}/{account}" + ("" if agent == "claude" else f"-{agent}") + ("" if slot == "1" else f"-{slot}")
+    if not os.path.isdir(wt):
+        st = os.stat(src)
+        for d in (f"{ws}/.worktrees", f"{ws}/.worktrees/{project}"):
+            if not os.path.isdir(d):
+                os.mkdir(d, 0o755)
+                os.lchown(d, st.st_uid, st.st_gid)
+        pid = os.fork()
+        if pid == 0:
+            try:
+                os.setgroups([])
+                os.setgid(st.st_gid)
+                os.setuid(st.st_uid)
+                env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/nonexistent", "GIT_CONFIG_NOSYSTEM": "1",
+                       "GIT_CONFIG_GLOBAL": "/dev/null"}
+                has = subprocess.run(["git", "-C", src, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+                                     env=env, check=False).returncode == 0
+                add = ["git", "-C", src, "worktree", "add"] + ([wt, branch] if has else ["-b", branch, wt])
+                os._exit(subprocess.run(add, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                        check=False).returncode)
+            except Exception:                                  # noqa: BLE001 (the child says only how it ended)
+                os._exit(70)
+        _, status = os.waitpid(pid, 0)
+        if os.waitstatus_to_exitcode(status) != 0 or not os.path.isdir(wt):
+            raise Refused(f"bb-session worktree: git could not make {wt}")
+    print(wt)
+
+
 def enter(c, a, command):
     name, uid, gid = caller(c, a.get("account", ""))
     if not command:
@@ -1087,7 +1461,17 @@ def enter(c, a, command):
     want = f"{home}/.cache/builderbot/u/{account}/project/{project}/"
     if not envfile.startswith(want):
         raise Refused(f"bb-session: the environment file {envfile or '(none)'} is not in the project's cache folder {want}")
-    steps = plan(c, a, uid)
+    # On the controller's own machine (R90), the wall first: a session that
+    # would not be walled off from the controller does not start.
+    wall = wall_hold(c)
+    steps = plan(c, a, uid, wall)
+    # The trees' owner mapped to the account's own user (R125 step 7): the
+    # namespace that says so made now, while /proc is still the node's.
+    global _USERNS
+    with contextlib.suppress(OSError):
+        st = os.stat(f"{c['WORKSPACE'].rstrip('/')}/{project}")
+        if any(x[0] == "bindmap" for x in steps) and (st.st_uid, st.st_gid) != (uid, gid):
+            _USERNS = idmap_userns((st.st_uid, st.st_gid), (uid, gid))
     net = net_conf(c)
     # Asked before anything is made: a node that keeps sessions to their own
     # network and has not got it ready starts none, rather than one on the
@@ -1164,6 +1548,7 @@ def enter(c, a, command):
                 raise Refused("bb-session: the node's side of the session's network was not made")
             net_inside(parts[0], parts[1])
         apply(steps, uid, gid)
+        wall_covered(wall)
         _drop(name, uid, gid)
         env = _read_env(envfile, uid)
     except (OSError, Refused, subprocess.SubprocessError) as e:
@@ -1209,6 +1594,10 @@ def check(c):
     _, status = os.waitpid(pid, 0)
     if not (os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0):
         raise Refused("bb-session: this kernel would not make the namespaces a session's view needs")
+    # ...and on the controller's own machine (R90), the wall: the agent asks
+    # this before it offers sessions, so a wall that does not hold is the
+    # reason the node gives for running none.
+    wall_hold(c)
 
 
 def check_net(c):
@@ -1233,8 +1622,8 @@ def check_net(c):
 
 # ---- a terminal, as its account (R125) -------------------------------------
 #
-# ttyd runs as root where accounts are their own users, and runs this. The
-# URL's claims prove nothing on a node (bb-tty's B166), so the token that rode
+# The agent's terminal server runs this through sudo where accounts are their
+# own users. The URL's claims prove nothing on a node (bb-tty's B166), so the token that rode
 # in is shown to the controller, which alone can check its signature, and the
 # account it answers with is the user this drops to. Nothing here comes from
 # the bundle on the toolchain store, which any process outside a view could
@@ -1292,7 +1681,7 @@ def _root_owned(path):
 
 
 # The environment a terminal starts with: sudo resets this process's, so the
-# agent leaves the ttyds' own here, root's alone (accounts.py TTY_ENV).
+# agent leaves the terminals' own here, root's alone (accounts.py TTY_ENV).
 TTY_ENV = "/run/bb-session/tty-env.json"
 
 
@@ -1383,13 +1772,16 @@ def main(argv):
             check_net(c)
             print("ok: a session here can have a network of its own")
             return 0
+        if verb == "worktree":
+            worktree(c, argv[1:])
+            return 0
         if verb in ("tty", "tty-ro"):
             try:
                 tty(c, argv[1:], ro=verb == "tty-ro")
             except Exception as e:                               # noqa: BLE001 (said in the tab, R132)
-                # Said in the terminal, where ttyd shows it, and held until a
-                # key so it can be read: anything else, a traceback included,
-                # scrolled past or ended in ttyd's reconnect loop (R132).
+                # Said in the terminal, where the tab shows it, and held until
+                # a key so it can be read: anything else, a traceback
+                # included, scrolled past before the tab could show it (R132).
                 why = str(e) if isinstance(e, Refused) else f"bb-session failed: {type(e).__name__}: {e}"
                 sys.stdout.write(f"BuilderBot: this terminal was refused: {why}\r\n"
                                  "Close the tab, or press Enter to try again.\r\n")
@@ -1405,7 +1797,7 @@ def main(argv):
         if verb == "enter":
             enter(c, a, command)
             return 0
-        raise Refused("bb-session takes check, check-net, plan, enter, tty or tty-ro")
+        raise Refused("bb-session takes check, check-net, plan, enter, tty, tty-ro or worktree")
     except Refused as e:
         sys.stderr.write(f"{e}\n")
         # A session's view that will not start is said in its pane and held

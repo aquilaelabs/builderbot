@@ -313,7 +313,15 @@ for l in "$LOCK" "${TMPDIR:-/tmp}/dashboard-test.lock"; do
     [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$l" ] || continue
     other="$(cat "$l" 2>/dev/null || true)"
     while [ -n "$other" ] && [ -d "/proc/$other" ] && [ "$waited" -lt "${BB_TEST_WAIT_LOCK:-900}" ]; do
-        [ "$waited" -eq 0 ] && echo "[dashboard-test] waiting for the run that holds the lock (pid $other) to end" >&2
+        if [ "$waited" -eq 0 ]; then
+            # A kept fixture holds it until it is stopped, which no wait ends
+            # (B343): said, with how.
+            if [ -f "$KEEPF" ] && [ "$(sed -n 's/^KEEP_PID=//p' "$KEEPF" 2>/dev/null)" = "$other" ]; then
+                echo "[dashboard-test] waiting for the lock, which the fixture bb tests keep holds (pid $other): bb tests keep stop releases it" >&2
+            else
+                echo "[dashboard-test] waiting for the run that holds the lock (pid $other) to end" >&2
+            fi
+        fi
         sleep 5; waited=$((waited + 5))
         other="$(cat "$l" 2>/dev/null || true)"
     done
@@ -814,7 +822,9 @@ echo '{}' > "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/abc123.json
 # and the files are on screen: the index names one file that is not there, and
 # one file that is there is not in the index. Re-seeded before every test file
 # because memory.mjs edits and deletes these for real.
-M="$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/memory"
+# Named as Claude Code names a tree's folder: every character that is not a
+# letter or a digit a dash (B349).
+M="$S/home/.claude/projects/$(echo "$S/ws/alpha" | sed 's/[^A-Za-z0-9]/-/g')/memory"
 seed_memories() {
 rm -rf "$M"; mkdir -p "$M"
 # The index separator is Claude Code's em dash, written as its bytes (the
@@ -1088,10 +1098,6 @@ if [ -n "${DOCKER_HOST:-}" ] && [ -f "$ST/deadhosts" ] \
    && grep -qF "$DOCKER_HOST" "$ST/deadhosts"; then
   echo "cannot connect to the daemon at $DOCKER_HOST"; exit 1
 fi
-# The one-shot `run` the dev-data probe makes (mkdir, mv, test -d on one
-# share). Answers yes by default; run.testfail is the suite saying the marker
-# is NOT over there: a clean exit 1 with nothing said, as `test -d` does.
-if [ "$1" = run ] && [ -f "$ST/run.testfail" ]; then exit 1; fi
 # What a node pulled of an image (imagecheck.py, R195): its RepoDigests from
 # a file the suite leaves, named for the image; none is an image never pulled.
 if [ "$1" = inspect ] && [ "$2" = --type ] && [ "$3" = image ]; then
@@ -1470,7 +1476,7 @@ start_server() {
 # agent, which in the run's shared copy held every other worker's nodes as
 # running an agent "newer than its number" (B718, B751, B510).
 rm -rf "$S/agentsrc"; cp -r "$DASH/../agent" "$S/agentsrc"
-( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
+( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" BUILDER_HOME="$S/home" \
     BB_AGENT_DIR="$S/agentsrc" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
     TC_AUTOCHECK=0 BB_NODE_POLL=3 \

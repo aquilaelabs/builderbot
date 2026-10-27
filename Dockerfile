@@ -26,9 +26,6 @@ LABEL org.opencontainers.image.title="BuilderBot" \
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG NODE_MAJOR=22
-# ttyd serves the dashboard's terminal. Ubuntu packages it, but the static
-# release is a single self-contained binary and pins to a known version.
-ARG TTYD_VERSION=1.7.7
 # noVNC draws a VM's screen in the dock (R99): pinned, and checked by digest.
 ARG NOVNC_VERSION=1.7.0
 ARG NOVNC_SHA256=b1003a11b6e6e8d8f7f5e5586daae7f8ca651d8aee0aa155ff9ac841c48f52c6
@@ -69,23 +66,22 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # ---------------------------------------------------------------------------
 # Base system + build toolchain
+#
+# The packages are config/controller-packages.tsv's deb column, read by the
+# one reader a bare-metal install reads it with too (R90 step 2), so the
+# image and nodes/install-controller.sh install the same list. Copied alone
+# and first, so only an edit of the list itself rebuilds this layer. The
+# count is checked: a reader that printed nothing would otherwise install
+# nothing and pass.
 # ---------------------------------------------------------------------------
+COPY config/controller-packages.tsv /opt/builderbot/config/controller-packages.tsv
+COPY scripts/lib/controller-packages.sh /opt/builderbot/scripts/lib/controller-packages.sh
+# hadolint ignore=SC2046
 RUN set -eux; \
+    pkgs="$(bash /opt/builderbot/scripts/lib/controller-packages.sh deb core tools image)"; \
+    [ "$(printf '%s\n' "$pkgs" | wc -l)" -ge 50 ]; \
     apt-get update; \
-    apt-get install -y --no-install-recommends \
-        ca-certificates curl wget gnupg lsb-release apt-transport-https \
-        git git-lfs openssh-client \
-        build-essential pkg-config make cmake \
-        python3 python3-pip python3-venv python3-dev pipx \
-        jq unzip zip xz-utils bzip2 tar rsync \
-        tmux \
-        ripgrep fd-find fzf \
-        less nano vim tini gosu sudo procps psmisc file lsof strace tree \
-        iproute2 iputils-ping dnsutils netcat-openbsd socat \
-        shellcheck \
-        locales tzdata \
-        libicu74 libssl3 libkrb5-3 zlib1g liblttng-ust1 \
-        sqlite3 imagemagick ffmpeg; \
+    apt-get install -y --no-install-recommends $(printf '%s\n' "$pkgs"); \
     ln -sf /usr/bin/fdfind /usr/local/bin/fd; \
     git lfs install --system; \
     rm -rf /var/lib/apt/lists/*
@@ -93,9 +89,13 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # Node.js (NodeSource), GitHub CLI, Docker CLI + compose plugin
 #   The Docker CLI talks to the host daemon through a mounted
-#   /var/run/docker.sock; no daemon runs inside this container.
+#   /var/run/docker.sock; no daemon runs inside this container. Which
+#   packages: the list's vendor and docker rows (config/controller-packages.tsv).
 # ---------------------------------------------------------------------------
+# hadolint ignore=SC2046
 RUN set -eux; \
+    pkgs="$(bash /opt/builderbot/scripts/lib/controller-packages.sh deb vendor docker)"; \
+    [ "$(printf '%s\n' "$pkgs" | wc -l)" -ge 5 ]; \
     install -m 0755 -d /etc/apt/keyrings; \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
         | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg; \
@@ -111,8 +111,7 @@ RUN set -eux; \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
         > /etc/apt/sources.list.d/docker.list; \
     apt-get update; \
-    apt-get install -y --no-install-recommends \
-        nodejs gh docker-ce-cli docker-compose-plugin docker-buildx-plugin; \
+    apt-get install -y --no-install-recommends $(printf '%s\n' "$pkgs"); \
     rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
@@ -123,27 +122,24 @@ RUN set -eux; \
 # the weekly rebuild is what keeps them current. `ruff` installs via pipx so
 # it is isolated from both the system Python and any project venv.
 #
-# Resolved WITHOUT api.github.com, deliberately: the API allows 60 anonymous
-# calls per hour per IP, and CI builds run from shared Actions egress
-# addresses that have usually spent that budget already, so the "latest release"
-# JSON comes back as a rate-limit error, jq reads a null tag, and the build
-# dies on a 404. The releases/latest/download/ endpoint and the /releases/
-# latest redirect carry the same information with no such limit.
+# Each one held to the digest GitHub states for it (scripts/lib/gh-fetch,
+# B335), which asks GitHub's release API: anonymously it allows 60 calls an
+# hour per address and CI's shared addresses have usually spent them, so CI
+# hands the build its token as a secret (gh_token), in no layer of the image.
 #
 # The point of having them *in the image* rather than only in CI: a session
 # (or a person) can run the same checks CI will run, before the push. That
 # is what `bb lint` does.
 # ---------------------------------------------------------------------------
-RUN set -eux; \
-    curl -fsSL -o /usr/local/bin/hadolint \
-        https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64; \
-    curl -fsSL -o /usr/local/bin/yq \
-        https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64; \
+COPY scripts/lib/gh-fetch /usr/local/bin/bb-gh-fetch
+RUN --mount=type=secret,id=gh_token,required=false \
+    set -eux; \
+    bb-gh-fetch hadolint/hadolint latest 'hadolint-linux-x86_64' /usr/local/bin/hadolint; \
+    bb-gh-fetch mikefarah/yq latest 'yq_linux_amd64' /usr/local/bin/yq; \
     chmod +x /usr/local/bin/hadolint /usr/local/bin/yq; \
-    tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/rhysd/actionlint/releases/latest)"; \
-    tag="${tag##*/}"; \
-    curl -fsSL "https://github.com/rhysd/actionlint/releases/download/${tag}/actionlint_${tag#v}_linux_amd64.tar.gz" \
-        | tar -xz -C /usr/local/bin actionlint; \
+    bb-gh-fetch rhysd/actionlint latest 'actionlint_*_linux_amd64.tar.gz' /tmp/actionlint.tar.gz; \
+    tar -xzf /tmp/actionlint.tar.gz -C /usr/local/bin actionlint; \
+    rm -f /tmp/actionlint.tar.gz; \
     PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install ruff; \
     hadolint --version; \
     actionlint --version >/dev/null; \
@@ -153,25 +149,18 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # Language/version tooling that lives outside apt: uv (Python) and mise.
 #
-# Both vendors' install scripts take a destination env var, but they have
-# changed names before, so after each install we also sweep the usual drop
-# points and relocate anything we find. The final `--version` calls make a
-# silently-missing tool a build failure rather than a runtime surprise.
+# Each vendor's release asset, held to GitHub's digest for it (B335), where
+# a vendor's install script piped into sh was taken on trust. The final
+# `--version` calls make a silently-missing tool a build failure rather than
+# a runtime surprise.
 # ---------------------------------------------------------------------------
-RUN set -eux; \
-    relocate() { \
-        bin="$1"; \
-        command -v "$bin" >/dev/null 2>&1 && return 0; \
-        for candidate in "/root/.local/bin/$bin" "/root/.cargo/bin/$bin" "$HOME/.local/bin/$bin"; do \
-            if [ -x "$candidate" ]; then mv "$candidate" "/usr/local/bin/$bin"; return 0; fi; \
-        done; \
-        return 1; \
-    }; \
-    curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh; \
-    relocate uv; \
-    curl -fsSL https://mise.run | env MISE_INSTALL_PATH=/usr/local/bin/mise sh; \
-    relocate mise; \
-    chmod +x /usr/local/bin/uv /usr/local/bin/mise 2>/dev/null || true; \
+RUN --mount=type=secret,id=gh_token,required=false \
+    set -eux; \
+    bb-gh-fetch astral-sh/uv latest 'uv-x86_64-unknown-linux-gnu.tar.gz' /tmp/uv.tar.gz; \
+    tar -xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1 uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx; \
+    rm -f /tmp/uv.tar.gz; \
+    bb-gh-fetch jdx/mise latest 'mise-v*-linux-x64' /usr/local/bin/mise; \
+    chmod +x /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/mise; \
     uv --version; \
     mise --version
 
@@ -259,20 +248,6 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # BuilderBot scripts + home skeleton
 # ---------------------------------------------------------------------------
-# ttyd: fetched rather than apt-installed so the version is pinned and the
-# binary is static, with nothing to keep in step with the base image.
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    case "$arch" in \
-        amd64) tarch=x86_64 ;; \
-        arm64) tarch=aarch64 ;; \
-        *) echo "no ttyd build for ${arch}; dashboard terminal unavailable"; exit 0 ;; \
-    esac; \
-    curl -fsSL -o /usr/local/bin/ttyd \
-        "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${tarch}"; \
-    chmod +x /usr/local/bin/ttyd; \
-    ttyd --version
-
 # noVNC: the browser's half of a VM's screen (R99), the page and the RFB
 # client it imports, served by the dashboard under /novnc/. MPL-2.0, its
 # license kept beside it.
@@ -293,14 +268,14 @@ RUN set -eux; \
 # Cloudflare's edge by the weekly rebuild, and a pin here would be the one
 # copy left behind. Absent on an architecture it is not built for, and the
 # Settings tab then says the tunnel cannot run from here.
-RUN set -eux; \
+RUN --mount=type=secret,id=gh_token,required=false \
+    set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
         amd64|arm64) ;; \
         *) echo "no cloudflared build for ${arch}; the home tunnel is not run from here"; exit 0 ;; \
     esac; \
-    curl -fsSL -o /usr/local/bin/cloudflared \
-        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}"; \
+    bb-gh-fetch cloudflare/cloudflared latest "cloudflared-linux-${arch}" /usr/local/bin/cloudflared; \
     chmod +x /usr/local/bin/cloudflared; \
     cloudflared --version
 
@@ -312,6 +287,8 @@ COPY config/templates/ /opt/builderbot/templates/
 # here as it is in a checkout, which is what lets `bb dashboard dev` and the
 # tests read it.
 COPY config/toolchains.json /opt/builderbot/config/toolchains.json
+# ...and the publishers' release keys a download is checked against (R137).
+COPY config/release-keys/ /opt/builderbot/config/release-keys/
 # The operating systems a VM is made from (R91), read by vms.py the same way.
 COPY config/vm-images.json /opt/builderbot/config/vm-images.json
 # What a sandbox VM is made from, one per hypervisor, which the Nodes tab
@@ -336,6 +313,9 @@ COPY docs/*.md /opt/builderbot/docs/
 # has to travel with the image it describes. Two levels above server.py,
 # where a checkout keeps it too.
 COPY CHANGELOG.md /opt/builderbot/CHANGELOG.md
+# The static analysis scan, which the Schedules page runs on a node as its
+# built-in schedule (R117): two levels above server.py, as in a checkout.
+COPY tools/scan.sh /opt/builderbot/tools/scan.sh
 # Carried in the image so the container can seed Unraid's icon cache itself
 # rather than depending on a URL Unraid can reach. See
 # scripts/startup.d/05-unraid-icon.root.sh.

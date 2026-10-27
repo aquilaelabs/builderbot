@@ -125,6 +125,11 @@ def panel(a):
     for d in [want] if want else sorted(xs, key=_order):
         if d in xs and d in ys:
             return d, xs[d], ys[d]
+    # No device at all is an emulator not answering, not one without a
+    # panel (B321, diagnostics #128: it went off adb a moment later).
+    if not dev:
+        die("the emulator listed no input devices at all: it is not answering, or going down. "
+            "bb emu status says whether it is still up, bb emu log what it said")
     die("no touch panel found on the emulator (getevent -p reports none with ABS_MT_POSITION_X); "
         "BB_TOUCH_DEV=/dev/input/eventN names one")
 

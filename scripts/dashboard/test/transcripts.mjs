@@ -155,8 +155,17 @@ ok(/not by a session/.test(bySession.error || ''), `a session cannot make a conv
 await page.evaluate(() => openNotebook('alpha', 'sessions'));
 await page.waitForSelector(`${SESS} [data-cvresume="conv-two-2025"]`, { timeout: 15000 });
 const rowOf = id => `${SESS} .artrow:has([data-cvresume="${id}"])`;
-await page.click(`${rowOf('conv-two-2025')} .more > button`);
-await page.click(`${rowOf('conv-two-2025')} [data-cvshare]`);
+// A row's ⋯ opened until its item shows (B384): a redraw landing between
+// the press and the menu replaced the row, and the menu opened on the one
+// taken away.
+const pressInMenu = async (id, item) => {
+  for (let i = 0; i < 4; i++){
+    await page.click(`${rowOf(id)} .more > button`);
+    if (await page.waitForSelector(`${rowOf(id)} ${item}`, { state: 'visible', timeout: 3000 }).then(() => true, () => false)) break;
+  }
+  await page.click(`${rowOf(id)} ${item}`);
+};
+await pressInMenu('conv-two-2025', '[data-cvshare]');
 // The row's text, not a pill: its agent already wears one.
 await page.waitForFunction(sel => /visible to every session/.test(document.querySelector(sel)?.textContent || ''),
                            rowOf('conv-two-2025'), { timeout: 10000 }).catch(() => {});
@@ -164,8 +173,7 @@ const shared = await page.evaluate(async () => ((await (await fetch('/api/transc
   .find(r => r.id === 'conv-two-2025')?.shared);
 ok(shared === true && /visible to every session/.test(await page.$eval(rowOf('conv-two-2025'), e => e.textContent)),
    `Make visible marks it visible to every session on the project (${shared})`);
-await page.click(`${rowOf('conv-two-2025')} .more > button`);
-await page.click(`${rowOf('conv-two-2025')} [data-cvdel]`);
+await pressInMenu('conv-two-2025', '[data-cvdel]');
 await page.waitForFunction(id => !document.querySelector(`[data-cvresume="${id}"]`), 'conv-two-2025', { timeout: 10000 }).catch(() => {});
 const gone = await page.evaluate(async () => ((await (await fetch('/api/transcripts?project=alpha')).json()).rows || []).map(r => r.id));
 ok(!gone.includes('conv-two-2025') && gone.includes('conv-one-2026'), `Delete removes that conversation and no other (${gone.join(', ')})`);
@@ -187,6 +195,19 @@ const shown = cli('-p', 'beta', 'transcripts', 'show', 'beta-chat-1', '--tz', 'A
 ok(/^Conversation on beta, session beta-chat-1/.test(shown) && /You \(2026-09-28 19:15\):\nMake the beta page blue/.test(shown),
    'bb transcripts show ID prints one, stamped in the zone asked for');
 ok(/^your conversations on alpha, every agent's/.test(cli('transcripts', 'list')), 'and with no -p it is the session\'s own project');
+// A memory saved by a session is the account's on that repository, the one
+// the Memory view reads and every agent's briefing carries (R152).
+const added = cli('memory', 'add', 'alpha-deploys', '--type', 'project', '--about', 'alpha deploys from its main branch', 'Deploys come from main; a tag starts one.');
+const mem = await page.evaluate(async () => ((await (await fetch('/api/memory?project=alpha')).json()).memories || [])
+  .map(m => ({ name: m.name, hook: m.hook, type: m.type })));
+ok(/^saved alpha-deploys\.md on alpha/.test(added) && mem.some(m => m.name === 'alpha-deploys' && m.hook === 'alpha deploys from its main branch' && m.type === 'project'),
+   `bb memory add saves one on the repository with its index line, and the Memory view has it (${added.trim()} ${JSON.stringify(mem)})`);
+ok(/alpha-deploys  \[project\]  alpha deploys from its main branch/.test(cli('memory')) && /Deploys come from main/.test(cli('memory', 'show', 'alpha-deploys')),
+   'bb memory lists the index and bb memory show prints one whole');
+ok(/^your memories on beta|^no memories of yours on beta/.test(cli('-p', 'beta', 'memory')), 'bb -p NAME memory answers for another repository');
+ok(/^forgot alpha-deploys\.md on alpha/.test(cli('memory', 'forget', 'alpha-deploys'))
+   && !(await page.evaluate(async () => ((await (await fetch('/api/memory?project=alpha')).json()).memories || []).some(m => m.name === 'alpha-deploys'))),
+   'bb memory forget takes it out, the Memory view with it');
 await page.evaluate(async () => { await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', reads: [] }) }); });
 await page.close();
 await done(browser);

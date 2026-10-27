@@ -129,6 +129,7 @@ def main():
         import rulehook                                       # noqa: E402
         r = bbapi.call("/api/v1/hook", {"kind": "note", "path": rel, "symbol": symbol,
                                         "agent": os.environ.get("BB_AGENT") or "claude",
+                                        "slot": os.environ.get("BB_SLOT") or "1",
                                         "told": rulehook.fired(project, req.get("session_id"))[:200]},
                        auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10)
         r = r if isinstance(r, dict) else {}

@@ -4,7 +4,7 @@
 // as a field), the session token widened to the reads on every
 // request, every write refused by name, the relayed words kept to reads,
 // the grant carrying the reads for the view, and the briefing naming them.
-import { launch, newPage, ok, done, ready, refreshUntil, saveDialog, sectSave, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, refreshUntil, saveDialog, sectSave, URL, DIR, prefsOf, projectKey } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -26,9 +26,8 @@ await page.goto(URL);
 await ready(page);
 
 // ---- the dialog: two listboxes -----------------------------------------------------
-// The Debug grants are drawn only with debug mode on, which needs the
-// controller started with DEBUG_MODE=1 (run.sh does) and the switch on.
-await api('/api/settings', { set: { debug_mode: true } });
+// The Debug grants are drawn only with debug mode on, which is the
+// controller started with DEBUG_MODE=1 (run.sh does).
 await refreshUntil(page, () => !!state?.settings?.settings?.debug_mode?.value, { timeout: 20000 });
 await page.evaluate(() => renameProject('alpha', 'all'));
 await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
@@ -41,24 +40,25 @@ const look = await page.$eval('#rnReads', e => ({ overflow: getComputedStyle(e).
   row: Math.round(e.querySelector('label.lrow').getBoundingClientRect().height), display: getComputedStyle(e.querySelector('label.lrow')).display }));
 ok(look.overflow === 'auto' && look.border === '1px' && look.row >= 38 && look.display === 'flex',
    `a listbox is a bordered box that scrolls, its rows a thumb high (${JSON.stringify(look)})`);
-// ...and the Debug grants beside them (the operator, 6 Oct): drawn for an
-// account with the debug grant, the controller's diagnostics first, then
-// each node's machine logs. diag.mjs holds the refusals.
-ok(await page.$eval('#rnDebugField', f => !f.hidden && !!f.querySelector('input[value="@diag"]')),
-   'the project\'s Debug grants are offered to an account with the debug grant, the diagnostics first');
-await page.check('#rnReads input[value="beta"]');
+// ...and no Debug grants beside them: every project's are the Debug page's
+// (R147, the operator, 26 Oct; settings.mjs). diag.mjs holds the refusals.
+ok(!(await page.$('#rnDebugField')), 'the project\'s settings carry no Debug grants: they are the Debug page\'s');
+// A read is a project's (R138): beta's project, ticked by its key.
+const betaKey = await page.evaluate(() => reposOf('beta'));
+await page.check(`#rnReads input[value="${betaKey}"]`);
 await saveDialog(page);
-await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reads?.join() === 'beta', { timeout: 20000 });
-ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.reads.join() === 'beta',
+await page.evaluate(k => { window.__betaKey = k; }, betaKey);
+await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reads?.join() === window.__betaKey, { timeout: 20000 });
+ok((prefsOf('alpha').reads || []).join() === projectKey('beta'),
    'Save keeps the ticked projects as the reads, in the settings store');
-await api('/api/settings', { set: { debug_mode: false } });
 await page.evaluate(() => renameProject('alpha', 'all'));
 await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
-ok(await page.$eval('#rnReads input[value="beta"]', i => i.checked), '...and the dialog opens with it ticked');
+ok(await page.$eval(`#rnReads input[value="${betaKey}"]`, i => i.checked), '...and the dialog opens with it ticked');
 await page.keyboard.press('Escape');
 const self = await api('/api/prefs', { project: 'alpha', reads: ['alpha', 'beta', 'nowhere/x', 'gamma'] });
-ok(self.status === 200 && (await api('/api/status')).projects.find(p => p.name === 'alpha').prefs.reads.join() === 'beta,gamma',
-   'a project never reads itself, and a name that is not a project name is dropped');
+ok(self.status === 200 && (await api('/api/status')).projects.find(p => p.name === 'alpha').prefs.reads.join()
+     === [projectKey('beta'), projectKey('gamma')].join(),
+   'a project never reads itself, a name that is not a project name is dropped, and a repository named reads as its project');
 
 // ---- the session: reads go through, writes are refused by name -----------------------
 const tok = token('alpha');
@@ -220,7 +220,7 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   ok(true, '...and Save stores it');
   await api('/api/prefs', { project: 'alpha', gpu: 'on' });
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.sees?.join() === '/mnt/media', { timeout: 20000 });
-  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.sees.join() === '/mnt/media',
+  ok((prefsOf('alpha').sees || []).join() === '/mnt/media',
      '...and Save keeps what the field says');
   await page.evaluate(() => renameProject('alpha', 'all'));
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
@@ -237,8 +237,7 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   page.errors = [];
   await api('/api/prefs', { project: 'alpha', sees: [] });
   ok(!/this project is shown/.test((await api('/api/preamble?project=alpha')).text)
-     && !('sees' in (JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha || {})
-          && JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.sees.length),
+     && !(prefsOf('alpha').sees || []).length,
      '...and with none named the briefing names none');
 }
 
@@ -274,7 +273,7 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   await page.click('#rnReachRows .rnreach:first-child [data-reachrm]');
   await saveDialog(page);
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reaches?.length === 2, { timeout: 20000 });
-  const after = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.reaches.map(e => e.addr);
+  const after = (prefsOf('alpha').reaches || []).map(e => e.addr);
   ok(after.join() === '192.168.1.60:8123,192.168.1.70', `...and Save keeps what the rows say, one removed and one added (${after.join(', ')})`);
   await api('/api/prefs', { project: 'alpha', reaches: [] });
 }

@@ -13,21 +13,22 @@ const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 
-// A card's link, lock, pin and the rest sit behind its menu on the Projects
-// page (R218 step 3): opened first, the way a thumb does.
+// A card's link, lock, pin and the rest are on its back on the Projects
+// page (R138): Edit turns it over first, the way a thumb does.
 const pjMenu = async name => {
   // An archived card is in the Archived fold at the page's foot: opened
-  // first, and the card brought on screen, as a person scrolls to it. A
-  // floating menu whose button is off screen closes itself (floatFollow),
-  // so a menu opened below the fold by script shut at once (B108).
+  // first, and the card brought on screen, as a person scrolls to it.
+  // Its heading pressed, as a person opens it, so it slides open to the
+  // card's height rather than being set open under a height it had shut.
   await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
     const fold = c?.closest('details.sect');
-    if (fold && !fold.open) fold.open = true;
-    c?.scrollIntoView({ block: 'center' }); }, name);
-  await page.waitForTimeout(150);
+    if (fold && !fold.open) fold.querySelector(':scope > summary')?.click(); }, name);
+  await page.waitForTimeout(600);
+  await page.evaluate(n => document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`)?.scrollIntoView({ block: 'center' }), name);
+  await page.waitForTimeout(400);
   await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
-    if (c?.querySelector('.actmenu')?.hidden) c.querySelector('[data-pmore]')?.click(); }, name);
-  await page.waitForTimeout(150);
+    if (c && !c.classList.contains('flipped')) c.querySelector('.pcfront [data-pedit]')?.click(); }, name);
+  await page.waitForTimeout(500);
 };await page.goto(URL);
 await ready(page);
 // The Nostromo glass (the operator, 24 Sep): a pane's bar, the dock's line
@@ -477,45 +478,66 @@ print(json.dumps(out))
                      { timeout: 20000 });
 }
 // ---- a project's card on the Projects page, at a phone and at a desk ------
-// The sidebar's row, and its fold, went with R218 step 3: a project is a
-// card on the Projects page with Claude and Shell on it and the rest behind
-// one menu, at every width.
+// A project is a card on the Projects page (R138): its front the agent, Add
+// repository and Edit, no menu; Edit turns it over to the rest, at every
+// width.
 {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);
   await page.evaluate(() => openProjectsTab());
   await page.waitForSelector('.doc.on .projtab .pcard[data-row="alpha"]', { timeout: 10000 });
   const card = '.doc.on .projtab .pcard[data-row="alpha"]';
-  const shown = () => page.$$eval(`${card} .pcacts > button`, bs => bs.filter(b => b.offsetParent !== null).length);
-  ok(await shown() === 2 && await page.$eval(`${card} .actmenu`, m => m.hidden),
-     `a phone's card shows Claude and Shell, the rest behind its menu (${await shown()})`);
-  await page.click(`${card} [data-pmore]`); await page.waitForTimeout(250);
-  ok(await page.$eval(`${card} .actmenu`, m => !m.hidden && m.querySelectorAll('button').length >= 5),
-     '...and pressing it opens the menu with the rest');
-  // At its button on a phone too, its entrance going the way it opened:
-  // rising above the button, dropping below it (the operator, 18 Oct).
-  const menuAnim = await page.$eval(`${card} .actmenu`, m => ({ name: getComputedStyle(m).animationName, up: m.classList.contains('up') }));
-  ok(menuAnim.name === (menuAnim.up ? 'menuRise' : 'menuIn'),
-     `...on the stylesheet's tween, moving the way it opened (${JSON.stringify(menuAnim)})`);
-  ok(await page.$eval(`${card} [data-pmore]`, b => b.getAttribute('aria-expanded') === 'true'),
-     '...saying so, for anything that is not looking at the pixels');
-  await page.keyboard.press('Escape');
+  const front = () => page.$$eval(`${card} .pcfront .pcacts > button`, bs => bs.filter(b => b.offsetParent !== null).map(b => b.textContent.trim()));
+  const f = await front();
+  ok(f.at(-1) === 'Edit' && f.includes('Add repository') && !await page.$(`${card} [data-pmore]`),
+     `a phone's card shows its agent, Add repository and Edit, and no menu (${JSON.stringify(f)})`);
+  // Its repositories sit close: a line is its name and branch, no control's
+  // height on the name's link (the operator, 27 Oct).
+  const lines = await page.$$eval(`${card} .pcfront .pcrepo`, rs => rs.map(r => Math.round(r.getBoundingClientRect().height)));
+  ok(lines.length && lines.every(h => h <= 30), `...and its repositories' lines are set close (${lines.join(', ')}px)`);
+  await page.click(`${card} .pcfront [data-pedit]`);
+  await page.waitForSelector(`${card}.flipped .pcback:not([inert])`, { timeout: 3000 });
+  ok(await page.$eval(`${card} .pcback [data-pedit]`, b => b.getAttribute('aria-expanded') === 'true'),
+     '...Edit turns it over, saying so, for anything that is not looking at the pixels');
+  // The turn is on the stylesheet's tween, and off under reduced motion.
+  // Read until it answers: a poll's redraw replacing the card in the same
+  // moment read an empty style now and then.
+  const turn = await page.waitForFunction(sel => {
+    const e = document.querySelector(sel), t = e && getComputedStyle(e).transitionProperty;
+    return /transform/.test(t || '') && t;
+  }, `${card} .pcback`, { timeout: 3000 }).then(h => h.jsonValue(), async () => page.$$eval(`${card} .pcback`, es => JSON.stringify(es.map(e =>
+    ({ t: getComputedStyle(e).transitionProperty, conn: e.isConnected, par: e.parentElement?.className, ghost: !!e.closest('.fghost') })))));
+  ok(/transform/.test(turn) && !/^\[/.test(turn), `...on a tween of its transform (${turn})`);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.waitForTimeout(400);
-  const tabShown = await shown();
-  ok(tabShown === 2 && await page.$eval(`${card} [data-pmore]`, b => b.offsetParent !== null)
-     && await page.$eval(`${card} .actmenu`, m => m.hidden && m.querySelectorAll('button').length >= 5),
-     `...and at a desk the card shows the same two, the rest behind its menu (${tabShown} shown)`);
-  // The pin is in the card's menu, reading Unpin while it is pinned; a press
-  // turns it to Pin, and Home's glance (step 5) is what it decides.
-  ok(await page.$eval(`${card} [data-p]`, b => b.textContent.trim() === 'Unpin'),
-     "the card's menu carries the pin, reading Unpin");
-  await unfold(page, 'alpha');
-  await page.click(`${card} [data-p]`);
-  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] [data-p]')?.textContent.trim() === 'Pin', null, { timeout: 15000 });
+  // The back's foot is one line of icons, each named (the operator, 25 Oct).
+  const foot = await page.$$eval(`${card} .pcback .pcacts > button`, bs => ({
+    names: bs.map(b => b.getAttribute('aria-label')), tops: new Set(bs.map(b => Math.round(b.getBoundingClientRect().top))).size }));
+  ok(foot.tops === 1 && ['Color', 'Group', 'Report bug', 'Settings'].every(n => foot.names.includes(n)),
+     `the back's controls are one line of named icons (${JSON.stringify(foot)})`);
+  // A box opening on the back fades in by itself, with no copy of the face
+  // fading out over it: the card's ground showed between the two, a flicker
+  // in Firefox (the operator, 27 Oct).
+  const opened = await page.evaluate(sel => {
+    document.querySelector(sel + ' .pcback [data-pcolor]').click();
+    const pop = document.querySelector(sel + ' .pcback .pcpop');
+    return { ghosts: document.querySelectorAll(sel + ' .fghost').length,
+             fades: pop ? pop.getAnimations().filter(a => a.id === 'fadein').length : -1,
+             face: document.querySelector(sel + ' .pcback').getAnimations().filter(a => a.id === 'fadein').length };
+  }, card);
+  await page.keyboard.press('Escape');
+  ok(opened.ghosts === 0 && opened.fades === 1 && opened.face === 0,
+     `...and a box opening there fades in alone, the face never copied over it (${JSON.stringify(opened)})`);
+  await page.click(`${card} .pcback [data-pedit]`);
+  // The pin by the name, pressed in while it is pinned; a press lets it out,
+  // and Home's glance (step 5) is what it decides.
+  ok(await page.$eval(`${card} .pcfront [data-pmark]`, b => b.getAttribute('aria-pressed') === 'true'),
+     "the pin by the card's name is pressed in while it is pinned");
+  await page.click(`${card} .pcfront [data-pmark]`);
+  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false', null, { timeout: 15000 });
   ok(true, '...and pressing it unpins the project');
   await page.evaluate(() => setProjectPinned('alpha', true));
-  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] [data-p]')?.textContent.trim() === 'Unpin', null, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true', null, { timeout: 15000 });
 }
 
 // ---- the card's notice: why nobody can be here, and who is ------------
@@ -576,11 +598,15 @@ print(json.dumps(out))
   await plant({ locked: false, session_at: '', session_why: '' });
   // Who is here is the card's state: this account's session as the dot
   // and a word, in the session dot's own colors (the operator, 29 Sep).
-  await page.evaluate(() => { state.claude_with = { alpha: ['test', 'alice'] }; state.claude_busy = { alpha: ['alice'] };
+  // Who is here, one row per person per agent where each session is
+  // (claude_where, B344).
+  await page.evaluate(() => { state.claude_with = { alpha: ['test', 'alice'] };
+                              state.claude_where = { alpha: [{ who: 'test', agent: 'claude', node: 'n1', working: false },
+                                                             { who: 'alice', agent: 'claude', node: 'n1', working: true }] };
                               drawProjects(state.projects); });
   ok(/waiting for you/.test(await stateWord()) && await page.$eval(`${C} .pstate .st`, e => e.classList.contains('waiting')),
      `this account's session here is the card's state, its dot the session dot's waiting (${await stateWord()})`);
-  await page.evaluate(() => { state.claude_busy = { alpha: ['test'] }; drawProjects(state.projects); });
+  await page.evaluate(() => { state.claude_where.alpha[0].working = true; drawProjects(state.projects); });
   ok(/working/.test(await stateWord()) && await page.evaluate(() => {
     const dot = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate .st.working');
     const tab = document.createElement('span'); tab.className = 'st working'; document.body.appendChild(tab);
@@ -592,12 +618,11 @@ print(json.dumps(out))
   // and Sessions say (B98), not waiting for you.
   {
     const asked = await page.evaluate(() => {
-      const nm = myClaude('alpha'), kept = state.sessions;
-      state.sessions = [...(kept || []).filter(s => s.name !== nm), { name: nm, claude: { state: 'asking', task: '' } }];
+      state.claude_where.alpha[0] = { ...state.claude_where.alpha[0], working: false, asking: true };
       drawProjects(state.projects);
       const st = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate');
       const out = { word: st?.textContent || '', asking: !!st?.querySelector('.st.asking') };
-      state.sessions = kept; drawProjects(state.projects);
+      state.claude_where.alpha[0].asking = false; drawProjects(state.projects);
       return out;
     });
     ok(/asking you/.test(asked.word) && asked.asking,
@@ -607,17 +632,28 @@ print(json.dumps(out))
     // session rows.
     const theirs = await page.evaluate(() => {
       state.claude_asking = { alpha: ['alice'] }; state.claude_busy = {};
+      state.claude_where.alpha[1] = { ...state.claude_where.alpha[1], working: false, asking: true };
       drawProjects(state.projects);
       const st = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate.other');
       const out = { word: st?.textContent || '', asking: !!st?.querySelector('.st.asking'),
                     row: /class="st asking"[^>]*>[^<]*<\/span>alice/.test(sessionRows('alpha')) };
-      state.claude_asking = {}; drawProjects(state.projects);
+      state.claude_asking = {}; state.claude_where.alpha[1].asking = false; drawProjects(state.projects);
       return out;
     });
-    ok(theirs.word === 'alice asking' && theirs.asking && theirs.row,
+    ok(/^alice asking/.test(theirs.word) && theirs.asking && theirs.row,
        `another account's session on its permission prompt reads asking, not waiting (${JSON.stringify(theirs)})`);
+    // One person running two agents is two entries, each its own state and
+    // agent (B344), where they folded into one.
+    const two = await page.evaluate(() => {
+      state.claude_where = { alpha: [{ who: 'test', agent: 'claude', node: 'n1', working: false },
+                                     { who: 'test', agent: 'codex', node: 'n1', working: true }] };
+      drawProjects(state.projects);
+      return [...document.querySelectorAll('.pgrid .pcard[data-row="alpha"] .pcfront .pstate')].map(e => e.textContent.trim());
+    });
+    ok(JSON.stringify(two) === JSON.stringify(['waiting for you · Claude', 'working · ChatGPT']),
+       `one person's two agents are two entries, each with its own state and agent (${JSON.stringify(two)})`);
   }
-  await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; drawProjects(state.projects); });
+  await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; state.claude_where = {}; drawProjects(state.projects); });
   await page.evaluate(() => liveRefresh());
   ok(/waiting for you|working/.test(await stateWord()),
      'liveRefresh reads who is here from /api/live and draws the cards again');
@@ -1195,17 +1231,17 @@ await page.evaluate(() => refresh());
 // owner working; an administrator's shuts the owner out as well.
 await page.evaluate(() => { refresh(); openProjectsTab(); });
 await page.waitForSelector('.pgrid .pcard[data-row="alpha"] [data-lock]', { timeout: 10000, state: 'attached' });
-ok(await page.$$eval('.pgrid .pcard[data-row="alpha"] .actmenu button', bs => {
-     const t = bs.map(b => b.textContent.trim()); return t.includes('Lock') && t.includes('Archive'); }),
-   "its owner's card carries Lock and Archive in its menu, as two presses");
+ok(await page.$eval('.pgrid .pcard[data-row="alpha"]', c => !!c.querySelector('.pcback [data-lock]')
+     && c.querySelector('.pcback [data-lock]').getAttribute('aria-label') === 'Lock' && !!c.querySelector('.pcfront [data-kmark]')),
+   "its owner's card carries Lock on its back and Archive by its name, as two presses");
 await page.evaluate(() => setLocked('alpha', true));
 await page.waitForFunction(() => !!document.querySelector('.pgrid .pcard[data-row="alpha"] .lockmark'), { timeout: 15000 });
 const ownLock = await page.$eval('.pgrid .pcard[data-row="alpha"]', r => ({
   folded: !!r.closest('details.sect'), mark: r.querySelector('.lockmark')?.textContent.trim(),
   claudeDead: !!r.querySelector('[data-c="alpha"]')?.disabled && /locked/.test(saidOf(r.querySelector('[data-c="alpha"]'))),
-  menu: [...r.querySelectorAll('.actmenu button')].map(b => b.textContent.trim()) }));
+  menu: [...r.querySelectorAll('.pcback .pcacts button')].map(b => b.getAttribute('aria-label')) }));
 ok(!ownLock.folded && ownLock.mark === 'locked' && !ownLock.claudeDead && ownLock.menu.includes('Unlock'),
-   `its owner's lock keeps the card in the grid, marked locked, with the owner's own Start not shut by it and Unlock in the menu (${JSON.stringify(ownLock)})`);
+   `its owner's lock keeps the card in the grid, marked locked, with the owner's own Start not shut by it and Unlock on its back (${JSON.stringify(ownLock)})`);
 await page.evaluate(() => setLocked('alpha', false));
 // An administrator's lock (this account owns alpha, so it is written as one).
 writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ alpha: { by: 'u_0000aaaa', admin: true }, delta: { by: 'u_0000aaaa', admin: true } }));
@@ -1217,7 +1253,7 @@ const locked = await page.$eval('.pgrid .pcard[data-row="alpha"]', r => ({
   claude: r.querySelector('[data-c="alpha"]')?.disabled,
   shell:  !!r.querySelector('[data-s="alpha"]'),
   note:   r.textContent.replace(/\s+/g, ' '),
-  menu:   [...r.querySelectorAll('.actmenu button')].map(b => b.textContent.trim()),
+  menu:   [...r.querySelectorAll('.pcback .pcacts button')].map(b => b.getAttribute('aria-label')),
 }));
 ok(locked.claude === true, "an administrator's lock takes its Start away, its owner's included");
 ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in');
@@ -1248,31 +1284,40 @@ await page.waitForFunction(() => !!document.querySelector('.doc .projtab details
     const fold = c?.closest('details.sect');
     return { fold: fold?.dataset.sect || '', foldShut: fold ? !fold.open : null,
              said: fold?.querySelector(':scope > summary .sst')?.textContent || '',
-             menu: [...(c?.querySelectorAll('.actmenu button') || [])].map(b => b.textContent.trim()),
+             menu: [...(c?.querySelectorAll('.pcback .pcacts button') || [])].map(b => b.getAttribute('aria-label')),
+             unarchive: c?.querySelector('.pcfront [data-kmark]')?.getAttribute('aria-label') || '',
              mark: !!c?.querySelector('.lockmark'),
              home: (state?.projects || []).filter(p => p.pinned && !p.archived).some(p => p.name === 'alpha') };
   });
   ok(arch.fold === 'projects:archived' && arch.foldShut === true && /^\d+ projects?$/.test(arch.said)
-     && arch.menu.includes('Unarchive') && !arch.menu.some(t => /^(Pin|Unpin|Group)/.test(t)) && !arch.home && !arch.mark,
-     `an archived project's card is folded away under Archived, its menu offering Unarchive and no Pin or Group, not among the pinned, and not locked (${JSON.stringify(arch)})`);
-// Its menu floats over the page, not inside the fold that holds the card (the
-// operator, 18 Oct: it was cut off at the fold's foot): pressed as a person
-// would, every item of it is on the screen and above the dock's line.
+     && /^Unarchive/.test(arch.unarchive) && !arch.menu.some(t => /^Group/.test(t)) && !arch.home && !arch.mark,
+     `an archived project's card is folded away under Archived, Unarchive by its name and no Group on its back, not among the pinned, and not locked (${JSON.stringify(arch)})`);
+// Turned over inside the fold, its back is whole on the screen: every
+// control of it above the dock's line and nothing over it, the dock shut
+// as a person pulls it down to work on the page.
 {
-  await page.evaluate(() => { closeMore(); const d = document.querySelector('.doc .projtab details.sect[data-sect="projects:archived"]'); if (d) d.open = true; });
-  const more = '.doc .projtab .pcard[data-row="alpha"] [data-pmore]';
-  await page.locator(more).scrollIntoViewIfNeeded();
-  await page.click(more); await page.waitForTimeout(400);
+  await page.evaluate(() => dockToggle(false));
+  await pjMenu('alpha');
+  // The page scrolls smoothly: brought into view, then measured once it is there.
+  await page.evaluate(() => [...(document.querySelector('.doc .projtab .pcard[data-row="alpha"]')?.querySelectorAll('.pcback .pcacts button') || [])]
+    .pop()?.scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(700);
   const seen = await page.evaluate(() => {
-    const m = document.querySelector('.actmenu:not([hidden])'), last = m && [...m.querySelectorAll('button')].pop();
+    const c = document.querySelector('.doc .projtab .pcard[data-row="alpha"]'), last = c && [...c.querySelectorAll('.pcback .pcacts button')].pop();
     if (!last) return { open: false };
     const r = last.getBoundingClientRect(), foot = Math.min(innerHeight, document.querySelector('.pane.dock')?.getBoundingClientRect().top || innerHeight);
-    return { open: true, floats: m.classList.contains('floatm'), bottom: Math.round(r.bottom), foot: Math.round(foot),
-             top: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === last || last.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
+    // A toast passing over it is the page's, and gone in seconds: looked through.
+    const toast = document.getElementById('toast');
+    if (toast) toast.style.visibility = 'hidden';
+    const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (toast) toast.style.visibility = '';
+    const sc = c.closest('.doc'), fold = c.closest('details.sect');
+    return { open: c.classList.contains('flipped'), bottom: Math.round(r.bottom), foot: Math.round(foot), top: at === last || last.contains(at),
+             over: at?.className || at?.tagName, doc: sc && [sc.scrollTop, sc.scrollHeight, sc.clientHeight], fold: fold && Math.round(fold.getBoundingClientRect().bottom) };
   });
-  ok(seen.open && seen.floats && seen.bottom <= seen.foot && seen.top,
-     `...and its menu opens whole over the page, its last item above the dock's line and nothing over it (${JSON.stringify(seen)})`);
-  await page.evaluate(() => closeMore());
+  ok(seen.open && seen.bottom <= seen.foot && seen.top,
+     `...and Edit turns it over in the fold, its last control on screen and nothing over it (${JSON.stringify(seen)})`);
+  await page.evaluate(() => flipCard(reposOf('alpha')));
 }
 await page.evaluate(() => setArchived('alpha', false));
 // Unlocking is what is under test, so it is the LOCK that has to stop being
@@ -1304,7 +1349,7 @@ ok(inTab.length >= 2 && inTab.includes('alpha'),
    'the Projects page lists every project');
 ok(await page.$eval('.doc .projtab .pcard', r =>
      !!r.querySelector('[data-open]') && !!r.querySelector('[data-s]')
-     && !!r.querySelector('[data-k]') && !!r.querySelector('[data-lock]') && !!r.querySelector('[data-p]')),
+     && !!r.querySelector('[data-kmark]') && !!r.querySelector('[data-lock]') && !!r.querySelector('[data-pmark]')),
    '...with the same controls on a card: its page, shell, Archive, Lock and the pin');
 
 // Groups (the operator, 18 Oct): a label of this account's that keeps
@@ -1336,22 +1381,75 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   ok(chips[0]?.startsWith('All') && chips.some(c => c.startsWith('No group')) && chips.includes('Clients 1'),
      `the groups are chips over the grid, each counted, and one narrows it to its group (${chips.join(' | ')})`);
   await pjMenu('gamma');
+  // The card keeps its size as the box opens on it, the box in the
+  // repositories' place (the operator, 26 Oct).
+  const cardH = () => page.$eval('.doc .projtab .pcard[data-row="gamma"]', c => Math.round(c.getBoundingClientRect().height));
+  const shut = await cardH();
   await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
-  const offered = await page.$$eval('.doc .projtab .askline datalist option', os => os.map(o => o.value));
+  await page.waitForTimeout(400);
+  const opened = await cardH();
+  const listGone = await page.$eval('.doc .projtab .pcard[data-row="gamma"] .pcback .pcrepos', l => !l.checkVisibility());
+  ok(Math.abs(opened - shut) <= 1 && listGone,
+     `a card is the same size with its Group box open, the box in its repositories' place (${shut} then ${opened}, list hidden ${listGone})`);
+  // The field is also a pulldown of every group made (the operator, 26 Oct):
+  // its chevron opens them all, Escape shuts the list before the box.
+  await page.click('.doc .projtab .askline .combobtn');
+  const offered = await page.$$eval('.doc .projtab .askline .combolist [data-combo]', bs => bs.map(b => b.textContent));
+  await page.keyboard.press('Escape');
+  ok(await page.$('.doc .projtab .askline') && await page.$eval('.doc .projtab .askline .combolist', l => l.hidden),
+     "the Group field's chevron opens every group made, and Escape shuts the list before the box");
   // The field and its Cancel and Save on one line inside the card, at a
   // desk and on a phone: Save had dropped under Cancel.
-  for (const w of [1280, 960]){
+  for (const w of [1280, 960, 393]){
     await page.setViewportSize({ width: w, height: 800 });
     const line = await page.$eval('.doc .projtab .askline .askrow', r => {
       const card = r.closest('.pcard').getBoundingClientRect();
       const boxes = [...r.children].filter(e => e.offsetParent).map(e => e.getBoundingClientRect());
-      return { tops: new Set(boxes.map(b => Math.round(b.top))).size, inside: boxes.every(b => b.right <= card.right + 1) };
+      const row = r.getBoundingClientRect(), field = r.firstElementChild.getBoundingClientRect();
+      const btns = boxes.slice(1).reduce((n, x) => n + x.width, 0);
+      return { tops: new Set(boxes.map(b => Math.round(b.top))).size, inside: boxes.every(b => b.right <= card.right + 1),
+               fills: field.width >= row.width - btns - 8 * (boxes.length - 1) - 2 };
     });
-    ok(line.tops === 1 && line.inside, `a card's Group ask is one line at ${w}: its field, Cancel and Save, inside the card (${JSON.stringify(line)})`);
+    ok(line.tops === 1 && line.inside && line.fills,
+       `a card's Group ask is one line at ${w}: its field, taking all the room its Cancel and Save leave, inside the card (${JSON.stringify(line)})`);
   }
   await page.setViewportSize({ width: 1280, height: 800 });
+  // Group again closes its box as Cancel does, the group as it was.
+  await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
+  await page.waitForFunction(() => !document.querySelector('.doc .projtab .askline'), null, { timeout: 5000 }).catch(() => {});
+  ok(!await page.$('.doc .projtab .askline') && await page.evaluate(() => state.repos?.[reposOf('gamma') || 'gamma']?.group || '') === '',
+     'a second press of a card\'s Group closes its box without saving');
+  await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
+  await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
   await page.click('.doc .projtab .askline [data-askno]');
+  // A box opening or closing on a card fades in what it brings (the
+  // operator, 26 Oct: they cut in): the box as it opens, the repositories
+  // as it shuts, never the whole face, whose fade let the card's ground
+  // flash through in Firefox (the operator, 27 Oct). A move is a slide.
+  await page.evaluate(() => { window.__fades = []; const was = fadeThrough, wasIn = fadeIn;
+    const said = es => [...(es instanceof Element ? [es] : es || [])].map(e => (e.closest('.pcard')?.dataset.row || '?') + ':' + [...e.classList].join('.')).join(',');
+    fadeThrough = (pick, swap) => { window.__fades.push('through ' + said(typeof pick === 'function' ? pick() : document.querySelectorAll(pick))); return was(pick, swap); };
+    fadeIn = els => { const w = said(els); if (w) window.__fades.push(w); return wasIn(els); };
+    window.__unfade = () => { fadeThrough = was; fadeIn = wasIn; }; });
+  await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
+  await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
+  await page.click('.doc .projtab .askline [data-askno]');
+  await page.waitForTimeout(300);
+  const boxFades = await page.evaluate(() => window.__fades.splice(0));
+  await page.click('.doc .projtab .pcard[data-row="gamma"] .pcback [data-pedit]');
+  await page.waitForTimeout(600);
+  await page.click('.doc .projtab .pcard[data-row="gamma"] .pcfront [data-pmark]');
+  await page.waitForFunction(() => (state.repos?.[reposOf('gamma') || 'gamma'] || {}).pinned, null, { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(800);
+  const markFades = await page.evaluate(() => { const f = window.__fades.splice(0); window.__unfade(); return f; });
+  // A pin moves the card to the top, so it slides there rather than fading
+  // (the operator, 26 Oct: a card that moves slides).
+  ok(boxFades.length === 2 && /^gamma:.*\baskline\b/.test(boxFades[0]) && /^gamma:pcrepos/.test(boxFades[1])
+     && !boxFades.some(f => /through|pcface/.test(f)) && !markFades.some(f => /through|pcface/.test(f)),
+     `a box on a card's back fades in alone and the repositories fade back as it shuts, the face never faded, and a pin, which moves the card, slides it rather than fading (${JSON.stringify({ boxFades, markFades })})`);
+  await page.evaluate(() => setProjectPinned(reposOf('gamma') || 'gamma', false));
+  await pjMenu('gamma');
   // The pencil beside the group's name renames it in a box under the
   // heading, for every project in it (R273).
   await page.click('.doc .projtab .pjgroup[data-group="Clients"] [data-pjgrename]');
@@ -1382,7 +1480,7 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
 // Unpinning takes a project off the sidebar and leaves it on the tab, whole.
 await page.evaluate(() => setProjectPinned('alpha', false));
 await page.waitForFunction(
-  () => document.querySelector('.doc .projtab [data-p="alpha"]')?.textContent.trim() === 'Pin', { timeout: 15000 });
+  () => document.querySelector('.doc .projtab .pcard[data-row="alpha"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false', { timeout: 15000 });
 ok(await page.$$eval('.doc .projtab .pcard .name',
      ns => ns.some(n => n.textContent.trim() === 'alpha')),
    'an unpinned project leaves the sidebar and stays on the page');
@@ -1392,7 +1490,7 @@ ok(await page.$eval('.doc .projtab .pcard[data-row="alpha"]',
 // The pinned first on the page, each part by name (the operator, 18 Oct).
 {
   const order = await page.evaluate(() => [...document.querySelectorAll('.doc .projtab #pjGrid > .pgrid .pcard')]
-    .map(c => { const p = state.projects.find(x => x.name === c.dataset.row); return { n: p.label || p.name, pin: !!p.pinned }; }));
+    .map(c => { const p = state.repos[c.dataset.pkey]; return { n: p.name, pin: !!p.pinned }; }));
   const firstLoose = order.findIndex(o => !o.pin);
   const sorted = part => part.every((o, i) => !i || part[i - 1].n.localeCompare(o.n) <= 0);
   ok(firstLoose > 0 && order.slice(firstLoose).every(o => !o.pin)
@@ -1407,7 +1505,7 @@ ok(await page.$eval('.doc .projtab', e => !e.classList.contains('card'))
    'the Projects page fills its pane the way the notebook does');
 await page.evaluate(() => setProjectPinned('alpha', true));
 await page.waitForFunction(
-  () => document.querySelector('.doc .projtab [data-p="alpha"]')?.textContent.trim() === 'Unpin', { timeout: 15000 });
+  () => document.querySelector('.doc .projtab .pcard[data-row="alpha"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true', { timeout: 15000 });
 ok(true, 'pinning it back reads Unpin again');
 
 // ---- polls do not stack (bug #44) --------------------------------------
@@ -1416,6 +1514,10 @@ ok(true, 'pinning it back reads Unpin again');
 // each one makes the next slower, which is the shape the stuck-on-"loading…"
 // report had. Held open with a route so the overlap is deterministic.
 {
+  // No read out to begin with: the pin pressed just before this asks for
+  // one it does not wait for, and five asks joining that one, as they
+  // rightly do, leave none to remember.
+  await page.waitForFunction(() => !refreshBusy, null, { timeout: 15000 });
   let release, held = 0;
   await page.route('**/api/status*', async route => {
     held++;
@@ -1423,10 +1525,17 @@ ok(true, 'pinning it back reads Unpin again');
     await route.continue().catch(() => {});
   });
   const before = held;
+  // No read out that the route did not see. One the poll had out before the
+  // route was set is joined by the five asks, rightly, and the one it then
+  // asks for is the remembered one: held, released, and nothing after it
+  // but the fifteen-second poll, so the wait below for one more ran out at
+  // 15s on a loaded box (B430, B219). Waited out here, so the read the five
+  // join is always one the route holds: the poll's own, if it went first.
+  for (const t1 = Date.now(); held === before && await page.evaluate(() => refreshBusy) && Date.now() - t1 < 20000;)
+    await new Promise(r => setTimeout(r, 50));
   // Five asks while the first is still out. They must coalesce into one more.
-  // The first is waited for rather than given a fixed 400ms: a read the poll
-  // had out before the route was set is joined, rightly, and the held one
-  // goes only when it lands, which on a loaded box is later than that (B430).
+  // The first is waited for rather than given a fixed 400ms: it goes only
+  // when the route lets it, which on a loaded box is later than that (B430).
   await page.evaluate(() => { refresh(); refresh(); refresh(); refresh(); refresh(); });
   for (const t1 = Date.now(); held < before + 1 && Date.now() - t1 < 20000;)
     await new Promise(r => setTimeout(r, 50));
@@ -1484,25 +1593,25 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 // The card's menu says Unpin while it is pinned, Pin once it is not.
-const tackLit = () => page.$eval('.doc .projtab [data-p="beta"]', b => b.textContent.trim() === 'Unpin');
+const tackLit = () => page.$eval('.doc .projtab .pcard[data-row="beta"] .pcfront [data-pmark]', b => b.getAttribute('aria-pressed') === 'true');
 ok(await tackLit(), 'the Projects page shows beta pinned');
 await page.evaluate(() => setProjectPinned('beta', false));
 await page.waitForFunction(() =>
-  document.querySelector('.doc .projtab [data-p="beta"]')?.textContent.trim() === 'Pin',
+  document.querySelector('.doc .projtab .pcard[data-row="beta"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false',
   { timeout: 5000 });
 ok(true, '...and unpinning it there turns the page\'s menu item to Pin too');
 ok(await page.evaluate(() => !(state.projects.find(p => p.name === 'beta') || {}).pinned),
    '...with the project unpinned in the same breath');
 await page.evaluate(() => setProjectPinned('beta', true));
 await page.waitForFunction(() =>
-  document.querySelector('.doc .projtab [data-p="beta"]')?.textContent.trim() === 'Unpin',
+  document.querySelector('.doc .projtab .pcard[data-row="beta"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true',
   { timeout: 5000 });
 ok(true, '...and pinning it back lights it again, first click');
 // A project whose name has a dot in it: the row's own selector has to survive
 // one, or the change lands without its animation and nothing says why.
 await page.evaluate(() => setProjectPinned('ep.silon', false));
 await page.waitForFunction(() =>
-  document.querySelector('.doc .projtab [data-p="ep.silon"]')?.textContent.trim() === 'Pin', { timeout: 8000 });
+  document.querySelector('.doc .projtab .pcard[data-row="ep.silon"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false', { timeout: 8000 });
 ok(true, 'a dotted project name unpins too, animation and all');
 // ...and back, which is the direction that used to be a plain redraw: pinning
 // is watched from the Projects tab, which on a desktop sits in the column
@@ -1517,7 +1626,7 @@ ok(true, 'a dotted project name unpins too, animation and all');
 // than snapped in.
 await page.evaluate(() => setProjectPinned('ep.silon', true));
 await page.waitForFunction(() =>
-  document.querySelector('.doc .projtab [data-p="ep.silon"]')?.textContent.trim() === 'Unpin', { timeout: 8000 });
+  document.querySelector('.doc .projtab .pcard[data-row="ep.silon"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true', { timeout: 8000 });
 
 // The docker manager is the Containers page. What it LISTS is asserted in
 // devapp.mjs, where a project actually has a compose file and an instance.
@@ -1646,10 +1755,10 @@ await page.click('#rnCancel');
   const where = await page.evaluate(v => ({ ship: [...document.querySelectorAll('.pane .nb .nbsub [data-in="ship"]')].map(b => b.dataset.v).join(),
     sect: !!document.querySelector('details.rngroup[data-sect="rn:signing"]'), hash: location.hash,
     head: (document.querySelector(`${v} #sgHint`)?.textContent || '').replace(/\s+/g, ' ').trim(),
-    empty: document.querySelector(`${v} .hint.nbempty`)?.textContent || '' }), V);
+    empty: document.querySelector(`${v} .sghead`)?.textContent.replace(/\s+/g, ' ') || '' }), V);
   ok(where.ship === 'artifacts,docker,vms,signing' && !where.sect && /\/projects\/alpha\/signing$/.test(where.hash)
-     && where.head === '' && /No keys yet/.test(where.empty),
-     `the keys are the notebook's Signing view, last in Ship, at its own address, no tiles over its one hint line, and the settings have no signing section (${JSON.stringify(where)})`);
+     && where.head === '' && /Keys\s*none yet/.test(where.empty),
+     `the keys are the notebook's Signing view, last in Ship, at its own address, no tiles over its head, and the settings have no signing section (${JSON.stringify(where)})`);
   const signRows = await page.$$eval(`${V} .rnsign[data-key]`, rs => rs.map(r => r.firstElementChild.textContent.trim()));
   // ...under the backup password's line, the project's owner's to set (the
   // fixture's owner owns alpha).
@@ -1735,7 +1844,7 @@ await page.click('#rnCancel');
   // What keeps the project's node from a key's work is said in its words,
   // naming the node and what it lacks, never the controller's keytool (B232).
   const signList = (await api('/api/signing', { project: 'alpha', action: 'list' })).body;
-  const nodeLine = await page.$eval(`${V} #sgNode`, e => e.textContent.trim()).catch(() => '');
+  const nodeLine = await page.$eval(`${V} .sgnode`, e => e.textContent.trim()).catch(() => '');
   ok(!/keytool/i.test(await page.$eval(V, e => e.textContent)) && typeof signList.node_why === 'string'
      && (signList.node_why ? nodeLine === signList.node_why : nodeLine === ''),
      `the Signing view says what keeps the project's node from checking or making a key, in the node's words (${signList.node_why || 'ready'})`);
@@ -2034,11 +2143,108 @@ await page.waitForSelector('.doc .projtab [data-row="alpha"] .pcpop', { timeout:
 ok(await page.$$eval('.doc .projtab [data-row="alpha"] .pcpop [data-color]', bs =>
      bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
    'the card menu\'s Color offers the colors, none picked for a project this account never colored');
+// Color again rolls the swatches up, nothing picked.
+await page.click('.doc .projtab [data-row="alpha"] [data-pcolor]');
+await page.waitForFunction(() => !document.querySelector('.doc .projtab [data-row="alpha"] .pcpop'), null, { timeout: 5000 }).catch(() => {});
+ok(!await page.$('.doc .projtab [data-row="alpha"] .pcpop') && !await page.evaluate(() => state.projects.find(x => x.name === 'alpha')?.color),
+   'a second press of a card\'s Color rolls the swatches up without picking one');
+await page.click('.doc .projtab [data-row="alpha"] [data-pcolor]');
+await page.waitForSelector('.doc .projtab [data-row="alpha"] .pcpop', { timeout: 5000 });
 await page.click('.doc .projtab [data-row="alpha"] .pcpop [data-color="teal"]');
 await page.waitForFunction(() => document.querySelector('.doc .projtab [data-row="alpha"]')?.classList.contains('pc'), null, { timeout: 10000 });
 const kept = await page.evaluate(() => { const p = state.projects.find(x => x.name === 'alpha'); return { mine: p.color, project: p.prefs?.color || '' }; });
 ok(kept.mine === 'teal' && kept.project === '' && !await page.$('.doc .projtab [data-row="alpha"] .pcpop'),
    `a pick wears it on the card at once and rolls the swatches up, kept as this account's and not the project's (${JSON.stringify(kept)})`);
+// Back turns the card over without saving anything, so it is no primary,
+// and wears the card's color as the front's buttons do.
+const back = await page.$eval('.doc .projtab [data-row="alpha"] .pcback [data-pedit]', b => {
+  const edit = b.closest('.pcard').querySelector('.pcfront [data-pedit]');
+  return { text: b.textContent.trim(), primary: b.classList.contains('primary'),
+           bg: getComputedStyle(b).backgroundColor, front: getComputedStyle(edit).backgroundColor,
+           plain: getComputedStyle(document.querySelector('.doc .projtab [data-row]:not(.pc) .pcfront [data-pedit]')).backgroundColor };
+});
+ok(back.text === 'Back' && !back.primary && back.bg === back.front && back.bg !== back.plain,
+   `a colored card's Back is a plain button in the card's color, as its Edit is (${JSON.stringify(back)})`);
+// A long name wraps on the back with Back held at the card's top right
+// (the operator, 26 Oct: it pushed Back onto a line of its own).
+for (const w of [1280, 393]){
+  await page.setViewportSize({ width: w, height: 900 });
+  const line = await page.evaluate(() => {
+    const p = state.projects.find(x => x.name === 'alpha'), key = reposOf('alpha') || 'alpha', was = state.repos[key].name;
+    state.repos[key].name = 'Destiny-2-Armor-Stat-Planner-with-a-longer-name-still'; drawProjects(state.projects);
+    const c = document.querySelector('.doc .projtab .pcard[data-row="alpha"]'), back = c.querySelector('.pcback .pcname [data-pedit]');
+    const name = c.querySelector('.pcback .pcname .name'), cr = c.getBoundingClientRect(), br = back.getBoundingClientRect(), nr = name.getBoundingClientRect();
+    const out = { top: Math.round(br.top - cr.top), right: Math.round(cr.right - br.right), wraps: nr.height > 30, beside: nr.right <= br.left,
+                  rowTop: Math.abs(nr.top - br.top) < 12 };
+    // ...and on the front pin and archive stay on the name's first line.
+    // Laid out positions, which a card turned over (its front mirrored by
+    // the flip) does not change.
+    const nm = c.querySelector('.pcfront .pcname .name');
+    out.marks = [...c.querySelectorAll('.pcfront .pcname .pcmark')].every(m =>
+      Math.abs(m.offsetTop - nm.offsetTop) < 12 && m.offsetLeft >= nm.offsetLeft + nm.offsetWidth - 1);
+    state.repos[key].name = was; drawProjects(state.projects); void p;
+    return out;
+  });
+  ok(line.top < 40 && line.right < 40 && line.wraps && line.beside && line.rowTop && line.marks,
+     `a long name wraps beside Back, which stays at the card's top right, and beside pin and archive on the front, at ${w} (${JSON.stringify(line)})`);
+}
+await page.setViewportSize({ width: 1280, height: 800 });
+// One card on its back at a time (the operator, 26 Oct): Edit on another
+// turns this one back, a box open on it canceled.
+{
+  const A = '.doc .projtab .pcard[data-row="alpha"]', G = '.doc .projtab .pcard[data-row="gamma"]';
+  if (!await page.$eval(A, c => c.classList.contains('flipped'))) await page.click(`${A} .pcfront [data-pedit]`);
+  await page.waitForTimeout(500);
+  await page.click(`${A} .pcback [data-pgroup]`);
+  await page.waitForSelector(`${A} .askline input`, { timeout: 5000 });
+  await page.evaluate(g => document.querySelector(g)?.scrollIntoView({ block: 'center' }), G);
+  await page.click(`${G} .pcfront [data-pedit]`);
+  await page.waitForTimeout(600);
+  const one = await page.evaluate(([a, g]) => ({ alpha: document.querySelector(a).classList.contains('flipped'),
+    gamma: document.querySelector(g).classList.contains('flipped'), box: !!document.querySelector(`${a} .askline`),
+    open: [...pjEditing] }), [A, G]);
+  ok(!one.alpha && one.gamma && !one.box && one.open.length === 1,
+     `Edit on another card turns the one in Edit back, its open box canceled, so one card is on its back at a time (${JSON.stringify(one)})`);
+  await page.click(`${G} .pcback [data-pedit]`);
+  await page.waitForTimeout(500);
+  await page.evaluate(a => document.querySelector(a)?.scrollIntoView({ block: 'center' }), A);
+  await page.click(`${A} .pcfront [data-pedit]`);
+  await page.waitForTimeout(500);
+}
+// A card that moves slides there, the rest closing up, and the page follows
+// the one pressed on (the operator, 26 Oct): the last card pinned moves up
+// among the pinned, slid there and in sight.
+{
+  await page.setViewportSize({ width: 1280, height: 600 });
+  const last = await page.evaluate(() => { const g = document.querySelector('.doc .projtab #pjGrid > .pgrid');
+    const cs = [...g.querySelectorAll('.pcard[data-pkey]')].filter(c => c.querySelector('.pcfront [data-pmark]:not(.on)'));
+    const c = cs[cs.length - 1]; c.scrollIntoView({ block: 'end' }); return c.dataset.pkey; });
+  await page.waitForTimeout(400);
+  const sel = `.doc .projtab .pcard[data-pkey="${last}"]`;
+  await page.click(`${sel} .pcfront [data-pmark]`);
+  const r = await page.waitForFunction(s => {
+    const c = document.querySelector(s); if (!c) return null;
+    const cs = [...document.querySelectorAll('.doc .projtab #pjGrid > .pgrid .pcard[data-pkey]')], at = cs.indexOf(c);
+    const first = at >= 0 && c.querySelector('[data-pmark].on') && cs.slice(0, at).every(x => x.querySelector('[data-pmark].on'));
+    const slid = [...document.querySelectorAll('.doc .projtab .pcard')].some(x => x.getAnimations().some(a => /translate/.test(JSON.stringify(a.effect?.getKeyframes?.() || []))));
+    return first ? { first, slid } : null;
+  }, sel, { timeout: 10000 }).then(h => h.jsonValue()).catch(() => null);
+  await page.waitForTimeout(1200);
+  const seen = await page.$eval(sel, c => { const r = c.getBoundingClientRect(), d = c.closest('.doc').getBoundingClientRect(); return r.top >= d.top - 2 && r.bottom <= d.bottom + 2; });
+  ok(r?.first && r?.slid && seen, `a card pinned from the foot slides up among the pinned, the others with it, and the page follows it there (${JSON.stringify({ ...r, seen })})`);
+  await page.click(`${sel} .pcfront [data-pmark]`);
+  await page.waitForTimeout(800);
+  await page.setViewportSize({ width: 1280, height: 800 });
+}
+// Leaving the page turns a card back: Projects comes back on the fronts.
+ok(await page.$eval('.doc .projtab [data-row="alpha"]', c => c.classList.contains('flipped')), 'the card is on its back before the page is left');
+await page.evaluate(() => { location.hash = '#/jobs'; });
+await page.waitForFunction(() => tabOf(panes[active])?.kind !== 'projects', null, { timeout: 10000 });
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.doc .projtab [data-row="alpha"]', { timeout: 15000 });
+ok(!await page.$eval('.doc .projtab [data-row="alpha"]', c => c.classList.contains('flipped')),
+   'a card turned over is on its front again once the page is left and come back to');
+await pjMenu('alpha');
 await page.evaluate(() => openNotebook('alpha'));
 await nbShown(page);
 ok(await page.evaluate(() => {
@@ -2190,7 +2396,7 @@ ok(await page.$('.doc .projtab [data-del]'),
 // from the card it is shown in, pinning back from the tab. It went the
 // delete's way once, on the crowded side of a phone's row; the phone folds
 // it behind the row's more button now.
-ok(await page.$('.doc .projtab [data-p]'),
+ok(await page.$('.doc .projtab [data-pmark]'),
    'the pin is on the card\'s rows as on the Projects page\'s');
 
 // Locking, which is now the only gate there is. The eye that excluded a
@@ -2238,7 +2444,7 @@ execFileSync('mv', [`${DIR}/ws/.trash/beta`, `${DIR}/ws/beta`]);
 execFileSync('mkdir', ['-p', `${DIR}/ws/.trash/beta`]);
 const again = await api('/api/trash', { name: 'beta' });
 ok(again.status === 200 && again.body.to === '.trash/beta-2',
-   'a second delete of the same name is numbered, not an overwrite');
+   `a second delete of the same name is numbered, not an overwrite (${again.status} ${JSON.stringify(again.body).slice(0, 160)})`);
 execFileSync('mv', [`${DIR}/ws/.trash/beta-2`, `${DIR}/ws/beta`]);
 execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 
@@ -2304,6 +2510,8 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
     for (const el of document.querySelectorAll('input,select,textarea')){
       const t = (el.type || el.tagName).toLowerCase();
       if (t === 'checkbox' || t === 'radio' || t === 'hidden' || t === 'file') continue;
+      // xterm's own input, an invisible part of a terminal, not a field.
+      if (el.classList.contains('xterm-helper-textarea')) continue;
       if (!el.getBoundingClientRect().width) continue;
       const c = getComputedStyle(el);
       if (c.borderTopLeftRadius !== '6px' || c.borderTopWidth !== '1px'
@@ -2350,7 +2558,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   const old = Date.now() / 1000 - 90 * 86400;
   for (const [n, age] of [['builderbot.log', 0], ['builderbot.log.1', 0],
                           ['builderbot.log.9', 90], ['docker.log', 0],
-                          ['ttyd.log', 0], ['not-ours.log.4', 90]]){
+                          ['not-ours.log.4', 90]]){
     writeFileSync(`${LD}/${n}`, 'x'.repeat(64));
     if (age) utimesSync(`${LD}/${n}`, old, old);
   }
@@ -2386,15 +2594,20 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   ok(true, "the gear's door opens the account's Profile page");
   await page.evaluate(() => railGo('controller'));
   await page.waitForSelector('.settingstab #logApply');
+  ok(await page.$eval('.settingstab #logApply', b => b.disabled), 'Apply sleeps while the days are as saved');
   await page.fill('.settingstab #logDays', '3');
+  ok(!await page.$eval('.settingstab #logApply', b => b.disabled), '...and wakes once they are changed');
   await page.click('.settingstab #logApply');
-  await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
+  await page.waitForFunction(() => document.querySelector('#logApply')?.textContent.trim() === 'Apply' && !('logDays' in (settingsDraft || {})),
                              { timeout: 10000 });
   ok(!existsSync(`${LD}/docker.log.2`),
      'Apply crops what the new number already excludes, then and there');
+  // ...the 3 saved and read back first: 30 typed over a page still holding
+  // 30 as saved changes nothing, and Apply rightly sleeps.
+  await page.waitForFunction(() => String(state?.logs?.days) === '3', null, { timeout: 10000 }).catch(() => {});
   await page.fill('.settingstab #logDays', '30');
   await page.click('.settingstab #logApply');
-  await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
+  await page.waitForFunction(() => document.querySelector('#logApply')?.textContent.trim() === 'Apply' && !('logDays' in (settingsDraft || {})),
                              { timeout: 10000 });
   // The status answer follows the setting within a poll, not the instant
   // Apply re-enables: asked until it says so.
@@ -2425,8 +2638,6 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
      'the session download is every stream of this boot in one file');
   ok(/attachment; filename="builderbot-session\.log"/.test(dl.cd || ''),
      '...offered as a download rather than rendered into the tab');
-  ok(!/ttyd/.test(dl.body),
-     '...without ttyd.log, which is 22k lines of websocket churn around it');
   const arc = await page.evaluate(async () => {
     const r = await fetch('/logs/download?what=archive');
     return { status: r.status, ct: r.headers.get('content-type'),
@@ -2444,8 +2655,10 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
     let s = ''; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192));
     return { status: r.status, ct: r.headers.get('content-type'),
              cd: r.headers.get('content-disposition'), zip: btoa(s),
-             // The section's own markup: the Settings tab is put away above.
-             link: /<a class="btnish" href="\/logs\/download\?what=diag" download/.test(logSection()) };
+             // The bug reports section's markup (the operator, 26 Oct: the
+             // download is where the reports it carries are), not the logs'.
+             link: /<a class="btnish" href="\/logs\/download\?what=diag" download/.test(reportsSection())
+               && !/what=diag/.test(logSection()) };
   });
   const inZip = JSON.parse(execFileSync('python3', ['-c', `
 import base64, io, json, sys, zipfile
@@ -2516,17 +2729,39 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
     if (!m || !m.querySelector('#rmNodeSel')) return null;
     return JSON.stringify({ nodes: [...m.querySelectorAll('#rmNodeSel option')].map(o => `${o.selected ? '*' : ''}${o.textContent.trim()}`),
       facts: m.querySelector('.rmfacts')?.textContent.trim() || '', state: m.querySelector('.rmstate')?.textContent.trim() || '',
-      lines: [...m.querySelectorAll('.rmline')].map(l => `${[...l.querySelector('.rmwho').children].map(e => e.textContent.trim()).join(' ')}: ${
+      // The Start band's lines (R143): a conversation to resume is a row of
+      // the Resume band under it, read apart.
+      lines: [...m.querySelectorAll('.rmline:not(.rmconv)')].map(l => `${[...l.querySelector('.rmwho').children].map(e => e.textContent.trim()).join(' ')}: ${
         [...l.querySelectorAll('button')].map(b => b.textContent.trim()).join('/')}`),
-      buttons: [...m.querySelectorAll('.rmline button')].map(b => ({ text: b.textContent.trim(), node: b.dataset.node || b.dataset.signinNode,
+      titles: [...m.querySelectorAll('.rmtitle')].map(t => t.textContent.trim()),
+      buttons: [...m.querySelectorAll('.rmline:not(.rmconv) button')].map(b => ({ text: b.textContent.trim(), node: b.dataset.node || b.dataset.signinNode,
         kind: b.dataset.r ? 'resume' : b.dataset.n ? 'new' : b.dataset.signinNode ? 'signin' : '?', dead: b.disabled })) });
   }, null, { timeout: 10000 }).then(h => h.jsonValue()).then(JSON.parse);
   const menu = await readMenu();
   ok(menu.nodes.join() === '*ubu,fresh,rh' && /^cpu 7%/.test(menu.facts) && /RTX A2000/.test(menu.facts),
      `pressing Start on a project with several nodes shows them in the node picker, its own node picked, with what that node has (${menu.nodes.join()}; ${menu.facts})`);
-  ok(menu.buttons.map(b => `${b.kind}:${b.node}`).join() === 'resume:n_ubu,new:n_ubu' && menu.buttons.every(b => !b.dead)
-     && menu.lines[0] === 'Claude: Resume 2 h ago/New',
-     `...and a line for Claude there: Resume and New where this account is signed in (${menu.lines.join(' | ')})`);
+  ok(menu.buttons.map(b => `${b.kind}:${b.node}`).join() === 'new:n_ubu' && menu.buttons.every(b => !b.dead)
+     && menu.lines[0] === 'Claude: New' && menu.titles.join() === 'Start,Resume',
+     `...and a Start band with a line for Claude there, New where this account is signed in, and a Resume band under it (${menu.lines.join(' | ')}; ${menu.titles.join()})`);
+  // Start is one line, the agents installed on the node picked a pulldown
+  // and the picked one's press beside it (the operator, 26 Oct); an agent
+  // not installed there is not in it.
+  const pull = await page.evaluate(async () => {
+    const p = state.projects.find(x => x.name === 'alpha'), n = p.session_nodes.find(x => x.id === 'n_ubu');
+    const was = n.agents; n.agents = agentsLive().filter(a => a.id !== 'claude').slice(0, 1).map(a => a.id);
+    placeResumeMenu(); await new Promise(r => setTimeout(r, 200));
+    const sel = document.querySelector('#resumemenu #rmAgentSel');
+    const out = { opts: [...(sel?.options || [])].map(o => o.value), lines: document.querySelectorAll('#resumemenu .rmgroup:has(#rmAgentSel) .rmline').length };
+    if (sel){ sel.value = out.opts[1]; sel.dispatchEvent(new Event('change')); await new Promise(r => setTimeout(r, 200)); }
+    const b = document.querySelector('#resumemenu .rmgroup:has(#rmAgentSel) .rmline button');
+    out.picked = document.querySelector('#resumemenu #rmAgentSel')?.value; out.press = b ? (b.dataset.anew || b.dataset.asignin || '') : '';
+    out.all = agentsLive().map(a => a.id);
+    n.agents = was; rmAgent = { project: '', agent: '' }; placeResumeMenu();
+    return out;
+  });
+  ok(pull.opts.length === 2 && pull.opts[0] === 'claude' && pull.lines === 1 && pull.picked === pull.opts[1] && pull.press === pull.opts[1]
+     && pull.all.length > 2,
+     `Start is one line with the agents installed there as a pulldown, a pick turning its press to that agent's, and none that is not installed (${JSON.stringify(pull)})`);
   await page.selectOption('#rmNodeSel', 'n_new');
   const other = await readMenu();
   ok(other.nodes[1] === '*fresh' && other.lines[0] === 'Claude not signed in here: Sign in' && other.buttons[0].node === 'n_new',
@@ -2580,8 +2815,8 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
     const t = tabs.find(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu');
     const p = state.projects.find(x => x.name === 'alpha');
     p.session_nodes = [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu' }, { id: 'n_rh', name: 'rh', where: 'refused', boot: '' }];
-    return { label: t.label, url: ttydUrl(t.arg) }; });
-  ok(tab.label === 'Claude: alpha (ubu)' && /%3Ab%3Ab-ubu/.test(tab.url),
+    return { label: t.label, url: termArg(t.arg) }; });
+  ok(tab.label === 'Claude: alpha (ubu)' && /:b:b-ubu$/.test(tab.url),
      `...and a pick opens the terminal on that node, named on the tab and stamped with that node's boot (${tab.label}; ${tab.url})`);
   // With this account's session running on one node, the press opens the
   // same chooser rather than jumping to the tab: Open tab and End session
@@ -2596,11 +2831,32 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
     const m = document.getElementById('resumemenu');
     if (!m || !m.querySelector('[data-end]')) return null;
     return JSON.stringify({ nodes: [...m.querySelectorAll('#rmNodeSel option')].map(o => `${o.selected ? '*' : ''}${o.textContent.trim()}`),
-      line: [...(m.querySelector('.rmline .rmwho')?.children || [])].map(e => e.textContent.trim()).join(' '),
-      buttons: [...m.querySelectorAll('.rmline button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.restart || b.dataset.end || b.dataset.signinNode || ''}`) });
+      line: [...(m.querySelector('.rmline.live .rmwho')?.children || [])].map(e => e.textContent.trim()).join(' '),
+      fresh: [...m.querySelectorAll('.rmline:not(.live):not(.rmconv)')].map(l => `${l.querySelector('.rmwho b')?.textContent.trim()} ${l.querySelector('.rmsays')?.textContent.trim() || ''}:${
+        [...l.querySelectorAll('button')].map(b => `${b.textContent.trim()}${b.dataset.slot ? '@' + b.dataset.slot : ''}`).join('/')}`),
+      buttons: [...m.querySelectorAll('.rmline.live button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.restart || b.dataset.end || b.dataset.signinNode || ''}`) });
   }, null, { timeout: 10000 })).jsonValue());
-  ok(live.nodes.join() === '*ubu · yours running,fresh' && live.line === 'Claude running' && live.buttons.join() === 'Open:n_ubu,Restart:n_ubu,End:n_ubu',
-     `with a session running on one node the press opens the chooser on that node, marked in the picker: Open, Restart and End there, the other node still in it (${live.nodes.join()}; ${live.buttons.join(' | ')})`);
+  ok(live.nodes.join() === '*ubu · yours running,fresh' && live.line === 'Claude running · on ubu' && live.buttons.join() === 'Open:n_ubu,Restart:n_ubu,End:n_ubu',
+     `with a session running on one node the press opens the chooser on that node, marked in the picker: yours on top with Open, Restart and End, the other node still in it (${live.nodes.join()}; ${live.line}; ${live.buttons.join(' | ')})`);
+  ok(live.fresh[0] === 'Claude as Claude 2:New@2',
+     `...and Start's New beside it opens a second Claude session, in a slot of its own (R143: ${live.fresh.join(' | ')})`);
+  // ...up to the project's cap (R143): a slot past it is refused at the
+  // terminal, whatever asks for it, saying how many it lets each person run.
+  {
+    const cap = async n => (await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
+      headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'alpha', agent_slots: n }) })).json();
+    const set = await cap(1);
+    const over = await page.evaluate(async () => {
+      const r = await fetch('/termws?arg=' + encodeURIComponent('claude:alpha:s:2'), { headers: { Accept: 'application/json' } });
+      return { status: r.status, error: (await r.json().catch(() => ({}))).error || '' };
+    });
+    const bad = await cap(12);
+    await cap(3);
+    ok(set.agent_slots === 1 && over.status >= 400 && /lets each person run 1 Claude session at once/.test(over.error)
+       && /agent_slots is 1 to 9/.test(bad.error || ''),
+       `a slot past the project's cap is refused at its terminal, and the cap is 1 to 9 (${over.status} ${over.error.slice(0, 80)})`);
+  }
   const ended = await page.evaluate(async () => {
     const real = endSession; let asked = null;
     window.endSession = async (name, node) => { asked = { name, node }; return { ok: true }; };
@@ -2713,6 +2969,20 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   });
   ok(who.join(' | ') === '-w.peer (ubu) | -test (you) (fresh) | *test (you) (ubu)',
      `a person with a session on two nodes is two lines, each naming its node and whether it is working there (${who.join(' | ')})`);
+  // Your session behind what changed since it started says so on the
+  // card, once for every node it is on; another person's is theirs.
+  const behind = await page.evaluate(() => {
+    state.claude_where = { alpha: [{ who: 'test', node: 'ubu', behind: ['beta added to its project since it started'] },
+                                   { who: 'test', node: 'fresh', behind: ['beta added to its project since it started'] },
+                                   { who: 'w.peer', node: 'ubu', behind: ['go installed on ubu since it started'] }] };
+    const p = state.projects.find(x => x.name === 'alpha');
+    const mine = projectNote(p);
+    state.claude_where = { alpha: [{ who: 'w.peer', node: 'ubu', behind: ['go installed on ubu since it started'] }] };
+    return { mine, theirs: projectNote(p) };
+  });
+  ok(behind.mine === '<div class="pnote warn">Restart your session to use what changed: beta added to its project since it started.</div>'
+     && !/Restart/.test(behind.theirs),
+     `a card says your session is behind what changed, once, and not another person's (${JSON.stringify(behind)})`);
   await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:')));
     state.claude_where = {};
     state.sessions = (state.sessions || []).filter(s => s.name !== myClaude('alpha')); drawPanes(); });

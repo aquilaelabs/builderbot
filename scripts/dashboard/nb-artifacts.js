@@ -33,8 +33,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     try{
       const r = await fetch("/api/artifacts?project=" + encodeURIComponent(project));
       art = await r.json();
-    }catch(e){ viewGlance(hint, [], esc("artifacts: " + e)); return; }
-    if (art.error){ viewGlance(hint, [], esc("artifacts: " + art.error)); return; }
+    }catch(e){ viewGlance(hint, [], esc("artifacts: " + e), "", "bad"); return; }
+    if (art.error){ viewGlance(hint, [], esc("artifacts: " + art.error), "", "bad"); return; }
     const rows = art.artifacts || [], job = art.push || {}, dev = art.phone;
     const groups = art.branches || [];
     // The code base itself, as a zip through the browser: a navigation, so
@@ -496,8 +496,12 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const comp = b.dataset.verrelease || "";
       const blk = all.find(x => (x.component || "") === comp);
       const tag = comp ? `${comp}-v${blk?.target}` : `v${blk?.target}`;
+      // What would keep its Android APK from being signed, said before the
+      // tag rather than found after it (R134 step 4).
       if (!await askYes(`Release ${blk?.target}?\n\n`
-                   + `Tags this commit as ${tag} and pushes the tag; a pushed tag is not moved or deleted from here.`)) return;
+                   + `Tags this commit as ${tag} and pushes the tag; a pushed tag is not moved or deleted from here.`
+                   + (ver?.release_sign ? `\n\nIts Android APK will not be signed: ${ver.release_sign}. `
+                      + "The Signing view's Look for unsigned APKs now signs it once that is put right, within three days." : ""))) return;
       busy(b, "Releasing");
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
       const j = await postVersion({action: "release", component: comp});

@@ -39,8 +39,8 @@ this browser's choice to keep.
 for its first running container, and **Shell in** each other one under
 More; it opens `docker exec` into that container as a terminal in the
 dock, bash where the image has it and sh where it does not, on the machine
-the container runs on. On a node that is the agent's third terminal server,
-on port 7683 and open to the controller only, run as the docker account:
+the container runs on. On a node that is a terminal of the agent's screen
+relay, on port 7684 and open to the controller only, run as the docker account:
 the session account stays out of docker, since docker is root on the
 machine. It is for a person who may start and stop that
 container (its project's account or an administrator) and has a shell, and
@@ -197,7 +197,7 @@ Under it, and not behind a fold, are **what it publishes and what it mounts,
 written the way Unraid's own Containers page writes them**: container side
 on the left, host side on the right, and the arrow saying which way it goes:
 `/library ← /mnt/user/plex-media` for a read-only mount, `↔` for a writable
-one, `7474:TCP ← 192.168.1.10:7475` for a published port. That is deliberately
+one, `7474:TCP ← 192.0.2.10:7475` for a published port. That is deliberately
 not a second notation to learn; it is the one already used for every other
 container on the box. All of it is read from the *resolved* compose config, so
 a path or a port assembled out of variables shows as the value compose arrived
@@ -394,7 +394,12 @@ project to the compose projects it may reach) and the switch (config
 the session switch elsewhere); a prefs change or the switch asks for a
 hello, so a container reaches a newly read project within a poll. Nothing
 is marked: a missing table leaves Docker's own rules, and the row says not
-in force rather than a container being cut off. A container BuilderBot
+in force rather than a container being cut off. A container that has to talk
+to a machine on the LAN (a BuilderBot controller under test to its nodes, an
+app to a device) is let through by an administrator: **Reaches the LAN** in
+its settings, kept in `docker-lan.json` by node and by the name the map
+gives it, puts its bridges in the table's `lanok` set, which passes the
+private ranges and nothing more of the node's. A container BuilderBot
 deploys itself is **System**'s (R180, the operator, 11 Oct): the nginx
 page's container today, set by that deployment and by no picker, a person's
 or a session's, and given every bridge and every published port on its node

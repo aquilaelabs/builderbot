@@ -11,6 +11,7 @@ import { launch, newPage, ok, done, ready, sleep, URL } from './lib.mjs';
 const PAGES = [
   ['home', '#/home', 'homeData = null; homeFetching = true; renderHomeInto(0)'],
   ['jobs', '#/jobs', 'jobsList = null; renderJobsInto(0)'],
+  ['schedules', '#/jobs/schedules', 'schedData = null; renderSchedulesInto(0)'],
   ['nodes', '#/machines/nodes', 'nodesList = null; renderNodesInto(0)'],
   ['storage', '#/machines/storage', 'storageList = null; renderStorageInto(0)'],
   // Deploy is an undeployed node's alone, which is not known while it waits.
@@ -18,7 +19,7 @@ const PAGES = [
   // the page draws one line and Deploy where the template, waiting for the
   // node a person mostly has, draws them.
   ['nginx', '#/containers/nginx', 'nginxList = null; renderNginxInto(0)',
-   ['barSig', 'card', 'jump', 'title:Hostnames', 'title:Routes', 'title:Certificates', 'title:Image']],
+   ['barSig', 'card', 'jump', 'title:Image', 'title:Hostnames', 'title:Routes', 'title:Certificates']],
   // This machine is a node's with a GPU or Claude Code row to show, which
   // is not known while it waits; on a phone, where it is drawn it is the one
   // open section, so the list's table is folded under it.
@@ -253,6 +254,27 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
        `a reload on the ${v} view draws its own template first, without the notebook's ids ${where} (${JSON.stringify(boot)})`);
     await page.goto(URL);
     await ready(page);
+  }
+  // The Projects page waits only at a reload, for the first status read:
+  // its template is R138's cards (R141), in the grid's columns, each with
+  // the card's parts and its actions at the foot.
+  {
+    const cards = () => [...document.querySelectorAll('.pgrid .pcard')].filter(e => e.checkVisibility())
+      .slice(0, 2).map(e => { const r = e.getBoundingClientRect();
+        return { l: Math.round(r.left), r: Math.round(r.right), parts: ['.pcname', '.pcmeta', '.pcrepos', '.pcacts'].filter(q => e.querySelector(q)).length,
+                 acts: e.querySelector('.pcacts')?.querySelectorAll(':scope > button').length || 0 }; });
+    const release = await hold(page, /\/api\//);
+    await page.goto('about:blank');
+    await page.goto(`${URL}#/projects`);
+    await sleep(600);
+    const tpl = await page.evaluate(cards);
+    await release();
+    await page.goto(URL + '#/projects');
+    await ready(page);
+    await page.waitForSelector('.pgrid .pcard', { timeout: 15000 }).catch(() => {});
+    const got = await page.evaluate(cards);
+    ok(tpl.length && got.length && JSON.stringify(tpl) === JSON.stringify(got),
+       `a reload on the Projects page waits as its cards ${where} (template ${JSON.stringify(tpl)}, page ${JSON.stringify(got)})`);
   }
   await page.close();
 }

@@ -85,9 +85,10 @@ function usersEditFrom(u){
 function usersPicked(){ return (usersList || []).find(x => x.name === usersPick) || null; }
 function usersDirty(){
   const u = usersPicked();
-  if (!u || !usersEdit) return false;
-  const was = usersEditFrom(u);
-  return USER_KEYS.some(k => was[k] !== usersEdit[k]) || (typeof rolesPeopleDirty === "function" && rolesPeopleDirty());
+  if (!u) return false;
+  // A role changed with no field typed is unsaved too: its Save wakes for it.
+  const was = usersEdit ? usersEditFrom(u) : null;
+  return (!!usersEdit && USER_KEYS.some(k => was[k] !== usersEdit[k])) || (typeof rolesPeopleDirty === "function" && rolesPeopleDirty());
 }
 function usersRedraw(){ usersRev++; drawPanes(); }
 // Accounts and roles Read without its Write: the page is there to read, its
@@ -136,11 +137,12 @@ function usersDetail(u){
     </div>
     <div class="setrow col ueaccess ctlrow">${lbl("", "Roles and projects", "what this account may do; what each role holds is on the Roles page")}<div id="ueAccess">${access}</div></div>
     <div class="sub bad" id="ueErr" hidden></div>
-    ${ro ? "" : saveBar({save: 'id="ueSave"', revert: 'id="ueRevert"', state: usersDirty() ? "unsaved" : ""})}
+    ${ro ? "" : saveBar({save: 'id="ueSave"', revert: 'id="ueRevert"', state: usersDirty() ? "unsaved" : "", dead: !usersDirty()})}
     ${u.devices ? `<div class="uedevices"><span class="lbl">Devices${helpIcon("the apps signed in as this account on its machines; Disconnect cuts one off for them, as a lost laptop needs")}</span>${
       profileDevices(u.devices, u.name)}</div>` : ""}
     ${ro ? "" : `<div class="rfoot">${isOwner ? `<span class="sub dim">The owner cannot be deleted: rename it instead.</span>`
-      : `<button type="button" class="danger" id="ueRemove">Remove ${esc(u.name)}</button>`}</div>`}`;
+      : `<button type="button" class="danger" id="ueRemove">Remove ${esc(u.name)}</button>`}${
+      state?.can?.admin ? `<button type="button" class="danger" id="uePurge" title="their own key, the forges they linked, and the projects linked to it">Purge key store</button>` : ""}</div>`}`;
 }
 
 function renderUsersInto(i){
@@ -151,7 +153,9 @@ function renderUsersInto(i){
   // Refused outright (a plain account by link), there is nothing to count
   // or add, and the refusal is the page (B38).
   const refused = usersErr && !(usersList || []).length;
-  d.setBar(`<span class="dim">${usersList === null ? skv(4) : refused ? "" : `${usersList.length} ${usersList.length === 1 ? "person" : "people"}`}</span><span class="sp"></span>
+  // No count beside the button (the operator, 25 Oct: no loose words at a
+  // page's top): the list says how many.
+  d.setBar(`<span class="sp"></span>
     ${refused || usersReadOnly() ? "" : `<span class="actbar"><button type="button" class="primary" id="uAddOpen">Add user</button></span>`}`);
   if (usersList === null){
     // Its template (R218 step 16): the list beside the settings, whose
@@ -200,6 +204,9 @@ function wireUsers(el){
     usersEdit[f.dataset.ufield] = f.value;
     const st = el.querySelector(".rdetail .actbar .state");
     if (st) st.textContent = usersDirty() ? "unsaved" : "";
+    // Save and Revert awake only while something here is unsaved (the
+    // operator, 26 Oct), as every save bar is.
+    for (const b of el.querySelectorAll("#ueSave, #ueRevert")) if (!b.dataset.busy) b.disabled = !usersDirty();
   });
   const box = el.querySelector("#ueAccess");
   if (box && rolesData !== null) wireRolesAccess(box, usersRedraw);
@@ -207,6 +214,10 @@ function wireUsers(el){
   if (rv) rv.onclick = () => { usersEdit = null; rolesPeopleDraft = null; usersRedraw(); };
   const sv = el.querySelector("#ueSave");
   if (sv) sv.onclick = () => usersSave(el, sv);
+  // An account's key store purged for them (R154), for one that cannot sign
+  // in to purge its own.
+  const pg = el.querySelector("#uePurge");
+  if (pg) pg.onclick = async () => { busy(pg, "Purging"); await keyStorePurge(usersPick); loadUsers(); };
   const rm = el.querySelector("#ueRemove");
   if (rm) rm.onclick = async () => {
     if (await askYes(`Remove ${usersPick}? They lose access immediately.`)) usersAct({action: "remove", name: usersPick});
@@ -264,7 +275,7 @@ function usersAddOpen(){
     <div class="field">${lbl("uNewPw", "Password", "at least 8 characters. They can change it on their Profile")}
       <input id="uNewPw" type="password" autocomplete="new-password"></div>
     <div class="field">${lbl("uNewPw2", "The password again")}<input id="uNewPw2" type="password" autocomplete="new-password"></div>
-    <div class="field">${lbl("uNewFull", "Name", "optional: how they are addressed; their git identity is theirs to set on their Profile")}
+    <div class="field">${lbl("uNewFull", "Name", "optional: how they are addressed. Their git name and email are set on their Profile, or here once the account exists")}
       <input id="uNewFull" autocomplete="off"></div>
     <div class="field">${lbl("uNewEmail", "Email", "optional")}<input id="uNewEmail" type="email" autocomplete="off"></div>
     <div class="field"><div class="hint">A new account holds no role: give it one beside its account once it is added.</div></div>

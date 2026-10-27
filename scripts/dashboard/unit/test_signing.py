@@ -90,7 +90,8 @@ class Signing(unittest.TestCase):
         made = [j for j in self.node.jobs.values() if j["spec"]["op"] == "generate"]
         self.assertEqual((made[0]["type"], made[0]["state"]), ("sign-key", "succeeded"), made[0].get("log"))
         self.assertNotIn(rec["store_pass"], repr(made[0]["spec"]) + made[0]["log"])
-        self.assertEqual(os.listdir(self.tmp / "data" / "sign-key"), [])
+        self.assertEqual(os.listdir(self.tmp / "signwork" / "key"), [])
+        self.assertFalse((self.tmp / "data" / "sign-key").exists(), "never on the data store (B315)")
         self.assertEqual(signing._handover, {})
         self.assertEqual(signing.set_map("app", "com.example.watch", "nope")[1], 404)
         self.assertEqual(signing.set_map("app", "not a package", "watch")[1], 400)

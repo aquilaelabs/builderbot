@@ -5,7 +5,9 @@
 #
 # The sandbox exists so that a Claude session can build, run and destroy
 # containers without any of that reaching the server's real ones. BuilderBot
-# itself stays the container it is; this box is only ever a Docker host, and
+# itself stays the container it is (or a controller installed bare metal,
+# nodes/install-controller.sh, which runs this script with --beside-controller
+# to make its own machine a node); this box is only ever a Docker host, and
 # keeping it only that is what makes it disposable.
 #
 # Run it inside the VM, once:
@@ -21,7 +23,7 @@
 # run as) with no sudo and no bb-sandbox, so the mounts this machine has
 # stay a decision made by a person with root at a console. And `builder` is
 # the one a Claude SESSION
-# works as (roadmap #24): the agent runs ttyd for it, and it is in no docker
+# works as (roadmap #24): the agent's screen relay opens its terminals, and it is in no docker
 # group, because docker is root on any machine with a daemon and the account
 # a session edits files as is the one thing here to keep away from that.
 #
@@ -76,6 +78,8 @@ declare -a FEATURES_WANT=()
 # --machine HASH: the script was made for a node that enrolled from one
 # machine (R177), and runs on that one alone.
 MACHINE=""
+# --beside-controller: the controller is on this machine too (R90).
+BESIDE_CONTROLLER=0
 
 usage() {
     cat <<'EOF'
@@ -102,8 +106,8 @@ it, which is a paste rather than a questionnaire.
                        node (builder; a name already taken is refused), made with --session-uid/--session-gid
                        (99:100, the controller's PUID:PGID, so files it saves
                        are owned as the controller's are). In kvm for the emulator, in NO docker group. The
-                       agent runs ttyd for it and the dashboard's terminals
-                       reach it; Claude Code is installed into its home.
+                       agent's screen relay opens its terminals, which the
+                       dashboard's reach through the controller; Claude Code is installed into its home.
                        `none` makes no such account, and no sessions run here.
   --remove             take BuilderBot off this machine: the agent, the
                        accounts, the mounts it used, its stores on this disk,
@@ -169,6 +173,12 @@ it, which is a paste rather than a questionnaire.
                        with no sessions.
   --machine HASH       made for one machine (the Nodes page's Enroll script
                        on a node's row): runs there and nowhere else.
+  --beside-controller  this machine is also the controller, installed bare
+                       metal (install-controller.sh passes it, R90): the
+                       docker account is kept OUT of the docker group and the
+                       daemon is not stamped a sandbox, since docker is root
+                       here and the controller's state is on this disk. The
+                       node runs builds and sessions, not containers.
   --door cloudflared   a door in for SSH, switched on and off from the
   --door tailscale     node's row on the Nodes page. cloudflared publishes
                        this machine's port 22 at --door-host HOST (a
@@ -235,6 +245,12 @@ remove_if_asked() {
     exit 0
 }
 
+# Sourced for its core (BB_PROVISION_LIB=1) by nodes/install-controller.sh
+# (R90): the family, the init, the services, the pre-flight and the package
+# helpers are defined and the machine is read, and nothing is asked of the
+# options, nothing is checked against root and nothing is installed; the
+# installer does those itself. Run, it is the whole provisioner, as always.
+if [ "${BB_PROVISION_LIB:-0}" != 1 ]; then
 # No arguments: the help, and nothing changed. Provisioning a machine is
 # what the options ask for, not what a bare invocation should do.
 if [ $# -eq 0 ]; then
@@ -261,6 +277,7 @@ while [ $# -gt 0 ]; do
         --firewall) FIREWALL=1; FEATURES_WANT+=(firewall); shift ;;
         --feature) FEATURES_WANT+=("$2"); shift 2 ;;
         --machine) MACHINE="$2"; shift 2 ;;
+        --beside-controller) BESIDE_CONTROLLER=1; shift ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
@@ -302,7 +319,7 @@ for f in "${FEATURES_WANT[@]}"; do
 done
 if [ "$FIREWALL" = 1 ]; then
     [ "${GUEST:-0}" != 1 ] || { echo "--firewall needs root, and a guest node runs without it" >&2; exit 1; }
-    [ "$SESSION_NAME" = none ] || { echo "--firewall is for a hosting-only node (--session-user none): it would shut the session ports the controller reaches" >&2; exit 1; }
+    [ "$SESSION_NAME" = none ] || { echo "--firewall is for a hosting-only node (--session-user none): it would shut the session port the controller reaches" >&2; exit 1; }
 fi
 if [ -n "$DOOR" ]; then
     case "$DOOR" in cloudflared|tailscale) ;; *) echo "--door takes cloudflared or tailscale" >&2; exit 1 ;; esac
@@ -333,6 +350,7 @@ case "$TOKEN" in
     ""|bbe_*) ;;
     *) echo "that is not an enrollment token (they start bbe_); mint one on the Nodes tab" >&2; exit 1 ;;
 esac
+fi   # the options, when run rather than sourced
 
 say() { printf '\n== %s\n' "$*"; }
 warn() { printf '\n!! %s\n' "$*" >&2; }
@@ -494,8 +512,13 @@ EOF
 # So: refused at the top, before anything is installed. There is no --force,
 # because provisioning a container as a Docker host has no working version to
 # fall back to.
-if [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
-   || grep -qs -E '(docker|lxc|containerd)' /proc/1/cgroup 2>/dev/null; then
+# in_container: the test, as a function, since install-controller.sh refuses
+# a container by the same one (R90).
+in_container() {
+    [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
+        || grep -qs -E '(docker|lxc|containerd)' /proc/1/cgroup 2>/dev/null
+}
+if [ "${BB_PROVISION_LIB:-0}" != 1 ] && in_container; then
     warn "this is a container, and this script provisions a VM."
     if [ -d /opt/builderbot ]; then
         printf '   You are inside BuilderBot. It is the thing that TALKS to the\n'
@@ -511,7 +534,7 @@ if [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
     exit 1
 fi
 
-[ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
+[ "${BB_PROVISION_LIB:-0}" = 1 ] || [ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
 ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CODENAME=""
 [ -r /etc/os-release ] && . /etc/os-release
 : "$VERSION_ID" "$VERSION_CODENAME" "$UBUNTU_CODENAME"   # the family file's to read
@@ -519,7 +542,7 @@ ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CO
 # One script, many distributions. Everything BuilderBot's own (the accounts,
 # the stores, fstab, the agent) is the same on all of them, because none of
 # it is the distribution's. What differs is the package manager, where Docker
-# and ttyd come from, who owns the firewall, and which init system runs a
+# comes from, who owns the firewall, and which init system runs a
 # service. FAMILY and INIT decide those, through the small functions below;
 # the rest of the script calls the functions and never a distribution's tool
 # by name. The families are read from ID and ID_LIKE, so a derivative lands
@@ -571,7 +594,7 @@ esac
 # else this repository's for the detected family, for a hand run from a
 # checkout. A picked family that is not this machine's is refused by name:
 # a script built for Ubuntu does nothing to a Rocky machine but say so.
-_here="$(cd "$(dirname "$0")" && pwd)"
+_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FAMILY_PICKED=""; FAMILY_NAME=""; FAMILY_IDS=""; FAMILY_NEED=""
 if [ -f "$_here/provision-family.sh" ]; then
     # shellcheck source=/dev/null
@@ -723,9 +746,15 @@ EOF
 # FAIL stops the run here with every finding printed, so one run says the
 # whole of what is wrong; a WARN is something the run can survive but the
 # operator should know, and is repeated at the end.
+# preflight: every check, said whole, and an exit when the machine cannot be
+# provisioned (or is of a family not run for real, without --dev). The
+# controller's installer runs the same one first (R90).
+CHECK_FAILED=0
+WARNINGS=()
+preflight() {
 say "checking this machine"
 CHECK_FAILED=0
-declare -a WARNINGS=()
+WARNINGS=()
 chk() {
     case "$1" in
         ok)   printf '   ok    %s\n' "$2" ;;
@@ -782,7 +811,7 @@ esac
 # 6. the architecture: what Docker, the agent and the Actions runner build for
 case "$(uname -m)" in
     x86_64|aarch64) chk ok "architecture: $(uname -m)" ;;
-    armv7l) chk warn "architecture armv7l (32-bit ARM): Docker and ttyd have builds; the Actions runner, the JDK and the emulator do not, so this can be a Docker node and little else" ;;
+    armv7l) chk warn "architecture armv7l (32-bit ARM): Docker has builds; the Actions runner, the JDK and the emulator do not, so this can be a Docker node and little else" ;;
     *) chk fail "architecture $(uname -m): nothing this installs is built for it" ;;
 esac
 # 7. what Docker needs from the kernel: cgroups, and the overlay filesystem
@@ -838,6 +867,36 @@ case "$VETTED_FAMILIES" in
             exit 1
         fi ;;
 esac
+}
+
+# docker_suite: which suite of Docker's repository to ask for. Normally this
+# release's own codename, but Docker's repository can lag a brand-new Ubuntu
+# or Debian by weeks, and the symptom is an apt 404 that names a URL and not
+# a reason. So the suite is checked before it is committed to, and falls back
+# to the newest stable one that exists: the packages are the same build, only
+# the suite name differs.
+docker_suite() {
+    local try
+    for try in "$@"; do
+        [ -n "$try" ] || continue
+        # -fs and not -fsS: a miss here is the normal path into the fallback,
+        # and curl announcing its own 404 first would read as the failure.
+        if curl -fs -o /dev/null --max-time 15 \
+            "https://download.docker.com/linux/${DOCKER_DEB}/dists/${try}/Release"; then
+            printf '%s' "$try"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Sourced for the core: everything above is defined and read, and nothing
+# below runs (R90).
+if [ "${BB_PROVISION_LIB:-0}" = 1 ]; then
+    return 0
+fi
+
+preflight
 if [ "$CHECK_ONLY" = 1 ]; then
     printf '\n   %s can be provisioned by this script' "${PRETTY_NAME:-$ID}"
     [ "${#WARNINGS[@]}" -eq 0 ] && printf '.\n' || printf ', with %d warning(s) above.\n' "${#WARNINGS[@]}"
@@ -974,26 +1033,7 @@ fi
 say "docker"
 # Docker's own repository rather than the distribution's: the compose plugin
 # and a current engine are the entire point of this machine, and Debian's
-# docker.io lags both.
-# Which suite to ask Docker for. Normally this release's own codename, but
-# Docker's repository can lag a brand-new Ubuntu or Debian by weeks, and the
-# symptom is an apt 404 that names a URL and not a reason. So the suite is
-# checked before it is committed to, and falls back to the newest stable one
-# that exists: the packages are the same build, only the suite name differs.
-docker_suite() {
-    local try
-    for try in "$@"; do
-        [ -n "$try" ] || continue
-        # -fs and not -fsS: a miss here is the normal path into the fallback,
-        # and curl announcing its own 404 first would read as the failure.
-        if curl -fs -o /dev/null --max-time 15 \
-            "https://download.docker.com/linux/${DOCKER_DEB}/dists/${try}/Release"; then
-            printf '%s' "$try"
-            return 0
-        fi
-    done
-    return 1
-}
+# docker.io lags both. Which suite: docker_suite, above.
 
 if ! command -v docker >/dev/null 2>&1; then
     docker_install
@@ -1120,13 +1160,21 @@ fence_daemon() {
 fenced=""
 write_fence && fenced=1
 stamped=""
-stamp_daemon && stamped=1
+if [ "$BESIDE_CONTROLLER" = 1 ]; then
+    # The controller's own machine is not a box to be wrecked, and the
+    # manager's root-on-the-far-side actions are not for it (R90): the
+    # fence, yes; the sandbox's label, no.
+    printf '   not stamped as a sandbox: the controller is on this machine\n'
+elif stamp_daemon; then
+    stamped=1
+fi
 if [ -n "$fenced" ] && fence_daemon; then stamped=1; fi
 if [ -n "$stamped" ]; then
     # Only when it moved: a restart bounces every container on this machine,
     # and doing that on a re-run that changed nothing would be rude.
     svc_restart docker || warn "docker did not restart; restart it by hand so its settings are read"
-    say "stamped this daemon as BuilderBot's sandbox"
+    if [ "$BESIDE_CONTROLLER" = 1 ]; then say "this daemon's containers are fenced"
+    else say "stamped this daemon as BuilderBot's sandbox"; fi
 fi
 
 # The journal kept across boots (R185): a fresh VPS keeps it in memory only,
@@ -1199,7 +1247,17 @@ if id -u "$USER_NAME" >/dev/null 2>&1; then
 else
     useradd -m -s /bin/bash "$USER_NAME"
 fi
-usermod -aG docker "$USER_NAME"
+if [ "$BESIDE_CONTROLLER" = 1 ]; then
+    # Docker is root on this machine, and root here holds the controller's
+    # state: the job account stays out, as the session account does
+    # everywhere (R90, the wall). Taken out if a run before put it in.
+    if id -nG "$USER_NAME" | tr ' ' '\n' | grep -qx docker; then
+        gpasswd -d "$USER_NAME" docker >/dev/null 2>&1 || true
+    fi
+    printf '   %s is in no docker group: the controller is on this machine\n' "$USER_NAME"
+else
+    usermod -aG docker "$USER_NAME"
+fi
 # ...and kvm, where the host exposes it. Without this the Android emulator on
 # this node runs with no hardware acceleration and is unusably slow, measured
 # on bb-sandbox, where /dev/kvm is present and root:kvm 0660, and a job as the
@@ -1245,8 +1303,8 @@ fi
 
 # --- the session account (roadmap #24) ------------------------------------
 # The second account, and the one the design turns on: a Claude session on
-# this node's projects runs HERE, as this account, in a tmux the agent's
-# ttyd starts, with this machine's toolchains and its synced copy of the
+# this node's projects runs HERE, as this account, in a tmux a terminal of
+# the agent's screen relay starts, with this machine's toolchains and its synced copy of the
 # projects. Not bb, on purpose: bb is in the docker group, which is
 # root on any machine running a daemon, and a session is exactly the thing
 # to keep away from that. So: no docker, no sudo, kvm
@@ -1303,12 +1361,9 @@ else
     fi
     [ -n "$SSH_KEY" ] && authorize "$SESSION_NAME" "$SSH_KEY"
     # What a session needs on the box: tmux keeps it alive across a dropped
-    # browser, ttyd is what the controller's terminal proxy dials, and jq
-    # and git are what bb-tty and bb reach for. From the distribution where
-    # it packages them, and ttyd, which the RHEL family, SUSE Leap and
-    # Gentoo do not carry, from the static binary in ttyd's own release,
-    # pinned to this machine's architecture: the one download here that
-    # is not a package manager's, so an offline node copies it in by hand.
+    # browser, and jq and git are what bb-tty and bb reach for, all from the
+    # distribution. The terminal itself is the agent's: its screen relay
+    # opens a pty for each one, so nothing else is installed for it.
     # shellcheck disable=SC2046
     pkg $(pkg_names session) >/dev/null 2>&1 \
         || warn "tmux, jq or git did not install; sessions will not start until they do"
@@ -1317,36 +1372,6 @@ else
     # shellcheck disable=SC2046
     pkg $(pkg_names reel) >/dev/null 2>&1 \
         || warn "Xvfb, xdotool or xdpyinfo did not install; bb capture reel --display needs them"
-    ttyd_pkg="$(pkg_names ttyd)"
-    if ! command -v ttyd >/dev/null 2>&1 && [ -n "$ttyd_pkg" ]; then
-        pkg "$ttyd_pkg" >/dev/null 2>&1 || true
-    fi
-    # Debian's package enables a unit of its own: ttyd as root on lo:7681
-    # serving a login prompt, which nothing here asked for. The binary is what
-    # was wanted; the agent runs its own ttyd as the session account (B136).
-    # Outside the install branch on purpose: a re-provision, or a base image
-    # that already carries the package, still has the unit to switch off, so
-    # disabling it only when we install the binary leaves it running on every
-    # run but the first.
-    if [ -n "$ttyd_pkg" ] && command -v systemctl >/dev/null 2>&1; then
-        systemctl disable --now ttyd.service >/dev/null 2>&1 || true
-    fi
-    if ! command -v ttyd >/dev/null 2>&1; then
-        case "$(uname -m)" in
-            x86_64) tarch=x86_64 ;;
-            aarch64) tarch=aarch64 ;;
-            armv7l) tarch=armhf ;;
-            *) tarch="" ;;
-        esac
-        if [ -n "$tarch" ] && curl -fsSL -o /usr/local/bin/ttyd.new \
-                "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.${tarch}"; then
-            chmod 0755 /usr/local/bin/ttyd.new && mv /usr/local/bin/ttyd.new /usr/local/bin/ttyd
-            printf '   ttyd %s from its GitHub release\n' "$(ttyd --version 2>/dev/null | awk '{print $NF}')"
-        else
-            rm -f /usr/local/bin/ttyd.new
-            warn "ttyd did not install; fetch ttyd.${tarch:-x86_64} from https://github.com/tsl0922/ttyd/releases into /usr/local/bin"
-        fi
-    fi
     # Claude Code is not installed here: the node's Toolchains tab does it on
     # purpose, so whoever enrolls a node sees what is put on it (R145), and a
     # session refuses to start until it is there.
@@ -1910,7 +1935,7 @@ menu_whiptail() {
             quit     "" 3>&1 1>&2 2>&3)" || return 0
         case "$choice" in
             list)  cmd_list; pause ;;
-            nfs)   ask "HOST:EXPORT:PATH" "192.168.1.15:/mnt/user/media:/auxiliary" \
+            nfs)   ask "HOST:EXPORT:PATH" "nas.lan:/mnt/user/media:/auxiliary" \
                        && cmd_add_nfs "$REPLY"; pause ;;
             share) ask "TAG:PATH" "" \
                        && cmd_add_share "$REPLY"; pause ;;
@@ -1974,7 +1999,7 @@ EOF
 # before every node held a synced copy), the stores on
 # this disk, this tool. What stays is shared with the rest of the machine:
 # docker and the packages the provisioner installed (nfs-common, python3,
-# tmux, jq, curl, a distribution's ttyd), the empty mountpoint directories,
+# tmux, jq, curl), the empty mountpoint directories,
 # and everything on the shares, which other nodes may be using. Runners are
 # not deregistered on their forge here: the Nodes tab's Uninstall does that
 # first, while the agent can still ask the controller for the tokens.
@@ -2024,7 +2049,7 @@ cmd_uninstall() {
         read -r a
         [ "$a" = uninstall ] || die "left as it was"
     fi
-    say "stopping the agent and the session ports rule"
+    say "stopping the agent and the session port's rule"
     # The GPU display's unit too (B394): left enabled, a machine BuilderBot
     # had left still started an Xorg on the card at every boot.
     local units="builderbot-agent builderbot-session-ports"
@@ -2151,7 +2176,9 @@ cmd_uninstall() {
         rm -rf /var/lib/builderbot/agent /var/lib/builderbot/runner
     fi
     rm -rf /etc/builderbot /etc/bb-sandbox.conf /etc/profile.d/builderbot-session.sh /usr/local/sbin/builderbot-agent
-    # ttyd only when the provisioner fetched it: a package's copy is the distribution's
+    # A ttyd binary an earlier provisioner fetched into /usr/local/bin, on a
+    # node provisioned before the agent opened its own terminals; a package's
+    # copy is the distribution's and stays.
     if [ -x /usr/local/bin/ttyd ]; then
         if ! { have dpkg && dpkg -S /usr/local/bin/ttyd >/dev/null 2>&1; } \
            && ! { have rpm && rpm -qf /usr/local/bin/ttyd >/dev/null 2>&1; }; then
@@ -2837,6 +2864,12 @@ feature_vmhost() {
     case "$1" in
         state) [ -f "$FEATURES_DIR/vmhost" ] && echo installed || echo absent ;;
         install)
+            # Never beside the controller (R90 step 14): it puts the job
+            # account in libvirt's group, which is root here, and root holds
+            # the controller's state.
+            if [ "$BESIDE_CONTROLLER" = 1 ] || [ -s /etc/bb-session.wall ]; then
+                die "this machine is the controller's own, so it is no VM host: libvirt's group is root here, and the wall keeps the controller's state from the node's accounts"
+            fi
             # No /dev/kvm is a machine that cannot run a VM at speed: a VM
             # whose host does not pass virtualization through, or a box with
             # it off in the firmware. Said, not emulated (tens of times slower).
@@ -2904,7 +2937,7 @@ feature_firewall() {
         state) [ -f /etc/builderbot/hosting-fw.nft ] && echo installed || echo absent ;;
         install)
             su="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("session_user", ""))' 2>/dev/null || true)"
-            [ -z "$su" ] || die "the firewall is for a hosting-only node: it would shut the session ports the controller reaches ${su}'s sessions on"
+            [ -z "$su" ] || die "the firewall is for a hosting-only node: it would shut the session port the controller reaches ${su}'s sessions on"
             have nft || pkgs_add "$(os_family)" nftables || true
             have nft || die "nft is not here and could not be installed"
             say "firewall: only 80 and 443 come in"
@@ -3102,10 +3135,10 @@ fi
 AGENT=/usr/local/sbin/builderbot-agent
 # THE SESSIONS ARE NOT THIS UNIT'S TO KILL. systemd's default KillMode is
 # control-group: a stop takes every process in the cgroup with it, and the
-# agent's cgroup holds the ttyds it starts, the tmux servers under them and
+# agent's cgroup holds the terminals it opens, the tmux servers under them and
 # the Claude sessions inside those. So pressing Update agent ended every
 # conversation on the machine, mid-work, with nothing said (B107). The
-# agent's own shutdown already stops what is its to stop: its ttyds, and now
+# agent's own shutdown already stops what is its to stop: its terminals, and now
 # its jobs. KillMode=process makes systemd's half match that.
 AGENT_KILLMODE='KillMode=process'
 # The agent in the fence (R110 step 4) with the sessions and jobs it starts,
@@ -3151,7 +3184,7 @@ if [ -n "$CONTROLLER" ]; then
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}" \
         --store "appdata=${STORE_APPDATA}"
     # The tunnel into the node's own record (R161): the agent binds the
-    # session ports to its address there, and reports it.
+    # screen relay to its address there, and reports it.
     if [ -n "$WG_ADDR" ]; then
         python3 - "$WG_ADDR" <<'PY'
 import json, sys
@@ -3284,38 +3317,37 @@ for f in "${FEATURES_WANT[@]}"; do
         || warn "${f} did not install; the node is enrolled without it, and its Features section on the Nodes page can try again"
 done
 
-# --- the session ports, to the controller only (roadmap #24, phase 10b) ----
-# The agent binds ttyd on this machine's LAN address so the controller's
-# terminal proxy can dial it, and a ttyd on the LAN with no credential of
-# its own is a shell for anyone who can reach the port, cookie or no cookie
-# (the proxy is the gate, and it is on the other machine). The third is the
-# container terminal (R218 step 4), as the docker account. So the three ports
-# are opened to the controller's address and nothing else, with nftables,
+# --- the session port, to the controller only (roadmap #24, phase 10b) -----
+# The agent's screen relay listens on this machine's LAN address, port 7684,
+# so the controller can carry a terminal or a VM's screen to it, signed. Every
+# terminal kind comes in on that one port: a session's, its read-only twin,
+# and a container's shell as the docker account. The relay checks the
+# controller's signature, and the port is still opened to the controller's
+# address and nothing else, with nftables,
 # in a table of this script's own that leaves whatever else the machine
 # filters alone. Re-applied at boot by a unit, and rewritten here on every
 # run, so a controller that moved is one re-run away.
 ctl_url="$CONTROLLER"
 [ -n "$ctl_url" ] || ctl_url="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("controller", ""))' 2>/dev/null || true)"
 if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
-    say "session ports: 7681, 7682, 7683 (a container's shell) and 7684 (a VM's screen) open to the controller only"
+    say "session port: 7684 (the screen relay: terminals and VMs' screens) open to the controller only"
     ctl_host="${ctl_url#*://}"; ctl_host="${ctl_host%%/*}"; ctl_host="${ctl_host%%:*}"
     ctl_host="${ctl_host#\[}"; ctl_host="${ctl_host%\]}"
     ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}' || true)"
     if [ -z "$ctl_ip" ]; then
-        warn "could not resolve the controller's host ${ctl_host}, so the session ports are NOT filtered"
+        warn "could not resolve the controller's host ${ctl_host}, so the session port is NOT filtered"
     elif systemctl is-active --quiet firewalld 2>/dev/null; then
         # firewalld owns nftables here (the RHEL family, or a Debian that
         # chose it): a table of our own beside it would be flushed on its
-        # next reload. Its rich rules say the same thing (the two ports to
-        # the controller and to nobody else), and the default zone already
-        # drops what no rule allows. Rewritten on every run, like the table.
+        # next reload. Its rich rule says the same thing (the port to the
+        # controller and to nobody else), and the default zone already drops
+        # what no rule allows. Rewritten on every run, like the table, and
+        # every rule for a port from 7680 to 7689 taken out first.
         case "$ctl_ip" in *:*) fam=ipv6 ;; *) fam=ipv4 ;; esac
         for r in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
             firewall-cmd --permanent --remove-rich-rule="$(printf '%s' "$r" | sed 's/\x01/ /g')" >/dev/null 2>&1 || true
         done
-        for port in 7681 7682 7683 7684; do
-            firewall-cmd --permanent --add-rich-rule="rule family=\"${fam}\" source address=\"${ctl_ip}\" port port=\"${port}\" protocol=\"tcp\" accept" >/dev/null
-        done
+        firewall-cmd --permanent --add-rich-rule="rule family=\"${fam}\" source address=\"${ctl_ip}\" port port=\"7684\" protocol=\"tcp\" accept" >/dev/null
         firewall-cmd --reload >/dev/null
         printf '   firewalld: from %s (%s); everything else dropped\n' "$ctl_host" "$ctl_ip"
     else
@@ -3324,16 +3356,16 @@ if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
         case "$ctl_ip" in *:*) fam=ip6 ;; *) fam=ip ;; esac
         install -d -m 0755 /etc/builderbot
         cat > /etc/builderbot/session-ports.nft <<EOF
-# Written by BuilderBot's provision-linux.sh: the session ttyds, reachable from the
+# Written by BuilderBot's provision-linux.sh: the agent's screen relay, reachable from the
 # controller (${ctl_host}) and the loopback, and from nowhere else.
 table inet builderbot_session
 delete table inet builderbot_session
 table inet builderbot_session {
     chain input {
         type filter hook input priority -10; policy accept;
-        tcp dport { 7681, 7682, 7683, 7684 } iifname "lo" accept
-        tcp dport { 7681, 7682, 7683, 7684 } ${fam} saddr ${ctl_ip} accept
-        tcp dport { 7681, 7682, 7683, 7684 } drop
+        tcp dport { 7684 } iifname "lo" accept
+        tcp dport { 7684 } ${fam} saddr ${ctl_ip} accept
+        tcp dport { 7684 } drop
     }
 }
 EOF
@@ -3345,7 +3377,7 @@ EOF
                 systemd)
                     cat > /etc/systemd/system/builderbot-session-ports.service <<EOF
 [Unit]
-Description=BuilderBot: the session ports open to the controller only
+Description=BuilderBot: the session port open to the controller only
 After=network-pre.target
 Wants=network-pre.target
 Before=network.target builderbot-agent.service
@@ -3362,7 +3394,7 @@ EOF
                     systemctl enable builderbot-session-ports >/dev/null 2>&1 || true ;;
                 openrc)
                     install -d -m 0755 /etc/local.d
-                    printf '#!/bin/sh\n# BuilderBot: the session ports open to the controller only\n%s\n' "$nft_cmd" \
+                    printf '#!/bin/sh\n# BuilderBot: the session port open to the controller only\n%s\n' "$nft_cmd" \
                         > /etc/local.d/builderbot-session-ports.start
                     chmod 0755 /etc/local.d/builderbot-session-ports.start
                     rc-update add local default >/dev/null 2>&1 || true ;;
@@ -3372,7 +3404,7 @@ EOF
             esac
             printf '   from %s (%s); everything else dropped\n' "$ctl_host" "$ctl_ip"
         else
-            warn "nft could not apply the rule, so the session ports are NOT filtered"
+            warn "nft could not apply the rule, so the session port is NOT filtered"
         fi
     fi
 fi
@@ -3415,10 +3447,10 @@ EOF
     if [ -n "$SESSION_NAME" ]; then
         cat <<EOF
 
-Sessions run here too, as ${SESSION_NAME}: the agent keeps a ttyd up on this
-machine's LAN address (port 7681, read-only twin on 7682, and on 7683 a
-container's shell as the docker account) running bb-tty from the bb the
-controller ships, so a session of any agent (Claude, ChatGPT, Copilot) on
+Sessions run here too, as ${SESSION_NAME}: the agent's screen relay listens on
+this machine's LAN address (port 7684) and opens a terminal for each one the
+controller carries to it (a session's, its read-only twin, or a container's
+shell as the docker account), running bb-tty from the bb the controller ships, so a session of any agent (Claude, ChatGPT, Copilot) on
 a project bound to this node lives on this machine, in its synced copy of
 the project at /workspace, which the agent makes and keeps in step with the
 controller's. Each person signs in to each agent on this node from its

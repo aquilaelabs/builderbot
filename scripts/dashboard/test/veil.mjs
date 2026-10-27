@@ -1,18 +1,17 @@
-// The cover that hides the white flash when a terminal pane appears.
+// The cover that hides the white flash when a VM's screen appears in a pane.
 //
-// The flash is the frame's document existing with no background of its own
-// (ttyd colors `.xterm-viewport` and nothing above it), which a browser paints
-// as a white canvas, over whatever the iframe element underneath is set to.
-// Firefox on Android does it unconditionally.
+// The flash is the frame's document existing with no background of its own,
+// which a browser paints as a white canvas, over whatever the iframe element
+// underneath is set to. Firefox on Android does it unconditionally.
 //
 // The cover used to come off on a fixed 350ms timer, a guess with a wide
 // margin around it. It now closes the gap instead: the frame is same-origin
-// (it is proxied through this server), so its <html> is given the pane's own
+// (noVNC is served from this server), so its <html> is given the pane's own
 // color and the cover comes off on the next frame. The clock is only for a
 // frame that cannot be reached at all.
 //
-// Driven against synthetic frames rather than a real terminal: the harness
-// runs no ttyd, and what is under test is the release rule.
+// Driven against synthetic frames rather than a real screen: the harness
+// runs no VM, and what is under test is the release rule.
 import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
 
 const browser = await launch();
@@ -20,8 +19,8 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
 await ready(page);
 
-// A slot shaped like a pane's. `src` mimics what a terminal frame is: a
-// document with no background of its own, exactly like ttyd's.
+// A slot shaped like a pane's. `src` mimics what a screen's frame is: a
+// document with no background of its own.
 const build = src => page.evaluate(src => {
   document.querySelectorAll('#veiltest').forEach(n => n.remove());
   const slot = document.createElement('div');

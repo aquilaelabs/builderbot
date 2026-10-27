@@ -39,8 +39,8 @@ Three rules this file keeps that are worth knowing before changing it:
     runs anything. A session that reaches this box through a job has the
     reach it already had over ssh, and no more.
   * Sessions run here too (roadmap #24), and as a THIRD account. Beside the
-    jobs this keeps two ttyds up, the same two the controller's dashboard
-    hook starts, running bb-tty from the bb bundle the controller ships,
+    jobs this opens BuilderBot's own terminals (R133) on the screen relay's
+    port, running bb-tty from the bb bundle the controller ships,
     so a Claude session on this node's projects lives on this node, with
     this node's toolchains and its synced copy of the projects. They run as
     the session account the provisioner made (--session-user), which is in
@@ -71,4 +71,4 @@ Runs anywhere Python 3.8+ is, with nothing installed:
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.280"
+AGENT_VERSION = "0.8.297"

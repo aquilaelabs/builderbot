@@ -248,7 +248,7 @@ function nbWikiView({$, nb, project}){
     const rem = d.remote;
     // The glance (R109): its pages, none while it has none, whose empty
     // state is said where the article would be.
-    viewGlance($("wkHint"), [{label: n === 1 ? "page" : "pages", value: n, omit: !n}], d.error ? esc("wiki: " + d.error) : "");
+    viewGlance($("wkHint"), [{label: n === 1 ? "page" : "pages", value: n, omit: !n}], d.error ? esc("wiki: " + d.error) : "", "", d.error ? "bad" : "");
     $("wkNew").hidden = !!projWriteWhy(project);
     $("wkNew").setAttribute("aria-expanded", String(!!nb.wkAdding));
     $("wkExport").disabled = !pages().length;

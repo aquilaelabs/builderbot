@@ -48,10 +48,11 @@ def slug(path):
 def project_of(entry, projects):
     """The project a transcripts folder belongs to, of `projects`, or "":
     the project's own tree, or one of its worktrees (an account's uid on
-    the end), so a project whose name starts another's never claims it."""
+    the end, an agent's and a slot's after it), so a project whose name
+    starts another's never claims it."""
     for p in projects:
         if entry == slug(WORKSPACE / p) or re.fullmatch(
-                re.escape(slug(WORKSPACE / ".worktrees" / p) + "-") + r"u-[0-9a-f]{8}(?:-[a-z]+)?", entry):
+                re.escape(slug(WORKSPACE / ".worktrees" / p) + "-") + r"u-[0-9a-f]{8}(?:-[a-z]+)?(?:-[2-9])?", entry):
             return p
     return ""
 

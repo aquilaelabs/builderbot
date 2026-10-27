@@ -30,7 +30,6 @@ pkg_names() {
         guestsvc) echo "qemu-ga" ;;
         python) echo "python3" ;;
         session) echo "tmux jq git" ;;
-        ttyd) case "${ID:-}" in *tumbleweed*) echo "ttyd" ;; *) echo "" ;; esac ;;
         reel) echo "xorg-x11-server-Xvfb xdotool xdpyinfo" ;;
         wg) echo "wireguard-tools" ;;
         nft) echo "nftables" ;;

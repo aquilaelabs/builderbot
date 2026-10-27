@@ -50,7 +50,7 @@ ok(!/from \(top level\)  \| async function loadDocker/.test(callers),
 ok(/^    says: Node ids this account may look at, or None for "no restriction"\.$/m.test(map('find', '_node_scope')),
    "find hands over a python method's docstring, its first sentence whole");
 ok(/^    says: gfx_tool RECIPE NAME: /m.test(map('find', 'gfx_tool')), "...and a shell function's comment");
-ok(/^    says: Each terminal tab is an iframe running a full xterm\.js over its own websocket\.$/m.test(map('find', 'roomForTab')),
+ok(/^    says: Each terminal tab is a full xterm\.js over its own websocket\.$/m.test(map('find', 'roomForTab')),
    "...and a page function's comment block, cut at its first sentence");
 ok(!/says:/.test(map('find', 'pinTo')), '...and says nothing for a function with nothing directly above it');
 

@@ -219,23 +219,25 @@ function storageBar(pnodes, n){
 // code so it cannot drift): the same bands and By project, shimmering where
 // the node's numbers go.
 function storageBody(n, where){
-  const hint = `<div class="field"><div class="hint">Each disk and what BuilderBot holds on it, largest first; where its stores live is set on its row on the ${pageLink("nodes", "Nodes page")}.</div></div>`;
+  // Where its stores are set, a fact of the head's (the operator, 25 Oct:
+  // no loose words at a page's top).
+  const setOn = [["Stores set on", `its row on the ${pageLink("nodes", "Nodes page")}`, {html: true}]];
   const byProject = (count, body) => docSection("storage", "projects", "By project", count,
     `<div class="field"><div class="hint">What each project's folders hold${n ? ` on ${esc(n.name)}` : ""}.${helpIcon("Its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.")}</div></div>
       ${body}`);
-  if (!n) return `${headLine(skv(28), "", "toolstate")}${hint}${skRows(2)}${byProject("", skRows(3))}`;
+  if (!n) return `${pageHead({title: GHOST, cls: "toolstate", facts: [["Measured", GHOST], ["Walk", GHOST], ...setOn]})}${skRows(2)}${byProject("", skRows(3))}`;
   const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
   const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
-  // The walk as facts beside its pill (R218 step 27), and the one hint.
-  // ...and the memory BuilderBot's work is kept to there (R110 step 4).
-  const fence = !("fence" in n) ? "" : n.fence ? `its work kept to ${humanBytes(n.fence[0] * 1048576)} of memory, ${humanBytes(n.fence[1] * 1048576)} in use`
-    : "its work is not fenced from the system's memory: run its setup again";
-  const facts = [...(n.measured ? [n.took_s ? `the walk took ${n.took_s}s` : "", "walked every hour"]
-    : ["walked an hour after the agent starts, then every hour"]), fence].filter(Boolean).join(" · ");
+  // The walk as a head's facts (R218 step 27; the operator, 25 Oct), and
+  // the memory BuilderBot's work is kept to there (R110 step 4).
+  const fence = !("fence" in n) ? "" : n.fence ? `${humanBytes(n.fence[0] * 1048576)}, ${humanBytes(n.fence[1] * 1048576)} in use`
+    : "not fenced from the system's memory: run its setup again";
+  const head = pageHead({title: n.name || "", pills: pill, cls: "toolstate", facts: [
+    ["Walk", n.measured ? `${n.took_s ? `took ${n.took_s}s, ` : ""}every hour` : "an hour after the agent starts, then every hour"],
+    ["Its work's memory", fence], ...setOn]});
   return `<div data-stnode="${esc(n.node)}">
-    ${headLine(`${pill} <span class="sub">${esc(facts)}</span>`, "", "toolstate")}
-    ${hint}
+    ${head}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
     ${(n.phones || []).length ? docSection("storage", "phones", "Phones", `${n.phones.length}, ${sgb(n.phones.reduce((a, p) => a + (p.mb || 0), 0))}`, storagePhones(n)) : ""}

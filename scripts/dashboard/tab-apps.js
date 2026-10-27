@@ -77,13 +77,16 @@ function renderAppsInto(i){
     return;
   }
   if (!devApps){
-    d.setBar(`<span class="barfacts">${skv(14)}</span>`);
-    d.list.innerHTML = skTpl(appsSection(skRows(3), ""));
+    d.setBar("");
+    d.list.innerHTML = skTpl(pageHead({title: "This controller", facts: [["Version", GHOST], ["Apps offered", GHOST]]})
+      + appsSection(skRows(3), ""));
     return;
   }
   const offered = (devApps.apps || []).filter(a => a.offered);
-  d.setBar(`<span class="barfacts">controller ${esc(devApps.version || "unstamped")} · ${offered.length} offered</span>`);
-  d.list.innerHTML = appsSection(offered.length ? (devApps.problem ? `<div class="field"><div class="notice warn">The controller's last look at its release did not work: ${
+  // The controller these are offered by, as a head (the operator, 25 Oct).
+  d.setBar("");
+  d.list.innerHTML = pageHead({title: "This controller", facts: [["Version", devApps.version || "unstamped"],
+                                                                 ["Apps offered", String(offered.length)]]}) + appsSection(offered.length ? (devApps.problem ? `<div class="field"><div class="notice warn">The controller's last look at its release did not work: ${
       esc(devApps.problem)}</div></div>` : "") + offered.map(devAppRow).join("")
     : `<div class="empty">This controller offers no apps: an administrator picks them on the Controller page, under Apps.</div>`,
     String(offered.length || ""));

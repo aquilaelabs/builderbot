@@ -250,10 +250,10 @@ export async function newPage(browser, { tour = false, ...opts } = {}){
     };
   }
   page.errors = []; page.dialogs = [];
-  // The harness runs no ttyd, so every terminal iframe's /term request 502s
-  // by design: same-origin now, which puts it in the page console where the
-  // old dead-port fetch never appeared. Filtered here, not per test: it is a
-  // property of the harness, not of any one scenario.
+  // A terminal's socket a scenario refuses (a node that is not there, an
+  // account without the right) fails its handshake, which the browser says
+  // in the console. Filtered here, not per test: it is the refusal under
+  // test, said on the tab, not an error of the page's.
   // With the URL, because "Failed to load resource: 400" names neither what
   // asked nor what was asked for, and a console error nobody can locate is
   // one nobody fixes.
@@ -687,23 +687,35 @@ export const nbGone = (page) =>
   page.waitForFunction(() => !document.querySelector('.pane .nb'),
                        { timeout: 20000 });
 
-// A project row on the sidebar card folds all but Claude and the notebook
-// behind … at every width (R119, 4 Oct): a check that presses one of the
-// others opens the fold first, the way a person would.
-// ...and since R218 step 3 the row is a card on the Projects page, whose
-// menu holds the rest: the page is opened and the card's menu pressed open.
+// A repository's settings as the server reads them (R138): its own record
+// with its project's laid over it, where the node, the dials and what it
+// reads, sees and reaches are kept. Read straight from the state file, so a
+// suite sees what was written, not what the page last polled.
+const stateFile = f => { try { return JSON.parse(readFileSync(`${DIR}/state/${f}`, 'utf8')); } catch { return {}; } };
+// The key of the project a repository is in, or the name itself.
+export function projectKey(name){
+  return Object.entries(stateFile('project-repos.json').projects || {})
+    .find(([, r]) => (r.members || []).includes(name))?.[0] || name;
+}
+// prefs.GROUP_FIELDS: what the project's record lays over a repository's.
+const GROUP_FIELDS = ['node', 'nodes', 'hosts', 'reads', 'sees', 'reaches', 'tc_off', 'packs_on', 'agents_off',
+  'agent_default', 'agent_slots', 'gitpol', 'color', 'devbuild', 'makevms', 'vm_caps', 'test_change', 'gpu', 'report', 'sign',
+  'keys', 'release', 'pc', 'log_from', 'diag'];
+export function prefsOf(name){
+  const all = stateFile('claude-prefs.json').projects || {}, key = projectKey(name);
+  const proj = key !== name ? all[key] || {} : {};
+  return { ...(all[name] || {}), ...Object.fromEntries(GROUP_FIELDS.filter(f => f in proj).map(f => [f, proj[f]])) };
+}
+
+// A project's controls are on its card's back (R138): a check that presses
+// one of them turns the card over with Edit first, the way a person would.
 export async function unfold(page, project){
   await page.evaluate(() => { if (tabOf(panes[active])?.kind !== 'projects') openProjectsTab(); });
-  await page.waitForSelector(`.pgrid .pcard[data-row="${project}"]`, { timeout: 15000 });
-  for (let i = 0; i < 3; i++){
-    await page.evaluate(name => {
-      const c = document.querySelector(`.pgrid .pcard[data-row="${CSS.escape(name)}"]`);
-      if (c?.querySelector('.actmenu')?.hidden) c.querySelector('[data-pmore]')?.click();
-    }, project);
-    const open = await page.waitForFunction(name => !document.querySelector(`.pgrid .pcard[data-row="${CSS.escape(name)}"] .actmenu`)?.hidden,
-      project, { timeout: 3000 }).then(() => true, () => false);
-    if (open) return;
-  }
+  const card = `.pgrid .pcard[data-row="${project}"]`;
+  await page.waitForSelector(card, { timeout: 15000 });
+  if (!await page.$eval(card, c => c.classList.contains('flipped'))) await page.click(`${card} .pcfront [data-pedit]`);
+  await page.waitForSelector(`${card}.flipped .pcback:not([inert])`, { timeout: 5000 });
+  await page.waitForTimeout(450);                    // the turn, so a press lands where it is drawn
 }
 
 // The owner takes a project on (R135): a suite that drops a project

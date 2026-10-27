@@ -57,6 +57,13 @@ class Paths(unittest.TestCase):
         self.assertEqual(r, {"ok": True, "moving": False})
         self.assertEqual(paths.of("project-snapshots"), self.root / "snaps")
 
+    def test_a_place_made_is_the_controllers_alone(self):
+        # Beside a controller installed bare metal, the node's accounts are on
+        # the same machine (R90 step 15): a store moved is made 0700.
+        r = paths.set_path("project-snapshots", str(self.root / "deep" / "snaps"))
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(os.stat(self.root / "deep" / "snaps").st_mode & 0o777, 0o700)
+
     def test_refused(self):
         for bad, why in ((str(self.root / "ws" / "alpha" / "x"), "inside the projects"),
                          ("relative/path", "absolute"), ("/etc", "system"), (f"{self.root}/../x", "absolute")):

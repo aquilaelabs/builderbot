@@ -4,7 +4,7 @@
 // Everything here drives the stub docker the harness provides; the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold, nbGo, faded } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold, nbGo, faded, projectKey } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -346,7 +346,7 @@ const pillIs = async (want) => {
   });
   const quickSaid = runs.out.filter(r => r.said && r.ms < runs.slow);
   ok(quickSaid.length === 0,
-     `four quick reloads in a row never dim the rows on a fetch quicker than ${runs.slow} ms (${
+     `four quick reloads in a row never mark the rows stale on a fetch quicker than ${runs.slow} ms (${
        runs.out.map(r => `${r.ms}ms${r.said ? ' shown' : ''}`).join(', ')})`);
   const slow = await page.evaluate(async () => {
     const f = window.fetch;
@@ -354,7 +354,8 @@ const pillIs = async (want) => {
       ? new Promise(r => setTimeout(() => r(f(...a)), DM_SLOW_MS + 400)) : f(...a);
     const p = loadDocker();
     await new Promise(r => setTimeout(r, DM_SLOW_MS + 200));
-    const during = { dim: !!document.querySelector('.dmtab.dmstale') };
+    const during = { dim: !!document.querySelector('.dmtab.dmstale'),
+                     faded: [...document.querySelectorAll('.dmtab .row')].some(r => getComputedStyle(r).opacity !== '1') };
     await p; window.fetch = f;
     // A revision reload that started under the slowed fetch is itself still
     // slowed and still in flight; the word it is entitled to is not this
@@ -362,8 +363,21 @@ const pillIs = async (want) => {
     for (let i = 0; i < 40 && dockerFetching; i++) await new Promise(r => setTimeout(r, 100));
     return { ...during, after: !!document.querySelector('.dmtab.dmstale') };
   });
-  ok(slow.dim && !slow.after,
-     `...and one that is slow dims the rows until it lands (${JSON.stringify(slow)})`);
+  ok(slow.dim && !slow.after && !slow.faded,
+     `...and one that is slow is marked so until it lands, its rows drawn as they are rather than dimmed (${JSON.stringify(slow)})`);
+  // A read that brings the same list, and a stats tick, leave the page as it
+  // is (the operator, 26 Oct): the stats are written into their own boxes.
+  const kept = await page.evaluate(async () => {
+    const tab = document.querySelector('.dmtab');
+    tab.dataset.mark = 'kept';
+    dockerRev++; drawPanes();
+    await new Promise(r => setTimeout(r, 300));
+    const sameRead = document.querySelector('.dmtab')?.dataset.mark === 'kept';
+    await loadDockerStats(dockerList);
+    await new Promise(r => setTimeout(r, 300));
+    return { sameRead, afterStats: document.querySelector('.dmtab')?.dataset.mark === 'kept' };
+  });
+  ok(kept.sameRead && kept.afterStats, `a redraw of the same list and a stats tick leave the page alone (${JSON.stringify(kept)})`);
 }
 
 // A redraw must not take an open menu with it. The manager repaints on every
@@ -380,7 +394,9 @@ const pillIs = async (want) => {
                                 window.__heldTab = document.querySelector('.dmtab'); });
     await sel.click();
     const open = await page.evaluate(() => window.__heldSel.matches(':open'));
-    await page.evaluate(() => { dockerRev++; drawPanes(); });
+    // A redraw with something new to say: one with nothing new leaves the
+    // page alone anyway (the operator, 26 Oct).
+    await page.evaluate(() => { if (dockerList) dockerList.images_at = Math.floor(Date.now() / 1000) - 3 * 86400; dockerRev++; drawPanes(); });
     const kept = await page.evaluate(() => ({
       same: window.__heldSel.isConnected && document.querySelector('.dmtab') === window.__heldTab,
       open: window.__heldSel.matches(':open') }));
@@ -469,7 +485,12 @@ ok(await page.evaluate(() => {
      cLock(false);
      return ok;
    }), '...while one that runs ghosts Save and makes both boxes read-only, still scrollable');
+await page.waitForTimeout(500);              // the dialog's own opening scale
+const ymlH = await page.$eval('#cmodal .box', b => Math.round(b.getBoundingClientRect().height));
 await page.click('#cTabEnv');
+await page.waitForTimeout(300);
+ok(Math.abs(await page.$eval('#cmodal .box', b => Math.round(b.getBoundingClientRect().height)) - ymlH) <= 1,
+   'the container dialog keeps its size from Compose to Environment');
 ok(/missing against \.env\.example: PORT/.test(await page.$eval('#cEnvHint', e => e.textContent)),
    'the env tab says which keys the example declares and this does not');
 // An empty env opens on the example rather than on a blank box under a list
@@ -906,18 +927,21 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
   await dmEditAll();
   await page.waitForSelector(`${DM} [data-dmboot]`, { timeout: 20000 }).catch(() => {});
   // ...and the listing itself, which a refresh empties until its answer
-  // lands: read in that gap it held no instance at all.
-  await page.waitForFunction(() => (dockerList?.instances || []).some(x => x.exists), null,
-                             { timeout: patience(20000) }).catch(() => {});
-  const drawn = await page.evaluate(sel => {
+  // lands: read in that gap it held no instance at all (B161). So the read
+  // is the wait: drawn both ways in one turn once an instance and its
+  // switch are there, and asked again until they are.
+  const flip = force => {
     const d = (dockerList?.instances || []).find(x => x.exists);
-    if (!d) return null;
+    const box = () => d && document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`);
+    if (!d || (!force && !box())) return null;
     d.boot = true; dockerRev++; drawPanes();
-    const on = document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`)?.checked;
+    const on = box()?.checked;
     d.boot = false; dockerRev++; drawPanes();
-    const off = document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`)?.checked;
+    const off = box()?.checked;
     return { on, off, server: 'boot' in d };
-  }, DM);
+  };
+  const drawn = await page.waitForFunction(flip, false, { timeout: patience(20000) })
+    .then(h => h.jsonValue(), () => page.evaluate(flip, true));
   ok(drawn && drawn.on === true && drawn.off === false && drawn.server,
      `an instance's Start on boot reads its own row's boot, which the listing carries (${JSON.stringify(drawn)})`);
 }
@@ -1404,18 +1428,6 @@ def fake(argv, timeout=60, **kw):
     calls.append({'argv': argv, 'refused': bad})
     if bad:
         return {'code': 126, 'out': bad}
-    # A 'test -d' has to be able to say NO, or every check that asks whether
-    # something is already there gets yes and the move it guards never runs.
-    # The sandbox holds bbdev-alpha and nothing else.
-    if 'test' in argv:
-        # What the sandbox holds: the old project's directories and nothing
-        # else, so a move onto an existing name can still be refused and a
-        # move of a per-instance directory has a source to find.
-        # The literal names the calls above move, plus what a project called
-        # alpha actually resolves to (_pname gives the project's slug for the
-        # default instance, and the instance's own name for any other).
-        there = {'/d/bbdev-alpha', '/d/alpha', '/d/staging'}
-        return {'code': 0 if argv[-1] in there else 1, 'out': ''}
     return {'code': 0, 'out': ''}
 m._run = fake
 
@@ -2137,7 +2149,11 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
      `a stack's Ports and mounts are grouped under each service (${JSON.stringify(groups)})`);
   // ...and the fold stays read across a redraw (B827): the stats and every
   // job step redraw the list, and an open fold came back as its shapes.
-  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  // Written again, not left alone: the page writes its markup only when it
+  // says something new (renderDockerInto's __dmHtml), and a redraw that
+  // changed nothing would ask nothing of the fold.
+  const rewrite = () => { document.querySelector('.dmtab').parentElement.__dmHtml = ''; dockerRev++; drawPanes(); };
+  await page.evaluate(rewrite);
   ok(await page.waitForFunction(sel => document.querySelectorAll(sel + ' .sect .wire .wgrp').length === 2, DM, { timeout: 15000 })
        .then(() => true, () => false),
      '...and an open Ports and mounts keeps its lines when the list redraws');
@@ -2146,6 +2162,11 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   // said no ports and no mounts, and the fold said it publishes nothing).
   {
     const route = '**/api/devapp';
+    // The fold is read once that answer has landed (B161): a fixed second
+    // and a half was, under load, before the read had been answered, and
+    // after the page stopped writing an unchanged list it was never asked.
+    let answered, asked = false;
+    const landed = new Promise(f => { answered = f; });
     await page.route(route, async r => {
       const body = r.request().postDataJSON?.() || {};
       if (body.action !== 'state') return r.fallback();
@@ -2153,12 +2174,14 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
       const j = await real.json();
       j.state = { ...(j.state || {}), ports: [], mounts: [], wired: false };
       await r.fulfill({ response: real, json: j });
+      asked = true; answered();
     });
-    await page.evaluate(() => { dockerRev++; drawPanes(); });
-    await page.waitForTimeout(1500);
+    await page.evaluate(rewrite);
+    await Promise.race([landed, sleep(patience(15000))]);
+    await page.evaluate(() => new Promise(f => setTimeout(f, 200)));
     const kept = await page.$$eval(`${DM} .sect .wire`, ws => ws.map(w => w.querySelectorAll('.wgrp').length + ':' + /publishes nothing/.test(w.textContent)));
     await page.unroute(route);
-    ok(kept.includes('2:false'), `...and keeps them when a read could not resolve the compose, never "publishes nothing" (${kept.join(' ')})`);
+    ok(asked && kept.includes('2:false'), `...and keeps them when a read could not resolve the compose, never "publishes nothing" (${asked ? 'answered' : 'never asked'}: ${kept.join(' ')})`);
   }
   // Its services a table in the card (the operator's concept, 17 Oct): each
   // its own line, its ports in their column.
@@ -2195,15 +2218,14 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   ok(offered.length === 2 && offered[0].text === 'Shell' && !offered[0].dead && /^Shell in gitea$/.test(offered[1].text),
      `a running instance offers Shell for its first container and Shell in the rest under More (${JSON.stringify(offered)})`);
   const term = async arg => page.evaluate(async a => {
-    const r = await fetch('/term/?arg=' + encodeURIComponent(a), { headers: { Accept: 'application/json' } });
+    const r = await fetch('/termws?arg=' + encodeURIComponent(a), { headers: { Accept: 'application/json' } });
     return { status: r.status, error: (await r.json().catch(() => ({}))).error || '' };
   }, arg);
   const good = await term(`ctr:ep.silon:main:${offered[0].ctr}`);
-  // ep.silon's instance is on the stub node: through the gate, the proxy
-  // relays to that node's container terminal (the agent's third ttyd, as
-  // the docker account), which the harness does not run.
-  ok(good.status === 502 && /^sandbox did not answer on stub:7683/.test(good.error),
-     `the proxy lets a running container of the instance through, to its node's terminal server (${good.status} ${good.error.slice(0, 60)})`);
+  // ep.silon's instance is on the stub node: through the gate, which is as
+  // far as a plain request goes (a terminal is a websocket).
+  ok(good.status === 400 && /a websocket is asked for here/.test(good.error),
+     `the server lets a running container of the instance through, to its node's terminal server (${good.status} ${good.error.slice(0, 60)})`);
   // A node whose terminals still run the scripts from before this
   // controller's update (B746): its bb-tty would not know the argument, so
   // the proxy says so, and asks it to check in, rather than relaying.
@@ -2219,22 +2241,22 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
     ok(old?.status === 403 && /has not taken this controller's update yet/.test(old.error),
        `a node still on the scripts from before an update is said plainly, not relayed (${old?.status} ${(old?.error || '').slice(0, 70)})`);
     for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500))
-      if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 502) break;
+      if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 400) break;
   }
   // ...and a node whose container terminal is not up yet says so.
   {
     const extra = `${DIR}/sandboxdata/census-extra.json`;
-    writeFileSync(extra, JSON.stringify({ session: { ctr_port: 0 } }));
+    writeFileSync(extra, JSON.stringify({ session: { ctr: false } }));
     let old = null;
     for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500)){
       old = await term(`ctr:ep.silon:main:${offered[0].ctr}`);
       if (old.status === 403) break;
     }
     rmSync(extra, { force: true });
-    ok(old?.status === 403 && /has not started its container terminal yet/.test(old.error),
+    ok(old?.status === 403 && /has not set up its container terminal yet/.test(old.error),
        `a node whose agent runs no container terminal yet says so (${(old?.error || '').slice(0, 80)})`);
     for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500))
-      if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 502) break;
+      if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 400) break;
   }
   const wrong = await term('ctr:ep.silon:main:someone-elses');
   ok(wrong.status === 403 && /someone-elses is not a running container of ep-silon/.test(wrong.error),
@@ -2368,6 +2390,34 @@ print(json.dumps(m.session_net_own('n1')))
      `...a project on this node alone reaches nothing else, and one not on this node is not named at all (${JSON.stringify(own.beta)}; gamma ${JSON.stringify(own.gamma)})`);
 }
 
+// ---- a container an administrator let onto the LAN (R178) ------------------
+// The wall's map marks it `lan`, by the key the map names it by: an
+// instance's compose project, a given container's name, and one with no
+// project as well; the store keeps it per node, and off takes it out again.
+{
+  const got = execFileSync('python3', ['-c', `
+import importlib.util, json, tempfile, os
+spec = importlib.util.spec_from_file_location('d', ${JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+m.LANS = os.path.join(d, 'docker-lan.json')
+m.write_json = lambda p, v: open(p, 'w').write(json.dumps(v))
+m._instance_node = lambda p, i: 'n1'
+m._load = lambda: {'alpha': {'main': {}}, 'beta': {'main': {}}}
+m._owners = lambda: {'n1': {'plex': 'beta'}}
+m.reads_of = None
+m.set_lan('n1', {'alpha'}, True); m.set_lan('n1', {'plex', 'loose'}, True); m.set_lan('n2', {'beta'}, True)
+print(json.dumps(m.container_net_own('n1')))
+m.set_lan('n1', {'plex', 'loose'}, False)
+print(json.dumps({'n1': sorted(m.lans('n1')), 'n2': sorted(m.lans('n2'))}))
+`], { encoding: 'utf8' });
+  const [own, after] = got.trim().split('\n').slice(-2).map(l => JSON.parse(l));
+  ok(own.alpha?.lan === true && own.plex?.lan === true && !own.beta?.lan && own.loose?.lan === true && own.loose.owner === '',
+     `a container let onto the LAN is marked so on the wall's map, an instance by its compose project, a given container and one with no project by name, and no other (${JSON.stringify(own)})`);
+  ok(JSON.stringify(after) === JSON.stringify({ n1: ['alpha'], n2: ['beta'] }),
+     `...kept per node, and switched off it is taken out again (${JSON.stringify(after)})`);
+}
+
 // ---- a refused new leaves nothing behind -----------------------------------
 // The env is written after the record is made, so an env the write refuses
 // (over 64KB here) left the instance registered, and the retry that fixed
@@ -2484,11 +2534,20 @@ await holdPoll(page);
 // assertion each time (B99's family). holdPoll stops the fifteen-second
 // refresh; it does not stop a revision landing, and there is no need to make
 // it: drawPanes() is synchronous, so one call reads one frame.
-const dead = await page.evaluate(() => {
+// ...and that frame is the one the block is about only once the send above
+// has ended and the tab has its rows (B161): staging-two's job still running
+// says its own step on its row, not "state unknown", and a listing being
+// read again draws no rows at all. So the server's queue is waited out, and
+// the plant is made and read inside a wait that asks again until the page's
+// own listing has rows and no running job.
+await idle(60000);
+const plantDead = force => {
+  if (!force && (!(dockerList?.instances || []).length || dockerList.job?.running)) return null;
   state.docker = { on: false, node: dockerNode,
                    why: 'no node with a daemon: nothing to talk to' };
   dockerRev++; drawPanes();
   const q = s2 => [...document.querySelectorAll(s2)];
+  if (!force && !q('.dmtab .row[data-inst]').length) return null;
   const mk = document.getElementById('bDockerNew');
   return {
     newOff: mk?.disabled === true,
@@ -2501,7 +2560,9 @@ const dead = await page.evaluate(() => {
     off: q('.dmtab .row[data-inst]').map(r => r.classList.contains('off')),
     pills: q('.dmtab .row[data-inst] .dmpill').map(e => e.textContent),
   };
-});
+};
+const dead = await page.waitForFunction(plantDead, false, { timeout: patience(30000) })
+  .then(h => h.jsonValue(), () => page.evaluate(plantDead, true));
 ok(dead.newOff && dead.acts.length > 0 && dead.acts.every(Boolean),
    'with no daemon, the controls that would drive one are disabled');
 ok(/no node with a daemon/.test(dead.tip),
@@ -2517,7 +2578,7 @@ ok(dead.files.every(x => !x),
 // a row on a machine that had gone away could be removed by nobody, and the
 // row is the only control over the thing it names.
 ok(dead.removes.length > 0 && dead.removes.every(x => !x),
-   '...and so does Remove: the record is this side\'s, and a stranded row must go');
+   `...and so does Remove: the record is this side's, and a stranded row must go (${JSON.stringify(dead.removes)})`);
 // The rows stay, and stop claiming anything. The tab used to render one error
 // line and no rows at all, throwing away everything it could still honestly
 // say, which is most of it: what an instance is, and what it was built from,
@@ -2528,7 +2589,7 @@ ok(dead.off.length > 0,
 ok(dead.off.every(Boolean),
    '...grayed, every one of them, so an inert row looks inert before you press');
 ok(dead.pills.length > 0 && dead.pills.every(t => /state unknown/.test(t)),
-   '...saying the state is unknown rather than reporting one nobody asked for');
+   `...saying the state is unknown rather than reporting one nobody asked for (${JSON.stringify(dead.pills)})`);
 // ...except on a row whose own job is running, which knows what it is doing
 // (B65: a Rebuild read "state unknown" over its own "stopping"); and a job
 // the queue says has ended is said on its row at once, not when the whole
@@ -2786,13 +2847,18 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   // Waited for rather than assumed: the repaint is synchronous but the tab
   // has to be the one on screen, and an earlier file leaving another
   // document in the pane is enough to lose the race.
-  await page.waitForSelector('.dmtab .dmnote', { timeout: 15000 });
-  ok(/not a BuilderBot sandbox/.test(await page.$eval('.dmtab .dmnote', e => e.textContent)),
+  // ...and read inside the wait: a revision landing redraws the tab, and the
+  // note one call found was gone by the next (B161).
+  const note = await page.waitForFunction(() => {
+    const t = document.querySelector('.dmtab .dmnote')?.textContent || '';
+    return /not a BuilderBot sandbox/.test(t) && t;
+  }, null, { timeout: 15000 }).then(h => h.jsonValue(), () => '');
+  ok(/not a BuilderBot sandbox/.test(note),
      'a daemon with no provisioner stamp is refused, and named as the reason');
   // The provisioner's own name, which is provision-linux.sh since there is a
   // macos one beside it. `provision\.sh` matched the name it had before that
   // and nothing since.
-  ok(/provision-linux\.sh/.test(await page.$eval('.dmtab .dmnote', e => e.textContent)),
+  ok(/provision-linux\.sh/.test(note),
      '...saying what to run on the VM, since re-running it is the whole fix');
   rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
   await page.evaluate(async (id) => {
@@ -3022,20 +3088,24 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     JSON.stringify(ringsSeen.map(r => r.map(x => x.slice(0, 2)))).slice(0, 300)})`);
   ok(sparks.every(x => x.pts >= 2 && x.dot && /last half hour/.test(x.label)),
      `...its CPU carries the last half hour as a sparkline, the latest a dot, and its memory how full it is (${JSON.stringify(sparks)})`);
-  // Its log, in a fold under the row, read when the fold opens, with Follow.
-  const logSect = '.dmtab .row[data-inst="ep.silon|staging-two"] details[data-sect="docker:logs:ep.silon|staging-two"]';
-  await page.click(`${logSect} > summary`);
-  // Read in the same breath as waited for: the list redraws on every
-  // revision and a fold read between the two is "reading…" again.
-  const logged = await (await page.waitForFunction(sel => {
-    const b = document.querySelector(sel + ' .dmlogbox');
-    if (!b || /reading…/.test(b.textContent) || !b.querySelector('[data-dmfollow]')) return null;
-    return { pre: !!b.querySelector('pre.dmlog'), none: /printed nothing/.test(b.textContent),
-             follow: !!b.querySelector('[data-dmfollow]'), again: !!b.querySelector('[data-dmlogagain]') };
-  }, logSect, { timeout: 15000 })).jsonValue();
-  ok((logged.pre || logged.none) && logged.follow && logged.again,
-     `a row's Log fold reads the container's tail when opened, with Follow and Read again (${JSON.stringify(logged)})`);
-  await page.click(`${logSect} > summary`);
+  // Its log is under the row's ⋯ (the operator, 26 Oct), opening in a tab
+  // of the dock as every log does: no fold under the row any more.
+  const rowSel = '.dmtab .row[data-inst="ep.silon|staging-two"]';
+  ok(!await page.$(`${rowSel} details[data-sect^="docker:logs:"]`), 'a row has no Log fold under it');
+  await page.evaluate(sel => document.querySelector(`${sel} [data-dmlog]`).click(), rowSel);
+  const logTab = await (await page.waitForFunction(() => {
+    const t = tabs.find(x => /^log:(ctr|dm):/.test(x.arg || '')); if (!t) return null;
+    const r = [...TERMS.values()].find(x => x.t?.id === t.id); const b = r?.term?.buffer.active; let text = '';
+    for (let i = 0; b && i < b.length; i++) text += b.getLine(i)?.translateToString(true) || '';
+    return text.trim() || r?.ended ? { arg: t.arg, inDock: panes[1] === t.id, ended: r?.ended || '', text: text.trim().slice(0, 60) } : null;
+  }, null, { timeout: 20000 })).jsonValue();
+  // A running container's streams from its node's relay, which the
+  // fixture's stub node does not run: the tab is the stream's, in the dock.
+  ok(logTab.inDock && /^log:ctr:ep\.silon:staging-two:/.test(logTab.arg) && (logTab.text || /did not answer/.test(logTab.ended)),
+     `Log in its ⋯ opens a running container's log in a tab of the dock, streamed from its node (${JSON.stringify(logTab)})`);
+  // ...and the dock put down after it, as it was: up, it is a phone's whole
+  // page, and the checks below read the page.
+  await page.evaluate(() => { dropTab(tabs.find(x => /^log:(ctr|dm):/.test(x.arg || '')).id); dockToggle(false); });
   // The daemon's images and volumes, in a section at the foot: tiles of
   // what it holds, each image in use or not, each volume, and the two
   // prunes that touch nothing a container uses (the fixture answers all
@@ -3272,8 +3342,12 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   writeFileSync(`${DIR}/dockerstate/repodigests/${img.replace(/[/:]/g, '_')}`, JSON.stringify([`lscr.io/linuxserver/radarr@sha256:${'a'.repeat(64)}`]));
   writeFileSync(`${DIR}/image-digests.json`, JSON.stringify({ [img]: `sha256:${'b'.repeat(64)}` }));
   await page.waitForSelector('#bDockerCheck', { timeout: 15000 });
-  ok(await page.$eval('.dmimgbar .state', e => /not checked yet|checked/.test(e.textContent)),
-     'the Containers page says when its registry images were last checked, beside Check for updates');
+  ok(await page.$eval('.dmimgbar', e => /Images checked\s*(not yet|.* ago|just now)/.test(e.textContent)),
+     'the Containers page says when its registry images were last checked, a fact of its head');
+  ok(await page.$eval('.dmtab', t => { const kids = [...t.children], at = s => kids.findIndex(k => k.matches(s) || k.querySelector(`:scope > ${s}`));
+       const box = at('.dmimgbar'), tiles = at('.tiles'), chips = at('.chips');
+       return box > tiles && (chips < 0 || box > chips); }),
+     '...under its tiles and its chips, which every page has first (the operator, 26 Oct)');
   await page.click('#bDockerCheck');
   await page.waitForSelector('.dmtab .row[data-inst="radarr|main"] .dmimages', { timeout: 20000 });
   ok(await page.$eval('.dmtab .row[data-inst="radarr|main"]', r => /a newer lscr\.io\/linuxserver\/radarr:latest is out/.test(r.querySelector('.dmimages').textContent)
@@ -4184,6 +4258,9 @@ ok(await page.$('#devSend'),
      '...and turning it back to deny there takes the grant back');
   ok(await page.evaluate(() => ((state?.projects || []).find(p => p.name === 'ep.silon') || {}).prefs?.test_change) === 'restart',
      'the test-run setting is saved with it');
+  // ...the person's own, saved by its own request: read once the poll has it.
+  await refreshUntil(page, () => { const p = (state?.projects || []).find(p => p.name === 'ep.silon') || {};
+    return p.yours?.reply === 'minimal' && p.yours?.asks === 'fewer'; }, { timeout: 20000 }).catch(() => {});
   ok(await page.evaluate(() => { const p = (state?.projects || []).find(p => p.name === 'ep.silon') || {};
        return p.yours?.reply === 'minimal' && p.yours?.asks === 'fewer'; }),
      '...and the reply and question styles with the person');
@@ -4406,6 +4483,12 @@ ok(await page.$('#devSend'),
     body: JSON.stringify({ project: 'ep.silon', action: 'state' }) })).json()));
   ok((only.state || only).name === 'ep-silon' || (only.state || only).instance === 'main',
      `a request naming no instance is answered for the project's only one (${JSON.stringify(only.state || only).slice(0, 60)})`);
+  // ...and one named by the compose name bb devapp ls shows it under is
+  // that one too, where --instance took only `main` (B396).
+  const byName = await page.evaluate(async () => (await (await fetch('/api/devapp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', instance: 'ep-silon', action: 'state' }) })).json()));
+  ok(!byName.error, `an instance named as bb devapp ls shows it is found (${JSON.stringify(byName).slice(0, 80)})`);
   const bad = await asSession({ project: 'ep.silon', action: 'test', args: ['$(rm -rf /)'] });
   ok(bad.status === 400 && /argument the test command cannot take/.test(bad.error || ''),
      'an argument that is not a plain word is refused before anything runs');
@@ -4547,20 +4630,21 @@ print(json.dumps(out))
   const back = await api('/api/devapp', { project: 'alpha', action: 'move', instance: 'loose', to: 'ep.silon' });
   ok(back.ok, `...and back again (${back.error || 'ok'})`);
   rmSync(`${DIR}/ws/alpha/docker-compose.yml`, { force: true });
-  // A deleted project's containers keep its name, drawn "X (deleted)", and
-  // come back with it from the trash (8 Oct).
+  // A deleted project's containers keep running with no project (the
+  // operator, 26 Oct), and come back to it from the trash.
   const zc = await api('/api/container', { action: 'create', name: 'helper-for-gamma', owner: 'gamma',
                                           compose: 'services:\n  app:\n    image: alpine\n', env: '' });
   const zrow = l => (l.instances || []).find(d => d.project === 'helper-for-gamma') || {};
   const gone1 = await api('/api/trash', { name: 'gamma' });
   const whileGone = await api('/api/docker');
-  ok(zc.ok && gone1.ok && zrow(whileGone).owner === 'gamma' && zrow(whileGone).owner_gone === true,
-     `a deleted project's container is still its, marked gone (${JSON.stringify(zrow(whileGone)).slice(0, 120)} ${zc.error || gone1.error || ''})`);
+  ok(zc.ok && gone1.ok && zrow(whileGone).owner === '' && JSON.stringify(gone1.unassigned || []).includes('helper-for-gamma'),
+     `a deleted project's container keeps running, given to no project (${JSON.stringify(zrow(whileGone)).slice(0, 120)} ${zc.error || gone1.error || ''})`);
   await openManager();
-  await page.waitForFunction(() => [...document.querySelectorAll('.dmgroup b')].some(b => b.textContent === 'gamma (deleted)'));
-  ok(true, '...drawn under "gamma (deleted)" on the Containers page');
+  await page.waitForFunction(() => [...document.querySelectorAll('.dmgroup b')].some(b => /^No project/.test(b.textContent)), null, { timeout: 15000 }).catch(() => {});
+  ok(await page.evaluate(() => [...document.querySelectorAll('.dmgroup b')].some(b => /^No project/.test(b.textContent))),
+     '...drawn under No project on the Containers page');
   const back2 = await api('/api/trash-restore', { name: (gone1.to || '').split('/').pop() });
-  ok(back2.ok && zrow(await api('/api/docker')).owner_gone === false, `...and a restore gives it back (${back2.error || 'ok'})`);
+  ok(back2.ok && zrow(await api('/api/docker')).owner === 'gamma', `...and Put back gives it back to gamma (${back2.error || 'ok'})`);
   await api('/api/devapp', { project: 'helper-for-gamma', action: 'remove' });
   for (const p of ['alpha', 'gamma']) await api('/api/prefs', { project: p, node: '', nodes: [] });
 
@@ -4597,12 +4681,17 @@ print(json.dumps(out))
   await refreshUntil(page, () => (state.projects || []).find(p => p.name === 'ep.silon')?.color === 'teal',
                      { timeout: 20000 });
   await page.evaluate(() => { dockerRev++; drawPanes(); });
-  await page.waitForFunction(() => /57, 181, 176/.test(getComputedStyle(
-    [...document.querySelectorAll('.dmtab .dmgroup')].find(h => h.querySelector('b')?.textContent === 'ep.silon')).boxShadow),
-    null, { timeout: 10000 }).catch(() => {});
-  b = await bands();
-  ok(/57, 181, 176/.test(b.find(x => x.head === 'ep.silon')?.bar || ''),
-     `...in the project's own color once it has one (${b.find(x => x.head === 'ep.silon')?.bar})`);
+  // Read inside the wait (B161): a band missing for a moment (the listing
+  // read again, its template drawn) threw out of the wait, and the read
+  // after it found no band at all.
+  const tealBar = force => {
+    const h = [...document.querySelectorAll('.dmtab .dmgroup')].find(h => h.querySelector('b')?.textContent === 'ep.silon');
+    const bar = h ? getComputedStyle(h).boxShadow : '';
+    return (force || /57, 181, 176/.test(bar)) && bar;
+  };
+  const teal = await page.waitForFunction(tealBar, false, { timeout: patience(10000) })
+    .then(h => h.jsonValue(), () => page.evaluate(tealBar, true));
+  ok(/57, 181, 176/.test(teal || ''), `...in the project's own color once it has one (${teal})`);
   await api('/api/prefs', { project: 'ep.silon', color: '' });
   const under = h => (g.find(x => x.head === h) || { rows: [] }).rows;
   ok(under('ep.silon').includes('ep.silon|main') && under('ep.silon').includes('helper-for-eps|main')
@@ -4777,7 +4866,8 @@ print(json.dumps(out))
   // said under its heading.
   {
     const mine = await page.evaluate(async () => (await (await fetch('/api/users')).json()).users.find(u => u.name === 'test').projects);
-    await api('/api/users', { action: 'projects', name: 'test', projects: mine.filter(p => p !== 'ep.silon') });
+    // By project (R138): the list names ep.silon's project by its key.
+    await api('/api/users', { action: 'projects', name: 'test', projects: mine.filter(p => p !== projectKey('ep.silon')) });
     const refused = await api('/api/dockerctl', { action: 'restart', container: 'someone-elses' });
     const read = await api('/api/devapp', { project: 'ep.silon', instance: 'loose', action: 'state' });
     await page.evaluate(async () => { await refresh(); location.hash = '#/containers'; dockerList = null; dockerRev++; loadDocker(); });

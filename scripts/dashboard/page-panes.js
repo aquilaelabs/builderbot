@@ -24,7 +24,16 @@ function paintBar(pane, t, i){
     bar.style.removeProperty("--pc");
     // Painted only when it changed: a poll that moves nothing leaves the
     // line's buttons where they are, and a pointer over one keeps its hover.
-    if (paint(bar, dockBar())){ wireDockBar(bar); dockReveal(bar); }
+    // A line drawn again keeps where it was scrolled to (B322), and one
+    // with a tab held in it is not drawn at all: a poll bringing a session
+    // dot replaced the tab under the finger and dropped it; the drag's end
+    // draws it.
+    const kept = bar.querySelector(".dockline")?.scrollLeft || 0;
+    if (!ddrag && paint(bar, dockBar())){
+      const line = bar.querySelector(".dockline");
+      if (line) line.scrollLeft = kept;
+      wireDockBar(bar); dockReveal(bar);
+    }
     return;
   }
   // Only the kinds that still declare it. Toolchains moved its own into the tab
@@ -61,15 +70,13 @@ function paintBar(pane, t, i){
 
 // Uncover a terminal the moment there is nothing white left to see.
 //
-// The flash was never the terminal being slow. The frame's load event fires
-// when its document exists, and ttyd's stylesheet dresses `.xterm-viewport`
-// and nothing above it: `body,html{height:100%;margin:0}` and no color at
-// all. A document with no background of its own is a transparent canvas, and
-// a transparent canvas is what a browser paints white; Firefox on Android
-// does it over whatever the iframe element underneath is set to.
+// A VM's screen is noVNC's page in a frame. The frame's load event fires when
+// its document exists, and a document with no background of its own is a
+// transparent canvas, which a browser paints white; Firefox on Android does
+// it over whatever the iframe element underneath is set to.
 //
 // So rather than cover that window for a guessed number of milliseconds, this
-// closes it: /term is proxied through this server, the frame is same-origin,
+// closes it: noVNC is served from this origin, the frame is same-origin,
 // and one inline style on its <html> gives it the pane's own color. There is
 // then no white to hide, and the cover comes off on the next frame.
 //
@@ -111,8 +118,8 @@ function unveil(frame){
 
 // The console bar, for an account with no shell (roadmap #27).
 //
-// The terminal above it is the real one, relayed to a ttyd started WITHOUT
-// --writable: it renders Claude's own full-screen interface correctly, which
+// The terminal above it is the real one, opened read-only (the server drops
+// every key sent to it): it renders Claude's own full-screen interface correctly, which
 // capturing the pane into a textarea could never do, and the browser cannot
 // type into it at all. So the way in is this row: the send path, which is
 // the same table lookup and literal text every other thing this page can make
@@ -188,7 +195,7 @@ function drawPanes(){
       // reattachTerminals would reload, recreating a session since ended.
       if (pane.dataset.tab || !pane.querySelector(".bar")){
         pane.innerHTML = `<div class="bar dockbar"></div>`;
-        pane.dataset.tab = pane.dataset.kind = pane.dataset.arg = pane.dataset.popped = "";
+        pane.dataset.tab = pane.dataset.kind = pane.dataset.arg = pane.dataset.popped = pane.dataset.own = "";
       }
       paintBar(pane, null, 1);
       continue;
@@ -203,7 +210,9 @@ function drawPanes(){
               && pane.dataset.arg === (t?.arg || "")
               // ...and whether it is popped out (R8): the same tab with its
               // frame gone, or back, is a rebuild.
-              && pane.dataset.popped === (t?.popped ? "1" : "");
+              && pane.dataset.popped === (t?.popped ? "1" : "")
+              // ...and what draws it (R133): the page's terminal, or a frame.
+              && pane.dataset.own === (termOwn(t) ? "1" : "");
     if (same && t){
       paintBar(pane, t, i);
       // Refill a document pane only when the report itself changed. Doing it
@@ -218,13 +227,16 @@ function drawPanes(){
 
     pane.dataset.tab = t?.id || ""; pane.dataset.kind = t?.kind || ""; pane.dataset.arg = t?.arg || "";
     pane.dataset.popped = t?.popped ? "1" : "";
+    pane.dataset.own = termOwn(t) ? "1" : "";
     pane.onclick = () => { if (isSplit() && active !== i && (i === 0 || dockUp)){ active = i; render(); } };
 
     const st = paneStack(pane);
     if (!t){ showInStack(st, "", () =>
       `<div class="empty-pane">no tab here: “+” opens a terminal, Sessions reopens a running one</div>`);
       continue; }
-    const key = `${t.id}|${t.kind}|${t.arg}${t.gen ? "|" + t.gen : ""}${t.popped ? "|popped" : ""}`;
+    // ...and whether BuilderBot's own terminal draws it (R133): switching
+    // between the two is a different slot.
+    const key = `${t.id}|${t.kind}|${t.arg}${t.gen ? "|" + t.gen : ""}${t.popped ? "|popped" : ""}${termOwn(t) ? "|own" : ""}`;
     // A terminal that was on screen a moment ago is kept alive behind the one
     // that replaced it, so coming back to it is instant. Two panes must never
     // hold the same one: a second live client on a session is the size fight one
@@ -242,19 +254,17 @@ function drawPanes(){
       // second client on the session, the size fight one client per terminal avoids.
       ? `<div class="slot popped"><div class="empty-pane">this terminal is open in its own window<br>
            <button type="button" class="reattach" data-reattach="${esc(t.id)}">Reattach</button></div></div>`
+      : termOwn(t) ? termSlot(t)
       : t.kind === "term"
-      // Selecting in a shell copies: the terminal fires the copy itself, and
-      // this is the permission that lets it, since the terminal is served from
-      // its own port and so counts as a cross-origin frame. Claude tabs are
-      // left without it; they keep tmux's mouse mode, where a drag never
-      // becomes a browser selection in the first place.
-      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
+      // A VM's screen: noVNC's page in a frame.
+      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}" src="${esc(tabUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i></div>`
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
     // The boot a new frame's URL carries, for openTab to tell one from before
     // its machine restarted.
     if (fresh && t.kind === "term") t.frameBoot = bootFor(t.arg);
+    if (termOwn(t)) termMount(el, t, key);
     // The id names "the document being shown in pane i", so it must name one
     // node. A hidden document left in the stack (the notebook parks there)
     // used to keep it, and getElementById returns the first in DOM order,
@@ -269,11 +279,10 @@ function drawPanes(){
     // to a node nothing is looking at any more.
     wireConsole(el);
     el.querySelector("[data-reattach]")?.addEventListener("click", e => reattachTab(t.id, e));
-    // Shown again after being hidden: xterm sizes itself from a resize event,
-    // and one that was laid out behind another frame may have missed one. One
-    // marked stale slept through a disconnect instead, and needs the reload it
-    // was spared while nobody was looking at it.
-    if (!fresh && t.kind === "term"){
+    // A VM's screen shown again after being hidden: one marked stale slept
+    // through a disconnect, and needs the reload it was spared while nobody
+    // was looking at it; any other is nudged to its box's size.
+    if (!fresh && t.kind === "term" && !termOwn(t)){
       const f = el.querySelector("iframe");
       if (f?.dataset.stale){ delete f.dataset.stale; f.src = f.src; }
       else nudgeTerminals();
@@ -287,6 +296,8 @@ function drawPanes(){
     openedNow.add(t.id);
     TABKINDS[t.kind]?.open?.();
   }
+  // A terminal of ours whose slot left the page is closed (R133).
+  termSweep();
   // The page in front, toured the first time this account opens it (R94).
   tourSoon(tabOf(panes[0])?.kind);
 }
@@ -339,11 +350,10 @@ let stackClock = 0;
 
 // A pane is a bar and a stack. The stack's children all sit on top of one
 // another at the same size, and exactly one of them is visible, which is the
-// whole trick: rebuilding a pane's innerHTML to change tabs threw the frame
-// away, and ttyd is 700KB of javascript that then had to load, connect and
-// draw again. A second and a half of blank pane, every switch.
+// whole trick: rebuilding a pane's innerHTML to change tabs threw the
+// terminal away, and it then had to connect and draw again.
 //
-// Same size, not merely present: a hidden frame is still an attached tmux
+// Same size, not merely present: a hidden terminal is still an attached tmux
 // client, and tmux sizes a window to its smallest one. Overlapping them keeps
 // every client on the same geometry, so there is nothing to fight about.
 function paneStack(pane){
@@ -413,6 +423,8 @@ function dropElsewhere(keep, key){
 // device has been the one using it.
 let nudgeTimer = null, nudgedAt = 0;
 function nudgeTerminals(){
+  // BuilderBot's own terminals size themselves to their box (R133).
+  termRevive();
   // The visible ones only. A pane keeps three more frames alive behind the one
   // on screen, and they are all the same size already: thrashing their layout
   // costs a reflow each and fixes nothing anybody is looking at.
@@ -430,21 +442,18 @@ function nudgeTerminals(){
   nudgeTimer = setTimeout(() => frames.forEach(f => f.style.width = ""), 60);
 }
 
-// Reconnecting a dropped terminal. ttyd auto-reconnects on its own, except
-// on a phone, which freezes the whole page while it is backgrounded (so
-// ttyd's timer never fires) and often restores it from the back/forward cache
-// with the socket already dead, showing ttyd's "reconnect" prompt. The
-// terminal is a cross-origin iframe we cannot reach into, but reloading it is
-// lossless: tmux holds the session and its scrollback on the server, so the
-// reload reattaches exactly where it was.
+// The page back after a phone froze it in the background, often restored
+// from the back/forward cache with every socket already dead. A terminal's
+// socket is opened again (termRevive), lossless since tmux holds the session
+// and its scrollback; a VM's screen is a frame, and reloading it reconnects.
 let hiddenAt = 0;
 function reattachTerminals(){
   // What is on screen reloads now; what is behind it is marked and reloads
-  // when it is next shown. Reloading all of them together was up to six ttyd
-  // instances (700KB of javascript, a websocket and a full repaint each)
-  // starting at the same moment on the device least able to afford it, which
-  // is what a phone spent its first seconds back doing.
+  // when it is next shown, rather than every one at the same moment on the
+  // device least able to afford it.
   document.querySelectorAll(".pane .slot:not(.on) iframe")
           .forEach(f => f.dataset.stale = "1");
   document.querySelectorAll(".pane .slot.on iframe").forEach(f => { f.src = f.src; });
+  // ...and BuilderBot's own: a socket that dropped is opened again (R133).
+  termRevive();
 }

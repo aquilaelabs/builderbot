@@ -32,7 +32,7 @@ async function drawTrash(){
   }
   el.innerHTML = items.map(t => `<div class="row trow" data-t="${esc(t.name)}">
       <div class="grow"><div class="name">${esc(t.was || t.name)}</div>
-        <div class="sub">deleted ${esc(ago(t.at))}${t.was && t.was !== t.name
+        <div class="sub">deleted ${esc(ago(t.at))}${t.project ? ` from ${esc(t.project)}` : ""}${t.was && t.was !== t.name
           ? ` · directory ${esc(t.name)}` : ""}${t.taken
           ? ` · <span class="warn">its directory is in use again</span>` : ""}</div></div>
       <span class="acts">
@@ -45,7 +45,16 @@ async function drawTrash(){
       </span></div>`).join("");
   el.querySelectorAll("[data-trestore]").forEach(b => b.onclick = async () => {
     b.disabled = true;
-    const r = await postTrash("/api/trash-restore", {name: b.dataset.trestore});
+    let r = await postTrash("/api/trash-restore", {name: b.dataset.trestore});
+    // Its project is gone (R138): which one it goes back into is asked.
+    if (r?.pick){
+      const to = projectList().filter(c => c.may && !c.archived);
+      const got = to.length ? await askInline(b.closest(".trow"), {label: `Put ${b.dataset.trestore} back into`, ok: "Put back",
+                                                                   options: to.map(c => c.name)}) : null;
+      const c = got && to.find(x => x.name.toLowerCase() === got.toLowerCase());
+      if (!c){ if (!to.length) notify(r.error, true); b.disabled = false; return; }
+      r = await postTrash("/api/trash-restore", {name: b.dataset.trestore, project: c.key});
+    }
     if (r?.error) notify(r.error, true);
     else notify(`${r.label || r.name} is back`);
     await drawTrash(); refresh();
@@ -99,14 +108,16 @@ function openProjectsTab(){
 }
 
 // What the search box narrows the grid to: a view, this browser's, never
-// saved. Matched against the name, the label, the branch and the node.
+// saved. Matched against a project's name and each of its repositories'
+// names, branches and nodes.
 let pjQuery = "";
 // The group chip in force, "" for All and "none" for the projects in no
 // group: a view for the page's life, as the Containers page's chips are.
 let pjChip = "";
 function projectMatches(p, q){
   if (!q) return true;
-  const hay = [p.name, p.label, p.git, p.node_name, p.session_at].filter(Boolean).join(" ").toLowerCase();
+  const hay = [p, ...(p.rows || [])].flatMap(x => [x.name, x.label, x.git, x.node_name, x.session_at])
+    .filter(Boolean).join(" ").toLowerCase();
   return q.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
 }
 
@@ -135,31 +146,390 @@ function projFacts(p){
 // A project's id as it is written (P3), as a roadmap item is R12 and a bug
 // B7: the registry's number, never reused, so it names one project for good.
 const projId = p => p?.pid ? `P${p.pid}` : "";
-function projectCard(p){
-  const pc = colorAttrs(p.color), cls = {error:"bad", warning:"warn", locked:"locked"};
-  return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
-    <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${lockMark(p)}${
-      p.pinned && !p.archived ? ` <span class="pinmark" title="pinned: on Home's glance" aria-label="pinned">${PIN}</span>` : ""}</div>
-    <div class="pcfacts">${projFacts(p)}</div>
-    ${projectState(p)}
-    ${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
-    ${state?.mapping?.[p.name] ? (m => m.running
-        ? `<div class="pnote dim">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
+// A project (R138, the operator, 25 Oct) is made first, with a name alone,
+// and its repositories are added to it; every repository is in one. The
+// page reads the projects off the status read's `repos` and each one's
+// repositories off its rows, so a project with nothing in it yet has a card.
+function projectList(){
+  const rows = state?.projects || [];
+  return Object.entries(state?.repos || {}).map(([key, r]) => {
+    const reps = r.members.map(m => rows.find(p => p.name === m)).filter(Boolean);
+    return {...r, key, label: r.name, rows: reps, first: reps[0] || null};
+  });
+}
+// The project a repository is in, or the key itself when it is one: what a
+// mark, a lock and the project's own actions are kept by.
+function reposOf(name){
+  if (state?.repos?.[name]) return name;
+  return (state?.projects || []).find(p => p.name === name)?.project || "";
+}
+// What a project is shown as, from its key or any of its repositories.
+const projectName = n => state?.repos?.[reposOf(n)]?.name || projLabel(n);
+
+// The cards the Projects page shows, by key: which are turned over to their
+// controls (Edit). The page's while it is on show, never saved.
+const pjEditing = new Set();
+
+// One project's card (R138): the front is what is in it and who is working
+// there, the back the controls that change it. Edit turns it over in place,
+// the two faces sharing one grid cell so the card keeps its size; Back
+// turns it back, saving nothing: each control on the back saves its own. A press on the card itself does nothing: its names open
+// the repositories' notebooks.
+function projectCard(c){
+  const pc = colorAttrs(c.color), on = pjEditing.has(c.key);
+  return `<div class="pcard pflip${pc.cls}${on ? " flipped" : ""}" data-pkey="${esc(c.key)}"${c.first ? ` data-row="${esc(c.first.name)}"` : ""}${pc.style}>
+    <div class="pcface pcfront"${on ? " inert" : ""}>${cardFront(c)}</div>
+    <div class="pcface pcback"${on ? "" : " inert"}>${cardBack(c)}</div>
+  </div>`;
+}
+// A project's mark by its name: pressed in where it is set, a press setting
+// or clearing it. Archive and pin are a person's sight of it, so they sit
+// where the name is read.
+function cardMarks(c){
+  const pin = c.archived ? "" : `<button type="button" class="eye bare pcmark${c.pinned ? " on" : ""}" data-pmark="${esc(c.key)}" data-on="${c.pinned ? "0" : "1"}"
+      aria-pressed="${c.pinned}" aria-label="${c.pinned ? "Unpin" : "Pin"} ${esc(c.name)}" title="${c.pinned ? "pinned: on Home's glance; press to unpin" : "pin it to Home's glance"}">${PIN}</button>`;
+  const arch = c.may_archive ? `<button type="button" class="eye bare pcmark${c.archived ? " on" : ""}" data-kmark="${esc(c.key)}" data-on="${c.archived ? "0" : "1"}"
+      aria-pressed="${c.archived}" aria-label="${c.archived ? "Unarchive" : "Archive"} ${esc(c.name)}" title="${c.archived
+        ? "archived: folded at the foot of this page; press to bring it back" : "archive it: out of sight at the foot of this page, and working as before"}">${ARCHIVE}</button>` : "";
+  return pin + arch;
+}
+// The lock as the card says it: by whom, or read-only where it is not this
+// account's to change.
+function cardLock(c){
+  const said = c.locked ? (c.locked_admin ? "locked by an administrator" : "locked")
+    : c.first && writeWhy(c.first) ? "read-only" : "";
+  return said ? ` <span class="lockmark" title="${esc(c.locked && c.first ? lockedWhy(c.first) : said)}">${LOCK}${said}</span>` : "";
+}
+function cardFront(c){
+  const first = c.first, cls = {error: "bad", warning: "warn", locked: "locked"};
+  const node = first ? first.node_name || first.session_at || "" : "";
+  const many = c.rows.length > 1;
+  return `<div class="pcname"><span class="name">${esc(c.name)}</span>${cardLock(c)}<span class="sp"></span>${cardMarks(c)}</div>
+    <div class="pcmeta"><span class="pcfacts">${[`<span class="pid" title="this project's id, which never changes">${esc(c.pid)}</span>`,
+      esc(node)].filter(Boolean).join(" · ")}</span>${first ? projectState(first) : ""}</div>
+    <div class="pcrepos">${c.rows.length ? c.rows.map(p => `<div class="pcrepo">
+      <button type="button" class="namelink" data-open="${esc(p.name)}" title="open ${esc(p.label || p.name)}'s notebook">${esc(p.label || p.name)}</button>
+      <span class="pcfacts">${p.git ? `<span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : "no git"}</span>
+    </div>${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${many ? esc(p.label || p.name) + ": " : ""}${esc(i.text)}</div>`).join("")}`).join("")
+      : `<div class="pnote dim">no repository yet${c.may ? ": Add repository makes or clones one" : ""}</div>`}</div>
+    ${first ? cardNotes(c) : ""}
+    <div class="pcacts actbar">${first ? agentButton(first)
+      : `<button type="button" disabled title="Add a repository first">Start agent</button>`}${
+      c.may && !c.archived && !state?.session && state?.can?.create !== false ? `<button type="button" data-repadd="${esc(c.key)}">Add repository</button>` : ""}
+      <button type="button" data-pedit="${esc(c.key)}" aria-expanded="false">Edit</button></div>`;
+}
+// What the card says besides its repositories, from its first one, where a
+// session runs: mapping, a phone lent, tests running, the one notice.
+function cardNotes(c){
+  const p = c.first, m = state?.mapping?.[p.name];
+  return `${m ? (m.running ? `<div class="pnote dim">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
         : m.error ? `<div class="pnote warn">the code map did not build: ${esc(m.error)}</div>`
-        : `<div class="pnote dim">mapped ${m.files} file${m.files === 1 ? "" : "s"} in ${m.took}s</div>`)(state.mapping[p.name]) : ""}
+        : `<div class="pnote dim">mapped ${m.files} file${m.files === 1 ? "" : "s"} in ${m.took}s</div>`) : ""}
     ${p.phone?.lease?.project === p.name ? `<div class="pnote dim">${esc(p.phone.model || "a phone")} lent here by ${
         esc(p.phone.lease.by_name || p.phone.owner)}${p.phone.lease.left != null ? `, ${Math.max(1, Math.round(p.phone.lease.left / 60))} min left` : ""}: each command asks ${
         p.phone.mine ? "you" : esc(p.phone.owner)}</div>` : ""}
     ${p.testing ? `<div class="pnote dim">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
-    ${projectNote(p)}
-    <div class="pcacts actbar">${projectActions(p, p.trash_why ? "" : `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
-  </div>`;
+    ${projectNote(p)}`;
+}
+// The back: the project's name with its pencil, each repository with the
+// icons that change it (a shell in it, its git host, rename, move to another
+// project, delete), and the project's own controls along the foot. No menu:
+// everything is a press away (the operator, 25 Oct).
+function cardBack(c){
+  const first = c.first, may = c.may && !state?.session;
+  const ic = (attr, val, label, icon, extra = "") => `<button type="button" class="eye bare" ${attr}="${esc(val)}" aria-label="${esc(label)}" title="${esc(label)}"${extra}>${icon}</button>`;
+  const rows = c.rows.map(p => {
+    const n = p.label || p.name, mine = !notMine(p) && !writeWhy(p);
+    return `<div class="pcrepo"><span class="name">${esc(n)}</span><span class="sp"></span>
+      ${mayShell() && !notMine(p) ? ic("data-s", p.name, `A shell in ${n}`, TERM, gitReadyFor(p) ? "" : " disabled") : ""}
+      ${p.git_ok && !isBroken(p) && state?.can?.["git-auth"] !== false ? ic("data-l", p.name, p.linked ? `${p.forge_name || "Remote"} settings for ${n}` : `Link ${n} to a git host`, LINK) : ""}
+      ${p.phone?.mine ? ic("data-ph", p.name, p.phone.lease?.project === p.name ? `Take your phone back from ${n}` : `Lend your phone to ${n}`,
+                           TOOL_ICONS.phone, phoneWhy(p) ? " disabled" : "") : ""}
+      ${mine ? ic("data-rrn", p.name, `Rename ${n}`, PENCIL) : ""}
+      ${may ? ic("data-rmove", p.name, `Move ${n} to another project`, MOVE) : ""}
+      ${mine && !p.trash_why ? ic("data-del", p.name, `Delete ${n}: to the trash`, BIN, ' data-danger="1"') : ""}</div>`;
+  }).join("");
+  // The foot is one line of icons at every width (the operator, 25 Oct: one
+  // line on either side), each named for a screen reader and a pointer's
+  // hover; Pin and Archive are by the name on the front, a press away.
+  const fb = (attr, val, label, icon, extra = "") => `<button type="button" class="ic" ${attr}="${esc(val)}" aria-label="${esc(label)}" title="${esc(label)}"${extra}>${icon}</button>`;
+  const tone = colorTone(c.color);
+  const foot = [
+    fb("data-pcolor", c.key, c.color ? `Color: ${c.color}` : "Color", SWATCH, tone ? ` data-sw style="--sw:${tone}"` : ""),
+    c.archived ? "" : fb("data-pgroup", c.key, c.group ? `Group: ${c.group}` : "Group", TAG),
+    c.may_lock ? fb("data-lock", c.key, lockLabel(c), c.locked ? LOCK : LOCK_OPEN, ` data-on="${c.locked ? "0" : "1"}" aria-pressed="${!!c.locked}"`) : "",
+    first && first.mine !== false ? fb("data-bug", first.name, "Report bug", BUG) : "",
+    first ? fb("data-rn", first.name, "Settings", GEAR) : "",
+    may && !c.rows.length ? fb("data-pdel", c.key, "Delete project", BIN, ' data-danger="1"') : "",
+  ].filter(Boolean).join("");
+  return `<div class="pcname"><span class="name">${esc(c.name)}</span>${may ? ic("data-prn", c.key, `Rename ${c.name}`, PENCIL) : ""}
+      <span class="sp"></span><span class="actbar"><button type="button" data-pedit="${esc(c.key)}" aria-expanded="true">Back</button></span></div>
+    <div class="pcrepos">${rows || `<div class="pnote dim">no repository yet</div>`}</div>
+    <div class="pcacts actbar pcfoot">${foot}</div>`;
+}
+// The cards of a list of projects.
+const projectCards = list => list.map(projectCard).join("");
+
+// The page come on show again (its kind's open): a card turned over before
+// it was left is back on its front. The page is kept while another is on
+// show, so its cards are drawn again here rather than built afresh.
+function projectsShown(){
+  if (!pjEditing.size) return;
+  pjEditing.clear();
+  drawProjects(state?.projects || []);
+}
+
+// A press on a card that changes what it holds (a mark, its color, its
+// group, a name) arms its fade: the next draw that changes that card fades
+// its face through (faceFade) rather than cutting to the new one. A press
+// that opens somewhere else does not.
+const PJ_ELSEWHERE = "[data-pedit],[data-open],[data-c],[data-s],[data-rn],[data-bug],[data-l],[data-ph],[data-tcinst],[data-repadd]";
+let pjFade = null;               // {key, was: the card's markup at the press}
+// ...and the card a person last pressed on is the one the page follows when
+// it moves (the operator, 26 Oct), for a few seconds after the press: what
+// moves it is that press's answer, never somebody else's change on a poll.
+let pjFollow = null;            // {key, until}
+function pjFadeArm(e){
+  const card = e.target.closest?.(".pcard[data-pkey]");
+  if (card) pjFollow = {key: card.dataset.pkey, until: Date.now() + 8000};
+  const b = e.target.closest?.(".pcard button");
+  if (!b || b.matches(PJ_ELSEWHERE) || b.closest(".askline, .pcpop")) return;
+  const key = b.closest(".pcard").dataset.pkey, c = projectList().find(x => x.key === key);
+  if (c) pjFade = {key, was: projectCard(c)};
+}
+
+// Turn a card over, or back, in place: the class moves and the faces trade
+// which one a press and a screen reader reach; the next paint draws it so.
+function flipCard(key){
+  const on = !pjEditing.has(key);
+  // One card on its back at a time (the operator, 26 Oct): another turned
+  // over goes back to its front, a box open on it canceled, as Back does.
+  if (on) [...pjEditing].filter(k => k !== key).forEach(k => {
+    document.querySelectorAll(`.pcard[data-pkey="${CSS.escape(k)}"] :is(.askline, .pcpop)`).forEach(x => x.__done?.(null));
+    flipCard(k);
+  });
+  on ? pjEditing.add(key) : pjEditing.delete(key);
+  if (pjFade?.key === key) pjFade = null;    // the turn is its own motion
+  const card = document.querySelector(`.pcard[data-pkey="${CSS.escape(key)}"]`);
+  if (!card) return;
+  card.classList.toggle("flipped", on);
+  card.querySelector(".pcfront").inert = on;
+  card.querySelector(".pcback").inert = !on;
+  card.querySelectorAll("[data-pedit]").forEach(b => b.setAttribute("aria-expanded", String(on)));
+  // Drawn again once it has turned, so the grid's markup says so: the next
+  // poll otherwise finds it changed and redraws the card, taking a box open
+  // on its back (Group, a rename, a move) with it.
+  clearTimeout(flipCard.t);
+  flipCard.t = setTimeout(() => drawProjects(state?.projects || []), 450);
+}
+
+// New project (R138): its name, and nothing else; its repositories are
+// added on its card.
+async function newProjectByName(){
+  const said = await ask({title: "New project", field: {label: "Name"}, choices: [{label: "Create", value: true}],
+                         text: "Spaces and punctuation are fine in its name. Its repositories are added on its card."});
+  const got = said?.text?.trim();
+  if (!got) return;
+  try{
+    const j = await (await postJSON("/api/repos", {action: "create", name: got})).json();
+    if (j.error){ notify(j.error, true); return; }
+    pjEditing.delete(j.key);
+    notify(`${j.name} made: Add repository on its card makes or clones its first one`);
+    await refresh();
+    showNewCard(j.key);
+  }catch(e){ notify("making the project failed: " + failWords(e), true); await refresh(); }
+}
+
+// A project just made: the page scrolls to its card wherever the order put
+// it, and the card wears a ring in the accent that fades (the operator, 26
+// Oct), so the eye lands on it.
+function showNewCard(key){
+  const card = document.querySelector(`.pane .doc.on .projtab .pcard[data-pkey="${CSS.escape(key)}"]`);
+  if (!card) return;
+  card.scrollIntoView({block: "center", behavior: noMotion() ? "auto" : "smooth"});
+  card.classList.remove("pjnew");
+  void card.offsetWidth;
+  card.classList.add("pjnew");
+  setTimeout(() => card.classList.remove("pjnew"), 2600);
+}
+
+// The cards after a change that moves them (a project renamed sorts
+// elsewhere): each slides from where it was to where it lands, and the page
+// scrolls with the one that changed so it stays in sight, a phone's single
+// column above all (the operator, 26 Oct).
+function slideCards(key, change){
+  change();                     // the grid's draw slides every card that moved
+  document.querySelector(`.pane .doc.on .projtab .pcard[data-pkey="${CSS.escape(key)}"]`)
+    ?.scrollIntoView({block: "nearest", behavior: noMotion() ? "auto" : "smooth"});
+}
+
+// The project's name, asked in a box under it: taken at once from the
+// answer, where the card sorts by it, without waiting for the next read.
+async function renameProjectCard(btn){
+  const key = btn.dataset.prn, was = projectName(key);
+  const got = await askInline(btn.closest(".pcname"), {label: `Rename ${was} to`, value: was, ok: "Rename"});
+  if (got === null || got === was) return;
+  try{
+    const j = await (await postJSON("/api/repos", {action: "rename", key, to: got})).json();
+    if (j.error){ notify(j.error, true); return; }
+    slideCards(key, () => applyNow((x, k) => { if (k === key && "members" in x) x.name = j.name || got; }));
+    notify(`${was} is now ${j.name || got}`);
+  }catch(e){ notify("renaming failed: " + failWords(e), true); }
+  await refresh();
+}
+
+// A repository's shown name, asked in a box under its row (the folder stays).
+async function renameRepository(btn){
+  const name = btn.dataset.rrn, was = projLabel(name);
+  // Under the card's name, in the repositories' place, as every box on a
+  // card's back opens (the operator, 26 Oct): the label names the repository.
+  const got = await askInline(btn.closest(".pcback")?.querySelector(".pcname") || btn.closest(".pcrepo"), {label: `Rename ${was} to`, value: was, ok: "Rename"});
+  if (got === null || got === was) return;
+  try{
+    const j = await (await postJSON("/api/rename", {name, to: got})).json();
+    if (j.error){ notify(j.error, true); return; }
+    notify(`${was} is now ${j.label || got}`);
+  }catch(e){ notify("renaming failed: " + failWords(e), true); }
+  await refresh();
+}
+
+// A repository into another project, picked from the ones this account may
+// change; refused while a session runs on either.
+async function moveRepository(btn){
+  const name = btn.dataset.rmove, from = reposOf(name);
+  const to = projectList().filter(c => c.key !== from && c.may && !c.archived);
+  if (!to.length){ notify("there is no other project of yours to move it to: New project makes one", true); return; }
+  const got = await askInline(btn.closest(".pcback")?.querySelector(".pcname") || btn.closest(".pcrepo"), {label: `Move ${projLabel(name)} to`, ok: "Move",
+                                                       options: to.map(c => c.name)});
+  if (!got) return;
+  const c = to.find(x => x.name.toLowerCase() === got.toLowerCase());
+  if (!c){ notify(`${got} is not a project it can move to`, true); return; }
+  let plan;
+  try{
+    plan = await (await postJSON("/api/repos", {action: "move-check", name, to: c.key})).json();
+  }catch(e){ notify("checking the move failed: " + failWords(e), true); return; }
+  if (plan.error){ notify(plan.error, true); return; }
+  const picked = await moveConfirm(plan);
+  if (picked === null) return;
+  try{
+    const j = await (await postJSON("/api/repos", {action: "move", name, to: c.key, add_nodes: picked.nodes, give: picked.give})).json();
+    if (j.error){ notify(j.error, true); return; }
+    const nn = id => plan.nodes.find(n => n.id === id)?.name || id;
+    notify(`${projLabel(name)} is in ${j.project}${
+      j.added?.length ? `, which now has ${j.added.map(nn).join(" and ")} too` : ""}${
+      j.readers?.length ? `; ${j.readers.join(", ")} now read${j.readers.length === 1 ? "s" : ""} it too` : ""}${
+      j.kept?.length ? `; ${plan.from} keeps ${j.kept.join(", ")}` : ""}`);
+    if (j.owner_errors?.length) notify(j.owner_errors.join("; "), true);
+  }catch(e){ notify("moving it failed: " + failWords(e), true); }
+  await refresh();
+}
+
+// Are you sure, with what the move changes (the operator, 26 Oct): the
+// repository takes its new project's node, people and settings, so every node
+// the project it leaves has is said, dev and hosting, those the new one has
+// not got offered to bring along, ticked; then its containers and VMs, each
+// with a box to make it the new project's (ticked for the repository's own,
+// which go with it), ghosted while it is on a node the new project will not
+// have; who reaches it through the old project alone is named; a session
+// running on either is said, and Move waits for it. Resolves with {nodes,
+// give}, or null for Cancel.
+function moveConfirm(plan){
+  return new Promise(resolve => {
+    let m = document.getElementById("mvmodal");
+    if (!m){
+      m = document.createElement("div");
+      m.id = "mvmodal"; m.className = "modal"; m.hidden = true;
+      m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true"); m.setAttribute("aria-labelledby", "mvTitle");
+      document.body.appendChild(m);
+      armModal(m);
+    }
+    const what = n => n.as === "hosts" ? "nodes it hosts containers on" : "nodes it works on";
+    const dead = plan.node_why || "";
+    const busy = (plan.busy || []).length > 0;
+    const offer = plan.nodes.filter(n => !n.have), had = plan.nodes.filter(n => n.have);
+    const things = plan.things || [];
+    const ctrs = things.filter(t => t.kind === "container"), vms_ = things.filter(t => t.kind === "vm");
+    m.innerHTML = `<div class="box"><h3 id="mvTitle">Move ${esc(plan.label)} to ${esc(plan.to)}?</h3>
+      <div class="field"><p class="asksaid">It leaves ${esc(plan.from || "no project")}: from now on ${esc(plan.to)}'s node, people and settings apply to it. Its notebook goes with it.</p></div>
+      ${plan.nodes.length ? `<div class="field"><div class="lbl">${esc(plan.from)}'s nodes</div>
+        ${had.map(n => `<div class="ndcap dim">${esc(n.name)}: ${esc(plan.to)} has it already</div>`).join("")}
+        ${offer.map(n => `<label class="ndcap"><input type="checkbox" data-mvnode="${esc(n.id)}"${dead ? " disabled" : " checked"}> Add ${esc(n.name)} to ${esc(plan.to)}'s ${what(n)}${
+          n.instances.length ? `<span class="dim"> (${esc(n.instances.join(", "))} ${n.instances.length === 1 ? "runs" : "run"} there)</span>` : ""}</label>`).join("")}
+        ${!offer.length ? "" : dead ? `<div class="sub dim">${esc(dead)}</div>` : `<div class="sub dim">Left unticked, nothing builds or runs on that node for ${esc(plan.label)} until ${esc(plan.to)} has it.</div>`}</div>` : ""}
+      ${ctrs.length ? `<div class="field"><div class="lbl">Containers</div>
+        ${ctrs.map(t => `<label class="ndcap" data-mvon="${esc(t.node)}"><input type="checkbox" data-mvgive="${esc(t.key)}" data-reach="${t.reach ? 1 : 0}"${t.goes ? " checked" : ""}> Make ${esc(t.name)} ${esc(plan.to)}'s<span class="dim"> (on ${esc(t.node_name)}${t.goes ? `, ${esc(plan.label)}'s` : `, ${esc(plan.from)}'s`})</span></label>`).join("")}
+        <div class="sub dim">Left unticked, ${esc(plan.from)} keeps it and its sessions rebuild it. One on a node ${esc(plan.to)} will not have stays with ${esc(plan.from)}.</div></div>` : ""}
+      ${vms_.length ? `<div class="field"><div class="lbl">VMs, which go with ${esc(plan.label)}</div>
+        ${vms_.map(t => `<div class="ndcap" data-mvvm="${esc(t.node)}" data-reach="${t.reach ? 1 : 0}">${esc(t.name)}<span class="dim"> (on ${esc(t.node_name)})</span><span class="sub warn" data-mvvmwhy hidden> ${esc(plan.to)} will not have ${esc(t.node_name)}: its sessions cannot reach it</span></div>`).join("")}</div>` : ""}
+      ${plan.lose.length ? `<div class="field"><div class="sub warn">${esc(plan.lose.join(", "))} ${plan.lose.length === 1 ? "reaches" : "reach"} it through ${esc(plan.from)} alone and ${plan.lose.length === 1 ? "loses" : "lose"} it: a role on ${esc(plan.to)} keeps it.</div></div>` : ""}
+      ${busy ? `<div class="field"><div class="sub warn">${esc(plan.busy.join(", "))} running on ${esc(plan.from)} or ${esc(plan.to)}: end ${plan.busy.length === 1 ? "it" : "them"} first, then move it.</div></div>` : ""}
+      ${dlgFoot(`<button type="button" id="mvCancel">Cancel</button>`, `<button type="button" class="primary" id="mvGo"${busy ? " disabled" : ""}>Move</button>`)}</div>`;
+    // A container or VM is in reach when the new project has its node, or
+    // that node is ticked to bring along; out of reach, a container's box is
+    // ghosted and unticked, and a VM says so.
+    const reachable = () => new Set([...m.querySelectorAll("[data-mvnode]:checked")].map(i => i.dataset.mvnode));
+    const ghost = () => {
+      const on = reachable();
+      m.querySelectorAll("[data-mvgive]").forEach(i => {
+        const ok = i.dataset.reach === "1" || on.has(i.closest("[data-mvon]").dataset.mvon);
+        if (!ok) i.checked = false;
+        i.disabled = !ok;
+        i.closest("label").classList.toggle("dim", !ok);
+      });
+      m.querySelectorAll("[data-mvvm]").forEach(v => {
+        v.querySelector("[data-mvvmwhy]").hidden = v.dataset.reach === "1" || on.has(v.dataset.mvvm);
+      });
+    };
+    m.querySelectorAll("[data-mvnode]").forEach(i => i.onchange = ghost);
+    ghost();
+    let over = false;
+    const done = v => { if (over) return; over = true; m.hidden = true; resolve(v); };
+    m.querySelector("#mvCancel").onclick = () => done(null);
+    m.querySelector("#mvGo").onclick = () => done({nodes: [...m.querySelectorAll("[data-mvnode]:checked")].map(i => i.dataset.mvnode),
+                                                   give: [...m.querySelectorAll("[data-mvgive]:checked")].map(i => i.dataset.mvgive)});
+    m.onclick = e => { if (e.target === m) done(null); };
+    m.hidden = false;
+    // Escape and the backdrop close it as Cancel does.
+    const watch = new MutationObserver(() => { if (m.hidden){ watch.disconnect(); done(null); } });
+    watch.observe(m, {attributes: true, attributeFilter: ["hidden", "class"]});
+  });
+}
+
+// A project with nothing left in it, gone (R138: one with a repository in it
+// is refused, and says so).
+async function deleteProjectCard(key){
+  const n = projectName(key);
+  // What was given to it keeps running with no project (the operator, 26 Oct).
+  const own = await postJSON("/api/repos", {action: "owned", name: key}).then(r => r.json()).catch(() => ({}));
+  const left = own.containers?.length ? `\n\nThe container${own.containers.length === 1 ? "" : "s"} given to it, ${own.containers.join(", ")}, keep${
+    own.containers.length === 1 ? "s" : ""} running, given to no project.` : "";
+  if (!await askYes(`Delete the project ${n}?\n\nIt has no repository in it, so nothing on disk goes.${left}`)) return;
+  try{
+    const j = await (await postJSON("/api/repos", {action: "delete", key})).json();
+    if (j.error){ notify(j.error, true); return; }
+    pjEditing.delete(key);
+    notify(`${n} is gone`);
+  }catch(e){ notify("deleting the project failed: " + failWords(e), true); }
+  await refresh();
+}
+
+// The card's own presses, beside wireProjectRows' shared ones.
+function wireProjectCards(grid){
+  grid.querySelectorAll("[data-pedit]").forEach(b => b.onclick = () => flipCard(b.dataset.pedit));
+  grid.querySelectorAll("[data-repadd]").forEach(b => b.onclick = () => openAddRepository(b.dataset.repadd));
+  grid.querySelectorAll("[data-prn]").forEach(b => b.onclick = () => renameProjectCard(b));
+  grid.querySelectorAll("[data-rrn]").forEach(b => b.onclick = () => renameRepository(b));
+  grid.querySelectorAll("[data-rmove]").forEach(b => b.onclick = () => moveRepository(b));
+  grid.querySelectorAll("[data-pdel]").forEach(b => b.onclick = () => deleteProjectCard(b.dataset.pdel));
+  grid.querySelectorAll("[data-pmark]").forEach(b => b.onclick = () => setProjectPinned(b.dataset.pmark, b.dataset.on === "1"));
+  grid.querySelectorAll("[data-kmark]").forEach(b => b.onclick = () => setArchived(b.dataset.kmark, b.dataset.on === "1"));
+  grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
 }
 
 function renderProjectsInto(i){
   const el = $("doc" + i);
   if (!el) return;
-  const ps = state?.projects || [];
+  const ps = projectList();
   // The surface once (docSurface: the bar band, the band list, the quiet
   // footer): its bar is the search, New project and the trash, and the grid
   // under it is what paints on every pass, so typing in the box is not
@@ -169,9 +539,10 @@ function renderProjectsInto(i){
     d.setBar(`<input id="pjSearch" type="search" placeholder="name, branch or node" aria-label="narrow the projects" autocomplete="off" spellcheck="false">
         <span class="sp"></span>
         <span class="actbar"><button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>
-        <button type="button" class="primary" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button></span>`);
+        <button type="button" class="primary" id="bNewProjTab" title="a project, by its name: its repositories are added on its card">New project</button></span>`);
     d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div id="pjChips"></div><div class="field pgridband"><div id="pjGrid"></div></div>`;
-    el.querySelector("#bNewProjTab").onclick = openNewProject;
+    el.querySelector("#pjGrid").addEventListener("click", pjFadeArm, true);
+    el.querySelector("#bNewProjTab").onclick = newProjectByName;
     el.querySelector("#bTrashTab").onclick = openTrash;
     const box = el.querySelector("#pjSearch");
     box.value = pjQuery;
@@ -191,7 +562,7 @@ function renderProjectsInto(i){
   // The empty case says what to do: an empty workspace is exactly where
   // somebody is about to make their first project.
   if (!ps.length){
-    paint(grid, `<div class="empty">${state.admin ? "nothing under /workspace yet: New project starts one"
+    paint(grid, `<div class="empty">${state.admin ? "no project yet: New project makes one"
                                        : "no projects are yours yet: an administrator grants them on the Users page"}</div>`);
     return;
   }
@@ -216,7 +587,7 @@ function renderProjectsInto(i){
       fadeThrough(".pane .doc.on .projtab #pjGrid > *", () => { pjChip = c.dataset.pjchip; renderProjectsInto(i); }));
   const inChip = p => !pjChip || (pjChip === "none" ? !p.group : p.group === pjChip);
   const live = shown.filter(p => !p.archived && inChip(p)), gone = pjChip ? [] : shown.filter(p => p.archived);
-  const grid_ = list => `<div class="pgrid">${list.map(projectCard).join("")}</div>`;
+  const grid_ = list => `<div class="pgrid">${projectCards(list)}</div>`;
   const html = byProjectGroup(live).map(({group: g, list}) => {
         if (!g) return grid_(list);
         // The pencil renames the group for this account alone: a group is a
@@ -227,16 +598,39 @@ function renderProjectsInto(i){
       }).join("")
     + (gone.length ? docSection("projects", "archived", "Archived", `${gone.length} project${gone.length === 1 ? "" : "s"}`,
                                 grid_(gone), {open: false, cls: "dim", fold: true}) : "");
-  if (paint(grid, html || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`)){
+  // Any rearrangement slides (the operator, 26 Oct): a rename, a pin, an
+  // archive, a group, a project made or gone, another person's change on
+  // the poll. Each card's place is read before the grid is drawn again, and
+  // each that lands elsewhere slides there from it while the rest close up.
+  const was = [...grid.querySelectorAll(".pcard[data-pkey]")].map(c => c.dataset.pkey);
+  const now = [...String(html).matchAll(/<div class="pcard [^"]*" data-pkey="([^"]*)"/g)].map(m => m[1]);
+  const moved = was.length > 0 && was.join("\n") !== now.join("\n");
+  const play = moved ? flip(() => grid.querySelectorAll(".pcard[data-pkey]"), el => el.dataset.pkey, 360) : null;
+  // The card a press armed, faded through once its markup has moved, and
+  // only where it stays: a card that moves slides rather than fading.
+  const fc = pjFade && ps.find(c => c.key === pjFade.key);
+  const fade = fc && projectCard(fc) !== pjFade.was && was.indexOf(fc.key) === now.indexOf(esc(fc.key));
+  if (fc && projectCard(fc) !== pjFade.was) pjFade = null;
+  let drawn = false;
+  const draw = () => { drawn = paint(grid, html || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`); };
+  if (fade) fadeThrough(() => grid.querySelectorAll(`.pcard[data-pkey="${CSS.escape(fc.key)}"] > .pcface:not([inert])`), draw);
+  else draw();
+  if (drawn && play) play();
+  // The card pressed on, moved, is followed on screen to where it lands:
+  // measured once its slide is over, since while it slides it is drawn at
+  // the place it left and a scroll then went nowhere.
+  if (drawn && moved && pjFollow && Date.now() < pjFollow.until && was.indexOf(pjFollow.key) !== now.indexOf(pjFollow.key)){
+    const card = grid.querySelector(`.pcard[data-pkey="${CSS.escape(pjFollow.key)}"]`);
+    const go = () => card?.isConnected && card.scrollIntoView({block: "nearest", behavior: noMotion() ? "auto" : "smooth"});
+    const slide = card?.getAnimations().find(a => /translate/.test(JSON.stringify(a.effect?.getKeyframes?.() || [])));
+    if (slide) slide.finished.then(go, go); else go();
+    pjFollow = null;
+  }
+  if (drawn){
     wireSections(grid);
     wireProjectRows(grid);
-    wireProjectMenu(grid);
+    wireProjectCards(grid);
     grid.querySelectorAll("[data-pjgrename]").forEach(b => b.onclick = () => renameProjectGroup(b));
-    grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
-    grid.querySelectorAll(".pcard[data-row]").forEach(c => c.onclick = e => {
-      if (!cardPress(e)) return;
-      openNotebook(c.dataset.row);
-    });
   }
   syncResumeMenu();
 }
@@ -254,7 +648,7 @@ async function renameProjectGroup(btn){
   try{
     const j = await (await postJSON("/api/project-group", gone ? {delete: was} : {rename: was, to: got})).json();
     if (j.error){ notify(j.error, true); return; }
-    applyNow(x => { x.group = (j.groups || {})[x.name] || ""; });
+    applyNow((x, k) => { x.group = (j.groups || {})[k] || ""; });
     notify(gone ? `${was} is gone: its projects are in no group` : `${was} is now ${got}`);
   }catch(e){ notify("group: " + failWords(e), true); }
   refresh();
@@ -288,9 +682,9 @@ const devClaudeMode = name => {
 // type in it. `focus` stays in PMODES because it is also the name of the
 // field that mode leads with, which pDraw uses.
 const PMODES = {
-  init:  { title: () => "New project", btn: "Create", focus: "pName",
+  init:  { title: () => pInto ? `Add a repository to ${projectName(pInto)}` : "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pVersionField", "pNodeField", "pGateField", "pArchiveField", "pAboutField"] },
-  clone: { title: () => "New project", btn: "Create", focus: "pUrl",
+  clone: { title: () => pInto ? `Add a repository to ${projectName(pInto)}` : "New project", btn: "Create", focus: "pUrl",
            fields: ["pSrcField", "pNameField", "pNodeField", "pGateField", "pUrlField", "pForgeField",
                     "pPushField", "pTokenField", "pKeyField"] },
   link:  { title: () => `Link ${projLabel(pLink)} to a git host`, btn: "Link", focus: "pUrl",
@@ -303,6 +697,8 @@ let pMode = "init";
 let pLinkAuth = "key";                   // how a link authenticates: key or token
 
 let pLink = null;                        // the project being linked, if any
+
+let pInto = "";                          // the project a repository is added to (R138)
 
 let pKeys = [];                          // the agent's public keys, per open
 
@@ -341,6 +737,8 @@ function pDraw(){
                    "pUrlField", "pLinkAuthField", "pPushField",
                    "pTokenField", "pKeyField", "pAboutField", "pGateField"])
     $(f).hidden = !m.fields.includes(f);
+  // Into a project, its node and dials are the project's already.
+  if (pInto){ $("pNodeField").hidden = true; $("pGateField").hidden = true; }
   // A brief says what to build from nothing; an archive is the start, so the
   // field goes once one is picked (the server refuses the pair as well).
   if (pMode === "init" && $("pArchive").files[0]) $("pAboutField").hidden = true;
@@ -368,7 +766,7 @@ function pDraw(){
     "Off is read-only. It cannot be turned on later, and only one project may push to a repository.";
   $("pTokenHint").textContent = pMode === "link"
     ? `Used for ${projLabel(pLink)} only.` + (fg.creates ? ` Checked with ${fg.name} first.` : "")
-    : "Leave empty for a public repository. Kept for this project alone.";
+    : "Leave empty for a public repository. Kept for this repository alone.";
   $("pToken").placeholder = fg.hint;
   $("pKeyHint").textContent =
     "The key used to push. Add the public key below to the repository's deploy keys."
@@ -535,6 +933,9 @@ function pOpen(mode){
   $("pErrWrap").hidden = $("pPubWrap").hidden = true;
   unbusy($("pCreate"), PMODES[mode].btn);
   $("pmodal").hidden = false;
+  // One size for a new repository and a clone (holdPanes).
+  if (mode !== "link") holdPanes($("pmodal").querySelector(".box"), ["init", "clone"], k => { pMode = k; pDraw(); }, mode);
+  else $("pmodal").querySelector(".box").style.height = "";
   pFillNode();
   // Fetched per open, not cached: keys change when the container restarts
   // with a new /secrets/ssh, and a stale list here would offer a key the
@@ -566,12 +967,12 @@ function pFillNode(){
     loadNodes().then(() => { if (gen === pGen && !$("pmodal").hidden) pFillNode(); });
   }
   const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.state !== "disabled");
-  const shown = PMODES[pMode]?.fields.includes("pNodeField") && pick.length > 0;
+  const shown = !pInto && PMODES[pMode]?.fields.includes("pNodeField") && pick.length > 0;
   wrap.hidden = !shown;
   if (!shown){ sel.innerHTML = ""; return; }
   const was = sel.value;
   sel.innerHTML = pick.map(n => `<option value="${esc(n.id)}">${esc(n.name)}${
-      n.live === false ? " (quiet)" : ""}</option>`).join("")
+      n.config?.own ? " (this machine)" : ""}${n.live === false ? " (quiet)" : ""}</option>`).join("")
     + `<option value="">none: no builds, tests or sessions until one is picked</option>`;
   // Several: the node most projects are bound to, not none. A project born
   // with no node had nowhere to send its container and used to land on the
@@ -581,7 +982,12 @@ function pFillNode(){
     : pick.some(n => n.id === nodesDefault) ? nodesDefault : "";
 }
 
-function openNewProject(){ pLink = null; pOpen("init"); }
+// From first run and Getting started: the server makes a project of the
+// same name around it. On a project's card it is Add repository, into that
+// project (R138), which keeps the project's node and dials and asks neither.
+function openNewProject(){ pLink = null; pInto = ""; pOpen("init"); }
+
+function openAddRepository(key){ pLink = null; pInto = key; pOpen("init"); }
 
 function openLinkProject(name){ pLink = name; pOpen("link"); }
 
@@ -663,7 +1069,7 @@ async function createProject() {
   // Captured at the click: the dialog can be closed, reopened and switched
   // to another mode while this request runs, and everything below must keep
   // talking about the flow the operator actually submitted.
-  const mode = pMode, linkName = pLink, gen = pGen;
+  const mode = pMode, linkName = pLink, into = pInto, gen = pGen;
   const name = $("pName").value.trim();
   let url = $("pUrl").value.trim();
   const key = $("pKey").value;          // "" until this open's fetch offered any
@@ -719,7 +1125,7 @@ async function createProject() {
                                 token: linkToken})})
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({name, mode, url, about: $("pAboutField").hidden ? "" : $("pAbout").value, archive,
+          body: JSON.stringify({name, mode, url, project: into, about: $("pAboutField").hidden ? "" : $("pAbout").value, archive,
                                 node: $("pNodeField").hidden ? "" : $("pNode").value,
                                 // A starting version, for a fresh tree only: a
                                 // clone keeps the history it came with.

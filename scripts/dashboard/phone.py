@@ -84,6 +84,9 @@ release_editor = None
 # (project, plan, asker_name, principal) -> (payload, status): files taken
 # off a published release, its own ask (the operator, 5 Oct).
 release_remover = None
+# (project) -> (payload, status): a release's APK looked for and signed
+# again (releasesign.check, R134), what Allow on a session's ask runs.
+release_signer = None
 container_free = None
 container_builds = None
 pusher = None         # a held push run after Approve (R219): (record, by) -> {code, out, err, apply?}
@@ -763,7 +766,7 @@ def _for(r, uid, admin):
         return False
     # A signing, or a key change, waits on the project's owner, whatever
     # their role.
-    if r.get("kind") in ("sign", "sign-key", "release", "release-edit", "release-remove"):
+    if r.get("kind") in ("sign", "sign-key", "release", "release-edit", "release-remove", "release-sign"):
         return r["to"] == uid
     # A held push (R219) is the asking account's to answer, and an
     # administrator's, since what it would send is the project's.
@@ -1071,6 +1074,20 @@ def ask_release_remove(why, project, plan, to_uid, to_name, asker_name="", princ
                          "principal": principal, "asker_name": str(asker_name or "")})
 
 
+def ask_release_sign(why, project, to_uid, to_name, asker_name=""):
+    """A session asking for its project's release APKs to be looked for and
+    signed again, as the Signing view's Look for unsigned APKs now does
+    (R134 step 5), under its Sign a build dial. 0.7.0's retry after its key
+    was added had to be a person's press."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\" (the key was added, the node is back ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    return _queue("release-sign", why, ["sign", "release"], "", "", project, "claude", to_uid, to_name,
+                  asker_name)
+
+
 def _size(n):
     return f"{n / 1_000_000:.1f} MB" if n >= 100_000 else f"{max(1, n // 1000)} KB"
 
@@ -1360,6 +1377,14 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
                              f"{rel.get('tag') or r.get('tag')} tagged on {rel.get('sha') or r.get('sha')}"
                              + (" and pushed" if rel.get("pushed") else "")
                              + _forge_said(rel.get("forge") or {})))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "release-sign":
+        res = (release_signer(r["project"]) if release_signer is not None
+               else ({"error": "nothing here signs a release"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or got.get("said") or "looking"))
         return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "release-remove":
         plan = {"tag": r.get("tag") or "", "files": r.get("files") or []}

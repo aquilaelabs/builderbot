@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
 # Web dashboard: the page, its API and the browser terminals, all on
-# DASHBOARD_PORT. ttyd binds the loopback and is reached through the
-# dashboard's own /term proxy, so there is one port and one sign-in.
+# DASHBOARD_PORT. The terminals are BuilderBot's own (R133), websockets on
+# that port, so there is one port and one sign-in.
 #
 # Numbered 15 so it starts BEFORE the slow hooks rather than after them. It
-# needs nothing they produce (ttyd, tmux and python are in the image), and it
+# needs nothing they produce (tmux and python are in the image), and it
 # used to run second-to-last, which meant the whole boot was time the operator
 # spent looking at a browser that would not connect. Measured on this box: a
 # container start to the last hook finishing is about fifty seconds, and the
@@ -43,24 +43,14 @@ set -euo pipefail
 # no scope and no context.
 
 PORT="${DASHBOARD_PORT:-7680}"
-TTYD_PORT="${DASHBOARD_TTYD_PORT:-7681}"
-# The read-only one, for accounts that may watch a Claude session and may not
-# have a shell (roadmap #27). ttyd is READ-ONLY BY DEFAULT (`-W` is what
-# makes the other one writable), so this is the same server minus one flag,
-# which is a far better answer than filtering websocket frames in the proxy:
-# that relay splices bytes and never parses a frame, and it should stay that
-# way. Derived from the writable port so there is one setting, not two.
-TTYD_RO_PORT="${DASHBOARD_TTYD_RO_PORT:-$((TTYD_PORT + 1))}"
 DASH=/opt/builderbot/scripts/dashboard
 
 if [ ! -s "${DASHBOARD_STATE:-/config}/users.json" ]; then
     log "dashboard: no accounts yet; the first page it serves asks you to make the owner. Do it now."
 fi
 
-for bin in ttyd tmux; do
-    command -v "$bin" >/dev/null 2>&1 \
-        || { warn "${bin} is missing from this image; dashboard NOT started."; exit 0; }
-done
+command -v tmux >/dev/null 2>&1 \
+    || { warn "tmux is missing from this image; dashboard NOT started."; exit 0; }
 
 # tmux keeps sessions alive across browser disconnects, which is the only
 # reason a closed tab does not kill a Claude session mid-turn.
@@ -78,50 +68,17 @@ elif ! grep -qF 'tmux.builderbot.conf' "$HOME/.tmux.conf"; then
     log "dashboard: keeping your ~/.tmux.conf: add 'source-file ~/.tmux.builderbot.conf' to it for the defaults"
 fi
 
-# One port to publish: terminals are proxied under /term on this one.
-log "dashboard: http://<host>:${PORT}  (terminals proxied at /term; ttyd binds 127.0.0.1:${TTYD_PORT}, read-only twin on ${TTYD_RO_PORT})"
+# One port to publish: the terminals are websockets on it (/termws).
+log "dashboard: http://<host>:${PORT}"
 
-# --url-arg lets the page choose the session; bb-tty validates it. -W makes
-# the terminal writable, which is the entire point. `-t reconnect=5` shortens
-# ttyd's own auto-reconnect after a dropped socket from its 10s default, so
-# it heals a desktop blip on its own. It does NOT cover a phone, whose browser
-# freezes the page's timers while it is backgrounded so the reconnect never
-# fires; the dashboard reloads the terminal iframe on return for that
-# (reattaching tmux, losslessly). `disableLeaveAlert` keeps ttyd's client from
-# asking whether to leave the page on that reload, or on any other: a
-# session lives in tmux, so leaving loses nothing (B189). `rendererType=canvas`
-# draws without WebGL: desktop Firefox made a WebGL context that never
-# painted, and every terminal there went from gray to black with no error for
-# ttyd to fall back on (B259).
-#
-# Loopback only, and no --credential: the browser reaches terminals through
-# the dashboard's /term proxy on the dashboard's own port, which enforces the
-# one sign-in for everything. Nothing else can reach this port from outside
-# the container, and binding wider would only re-create the second
-# credentials prompt this arrangement exists to remove.
 # Started only where nothing listens yet: the supervisor runs this hook again
-# when the dashboard has died (B282), and a ttyd that survived it stays.
+# when the dashboard has died (B282).
 listening() { ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ":$1\$"; }
-listening "$TTYD_PORT" || \
-nohup ttyd --port "$TTYD_PORT" --interface 127.0.0.1 \
-        --url-arg --writable \
-        --max-clients 16 \
-        -t reconnect=5 -t disableLeaveAlert=true -t rendererType=canvas \
-        "$DASH/bb-tty" \
-    >> "$(bb_log_dir)/ttyd.log" 2>&1 &
 
-# ...and the read-only twin. No --writable, so the browser cannot type into it
-# at all: what an account without a shell gets is a real terminal rendering
-# Claude's own interface, which is the honest way to show a full-screen TUI,
-# with input going through the dashboard's send path instead of the socket.
-# The proxy decides which of the two a request reaches, by role.
-listening "$TTYD_RO_PORT" || \
-nohup ttyd --port "$TTYD_RO_PORT" --interface 127.0.0.1 \
-        --url-arg \
-        --max-clients 16 \
-        -t reconnect=5 -t disableLeaveAlert=true -t rendererType=canvas \
-        "$DASH/bb-tty" \
-    >> "$(bb_log_dir)/ttyd.log" 2>&1 &
+# Without the shielded secrets: the hooks run with them, and the dashboard
+# and every controller terminal it opens would carry them (B389).
+unset_args=()
+for v in ${BB_SHIELDED:-}; do unset_args+=(-u "$v"); done
 
 # Through log-split rather than straight into the file: the full stream stays
 # where it was, and the warnings are copied to this hook's own stdout, which is
@@ -131,10 +88,9 @@ nohup ttyd --port "$TTYD_RO_PORT" --interface 127.0.0.1 \
 # -u so a warning is in the file at the moment it happens rather than when a
 # 8kB buffer fills, which for a mostly-idle server can be hours.
 listening "$PORT" || \
-nohup env DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT="$TTYD_PORT" \
-    DASHBOARD_TTYD_RO_PORT="$TTYD_RO_PORT" \
+nohup env "${unset_args[@]}" DASHBOARD_PORT="$PORT" \
         python3 -u "$DASH/server.py" 2>&1 \
     | /opt/builderbot/scripts/lib/log-split.sh "$(bb_log_dir)/dashboard.log" dashboard &
 
-# Neither is supervised: a dashboard that dies should not take the workstation
+# It is not supervised: a dashboard that dies should not take the workstation
 # with it, and the container is useful without it. `bb logs` names the files.

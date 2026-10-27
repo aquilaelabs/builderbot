@@ -55,28 +55,29 @@ await api('/api/notices', { action: 'clear' });
   ok(await page.evaluate(() => !document.querySelector('#toast .tst')), '...and goes once the pointer leaves');
 }
 
-// ---- a toast never sits on an open dialog ------------------------------------
-// No corner is free of controls: the enroll dialog's buttons are at the left
-// of its foot, and a refusal there landed on its Go. So with a dialog open
-// the stack goes into the gutter beside its box, and where there is none,
-// to the top, letting presses through.
-const offDialog = () => page.evaluate(() => {
-  const b = document.querySelector('#aboutModal > .box').getBoundingClientRect();
-  const ts = [...document.querySelectorAll('#toast .tst')].map(t => t.getBoundingClientRect());
-  const hit = ts.some(t => t.left < b.right && t.right > b.left && t.top < b.bottom && t.bottom > b.top);
-  return { n: ts.length, hit, through: getComputedStyle(document.querySelector('#toast .tst')).pointerEvents === 'none'
-    && getComputedStyle(document.querySelector('#toast .tx')).pointerEvents === 'none',
-    box: [b.left, b.right].map(Math.round), toast: ts.map(t => [t.left, t.right, t.top].map(Math.round)) };
+// ---- a toast stays put when a dialog opens ---------------------------------
+// One place for the stack (the operator, 24 Oct: it moving beside a dialog
+// read as a jump): the same spot with a dialog open, above its backdrop, and
+// one in the way of a press is put away by its own ×.
+const toastAt = () => page.evaluate(() => { const t = document.querySelector('#toast .tst').getBoundingClientRect();
+  return [t.left, t.bottom].map(Math.round); });
+const xWorks = () => page.evaluate(() => {
+  const x = document.querySelector('#toast .tst .tx'), r = x.getBoundingClientRect();
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return hit === x || x.contains(hit);
 });
 {
-  await page.evaluate(() => { openAbout(); notify('said over a dialog', 'warn'); });
+  await page.evaluate(() => notify('said before a dialog'));
   await sleep(300);
-  const d = await offDialog();
-  ok(d.n === 1 && !d.hit, `with a dialog open a toast stands in the gutter beside its box, not on it (${JSON.stringify(d)})`);
-  await page.evaluate(() => { document.querySelectorAll('#toast .tst').forEach(t => t.remove()); closeAbout(); notify('and after it'); });
-  ok(await page.$eval('#toast', el => !el.style.cssText && !el.classList.contains('overdlg')),
-     '...and with it shut, the stack is back at its corner');
-  await page.evaluate(() => document.querySelectorAll('#toast .tst').forEach(t => t.remove()));
+  const before = await toastAt();
+  await page.evaluate(() => { document.querySelectorAll('#toast .tst').forEach(t => t.remove()); openAbout(); notify('said over a dialog', 'warn'); });
+  await sleep(300);
+  const during = await toastAt(), pressable = await xWorks();
+  await page.click('#toast .tst .tx');
+  const gone = await page.waitForFunction(() => !document.querySelector('#toast .tst'), null, { timeout: 3000 }).then(() => true, () => false);
+  ok(JSON.stringify(before) === JSON.stringify(during) && pressable && gone,
+     `with a dialog open a toast stays where it was, and its × puts it away (${JSON.stringify({ before, during, pressable, gone })})`);
+  await page.evaluate(() => { document.querySelectorAll('#toast .tst').forEach(t => t.remove()); closeAbout(); });
 }
 
 // ---- every toast is on the record ------------------------------------------
@@ -121,7 +122,9 @@ const offDialog = () => page.evaluate(() => {
   ok(whens, `a notice said two hours ago reads "2 h ago" (${(whens || []).slice(0, 1).join('')})`);
   // All counts what is kept, once each: a failure is a kind as well (B30).
   {
-    const kept = await page.$eval('.noticestab', t => (/(\d+) kept/.exec(t.closest('.doc')?.textContent || t.textContent) || [])[1]);
+    // What is kept is the rows the list holds under All (the bar's count
+    // went with the page heads: the All chip is that number).
+    const kept = await page.evaluate(() => String((noticesData || []).length));
     const allChip = await page.$eval('.noticestab [data-ntchip=""]', b => (/\d+/.exec(b.textContent) || [])[0]);
     ok(kept && kept === allChip, `the All chip counts what is kept (${allChip} of ${kept} kept)`);
   }
@@ -129,6 +132,10 @@ const offDialog = () => page.evaluate(() => {
   await page.waitForFunction(() => [...document.querySelectorAll('.noticestab .ntrow')].every(r => r.classList.contains('bad')), null, { timeout: 5000 });
   ok(await page.$$eval('.noticestab .ntrow', rs => rs.length === 1 && /stack 6/.test(rs[0].textContent)),
      'the Failures chip narrows it to the failures');
+  // The chip on, pressed again, is no change: no fade (B317).
+  await page.waitForFunction(() => !document.querySelector('.fghost'), null, { timeout: 5000 });
+  await page.click('.noticestab [data-ntchip="bad"]');
+  ok(await page.evaluate(() => !document.querySelector('.fghost')), 'the chip already on, pressed again, fades nothing');
   await page.click('.noticestab [data-ntchip=""]');
   const first = await page.$eval('.noticestab .ntrow', r => r.dataset.nt);
   await page.click(`.noticestab [data-ntdel="${first}"]`);
@@ -235,9 +242,10 @@ const offDialog = () => page.evaluate(() => {
   ok(r.l <= 12 && r.r <= 12 && r.bottom <= r.dock, `on a phone a toast spans the width, above the dock's line (${JSON.stringify(r)})`);
   await page.evaluate(() => { document.querySelectorAll('#toast .tst').forEach(t => t.remove()); openAbout(); notify('over a phone dialog', true); });
   await sleep(300);
-  const pd = await offDialog();
-  const top = await page.$eval('#toast .tst', t => t.getBoundingClientRect().top);
-  ok(pd.through && top < 60, `...and over a dialog with no gutter it sits at the top and lets every press through (${JSON.stringify({ ...pd, top })})`);
+  const pd = await page.$eval('#toast .tst', t => { const b = t.getBoundingClientRect(); return { l: b.left, r: innerWidth - b.right, bottom: b.bottom }; });
+  const px = await xWorks();
+  ok(pd.l <= 12 && pd.r <= 12 && Math.abs(pd.bottom - r.bottom) < 2 && px,
+     `...and with a dialog open it stays there, its × to put it away (${JSON.stringify({ ...pd, px })})`);
   await page.evaluate(() => { document.querySelectorAll('#toast .tst').forEach(t => t.remove()); closeAbout(); });
   // ...and the page there shows one section, History while nothing waits.
   await page.evaluate(() => { openNotices(); notify('one for the phone'); });

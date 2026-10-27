@@ -60,7 +60,7 @@ async function loadHome(light = false){
 // its own tile.
 function homeUpdates(){
   return (state?.attention || []).reduce((n, a) =>
-    a.kind === "relocate" || a.kind === "room" || a.kind === "release-sign" ? n : n + (a.kind === "toolchain" || a.kind === "agents" ? (a.tools || []).length || 1
+    a.kind === "relocate" || a.kind === "room" || a.kind === "release-sign" || a.kind === "git-unlinked" ? n : n + (a.kind === "toolchain" || a.kind === "agents" ? (a.tools || []).length || 1
       : a.kind === "image" ? (a.containers || []).length || 1 : 1), 0);
 }
 
@@ -133,17 +133,20 @@ function homeJobsHtml(){
 
 function homeGlanceHtml(){
   // Not an archived one (the operator, 18 Oct), pinned or not.
-  const pinned = (state?.projects || []).filter(p => p.pinned && !p.archived);
-  if (!pinned.length) return `<div class="empty">no project is pinned: a project's menu on the Projects page pins it here</div>`;
+  const pinned = projectList().filter(c => c.pinned && !c.archived);
+  if (!pinned.length) return `<div class="empty">no project is pinned: the pin by a project's name on the Projects page puts it here</div>`;
   // In groups, in the Projects page's order, each group's name over its
-  // cards (R273): the page this glances at is sorted so.
-  const card = p => {
-    const pc = colorAttrs(p.color);
+  // cards (R273): the page this glances at is sorted so. Each opens its
+  // first repository's page (R138).
+  const card = c => {
+    const pc = colorAttrs(c.color), first = c.first;
     return `<div class="hproj${pc.cls}"${pc.style}>
-      <button type="button" class="name link" data-hproj="${esc(p.name)}">${esc(p.label || p.name)}</button>
-      <div class="pcfacts">${projFacts(p)}</div>
-      ${projectState(p)}
-      ${projectNote(p)}
+      ${first ? `<button type="button" class="name namelink" data-hproj="${esc(first.name)}">${esc(c.name)}</button>`
+              : `<span class="name">${esc(c.name)}</span>`}
+      <div class="pcfacts">${[`<span class="pid">${esc(c.pid)}</span>`,
+        c.rows.length > 1 ? `${c.rows.length} repositories` : first ? projFacts({...first, pid: 0}) : "no repository yet"]
+        .filter(Boolean).join(" · ")}</div>
+      ${first ? projectState(first) + projectNote(first) : ""}
     </div>`;
   };
   return byProjectGroup([...pinned].sort(byProjectName)).map(({group, list}) =>

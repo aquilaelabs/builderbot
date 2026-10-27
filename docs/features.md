@@ -22,13 +22,15 @@ One page in the browser, at a desk or on a phone ([dashboard.md](dashboard.md)).
 
 ## Projects
 
-Each project is a git repository ([projects.md](projects.md)).
+Each project holds git repositories, each in one project ([projects.md](projects.md)).
 
-- **New project**: clone one from GitHub, Gitea, Forgejo or any git remote,
-  start an empty one, or upload a zip or tarball of code you already have.
-  Link an existing local repository to an empty one on a host.
+- **New project** makes one by its name; **Add repository** on its card
+  clones one from GitHub, Gitea, Forgejo or any git remote, starts an empty
+  one, or unpacks a zip or tarball of code you already have. Link an existing
+  local repository to an empty one on a host; move a repository to another
+  project.
 - Groups, pins, a color of your own, rename, archive, and a trash that
-  keeps a deleted project until it is purged.
+  keeps a deleted repository, and which project it was in, until it is purged.
 - A per-project **Settings** page: its node, build and test commands, what
   an agent may do, the toolchains its sessions may use, signing keys, file
   access and who is on it.
@@ -56,7 +58,7 @@ works there ([notebook.md](notebook.md)).
 ([sessions.md](sessions.md), [agents.md](agents.md))
 
 - **Start agent** opens a session of Claude (Claude Code), ChatGPT (Codex
-  CLI) or Copilot (Copilot CLI) on the project's node, in a real terminal in
+  CLI), Copilot (Copilot CLI) or Grok (Grok Build) on the project's node, in a real terminal in
   the dock. Resume it later, restart it, and pick the model and effort.
 - Each session starts **briefed**: the project's house rules, roadmap and
   open bugs, so you ask for the thing rather than explain the place.

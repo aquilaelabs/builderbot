@@ -3,7 +3,7 @@
 Where accounts run as their own users, an account's sign-ins are files in its
 home that only it and root can open. Root cannot be kept out by a file mode,
 so this is the tripwire: fanotify on the folders that hold the three tokens
-(Claude Code's, Codex CLI's, Copilot CLI's), an open by anything but the
+(Claude Code's, Codex CLI's, Copilot CLI's, Grok Build's), an open by anything but the
 account's own user or this agent and its children said in the node's log and
 carried to the controller on the next hello, which audits it and puts it on
 the bell. Each pass also holds the files at 600, the account's.
@@ -21,7 +21,7 @@ import time
 from .base import log
 
 # The folder in an account's home, and the file in it that is the sign-in.
-TOKENS = {".claude": ".credentials.json", ".codex": "auth.json", ".copilot": "config.json"}
+TOKENS = {".claude": ".credentials.json", ".codex": "auth.json", ".copilot": "config.json", ".grok": "auth.json"}
 
 FAN_CLOEXEC = 0x1
 FAN_CLASS_NOTIF = 0x0

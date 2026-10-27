@@ -136,6 +136,129 @@ def configure(*, write_json, state):
     globals()["FILE"] = Path(state) / "claude-prefs.json"
 
 
+# ---- a project of several repositories (R136) ------------------------------
+#
+# What one session in all of a project's repositories needs, and what the
+# project grants others, is the project's: kept on its own record (its key in
+# registry.py) and laid over each repository's as it is read, so every
+# caller of get() sees a repository's settings as its project has them. Each
+# repository's own values for these are kept as they were, untouched, so a
+# repository split out is back to them. The rest (its build and test, its
+# outputs, its captures and snapshots, its tests' place, its gate on what a
+# session enters into its notebook) stays the repository's.
+GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", "packs_on",
+                "agents_off", "agent_default", "agent_slots", "gitpol", "color", "devbuild", "makevms", "vm_caps",
+                "test_change", "gpu", "report", "sign", "keys", "release", "pc", "log_from", "diag")
+# repos.py's answers, handed over by the server: (project_of, members,
+# is_repos). Unset (bb loading this by path), _rp reads the same from the files.
+_repos = None
+
+
+def configure_repos(*, project_of, members, is_repos):
+    globals()["_repos"] = (project_of, members, is_repos)
+
+
+def _rp():
+    """repos.py's answers: the server's, or, in a process with no server (a
+    bb verb loading this by path), the same three read from the state files
+    themselves, so a repository is read with its project's settings there
+    too (R138)."""
+    return _repos or _file_repos()
+
+
+def _file_repos():
+    if FILE is None:
+        return None
+    st = Path(FILE).parent
+
+    def read(name):
+        try:
+            d = json.loads((st / name).read_text())
+        except (OSError, ValueError):
+            return {}
+        return d.get("projects") if isinstance(d, dict) and isinstance(d.get("projects"), dict) else {}
+    groups, recs = read("project-repos.json"), read("projects.json")
+    if not groups:
+        return None
+
+    def is_repos(k):
+        return (recs.get(k) or {}).get("state") == "repos"
+
+    def members(k):
+        g = groups.get(k) if is_repos(k) else None
+        return [m for m in ((g or {}).get("members") or []) if (recs.get(m) or {}).get("state") == "live"]
+
+    def project_of(n):
+        return next((k for k, g in groups.items() if is_repos(k) and n in ((g or {}).get("members") or [])), "")
+    return (project_of, members, is_repos)
+
+
+def _over(project, rec, raw):
+    """`rec`, a repository's settings, with its project's laid over them."""
+    key = _rp()[0](project) if _rp() else ""
+    if key:
+        g = _clean(raw.get(key))
+        rec.update({f: g[f] for f in GROUP_FIELDS})
+        rec["repos_of"] = key
+    return rec
+
+
+def reads_trees(project):
+    """The trees a session on `project` reads (prefs.reads): each project it
+    names, a project of repositories as every repository in it now (so one
+    added later is read with nothing changed), and the other repositories of
+    its own project; never itself."""
+    names = list(get(project).get("reads") or [])
+    if not _rp():
+        return names
+    project_of, members, is_repos = _rp()
+    mine = members(project) if is_repos(project) else members(project_of(project))
+    out = []
+    for n in names + mine:
+        for t in (members(n) if is_repos(n) else [n]):
+            if t != project and t not in out:
+                out.append(t)
+    return out
+
+
+def adopt(key, first):
+    """A project made around a repository (repos.place) takes the settings
+    that repository had for what a project holds, so nothing a session there
+    runs with changes."""
+    with _lock:
+        d = _load()
+        was = d["projects"].get(first) if isinstance(d["projects"].get(first), dict) else {}
+        rec = {f: was[f] for f in GROUP_FIELDS if f in was}
+        if rec:
+            d["projects"][key] = rec
+            write_json(FILE, d)
+
+
+def regrant(key, members):
+    """Every project that reads one of these repositories reads their project
+    instead, and so every repository in it, the ones added later too (the
+    operator, 24 Oct: what one project grants another goes by the project).
+    The projects whose reads changed, for a move to say who reads more now."""
+    changed = []
+    with _lock:
+        d = _load()
+        for name, rec in d["projects"].items():
+            if not isinstance(rec, dict) or name == key or name in members:
+                continue
+            got = _reads_of(rec)
+            if any(m in got for m in members):
+                new = []
+                for r in got:
+                    r = key if r in members else r
+                    if r not in new:
+                        new.append(r)
+                rec["reads"] = new
+                changed.append(name)
+        if changed:
+            write_json(FILE, d)
+    return changed
+
+
 # ---- what is the PERSON's rather than the project's ------------------------
 #
 # The operator's call (17 Sep): the model and the effort a session launches on
@@ -155,7 +278,15 @@ def configure(*, write_json, state):
 # they read, and the notebook, commits and files are written as ever.
 # `asks`: how often Claude puts a question to this person on this project,
 # "" (Claude's own), fewer or rarely. Theirs too: it is their attention.
+# A terminal's colors (R133 step 10): Default the plain dark ground,
+# Dashboard the color scheme the page is in, and the tints a person gives a
+# project to know it at a glance (a production one red). The rest of the
+# look is the person's alone, on their Profile.
+TERM_SCHEMES = ("default", "amber", "blue", "dashboard", "green", "light", "red")
 USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("minimal",),
+                # ...and this person's terminal colors on this project,
+                # over their Profile's, for their own tabs alone.
+                "term_scheme": TERM_SCHEMES,
                 "asks": ("more", "fewer", "rarely"),
                 # Each other agent's model and effort, this person's on this
                 # project, from that agent's own lists (R95 step 9): what
@@ -301,6 +432,9 @@ def _clean(rec):
             # The agent its Start opens (R95 step 4): Claude's unless the
             # project says another, which must be one it allows.
             "agent_default": _agent_default(rec),
+            # How many sessions of one agent each person may run on it at
+            # once (R143), each a slot of its own: 3 unless it says.
+            "agent_slots": _agent_slots(rec),
             "packs_on": _toolchain_names(rec, "packs_on"),
             # The places on its node a session here is shown besides its own
             # project: a share it works with. A session's view is built from
@@ -469,7 +603,8 @@ def _devbuild(v):
 
 
 def get(project):
-    return _clean(_load()["projects"].get(project))
+    raw = _load()["projects"]
+    return _over(project, _clean(raw.get(project)), raw)
 
 
 # How a project of each shape runs its tests, in the order a tree is asked.
@@ -489,7 +624,16 @@ def all_projects(workspace=None):
     `workspace` is accepted and unused: the status poll passes it.
     """
     d = _load()["projects"]
-    return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
+    out = {k: _over(k, _clean(v), d) for k, v in d.items() if isinstance(k, str)}
+    # ...and every repository of a project with no record of its own yet (one
+    # made into it, R138), which reads the project's settings all the same.
+    if _rp():
+        for k in list(d):
+            if _rp()[2](k):
+                for m in _rp()[1](k):
+                    if m not in out:
+                        out[m] = _over(m, _clean({}), d)
+    return out
 
 
 def _agent_default(rec):
@@ -498,6 +642,18 @@ def _agent_default(rec):
     a = agents.get(rec.get("agent_default"))
     off = _agents_off(rec)
     return a.id if a and a.live and a.id not in off else "claude"
+
+
+# A person's sessions of one agent on one project at once (R143), unless
+# the project says otherwise: at most agents.MAX_SLOTS.
+AGENT_SLOTS = 3
+
+
+def _agent_slots(rec):
+    """How many slots of one agent a person may have on the project: 1 to
+    agents.MAX_SLOTS, AGENT_SLOTS when it names none."""
+    v = rec.get("agent_slots")
+    return v if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= agents.MAX_SLOTS else AGENT_SLOTS
 
 
 def _agents_off(rec):
@@ -536,8 +692,12 @@ def reads_changed(project, reads):
     """Whether `reads`, as the dialog sends it, names other projects than the
     ones stored: the dialog sends every field on every save."""
     got = reads if isinstance(reads, list) else str(reads).split(",")
-    want = sorted(r for r in _reads_of({"reads": got}) if r != project)
-    return want != sorted((get(project) or {}).get("reads") or [])
+    # By project (R138), as the setter keeps them: a repository named is its
+    # project, and the project itself is never one it reads.
+    home = (lambda r: r if _rp()[2](r) else (_rp()[0](r) or r)) if _rp() else (lambda r: r)
+    own = home(project)
+    want = sorted({home(r) for r in _reads_of({"reads": got})} - {project, own})
+    return want != sorted({home(r) for r in (get(project) or {}).get("reads") or []})
 
 
 def sees_changed(project, sees):
@@ -689,14 +849,32 @@ def reaches_on(project, node):
             if not e["nodes"] or node in e["nodes"]]
 
 
-def set_prefs(project, node=None, nodes=None, build=None, test=None,
+def set_prefs(project, **kw):
+    """Change any of one project's settings; None leaves it, "" clears it.
+    For a repository in a project of several, what the project holds
+    (GROUP_FIELDS) is written to the project and the rest to the
+    repository (R136)."""
+    key = _rp()[0](project) if _rp() and project else ""
+    if not key:
+        return _set_prefs(project, **kw)
+    mine = {k: v for k, v in kw.items() if k not in GROUP_FIELDS}
+    theirs = {k: v for k, v in kw.items() if k in GROUP_FIELDS and v is not None}
+    if theirs:
+        got = _set_prefs(key, **theirs)
+        if got.get("error"):
+            return got
+    got = _set_prefs(project, **mine)
+    return got if got.get("error") else get(project) | {"ok": True, "project": project}
+
+
+def _set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None, snapshots_on=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
               pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None, agents_off=None,
-              agent_default=None):
+              agent_default=None, agent_slots=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -730,6 +908,14 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if a.id in cur["agents_off"]:
                 return {"error": f"{a.name} is switched off for {project}: allow it before making it the one Start opens"}
             cur["agent_default"] = a.id
+        if agent_slots is not None:
+            try:
+                n = int(agent_slots)
+            except (TypeError, ValueError):
+                n = 0
+            if not 1 <= n <= agents.MAX_SLOTS:
+                return {"error": f"agent_slots is 1 to {agents.MAX_SLOTS}, not {agent_slots}"}
+            cur["agent_slots"] = n
         # An agent switched off is no longer the one Start opens.
         if cur.get("agent_default") in cur["agents_off"]:
             cur["agent_default"] = "claude"
@@ -739,7 +925,15 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 cur[key] = _toolchain_names({key: [str(x).strip() for x in got]}, key)
         if reads is not None:
             got = reads if isinstance(reads, list) else str(reads).split(",")
-            cur["reads"] = [r for r in _reads_of({"reads": got}) if r != project]
+            # By project (R138): a repository named is read as the project
+            # it is in now, so a later move changes nobody's reads.
+            if _rp():
+                home = lambda r: r if _rp()[2](r) else (_rp()[0](r) or r)  # noqa: E731
+                own = home(project)
+                got = list(dict.fromkeys(home(r) for r in _reads_of({"reads": got})))
+                cur["reads"] = [r for r in got if r not in (project, own)]
+            else:
+                cur["reads"] = [r for r in _reads_of({"reads": got}) if r != project]
         if sees is not None:
             got = sees if isinstance(sees, list) else str(sees).split(",")
             got = [str(p).strip().rstrip("/") for p in got if str(p).strip()]
@@ -877,6 +1071,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # past when its directory is renamed or deleted.
         if (cur["node"] or cur["hosts"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
                 or cur["tc_off"] or cur["packs_on"] or cur["agents_off"] or cur["agent_default"] != "claude"
+                or cur["agent_slots"] != AGENT_SLOTS
                 or cur["log_from"] or cur["diag"]
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
@@ -929,6 +1124,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("build_local", None)
             if cur["agent_default"] == "claude":
                 rec.pop("agent_default", None)
+            if cur["agent_slots"] == AGENT_SLOTS:
+                rec.pop("agent_slots", None)
             for k in ("tc_off", "packs_on", "agents_off"):
                 if not cur[k]:
                     rec.pop(k, None)
@@ -1005,11 +1202,11 @@ def replay(project, verb, args):
 # What dialog_save() needs from the server, set by configure_dialog: the
 # projects' directory (set_prefs reads a project's files), a dev instance
 # pinned to the node it is on before its project moves
-# (devapp.pin_to_current_node), a project's Claude session ended
-# (end_claude), and the sessions' networks told (R79).
+# (devapp.pin_to_current_node), a project's agent sessions ended
+# (end_agents), and the sessions' networks told (R79).
 WORKSPACE = None
 pin_instances = None
-end_claude = None
+end_agents = None
 net_nudge = None
 
 
@@ -1019,7 +1216,7 @@ def configure_dialog(**parts):
 
 # The dialog's fields that are the asking account's own on the project, not
 # the project's: anybody on it sets these for themselves.
-YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks",
+YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks", "term_scheme",
          *(f"{a}_{k}" for a in agents.MODELS for k in ("model", "effort")))
 
 
@@ -1086,6 +1283,7 @@ def dialog_save(name, req, uid):
                   reaches=req.get("reaches"), hosts=req.get("hosts"),
                   tc_off=req.get("tc_off"), packs_on=req.get("packs_on"),
                   agents_off=req.get("agents_off"), agent_default=req.get("agent_default"),
+                  agent_slots=req.get("agent_slots"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
                   build_local=req.get("build_local") if isinstance(req.get("build_local"), bool) else None,
                   workspace=WORKSPACE)
@@ -1102,7 +1300,7 @@ def dialog_save(name, req, uid):
     # change alone, because the same write happens when nothing is
     # running and there is nothing to interrupt.
     if not r.get("error") and req.get("restart"):
-        r |= end_claude(name)
+        r |= end_agents(name)
     if moved and not r.get("error"):
         r = dict(r) | {"pinned": moved}
     # A project on another node owns its instances somewhere else now (R79).

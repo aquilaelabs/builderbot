@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.8.0: 2026-10-27
+
+### Added
+
+- Projects come first: a project is made with a name alone (spaces and punctuation kept) and repositories are added to it, each keeping its own notebook, git host link and releases; its card lists its repositories and who is working there, and Edit turns it over to rename, move a repository to another project, delete one to the trash, and set its color, group, pin, archive and lock. A project has one id and one coding-agent session that works in all its repositories, and a project that reads it reads every repository in it (9ccf960, 178952e)
+- Terminal colors can be changed one by one under the preset you pick, with Reset to go back, and a preview on your Profile and in a project's own settings shows how your terminals will look (48dbbe9)
+- You can run several sessions of one coding agent on a project at once, each in its own worktree and conversation (Claude 2 beside Claude). Start agent lists your running sessions with Open, Restart and End, starts a new one, or resumes any of your conversations there; one already running is not offered twice. A project's settings say how many each person may run (three unless changed), and a Send with several running asks which one (efdf884)
+- A Schedules page beside Jobs runs an administrator's own scripts on a timetable, as Unraid's User Scripts do: each on a node of yours, as its jobs account or as root on a sandbox node, every run a job with its log, a failed or skipped run on the bell. The static analysis scan is built in, off until you turn it on with its node and paths (380cc7a)
+- Controller settings' BuilderBot bug reports section lists every report with its own delete, so one can be taken out before the diagnostics are downloaded. (c2ece51)
+- A container that has to talk to a machine on your LAN, such as a device or another server, can be let through the network wall around each project's containers: an administrator turns on Reaches the LAN in its settings on the Containers page (881deec)
+- An install makes its own install key at its first start, so nothing has to be set to keep its tokens, signing keys and sign-ins sealed: Controller, Keys shows where it is kept, shows it to save, changes it with everything kept under it sealed again at once, and lists what is kept under it. Each account has a key of its own for its agents' sign-ins on the nodes, changed from Profile, Your key (fd6c02f)
+- Each person keeps a key store of their own: a token they give a repository (in its settings, or cloning or linking it) is kept under their own key and used for their own git work ahead of a project's, and another of their projects can use it from its settings; Profile lists what it holds, never showing it; Purge empties it, and deleting the account does too, unlinking the projects that used it (0f4af38)
+- A session sees a release's Android signing: bb sign status says whether the APK can be signed and how the newest went, bb sign release asks for it again under Sign a build, and a release whose APK could not be signed is said before the tag, on Release's confirm and by bb version release, which goes on only with --without-apk (60d1d3e)
+- A bug and a BuilderBot report say whether they reproduce: always, sometimes, once or not tried, asked under the steps on the Bugs form, shown on the opened row, and a chip and a sort on the list; bb bug add and bb report take --reproduces, and bb bug add --report N files a diagnostics report with its words, steps and answer (2517bcb)
+- Grok (xAI's Grok Build) can run a project's session beside Claude, ChatGPT and Copilot: installed from its node's Agents page, signed in there with a device code, and held to the same briefing and guards through its own hooks (dc85506)
+
+### Changed
+
+- SIGNING_SECRET is INSTALL_KEY: the one key that seals at rest what BuilderBot keeps, the signing keys among it (7645fec)
+- Terminals are BuilderBot's own, drawn in the page itself, and ttyd is gone from the controller and the nodes: a finger scrolls a terminal on a phone and a press held on a word selects it to copy, a job's, a container's and the controller's logs follow in a tab of the dock, a terminal that ends says why, and a tab popped out opens the same terminal in a window of its own. A node's terminals come in on the one port its VMs' screens use, so its firewall opens 7684 alone (052c096)
+- Every page states what it knows in a head at its top (its name, its state and its facts in a grid) in place of loose lines of text (48dbbe9)
+- Each session and each project's containers are kept to their own network on every node: a node that had either switched off has it on again after the upgrade, since which projects reach each other is set by their Reads. A hosting-only node's containers are kept apart the same way. (c2ece51)
+- Download diagnostics moved from the Logs section to the BuilderBot bug reports section, beside the reports it carries, and anyone who can open Controller settings can read the reports and download the diagnostics there. (c2ece51)
+- A shell keeps its history in memory for itself alone, never in a file in the home, where the account's own coding agents, which run as the same user, could read what was typed; the same for the Python, Node, psql, sqlite, mysql and less history files (ba0eeb8)
+- Turning maintenance mode on ends every other account's coding-agent sessions and terminals, here and on the nodes, after asking: the question lists each with whose it is, its project, whether it is working or waiting, and its node (12966dc)
+
+### Upgrading
+
+- Rename SIGNING_SECRET to INSTALL_KEY in your secrets folder's env file: the old name is read for this release only. With an install key set, everybody is signed out once at the first start of 0.8.0 (7645fec)
+- Update the Android app and the VS Code extension (0.2.0) with the controller: they open a session's terminal on BuilderBot's own terminal now, and an older copy of either cannot open one (052c096)
+- Each project you had becomes a project holding its one repository, under the same name, with its settings, people, owner, pins, groups, colors, archive and lock; nothing on disk moves. New project now asks for a name alone, and Add repository on its card makes or clones the repository (178952e)
+- The secrets folder is mounted read-write now, so the first start can make the install key in it: on Unraid set the Secrets directory's access to Read/Write, and in compose drop :ro from the /secrets volume. An install with INSTALL_KEY set keeps it, and the Keys page says to change it there (fd6c02f)
+- An install with INSTALL_KEY set and its secrets folder read-write copies that key into the folder at its first start, so INSTALL_KEY can then be taken out of the secrets folder: the install carries on with the same key, changed from Controller, Keys (8cc38de)
+- The shell and REPL history files in each account's home on a node (.bash_history, .python_history and the like) are removed the first time a terminal opens after the update: copy out anything you want to keep first (ba0eeb8)
+- A project's git token kept before is moved into the project owner's key store at the first start, BuilderBot's owner taking those of a project with none; a build from before refuses to start on that state (c5b9205)
+
+### Deprecated
+
+- The two node switches that turned those networks off (in a node's Sessions section) go in 0.9.0. Nothing to do unless a project's containers relied on reaching another project's: add that project to its Reads. (c2ece51)
+
+### Fixed
+
+- Pressing the filter chip or the settings section that is already selected no longer redraws the page with a fade (4a237e5)
+- On a desk the dock's line of tabs, with more tabs than fit, has an arrow at each end with more past it and can be dragged with the mouse (8abd211)
+- A VM made again under an earlier VM's name no longer shows that VM's address until its node next reports (3b9c386)
+- Enrolling a node or installing on a machine just booted from a cloud image waits for the machine's own first apt run to let go of its lock, instead of failing at the first package step (3b9c386)
+- A release's signing pressed again on the Signing view is followed to its end: the Releases section re-reads when the look finishes, rather than showing the old failure until the view is reopened (a1611e7)
+- Saving a project's settings with End ends a ChatGPT or Copilot session there too, not only a Claude one, so the next start picks up what was saved (7c9b38a)
+- The bell's CI failing row can be dismissed until another run fails, and a check that has passed since on a release no longer stays red (9cfe9f4)
+- Signing a build or a release keeps the key in the node's memory while it works, never on its data store, which on a shared network folder sessions could read (5da1f79)
+
+### Security
+
+- With an install key, the key sign-in cookies are signed with is made from it and kept nowhere, so a copy of /config can forge no sign-in (7645fec)
+- With an install key, the tunnel's and Cloudflare's tokens are kept sealed in the controller's settings, so a copy of /config holds neither (13812ea)
+- With an install key, each project's git token is kept sealed and handed to git by BuilderBot's own credential helper, for the host it was written for alone, so a copy of /config pushes nowhere (b1c372e)
+- A node's token is replaced at each of its check-ins, and one it has given up presented again revokes the node and says so on the bell, so a copy of a node's disk cannot pose as it for long (bd54513)
+- A toolchain's download is checked against what its publisher says it is before it is unpacked or run, its checksum or its signature, and refused naming both digests when it does not match; the Toolchains page and bb toolchains say how each installed toolchain was checked, or that its publisher states nothing to check it against (690cd2e)
+- A terminal or a VM's screen opens only from the dashboard's own page: a connection started by another site's page, such as an app on a sibling hostname, is refused (f96a91d)
+
 ## 0.7.0: 2026-10-24
 
 ### Added
@@ -53,6 +113,10 @@
 ### Deprecated
 
 - The Lock grant on a role no longer decides anything (a project's owner locks it, an administrator too) and goes in 0.8.0 (24c9a24)
+
+### Removed
+
+- Show the tours again is no longer on Profile: it is in About, under the version in the header (51f1a7a)
 
 ### Fixed
 

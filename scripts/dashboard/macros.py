@@ -67,27 +67,6 @@ GIT_MACROS = {
 # could only fail; a push is bb git push's, under the project's policy.
 SHELL_MACROS = {**LINUX_MACROS, **GIT_MACROS}
 
-# Keys an Android keyboard has no way to send. Names on the left are what the
-# page posts; values are tmux key names. A table rather than passthrough for the
-# same reason as MACROS: `send-keys` will happily type anything it is given.
-TMUX_KEYS = {
-    "escape": "Escape", "tab": "Tab", "enter": "Enter", "bspace": "BSpace",
-    "up": "Up", "down": "Down", "left": "Left", "right": "Right",
-    "home": "Home", "end": "End", "pgup": "PPage", "pgdn": "NPage",
-    "ctrl-c": "C-c", "ctrl-d": "C-d", "ctrl-z": "C-z", "ctrl-l": "C-l",
-    "ctrl-r": "C-r", "ctrl-a": "C-a", "ctrl-e": "C-e", "ctrl-u": "C-u",
-    "ctrl-k": "C-k", "ctrl-w": "C-w",
-}
-
-# Characters that are buried behind two taps on a phone keyboard. Sent with
-# send-keys -l so tmux treats them as literal text, never as key names.
-TMUX_LITERALS = {
-    "pipe": "|", "tilde": "~", "slash": "/", "backslash": "\\", "dash": "-",
-    "under": "_", "star": "*", "amp": "&", "dollar": "$", "caret": "^",
-    "lt": "<", "gt": ">", "brace-l": "{", "brace-r": "}",
-}
-
-
 # What the stored half and the typing need from the server, set by
 # configure(): how a state file is written, the one lock every
 # read-edit-write of the server's state files takes, how a command is run,
@@ -264,63 +243,6 @@ def custom_edit(action, req):
         except OSError as e:
             return {"error": f"could not save: {e}"}, 500
         return {"custom": load_custom()}, 200
-
-
-def press(session, key, on_node):
-    """One key from the tables pressed in a session, or a page up or down,
-    once the server has said the session is the caller's: on a node through
-    its agent (`on_node`, its session row), here through tmux. (payload,
-    status)."""
-    if on_node:
-        # The same table, queued for the node's agent (roadmap #24); the
-        # paging decision is the agent's, on the pane it can see.
-        real = on_node["node_name"]
-        if key in ("pgup", "pgdn"):
-            op = {"session": real, "page": "up" if key == "pgup" else "down"}
-        elif key in TMUX_KEYS:
-            op = {"session": real, "argv": ["send-keys", "-t", real, TMUX_KEYS[key]]}
-        elif key in TMUX_LITERALS:
-            op = {"session": real, "argv": ["send-keys", "-t", real, "-l", "--",
-                                            TMUX_LITERALS[key]]}
-        else:
-            return {"error": f"unknown key: {key}"}, 400
-        return _answer(session_tmux(on_node["node_id"], [op]))
-    # Only sessions that currently exist, never an arbitrary -t argument.
-    if session not in {s["name"] for s in tmux_sessions()}:
-        return {"error": f"no such session: {session}"}, 400
-    # Paging is how a finger scrolls: a drag reaches nothing (the terminal
-    # sits on tmux's alternate screen, and xterm.js turns only wheel events
-    # into anything tmux sees), so PgUp at a prompt enters copy mode a page
-    # up and PgDn pages back, copy mode ending by itself at the bottom
-    # (-e). The tmux config binds a real keyboard's PgUp the same way, but
-    # send-keys goes straight to the pane, past the key table that binding
-    # lives in, so the same decision is made here, as commands. Inside a
-    # full-screen program (less, vim) the key is the program's.
-    if key in ("pgup", "pgdn"):
-        flags = run(["tmux", "display-message", "-p", "-t", session,
-                     "#{alternate_on} #{pane_in_mode}"], timeout=10)
-        alt, mode = (flags["out"].split() + ["0", "0"])[:2]
-        if key == "pgup":
-            cmd = ["send-keys", "-t", session, "PPage"] if alt == "1" \
-                else ["copy-mode", "-eu", "-t", session]
-        else:
-            cmd = ["send-keys", "-t", session, "-X", "page-down"] if mode == "1" \
-                else ["send-keys", "-t", session, "NPage"]
-        return run(["tmux", *cmd], timeout=10), 200
-    # Any other key is meant for the program, so a pane scrolled back into
-    # copy mode leaves it first: there an arrow moved tmux's cursor over the
-    # history and a letter did nothing, and the program never heard either
-    # (the operator, 23 Oct, at Codex's approval list).
-    if key in TMUX_KEYS or key in TMUX_LITERALS:
-        mode = run(["tmux", "display-message", "-p", "-t", session, "#{pane_in_mode}"], timeout=10)
-        if mode["out"].strip() == "1":
-            run(["tmux", "send-keys", "-t", session, "-X", "cancel"], timeout=10)
-    if key in TMUX_KEYS:
-        return run(["tmux", "send-keys", "-t", session, TMUX_KEYS[key]], timeout=10), 200
-    if key in TMUX_LITERALS:
-        return run(["tmux", "send-keys", "-t", session, "-l", "--",
-                    TMUX_LITERALS[key]], timeout=10), 200
-    return {"error": f"unknown key: {key}"}, 400
 
 
 def say(want, text, on_node):

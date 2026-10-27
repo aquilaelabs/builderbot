@@ -7,7 +7,7 @@
 // reports a store that is really there. This does, against a controller and a
 // node named in the environment:
 //
-//   BB_LAB_CONTROLLER  the dashboard to ask, e.g. http://192.168.1.16:7680
+//   BB_LAB_CONTROLLER  the dashboard to ask, e.g. http://controller.lan:7680
 //   BB_LAB_TOKEN       basic-auth credentials for an administrator there,
 //                      "user:password" (the lab's own, never production's)
 //   BB_LAB_NODE        the node to run on, by name or id. A job runs there,

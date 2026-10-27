@@ -25,7 +25,7 @@ const me = uidOf('test');
 // ---- a node of this file's own ----------------------------------------------
 const box = await call('/api/v1/nodes', { action: 'enroll', name: 'signbox' });
 // Codex CLI installed beside Claude Code, as its census says it (R95 step 3).
-const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true, boot: '4.4', up_s: 5000, claude: '1.0.0 (Claude Code)',
+const SE = { up: true, term: true, user: 'bb', workspace: true, writable: true, boot: '4.4', up_s: 5000, claude: '1.0.0 (Claude Code)',
              codex: 'codex-cli 0.163.0' };
 const agent = await call('/api/v1/agent/enroll',
   { user: 'bb', version: 'harness', census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', session: SE } },
@@ -68,12 +68,22 @@ await page.waitForSelector('#resumemenu [data-signin-node]', { timeout: 20000 })
 const menu = await page.$eval('#resumemenu', m => ({ head: m.querySelector('.rmhead b')?.textContent.trim() || '',
   lines: [...m.querySelectorAll('.rmline')].map(l => `${[...l.querySelector('.rmwho').children].map(e => e.textContent.trim()).join(' ')}: ${
     [...l.querySelectorAll('button')].map(b => b.textContent.trim()).join('/')}`) }));
-// One line per agent installed there (the operator, 22 Oct): Claude's sign-in
-// in place of Resume and New, and ChatGPT's own, Codex CLI being there too.
-ok(menu.head === 'signbox' && menu.lines.includes('Claude not signed in here: Sign in'),
-   `pressing it opens the chooser with that node's sign-in as Claude's one press, in place of Resume and New (${menu.head}; ${menu.lines.join(' | ')})`);
-ok(menu.lines.includes('ChatGPT not signed in here: Sign in'),
-   `...and a line for ChatGPT beside it, Codex CLI being installed there, offering its own sign-in (${menu.lines.join(' | ')})`);
+// Start is one line, the agents installed there a pulldown (the operator,
+// 26 Oct): Claude first with its sign-in in place of New, and ChatGPT among
+// them, Codex CLI being there too, with its own sign-in once picked.
+const startOf = () => page.$eval('#resumemenu', m => { const l = m.querySelector('.rmline:has(#rmAgentSel)');
+  return { agents: [...(m.querySelector('#rmAgentSel')?.options || [])].map(o => o.textContent.trim()),
+           said: l?.querySelector('.rmsays')?.textContent.trim() || '', press: [...(l?.querySelectorAll('button') || [])].map(b => b.textContent.trim()).join('/'),
+           sign: l?.querySelector('[data-signin-node], [data-asignin]')?.dataset.asignin || (l?.querySelector('[data-signin-node]') ? 'claude' : '') }; });
+const start = await startOf();
+ok(menu.head === 'signbox' && start.agents[0] === 'Claude' && start.said === 'not signed in here' && start.press === 'Sign in' && start.sign === 'claude',
+   `pressing it opens the chooser with that node's sign-in as Claude's one press, in place of New (${menu.head}; ${JSON.stringify(start)})`);
+await page.selectOption('#resumemenu #rmAgentSel', { label: 'ChatGPT' });
+await page.waitForFunction(() => document.querySelector('#resumemenu #rmAgentSel')?.selectedOptions[0]?.textContent.trim() === 'ChatGPT', null, { timeout: 5000 });
+const gpt = await startOf();
+ok(start.agents.includes('ChatGPT') && gpt.said === 'not signed in here' && gpt.press === 'Sign in' && gpt.sign === 'codex',
+   `...and ChatGPT among the agents, Codex CLI being installed there, offering its own sign-in once picked (${JSON.stringify(gpt)})`);
+await page.selectOption('#resumemenu #rmAgentSel', { label: 'Claude' });
 await page.click('#resumemenu [data-signin-node]');
 await page.waitForFunction(id => {
   const s = document.querySelector(`.agentstab [data-agnode="${id}"] [data-sect="agents:claude"]`);
@@ -86,9 +96,9 @@ ok(await page.$eval('#agNodeSel', s => s.selectedOptions[0].textContent).then(t 
 // saying where it stands on this node (R95 step 15).
 const secs = await page.$$eval(`.agentstab [data-agnode="${box.id}"] details.sect`, ds => ds.map(d =>
   [d.dataset.sect, d.querySelector('summary .sst')?.textContent.trim() || '']));
-ok(secs.map(s => s[0]).join() === 'agents:claude,agents:codex,agents:copilot'
+ok(secs.map(s => s[0]).join() === 'agents:claude,agents:codex,agents:copilot,agents:grok'
    && /^1\.0\.0/.test(secs[0][1]) && /not signed in/.test(secs[0][1]) && /^0\.163\.0, not signed in/.test(secs[1][1])
-   && secs[2][1] === 'not installed',
+   && secs[2][1] === 'not installed' && secs[3][1] === 'not installed',
    `the Agents page has a section per coding agent, Claude first, each with where it stands here (${JSON.stringify(secs)})`);
 await page.evaluate(() => startClaude('beta', null, ''));
 ok(/sign in to Claude on signbox first/.test(await page.$eval('#toast', e => e.textContent)) && await terms() === before,
@@ -247,7 +257,7 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
   await call('/api/prefs', { project: 'beta', agents_off: 'codex' });
   await refreshUntil(page, () => ((state?.projects || []).find(p => p.name === 'beta')?.prefs?.agents_off || []).includes('codex'));
   const term = await page.evaluate(async () => {
-    const r = await fetch('/term/?arg=' + encodeURIComponent('codex:beta'), { headers: { Accept: 'application/json' } });
+    const r = await fetch('/termws?arg=' + encodeURIComponent('codex:beta'), { headers: { Accept: 'application/json' } });
     return { status: r.status, error: (await r.json().catch(() => ({}))).error || '' };
   });
   await page.evaluate(() => openProjectsTab());

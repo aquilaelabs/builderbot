@@ -15,18 +15,18 @@ group on the rail has a doc of its own: [projects.md](projects.md) and
 ## Signing in, on one port
 
 It serves everything on `7680`: the page, the API, and the browser
-terminals, which are proxied under `/term` so one
+terminals, which are websockets at `/termws` on the same port, so one
 sign-in covers them all. Signing in is a login page that sets a 30-day
 cookie (a real form, so password managers work) not the browser's own
 credentials dialog, and there is no second prompt for the terminal port
 because there is no second port. The sign-out button, last in the header, ends the session (`/logout` does the same).
 
-Only the dashboard port is published. ttyd binds the loopback and the
-dashboard relays `/term` to it, so the browser asks for credentials once and
-the router needs one port. The relay is deliberately dumb: after checking the
-session it splices the two sockets byte for byte and never parses a frame, and
-credentials are checked in one place: the cookie or basic auth this server
-already verifies. curl and scripts can skip the
+Only the dashboard port is published. A terminal is xterm.js in the page on
+a websocket at `/termws`: on the controller the dashboard runs bb-tty in a
+pty of its own, and for a node it carries the socket, signed, to the node
+agent's screen relay. So the browser asks for credentials once, the router
+needs one port, and credentials are checked in one place: the cookie or basic
+auth this server already verifies. curl and scripts can skip the
 login page entirely: basic auth is honored preemptively on every request
 (`curl -u user:pass ...`), there is just no `WWW-Authenticate` challenge, and
 that header is exactly what made browsers pop their own dialog.
@@ -78,8 +78,8 @@ Under the tiles, Attention is the bell's own rows (a node behind, a red CI
 run, a file changed in two places), dismissed there as on the bell, and
 Last jobs is the ten newest, each opening its row on the Jobs page with
 the log open. Under those, the pinned projects at a glance, each with its
-branch, its session state and the one notice it carries; Pin and Unpin
-are in a project's menu on the Projects page. Home reads its numbers when
+repositories, its session state and the one notice it carries; the pin by a
+project's name on the Projects page puts it here or takes it off. Home reads its numbers when
 it opens, and the queue's again when a job moves; the containers are asked
 only on opening, and nothing is read on a timer. A browser with nothing open lands on it.
 
@@ -229,8 +229,9 @@ Every one, the workspace one included, can be minimized; a dock with none
 is its line alone, and **+** starts over. On a desktop the terminal in front
 can also be popped out into its own window (the ⧉ on the dock's line): its
 tab stays, its pane blank with **Reattach**, and closing the window brings
-it back on its own. The window is the terminal's
-own address, so closing the dashboard leaves it working.
+it back on its own. The window is the terminal on a page of its own
+(`/terminal` on the dashboard's port), so closing the dashboard leaves it
+working.
 
 - **Start agent** on a project opens a chooser of the coding agents, one
   session of each per project. While yours runs the button reads **Manage
@@ -306,10 +307,12 @@ clipboard, and the wheel scrolls its output.
 and PgDn pages forward; copy mode ends by itself the moment you are back at
 the bottom, so there is nothing to remember (`Ctrl-b [` still works, and `q`
 still leaves). Inside a full-screen program the key is the program's. That is
-also how a **phone** scrolls, with the PgUp/PgDn keys in the ⌨ Keys row: a
-finger drag in the terminal reaches nothing, because tmux holds the alternate
-screen and the browser terminal only turns wheel events into something tmux
-can see, in either kind of tab.
+also what the PgUp/PgDn keys in the ⌨ Keys row do on a **phone**, where a
+finger dragged up or down scrolls the terminal too: back through a shell's
+history by the line (copy mode, left by itself at the bottom), and as the
+wheel would in an agent's tab. A press held on a word selects it, with a
+grip at each end to widen it and **Copy** beside it; a tap still brings up
+the keyboard.
 
 The launcher sets this on the session as it starts one, not only in the config
 file, because `~/.tmux.conf` lives on the persistent home and is yours.
@@ -319,16 +322,15 @@ config does not override it: turn it back on where you want it with
 
 **Right-click gives you one menu, the browser's.** tmux draws its own context
 menu inside the terminal, and the browser's lands on top of it: two menus for
-one click, only one of them dismissable. The browser's cannot be suppressed
-from outside the frame (the terminal is served from its own port), so tmux's is
-unbound. **Alt+right-click** still opens it if you want *Copy Line* and the
+one click, only one of them dismissable. The browser's is the one kept, so
+tmux's is unbound. **Alt+right-click** still opens it if you want *Copy Line* and the
 pane commands.
 
 **Which terminals are open is your account's, not one browser's.** It lives
 on the container, so opening the dashboard on a phone shows the terminals
 the desktop has open, and a change on either reaches the other within a
-poll. At most twelve terminals are open at once: each is an iframe running a
-full terminal emulator over its own websocket, so the limit is about browser
+poll. At most twelve terminals are open at once: each is a full terminal
+emulator over its own websocket, so the limit is about browser
 memory, not tidiness.
 
 **Terminals survive a container restart, scrollback and all.** tmux dies with

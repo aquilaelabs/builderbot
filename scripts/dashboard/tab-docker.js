@@ -264,16 +264,40 @@ async function loadDockerStats(list){
   dockerStats[node] = got.stats;
   dockerSpark[node] = got.spark || {};
   if ((dockerList?.node || dockerNode || "") !== node) return;
-  dockerRev++;
-  drawPanes();
+  dmStatsPatch();
 }
 
 // The strip of what an instance's containers use, summed: CPU, memory,
 // network in and out, processes. Nothing when nothing was sampled.
+// What the stats are on every drawing of the rows (the page and a
+// notebook's Docker view), written in place (the operator, 26 Oct: a tick
+// redrew the whole page every few seconds, its folds and menus with it).
+function dmStatsPatch(){
+  const all = dockerStats[dockerList?.node || dockerNode || ""] || {};
+  for (const el of document.querySelectorAll("[data-dmstats]")){
+    const d = (dockerList?.instances || []).find(x => `${x.project}|${x.instance}` === el.dataset.dmstats);
+    if (!d) continue;
+    const t = document.createElement("template");
+    t.innerHTML = dmStatStrip(d);
+    const fresh = t.content.firstElementChild;
+    if (fresh && fresh.outerHTML !== el.outerHTML) el.replaceWith(fresh);
+  }
+  for (const el of document.querySelectorAll("[data-dmcpu]")){
+    const st = all[el.dataset.dmcpu];
+    setText(el, st ? `${st.cpu.toFixed(1)}%` : "");
+  }
+  for (const el of document.querySelectorAll("[data-dmmem]")){
+    const st = all[el.dataset.dmmem];
+    setText(el, st ? humanBytes(st.mem) : "");
+  }
+}
 function dmStatStrip(d){
   const all = dockerStats[dockerList?.node || dockerNode || ""] || {};
   const mine = (d.services || []).map(c => all[c.name]).filter(Boolean);
-  if (!mine.length) return "";
+  // Addressed by its row, and drawn empty where nothing is measured yet, so
+  // a stats tick writes into it alone rather than redrawing the page.
+  const at = `data-dmstats="${esc(`${d.project}|${d.instance}`)}"`;
+  if (!mine.length) return `<div class="dmstats" ${at} hidden></div>`;
   const sum = k => mine.reduce((n, x) => n + (x[k] || 0), 0);
   const kb = n => humanBytes(n);
   // The instance's last half hour under its CPU (R218 step 9): its
@@ -289,7 +313,7 @@ function dmStatStrip(d){
   const pct = lim ? Math.min(100, sum("mem") / lim * 100) : 0;
   // One band of four (the operator's concept, 17 Oct): each its word over
   // its figure, CPU with its half hour, memory with how full it is.
-  return `<div class="dmstats">
+  return `<div class="dmstats" ${at}>
     <div class="tile"><span class="tl">CPU</span><span class="tv">${esc(sum("cpu").toFixed(sum("cpu") < 10 ? 1 : 0))}<span class="tu">%</span></span>${
       sparkSvg(cpuS, 100, "CPU over the last half hour")}</div>
     <div class="tile"><span class="tl">Memory</span><span class="tv">${esc(kb(sum("mem")))}${
@@ -318,8 +342,8 @@ function dmServicesTable(d, finished){
         c.state === "running" ? "" : ` <span class="dim dmsvcst">${finished(c) ? "finished" : esc(c.status || c.state || "")}</span>`}`,
       `<span class="mono">${dmImage(c.image)}</span>`,
       ports.map(m => `${dmPortLink(m[1])} → ${esc(m[2])}`).join(" · "),
-      st ? `${esc(st.cpu.toFixed(1))}%` : "",
-      st ? esc(humanBytes(st.mem)) : "",
+      `<span data-dmcpu="${esc(c.name)}">${st ? `${esc(st.cpu.toFixed(1))}%` : ""}</span>`,
+      `<span data-dmmem="${esc(c.name)}">${st ? esc(humanBytes(st.mem)) : ""}</span>`,
       ports.length && c.state === "running" ? `<a href="http://${esc(daemonHost())}:${esc(ports[0][1])}/" target="_blank" rel="noreferrer">Open</a>` : ""]);
   }).join("");
   return tblWrap(DM_SVC_COLS, rows, "dmsvctbl");
@@ -477,8 +501,12 @@ const dockerSlug = (s) => (s || "").toLowerCase()
 function fillNodeSelect(sel, wrap, prefer, again, allow){
   // Every node when nothing narrows: a node does everything for the
   // projects bound to it (docs/nodes.md §13).
+  // ...but the controller's own machine, installed bare metal (R90), whose
+  // job account is out of the docker group behind the wall: it runs no
+  // containers as a node.
   const dnodes = (nodesList || []).filter(n =>
-    n.kind !== "local" && n.state !== "retired" && n.state !== "disabled" && (!allow || allow.includes(n.id)));
+    n.kind !== "local" && n.state !== "retired" && n.state !== "disabled" && !n.config?.own
+    && (!allow || allow.includes(n.id)));
   // ...and drawn again when they land: loadNodes repaints only a Nodes tab,
   // so a draw here during a node-list reload lost the picker until something
   // else moved dockerRev (B69's nodes.mjs sibling).
@@ -863,7 +891,7 @@ function dmSetGrid(cells, key, {cancel = false, bare = false} = {}){
   if (!body) return "";
   // ...or the grid alone, for a dialog whose foot carries the buttons.
   if (bare) return `<div class="setgrid dmsettings">${body.replace("<!--APPLY-->", "")}</div>`;
-  const settable = /data-(dmown|dmmove|dmref|dmov|dmboot|route)=/.test(body);
+  const settable = /data-(dmown|dmmove|dmref|dmov|dmboot|dmlan|route)=/.test(body);
   // ...with Cancel before it where Edit settings opened them: it drops what
   // was staged and puts the fields away (rows-you-open).
   const apply = `${cancel ? `<button type="button" class="stop" data-dmcancel="${esc(key)}">Cancel</button>` : ""}<button type="button" class="primary" data-dmapply="${esc(key)}"${
@@ -900,7 +928,7 @@ function dmDropDrafts(key){
   const name = inst ? (dockerList?.instances || []).find(x => `${x.project}|${x.instance}` === inst)?.name : key.slice(4);
   delete dmOwnDraft[key];
   if (inst){ delete dmMoveDraft[inst]; delete dmRefDraft[inst]; delete dmOvDraft[inst]; delete dmRouteDraft[inst]; delete dmNginxDraft[inst]; }
-  if (name) delete dmBootDraft[name];
+  if (name){ delete dmBootDraft[name]; delete dmLanDraft[name]; }
 }
 // Whether a row has a setting staged and not yet applied: the drafts each
 // setting keeps, read by the row's key.
@@ -911,7 +939,7 @@ function dmRowDirty(key){
   return dmOwnDraft[key] !== undefined
     || (inst && (dmMoveDraft[inst] !== undefined || dmRefDraft[inst] !== undefined || dmOvDraft[inst] !== undefined
                  || dmRouteDraft[inst] !== undefined))
-    || (rowName && dmBootDraft[rowName] !== undefined);
+    || (rowName && (dmBootDraft[rowName] !== undefined || dmLanDraft[rowName] !== undefined));
 }
 // Which project a row belongs to: its group on this tab, the notebook that
 // lists it, and whose Claude sessions may see it and work on it (the
@@ -952,8 +980,8 @@ function dmMoveLine(d){
   const names = myProjectNames(d.project);
   const id = "dmm-" + key;
   return `<div class="setcell dmmove">${lbl(id, "Built from",
-      "The project whose compose file and tree it is built from. Another one, applied, moves it "
-      + "under that project, keeping its name, env and data; it then builds from that project's tree.")}
+      "The repository whose compose file and tree it is built from. Another one, applied, moves it "
+      + "there, keeping its name, env and data; it then builds from that repository's tree.")}
     <select id="${esc(id)}" data-dmmove="${esc(key)}" aria-label="the project it is built from">${
       optionList(names.map(n => [n, gone && n === d.project ? `${n} (deleted)` : projLabel(n)]), pick)}</select></div>`;
 }
@@ -1286,6 +1314,7 @@ async function openEditContainer(name){
   cLock(!down || managed);
   cSeg("yml");
   $("cmodal").hidden = false;
+  cHold();
   try{
     const r = await postJSON("/api/container", {action:"read", name});
     const j = await r.json();
@@ -1325,6 +1354,7 @@ async function openEditInstance(project, instance){
   cLock(running);
   cSeg("yml");
   $("cmodal").hidden = false;
+  cHold();
   try{
     const [c, e] = await Promise.all([
       postJSON("/api/devapp", {project, instance, action: "compose-get"}).then(r => r.json()),
@@ -1442,6 +1472,7 @@ function openNewContainer(){
   $("cNameHint").textContent =
     "A name no other container has.";
   $("cmodal").hidden = false;
+  cHold();
 }
 
 let cTab = "yml";                 // which pane the segment is showing
@@ -1502,6 +1533,11 @@ function cSlide(which){
 }
 
 const cSwitch = w => { if (cTab === w) return; cSeg(w); cSlide(w); };
+// One size whichever pane is on show (holdPanes): the ones this open offers.
+function cHold(){
+  const keys = [["form", "cTabForm"], ["yml", "cTabYml"], ["env", "cTabEnv"]].filter(([, id]) => !$(id).hidden).map(([k]) => k);
+  holdPanes($("cmodal").querySelector(".box"), keys, cSeg, cTab);
+}
 
 async function cSubmit(){
   if (cEditing && typeof cEditing === "object") return cSaveInstance(cEditing);
@@ -1617,45 +1653,6 @@ function dmState(d, job, mine, busy, blind){
   if (d.exists) return "stopped: its containers are still there";
   if (d.built_rev) return `${dmBuilt(d)}, not running`;
   return "never built";
-}
-
-// One instance row: the same markup wherever the row is drawn, the Docker
-// tab and a project's notebook (its Docker view). `job` is the compose job
-// the answer carried and `blind` whether the daemon answered at all.
-async function dmLogs(name, node = dockerNode){
-  const modal = $("dlmodal"), body = $("dlBody");
-  if (!modal || !body) return;
-  $("dlTitle").textContent = `Log: ${name}`;
-  // Its foot from the first frame: a log read on a busy node takes seconds,
-  // and a dialog with no Close meanwhile is one you cannot leave (B498).
-  body.innerHTML = `<div class="field">${skel("lines", 8, "reading…")}</div>
-    <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
-  body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
-  modal.hidden = false;
-  try{
-    // The node the list came from: a project's notebook lists its own
-    // node's containers, which is not the tab's pick.
-    const r = await postJSON("/api/dockerctl", {action: "logs", container: name, node});
-    const j = await r.json();
-    body.innerHTML = `<div class="field">${j.error
-      ? `<div class="hint bad">${esc(j.error)}</div>`
-      : j.text && j.text.trim()
-        ? `<pre class="dmlog dllog">${esc(j.text)}</pre>`
-        : `<div class="hint">It has printed nothing.</div>`}</div>
-      <div class="foot"><span class="sp"></span>
-        <button type="button" id="dlAgain">Read again</button>
-        <button type="button" id="dlClose">Close</button></div>`;
-    // At the end, which is where a log's reason is: the top of a tail is the
-    // middle of whatever happened before it.
-    const pre = body.querySelector("pre");
-    if (pre) pre.scrollTop = pre.scrollHeight;
-    body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
-    body.querySelector("#dlAgain").onclick = () => dmLogs(name);
-  }catch(e){
-    body.innerHTML = `<div class="field"><div class="hint bad">${esc(String(e))}</div></div>
-      <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
-    body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
-  }
 }
 
 // A port only this node's nginx reaches (127.0.0.1 on a node whose ports
@@ -1803,6 +1800,11 @@ function dmRowsHtml(ins, job, blind){
         // goes behind ⋯ (R210), Remove last in there as it was last on the bar.
         actMore([
           dmEditBtn(key),
+          // Its log in a tab of the dock (the operator, 26 Oct: every log
+          // opens there), one per container of a stack.
+          ...(d.exists && !blind && mayDocker() ? (d.services || []).filter(c => c.name).map(c => `<button type="button" data-dmlog="${esc(c.name)}"
+            data-running="${c.state === "running" ? 1 : 0}" title="what ${esc(c.service || c.name)} prints, in a tab of the dock, read again as it goes on">${
+              many ? `Log of ${esc(c.service || c.name)}` : "Log"}</button>`) : []),
           ...(shellAt && !shellWhy ? shellAt.slice(1).map(c => `<button type="button" data-dmshell="${esc(c.name)}"
             title="a shell inside ${esc(c.service || c.name)}, in the dock">Shell in ${esc(c.service || c.name)}</button>`) : []),
           managed || !mayDocker() ? "" : `<button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
@@ -1845,18 +1847,12 @@ function dmRowsHtml(ins, job, blind){
         dmSetPills(dmInstPills(d, managed))}
         ${dmEditing.has(key) || dmRowDirty(key)
           ? dmSetDialog(d.name, key, [dmOwnerLine(d, key), dmMoveLine(d), dmRefLine(d), dmOverrideLine(d), dmRouteLine(d),
-                       dmNginxLine(d), d.exists ? dmBootLine(d.name, !!d.boot) : ""]) : ""}
+                       dmNginxLine(d), d.exists ? dmBootLine(d.name, !!d.boot) : "", d.exists ? dmLanLine(d.name, !!d.lan) : ""]) : ""}
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
                    "Ports and mounts", dmPortsSaid(d),
                    `<div class="wire">${skel("rows", 2, "reading…")}</div>`, {open: false})}
-      ${
-      // What it printed (R216): a fold under the row, read when opened and
-      // again on Follow. Nothing to read for a row with no container yet.
-      d.exists && !blind && (d.services || []).length
-        ? docSection("docker", `logs:${d.project}|${d.instance}`, "Log",
-                     many ? `${d.services.length} containers` : "",
-                     `<div class="dmlogbox">${skel("lines", 5, "reading…")}</div>`, {open: false}) : ""}`;
+`;
     return dmRowWrap(d, st, inner, blind);
   }).join("");
 }
@@ -2042,61 +2038,41 @@ async function dockerPrune(kind, node, nodeName, b){
   return !r.error;
 }
 
-// The row's Log fold: the last lines of each of its containers, read when
-// the fold opens, by Read again, and every few seconds while Follow is
-// ticked and the fold stays open.
-let dmFollow = {};
-async function loadRowLog(det, again = false){
-  const fold = det.dataset.sect;
-  const row = det.closest("[data-inst]");
-  if (!row || !fold || dmLoading.has(fold)) return;
-  const inst = (dockerList?.instances || []).find(x => `${x.project}|${x.instance}` === row.dataset.inst);
-  const names = (inst?.services || []).map(c => c.name).filter(Boolean);
-  const node = dockerList?.node || dockerNode || "";
-  const key = row.dataset.inst;
-  if (!names.length){
-    const b = det.querySelector(".dmlogbox");
-    if (b) b.innerHTML = `<div class="hint">nothing to read: no container yet</div>`;
-    return;
-  }
-  dmLoading.add(fold);
-  let parts;
-  try{
-    parts = await Promise.all(names.map(async name => {
-      try{
-        const j = await (await postJSON("/api/dockerctl", {action: "logs", container: name, node})).json();
-        return {name, text: j.error ? "" : (j.text || ""), error: j.error || ""};
-      }catch(e){ return {name, text: "", error: String(e)}; }
-    }));
-  }finally{ dmLoading.delete(fold); }
-  det = dmFoldNow(fold);
-  const box = det?.querySelector(".dmlogbox");
-  if (!det || !box) return;
-  box.innerHTML = parts.map(p => `<div class="dmlogsvc">${names.length > 1 ? `<div class="sub">${esc(p.name)}</div>` : ""}${
-      p.error ? `<div class="hint bad">${esc(p.error)}</div>`
-      : p.text.trim() ? `<pre class="dmlog dllog">${esc(p.text)}</pre>`
-      : `<div class="hint">It has printed nothing.</div>`}</div>`).join("")
-    + `<div class="actbar"><span class="state">the last 400 lines${again ? `, read ${new Date().toLocaleTimeString()}` : ""}</span>
-        <label class="ndcap"><input type="checkbox" data-dmfollow="${esc(key)}"${dmFollow[key] ? " checked" : ""}> Follow</label>
-        <button type="button" data-dmlogagain>Read again</button></div>`;
-  // At the end, which is where a log's reason is.
-  box.querySelectorAll("pre").forEach(pre => { pre.scrollTop = pre.scrollHeight; });
-  box.querySelector("[data-dmlogagain]").onclick = () => loadRowLog(det, true);
-  const fl = box.querySelector("[data-dmfollow]");
-  fl.onchange = () => { dmFollow[key] = fl.checked; if (fl.checked) dmFollowTick(det, key); };
-  if (dmFollow[key]) dmFollowTick(det, key);
-}
-function dmFollowTick(det, key){
-  clearTimeout(dmFollow["t:" + key]);
-  dmFollow["t:" + key] = setTimeout(() => {
-    if (!det.isConnected || !det.open || !dmFollow[key]) return;
-    loadRowLog(det, true);
-  }, 4000);
-}
-
 // ...and the handlers those rows need, wired onto whichever element holds
 // them. `list` is the answer the rows were drawn from, for the saved values
 // a pick is compared against.
+// A row's settings dialog shown where its drawing is on show, and only
+// one per row (B852), after every draw and after a draw skipped for having
+// nothing new: a dialog closed while its page was out of sight is shown
+// again when the page comes back. Escape is its Cancel.
+function dmSyncDialogs(el){
+  const onShow = !!el.offsetParent || (el.checkVisibility?.() ?? false);
+  // Out of sight with a dialog waiting (a phone's pane behind another): shown
+  // once the page comes into sight, which no redraw may bring now that one
+  // with nothing new is skipped and the stats write in place.
+  if (!onShow && el.querySelector("dialog.dmsetdlg") && typeof ResizeObserver === "function" && !el.__dmWatch){
+    el.__dmWatch = new ResizeObserver(() => {
+      if (!(el.offsetParent || el.checkVisibility?.())) return;
+      el.__dmWatch.disconnect(); el.__dmWatch = null;
+      dmSyncDialogs(el);
+    });
+    el.__dmWatch.observe(el);
+  }
+  el.querySelectorAll("dialog.dmsetdlg").forEach(dlg => {
+    const twin = [...document.querySelectorAll("dialog.dmsetdlg[open]")]
+      .some(o => o !== dlg && o.dataset.dmdlg === dlg.dataset.dmdlg);
+    if (!onShow || twin){ if (dlg.open) dlg.close(); }
+    else if (!dlg.open) try{
+      dlg.classList.toggle("still", dmWasOpen.has(dlg.dataset.dmdlg));
+      dlg.showModal();
+    }catch(e){ /* detached mid-draw */ }
+    dlg.oncancel = e => {
+      e.preventDefault();
+      dmDropDrafts(dlg.dataset.dmdlg); dmEditing.delete(dlg.dataset.dmdlg); dockerRev++; drawPanes();
+    };
+  });
+}
+
 function dmWireRows(el, list = dockerList){
   // Another project's containers, for an administrator not on it (R274):
   // read, never acted on; the server refuses the same.
@@ -2111,14 +2087,12 @@ function dmWireRows(el, list = dockerList){
       e.preventDefault();
       const willOpen = !d.open;
       slideDetails(d, willOpen);
-      if (willOpen && d.querySelector(":scope > .dmlogbox, .dmlogbox")) loadRowLog(d);
-      else if (willOpen && d.querySelector(".dmimgbox")) loadDockerImages(d);
+      if (willOpen && d.querySelector(".dmimgbox")) loadDockerImages(d);
       else if (willOpen && !d.dataset.done) loadWire(d);
     };
     // A fold left open across a redraw is drawn back as "reading…": its
     // read is started again, unless one is already on its way to it.
-    if (d.open && d.querySelector(".dmlogbox") && /reading…/.test(d.querySelector(".dmlogbox").textContent)) loadRowLog(d);
-    else if (d.open && d.querySelector(".dmimgbox") && /reading…/.test(d.querySelector(".dmimgbox").textContent)) loadDockerImages(d);
+    if (d.open && d.querySelector(".dmimgbox") && /reading…/.test(d.querySelector(".dmimgbox").textContent)) loadDockerImages(d);
     // ...and Ports and mounts (B827): what was read last at once, read again
     // behind it, since the stats and every job step redraw the list.
     else if (d.open && d.querySelector(".wire") && !d.dataset.done){
@@ -2242,7 +2216,15 @@ function dmWireRows(el, list = dockerList){
     }catch(e){ notify(`${what} ${ctr}: ` + e, true); }
     dockerList = null; loadDocker();
   });
-  el.querySelectorAll("[data-logs]").forEach(b => b.onclick = () => dmLogs(b.dataset.logs, list?.node || dockerNode));
+  // A container's log opens in a tab of the dock: streamed from its node
+  // while it runs in an instance (log:ctr:), else read by the controller
+  // every few seconds (log:dm:), stopped, on the controller or nobody's.
+  el.querySelectorAll("[data-dmlog]").forEach(b => b.onclick = () => {
+    const row = b.closest("[data-inst]"), name = b.dataset.dmlog;
+    const [project, instance] = (row?.dataset.inst || "").split("|");
+    openLogTab(row && b.dataset.running === "1" ? `log:ctr:${project}:${instance}:${name}`
+                 : `log:dm:${list?.node || dockerNode || ""}:${name}`, `Log: ${name}`);
+  });
   // Start on boot: the tick is a draft, Apply writes it (R122).
   el.querySelectorAll("[data-dmboot]").forEach(cb => cb.onchange = () => {
     const name = cb.dataset.dmboot, was = cb.dataset.was === "1";
@@ -2256,6 +2238,20 @@ function dmWireRows(el, list = dockerList){
     if (j.error){ notify(j.error, true); return; }
     delete dmBootDraft[name];
     notify(j.out || (on ? `${name} starts on boot` : `${name} no longer starts on boot`));
+  };
+  // Reaches the LAN (R178): the same draft and Apply, an administrator's.
+  el.querySelectorAll("[data-dmlan]").forEach(cb => cb.onchange = () => {
+    const name = cb.dataset.dmlan, was = cb.dataset.was === "1";
+    if (cb.checked === was) delete dmLanDraft[name]; else dmLanDraft[name] = cb.checked;
+    wake(cb.closest(".row"));
+  });
+  const applyLan = async name => {
+    const on = dmLanDraft[name];
+    if (on === undefined) return;
+    const j = await (await postJSON("/api/dockerctl", {action: on ? "lan-on" : "lan-off", container: name, node})).json();
+    if (j.error){ notify(j.error, true); return; }
+    delete dmLanDraft[name];
+    notify(j.out || (on ? `${name} reaches the network around its node` : `${name} no longer reaches the network around its node`));
   };
   // Which project a row belongs to: staged on the pick, written by Apply.
   const ownSaved = key => (key.startsWith("ctr:")
@@ -2346,17 +2342,7 @@ function dmWireRows(el, list = dockerList){
   // Docker view draws the same rows in a page out of sight, and its dialog,
   // shown modal on top, left the one on screen inert, every keystroke typed
   // into it going nowhere (B852).
-  const onShow = !!el.offsetParent || (el.checkVisibility?.() ?? false);
-  el.querySelectorAll("dialog.dmsetdlg").forEach(dlg => {
-    const twin = [...document.querySelectorAll("dialog.dmsetdlg[open]")]
-      .some(o => o !== dlg && o.dataset.dmdlg === dlg.dataset.dmdlg);
-    if (!onShow || twin){ if (dlg.open) dlg.close(); }
-    else if (!dlg.open) try{ dlg.showModal(); }catch(e){ /* detached mid-draw */ }
-    dlg.oncancel = e => {
-      e.preventDefault();
-      dmDropDrafts(dlg.dataset.dmdlg); dmEditing.delete(dlg.dataset.dmdlg); dockerRev++; drawPanes();
-    };
-  });
+  dmSyncDialogs(el);
   el.querySelectorAll("[data-dmedit]").forEach(b => b.onclick = () => {
     closeMore(); dmEditing.add(b.dataset.dmedit); dockerRev++; drawPanes();
   });
@@ -2372,7 +2358,7 @@ function dmWireRows(el, list = dockerList){
     try{
       await applyOwner(key);
       if (inst){ await applyMove(inst); await applyRef(inst); await applyOverride(inst); if (row?.dataset.inst) await applyRoute(row); }
-      if (name) await applyBoot(name);
+      if (name){ await applyBoot(name); await applyLan(name); }
     }catch(e){ notify("apply: " + failWords(e), true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
     dockerList = null; dockerRev++; loadDocker();
@@ -2478,6 +2464,18 @@ function dmBootLine(name, on){
       data-was="${on ? "1" : ""}"${want ? " checked" : ""}> Start on boot</label><!--APPLY--></div></div>`;
 }
 
+// Reaches the LAN (R178): each project's containers are kept off the
+// private ranges, which a container that talks to a machine on the network
+// (a controller to its nodes, an app to a device) cannot work behind. An
+// administrator lets one through; what no role gives is not drawn.
+let dmLanDraft = {};
+function dmLanLine(name, on){
+  if (!state?.can?.admin) return "";
+  const want = name in dmLanDraft ? dmLanDraft[name] : on;
+  return `<div class="setcell dmlan">${lbl("", "Network", "")}<div class="ctl"><label class="ndcap"><input type="checkbox" data-dmlan="${esc(name)}"
+      data-was="${on ? "1" : ""}"${want ? " checked" : ""}> Reaches the LAN</label></div></div>`;
+}
+
 function dmOtherRowsHtml(cs){
   return cs.map(c => dmOtherWrap(c, `
       <div class="grow">
@@ -2497,9 +2495,9 @@ function dmOtherRowsHtml(cs){
         <button type="button" data-ctl="restart" data-ctr="${esc(c.name || c.id)}"${
           c.state === "running" ? "" : " disabled"}
           title="Restart it: docker restart ${esc(c.name || c.id)}">Restart</button>`}
-        ${!mayDocker() ? "" : `<button type="button" data-logs="${esc(c.name || c.id)}"
-          title="the last ${esc(String(400))} lines it printed">Log</button>`}
-        ${actMore([dmEditBtn("ctr:" + (c.name || c.id))])}
+        ${actMore([dmEditBtn("ctr:" + (c.name || c.id)),
+          mayDocker() ? `<button type="button" data-dmlog="${esc(c.name || c.id)}" data-running="0"
+            title="what it prints, in a tab of the dock, read again as it goes on">Log</button>` : ""])}
         </div>
         </div>
         ${dmSetPills([["Project", c.owner ? esc(c.owner === "System" ? "System" : projLabel(c.owner)) : "none"],
@@ -2507,7 +2505,8 @@ function dmOtherRowsHtml(cs){
                         ["Claude", dmClaudeSaid(c, true)]])}
         ${dmEditing.has("ctr:" + (c.name || c.id)) || dmRowDirty("ctr:" + (c.name || c.id))
           ? dmSetDialog(c.name || c.id, "ctr:" + (c.name || c.id),
-                        [dmOwnerLine(c, "ctr:" + (c.name || c.id)), dmBootLine(c.name || c.id, !!c.boot)]) : ""}
+                        [dmOwnerLine(c, "ctr:" + (c.name || c.id)), dmBootLine(c.name || c.id, !!c.boot),
+                         dmLanLine(c.name || c.id, !!c.lan)]) : ""}
       </div>`)).join("");
 }
 // A container BuilderBot did not start is a line in list view too, with
@@ -2542,10 +2541,6 @@ function dmImage(img){
 // registry images against what their registries serve now (R195), not while
 // the daemon is blind; and New container, the page's main action, where a
 // phone finds it without scrolling past every container (R119 step 5).
-// Cards and List as their pictures on a phone, so the bar is one line there
-// (the operator, 18 Oct): four tiles, and lines.
-const DM_ICON_CARDS = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>`;
-const DM_ICON_LIST = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>`;
 function dmBar(b){
   const ghost = !b, dead = ghost ? " disabled" : "";
   return `<div class="field docbarrow dmpick">${
@@ -2559,9 +2554,7 @@ function dmBar(b){
 // Cards or a list, this browser's choice: the page's and a notebook's
 // Docker view's, which keep the one choice between them.
 function dmViewSeg(dead = ""){
-  return `<div class="pseg dmviewseg" role="group" aria-label="cards or a list">
-        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" aria-pressed="${dmView === "cards"}" title="each container as a card" aria-label="Cards"${dead}><span class="lng">Cards</span><span class="shrt">${DM_ICON_CARDS}</span></button>
-        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" aria-pressed="${dmView === "list"}" title="one line per container, opening into its card" aria-label="List"${dead}><span class="lng">List</span><span class="shrt">${DM_ICON_LIST}</span></button></div>`;
+  return viewSeg("dmview", dmView, "each container as a card", "one line per container, opening into its card", dead);
 }
 // The press on it, then `redraw`; kept for the next open.
 function dmViewWire(el, redraw){
@@ -2604,19 +2597,28 @@ function dmImagesSection(){
   return state?.can?.admin ? docSection("docker", "images", "Images and volumes", "",
     `<div class="dmimgbox">${skel("rows", 3, "reading…")}</div>`, {open: false, fold: true}) : "";
 }
-// ...and the status line under them: when the images were checked.
+// ...and the page's head under them: when the images were checked.
 function dmStatus(d){
   if (!mayDocker()) return "";
   // Image updates switched off on this install (R81): its sentence where
   // the line says when they were checked.
   if (featureOff("image-updates")) return `<div class="field">${deadWhy(featureOff("image-updates"))}</div>`;
   const host = dmHostOnly();
-  return headLine((!d ? `images checked ${skv(4)}` : d.images_at ? `images checked ${esc(ago(d.images_at))}` : "images not checked yet")
-    // ...and, once, why its containers have no Shell.
-    + (host && mayShell() ? ` · ${esc(host.name)} hosts containers only, so a shell in one opens from a node that runs sessions` : ""),
-    "", "dmimgbar");
+  // A head's facts (the operator, 25 Oct: no loose words at a page's top):
+  // when its images were checked, and where a node only hosts containers,
+  // where a shell in one opens.
+  return pageHead({cls: "dmimgbar", facts: [
+    ["Images checked", !d ? GHOST : d.images_at ? ago(d.images_at) : "not yet"],
+    ["Shells", host && mayShell() ? `from a node that runs sessions: ${host.name} hosts containers only` : ""]]});
 }
 
+// The rows' settings dialogs open before a redraw, by key: shown again after
+// it without their opening animation (the operator, 26 Oct: each redraw
+// played it again, a flicker under the pointer).
+let dmWasOpen = new Set();
+function dmNoteOpen(el){
+  dmWasOpen = new Set([...(el?.querySelectorAll("dialog.dmsetdlg[open]") || [])].map(d => d.dataset.dmdlg));
+}
 function renderDockerInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -2635,6 +2637,7 @@ function renderDockerInto(i){
     // builders given nothing (the operator, 18 Oct: a template written
     // beside the page fell behind it): the bar, the tiles, the status line,
     // then the rows.
+    el.__dmHtml = "";
     el.innerHTML = `<div class="doctab dmtab">${skTpl(`${dmBar(null)}${dmTiles(null)}${dmStatus(null)}
       ${dmView === "list" ? skTable(DM_COLS, 4)
         // ...the rows in a project group's card, as they land (R262).
@@ -2759,8 +2762,10 @@ function renderDockerInto(i){
   const notOurs = allCs.filter(c => !c.ours).length;
   const tiles = blind || !(allIns.length || allCs.length) ? "" : dmTiles({running, all: allIns.length, behind,
     checked: !!dockerList?.images_at, projects: chips.filter(g => g.key !== "none").length, notOurs});
-  el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${tiles}${status}${
-    chipBar(chips, dmChip, "data-dmchip")}${askRows}${note
+  const html = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${tiles}${
+    // The page's own boxes under the tiles and the chips, never between
+    // them (the operator, 26 Oct): what every page has comes first.
+    chipBar(chips, dmChip, "data-dmchip")}${status}${askRows}${note
       ? `<div class="field"><div class="notice warn dmnote">${esc(note)}</div></div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the
     // daemon, and "nothing on this daemon yet" would be a claim about a
@@ -2778,6 +2783,13 @@ function renderDockerInto(i){
     // nothing a container uses. Blind, there is no daemon to list.
     blind ? "" : dmImagesSection()}
     </div>`;
+  // Written only when it says something new (the operator, 26 Oct: the page
+  // was written again on every read, its open folds read again, the pointer's
+  // place lost): a read that brings the same list leaves the page alone.
+  if (el.__dmHtml === html && el.querySelector(":scope > .dmtab")){ dmSyncDialogs(el); return; }
+  dmNoteOpen(el);
+  el.innerHTML = html;
+  el.__dmHtml = html;
   gateDocker(el, off);
   // The asks answer through the phone's endpoint, which holds the one list of
   // them; phFetch redraws this tab when the answer comes back.

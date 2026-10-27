@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# gh-fetch OWNER/REPO TAG|latest ASSET-PATTERN DEST
+#
+# One file of a GitHub release, held to the digest GitHub states for it
+# before it is kept (B335, as R137 holds every toolchain download): the
+# release asked of GitHub's API, the asset whose name matches the pattern
+# (a shell glob, any case), its browser download fetched, and its sha256
+# compared with the asset's digest. A release that states no digest, an
+# asset that does not match or a download that differs is refused, and
+# DEST is left as it was. Prints the release's tag on success.
+#
+# Used where the image and the bare-metal installer fetch their own tools
+# (the Dockerfile and nodes/install-controller.sh), which run before the
+# dashboard and its sdkmeta.py are in place: bash, curl, sha256sum and
+# python3 alone.
+set -euo pipefail
+
+repo="${1:?OWNER/REPO}" tag="${2:?TAG or latest}" pattern="${3:?an asset name pattern}" dest="${4:?where to keep it}"
+case "$repo" in */*) ;; *) echo "gh-fetch: ${repo} is not OWNER/REPO" >&2; exit 2 ;; esac
+
+# GH_FETCH_API stands in for GitHub's API in the tests alone.
+api="${GH_FETCH_API:-https://api.github.com/repos}/${repo}/releases/"
+if [ "$tag" = latest ]; then api+="latest"; else api+="tags/${tag}"; fi
+
+# A token where one is given (the image build's secret, or GITHUB_TOKEN):
+# the API allows 60 anonymous calls an hour per address, and CI's shared
+# addresses have usually spent them.
+auth=()
+tok="${GITHUB_TOKEN:-}"
+[ -n "$tok" ] || { [ -r /run/secrets/gh_token ] && tok="$(cat /run/secrets/gh_token)"; } || true
+[ -z "$tok" ] || auth=(-H "Authorization: Bearer ${tok}")
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+curl -fsSL --retry 3 "${auth[@]}" -H "Accept: application/vnd.github+json" -o "$tmp/release.json" "$api" \
+    || { echo "gh-fetch: could not read ${repo}'s release ${tag} from GitHub" >&2; exit 1; }
+
+# name, digest and download address of the one asset the pattern matches.
+read -r name digest url < <(python3 - "$tmp/release.json" "$pattern" <<'PY'
+import fnmatch, json, sys
+rel = json.load(open(sys.argv[1]))
+hits = [a for a in rel.get("assets") or [] if fnmatch.fnmatch(str(a.get("name", "")).lower(), sys.argv[2].lower())]
+if len(hits) != 1:
+    sys.exit(f"gh-fetch: {len(hits)} assets of {rel.get('tag_name', '?')} match {sys.argv[2]}: "
+             + ", ".join(a.get("name", "") for a in hits[:5]))
+a = hits[0]
+print(a["name"], str(a.get("digest") or "none"), a["browser_download_url"])
+PY
+) || exit 1
+
+case "$digest" in
+    sha256:*) want="${digest#sha256:}" ;;
+    *) echo "gh-fetch: GitHub states no digest for ${name} in ${repo} ${tag}, so it is not kept" >&2; exit 1 ;;
+esac
+curl -fsSL --retry 3 -o "$tmp/asset" "$url" || { echo "gh-fetch: could not download ${url}" >&2; exit 1; }
+got="$(sha256sum "$tmp/asset" | cut -d' ' -f1)"
+if [ "$got" != "$want" ]; then
+    echo "gh-fetch: ${name} is not what GitHub says it is (sha256 ${got}, expected ${want}): not kept" >&2
+    exit 1
+fi
+mv -f "$tmp/asset" "$dest"
+python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("tag_name", ""))' "$tmp/release.json"

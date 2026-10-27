@@ -12,9 +12,16 @@ one's notebook or containers, and a rename is the shown name alone.
 
 projects.json: {"next": N, "projects": {dir: {"id", "name", "state", "at",
 "moved"}}}, state being live, trashed or purged, and moved when it last
-changed (the trash's "deleted 2 min ago"). Only BuilderBot makes a project: a
-folder made by hand on the share is not one. On the first run every folder
-already there is recorded, which is the whole migration.
+changed (the trash's "deleted 2 min ago"). A project (R138, repos.py) is a
+record of its own in state `repos`: a key shaped like a directory and counted
+as one, so no folder ever takes it, though none is on disk; its id and name
+are the project's, and every repository is in one, keeping its own record,
+folder and name. A project's name is a title (spaces and punctuation kept,
+title()); a repository's is GitHub's (clean_name). Each is unique among its
+own kind, so a project and its repository may share one. Only BuilderBot
+makes a repository: a folder made by hand on the share is not one. On the
+first run every folder already there is recorded, which is the whole
+migration.
 """
 import json
 import re
@@ -26,7 +33,10 @@ FILE = None
 WORKSPACE = None
 write_json = None
 TRASH = ".trash"
-STATES = ("live", "trashed", "purged")
+STATES = ("live", "trashed", "purged", "repos")
+# The states a name is taken in: a live project's, and a project of
+# repositories'.
+NAMED = ("live", "repos")
 # GitHub's for a repository's name (the operator, 9 Oct): a project is one,
 # or becomes one, and a name GitHub would refuse or rewrite is not one to show.
 NAME_MAX = 100
@@ -115,10 +125,12 @@ def sync():
                 _add(d, name, re.sub(r"-\d+$", "", name), "trashed")["legacy"] = True
         # A name stored before GitHub's rules held here ("Turing Lens", or a
         # clash numbered "Name (2)") is brought to them once, as it would have
-        # been given: numbered if another live project already has it.
+        # been given: numbered if another live project already has it. A
+        # repository's name alone: a project's keeps its spaces and
+        # punctuation (R138).
         for name, r in ps.items():
             was = str(r.get("name") or "")
-            if was and clean_name(was) != was:
+            if was and r.get("state") != "repos" and not r.get("project") and clean_name(was) != was:
                 r["name"] = clean_name(was) or name
                 if r.get("state") == "live":
                     r["name"] = unique_name(r["name"], but=name)
@@ -181,13 +193,75 @@ def clean_name(raw):
     return "" if s in (".", "..") else s
 
 
-def live_named(name, but=None):
-    """The live project's directory shown under `name` (any case), or ""."""
-    low = clean_name(name).lower()
+def title(raw):
+    """A project's name (R138, the operator, 25 Oct): what was typed, spaces
+    and punctuation kept, each run of whitespace one space, no control
+    character, at most NAME_MAX."""
+    s = " ".join("".join(ch for ch in str(raw or "") if ch.isprintable()).split())
+    return s[:NAME_MAX].strip()
+
+
+def live_named(name, but=None, kind=None):
+    """The live repository's directory, or the project's key, shown under
+    `name` (any case), or "". `kind` "live" or "repos" asks one kind alone;
+    with neither, a repository first: a project and its repository commonly
+    share a name, and what a name is asked for by (a session's bb -p NAME, a
+    notebook) is a repository's."""
+    want = str(name or "").strip().lower()
+    want_live = clean_name(name).lower()
+    found = ""
     for k, r in _load()["projects"].items():
-        if k != but and r.get("state") == "live" and str(r.get("name") or k).lower() == low:
+        st = r.get("state")
+        if k == but or st not in NAMED or (kind and st != kind):
+            continue
+        shown = str(r.get("name") or k).lower()
+        if st == "live" and shown == want_live:
             return k
-    return ""
+        if st == "repos" and shown == want:
+            found = found or k
+    return found
+
+
+def is_repos(key):
+    """Whether this key is a project's (R138), as against a repository's."""
+    r = _load()["projects"].get(str(key or ""))
+    return bool(r) and r.get("state") == "repos"
+
+
+def repos_keys():
+    """Every project's key."""
+    return sorted(k for k, r in _load()["projects"].items() if r.get("state") == "repos")
+
+
+def claim_repos(name):
+    """A new project (R138): its key, a directory nothing has had, made from
+    its name, and its record under the name, refused where another project
+    has it. The record with its key, or {error}."""
+    with _lock:
+        d = _load()
+        shown = title(name)
+        if not shown or not any(ch.isalnum() for ch in shown):
+            return {"error": "a project's name needs at least one letter or digit in it"}
+        if live_named(shown, kind="repos"):
+            return {"error": f"{shown} is already a project's name"}
+        key = new_dir(clean_name(shown) or "project")
+        r = _add(d, key, shown, "repos")
+        _save(d)
+        return dict(r, key=key)
+
+
+def drop_repos(key):
+    """A project deleted (R138, only with no repository left in it): purged,
+    so its key and id are never handed out again, as a deleted
+    repository's are."""
+    with _lock:
+        d = _load()
+        r = d["projects"].get(key)
+        if r is not None and r.get("state") == "repos":
+            r["state"] = "purged"
+            r["project"] = True             # a project's, its name kept as typed
+            r["moved"] = int(time.time())
+            _save(d)
 
 
 def unique_name(name, but=None):
@@ -196,7 +270,7 @@ def unique_name(name, but=None):
     apart (the operator, 8 Oct), and a name GitHub would take as it is."""
     name = clean_name(name)
     cand, n = name, 2
-    while live_named(cand, but=but):
+    while live_named(cand, but=but, kind="live"):
         sfx = f"-{n}"
         cand = name[:NAME_MAX - len(sfx)] + sfx
         n += 1
@@ -256,27 +330,46 @@ def forget(dirname):
 
 
 def live_dirs():
-    """Every live project's directory."""
+    """Every live repository's directory."""
     return sorted(k for k, r in _load()["projects"].items() if r.get("state") == "live")
 
 
 def set_name(dirname, name):
-    """A rename: the shown name alone. {ok} or {error}."""
-    name = clean_name(name)
-    if not name:
-        return {"error": "a name needs at least one letter or digit in it"}
+    """A rename: the shown name alone, a repository's by GitHub's rules and a
+    project's a title, unique among its own kind. {ok} or {error}."""
     with _lock:
         d = _load()
         r = d["projects"].get(dirname)
-        if r is None or r.get("state") != "live":
+        if r is None or r.get("state") not in NAMED:
             return {"error": f"{dirname} is not a project"}
-        other = live_named(name, but=dirname)
+        kind = r.get("state")
+        name = title(name) if kind == "repos" else clean_name(name)
+        if not name or not any(ch.isalnum() for ch in name):
+            return {"error": "a name needs at least one letter or digit in it"}
+        other = live_named(name, but=dirname, kind=kind)
         if other:
-            return {"error": f"{name} is already a project's name"}
+            return {"error": f"{name} is already a {'project' if kind == 'repos' else 'repository'}'s name"}
         was = str(r.get("name") or dirname)
         r["name"] = name
         _save(d)
         return {"ok": True, "dir": dirname, "name": name, "was": was}
+
+
+def note_project(dirname, key):
+    """The project a repository last belonged to, kept on its record as it
+    goes to the trash (R138): what the trash says it belonged to, and where
+    a restore puts it back."""
+    with _lock:
+        d = _load()
+        r = d["projects"].get(str(dirname or ""))
+        if r is not None:
+            r["project"] = str(key or "")
+            _save(d)
+
+
+def last_project(dirname):
+    """The project this repository belonged to when it went to the trash."""
+    return str((_load()["projects"].get(str(dirname or "")) or {}).get("project") or "")
 
 
 def mark(dirname, state):
@@ -296,21 +389,21 @@ def mark(dirname, state):
 
 
 def resolve(word):
-    """A live project's directory from what somebody typed: the directory
-    itself, its id (P3), else a shown name that is one project's. "" when
-    none of them."""
+    """A live project's directory, or a project of repositories' key (R136),
+    from what somebody typed: the directory or key itself, its id (P3), else
+    a shown name that is one project's. "" when none of them."""
     word = str(word or "").strip()
     if not word:
         return ""
     ps = _load()["projects"]
     r = ps.get(word)
-    if r is not None and r.get("state") == "live":
+    if r is not None and r.get("state") in NAMED:
         return word
     # Its id, as the page and a session's name write it (P3).
     if re.fullmatch(r"[Pp]\d+", word):
         n = int(word[1:])
         for k, r in ps.items():
-            if r.get("state") == "live" and r.get("id") == n:
+            if r.get("state") in NAMED and r.get("id") == n:
                 return k
         return ""
     return live_named(word)

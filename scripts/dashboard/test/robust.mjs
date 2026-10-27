@@ -188,7 +188,7 @@ await page.reload({ waitUntil: 'domcontentloaded' });
 // pane's placeholder is shapes, and no placeholder on show is a line of words.
 const waiting = await page.evaluate(() => {
   const shown = [...document.querySelectorAll('main .loading')].filter(e => e.getClientRects().length);
-  return { shapes: document.querySelectorAll('#pane0 .skel .sk-b').length,
+  return { shapes: document.querySelectorAll('#pane0 .skel :is(.sk-b, .skv), #pane0 .skpcard .skv').length,
            words: shown.filter(e => !e.classList.contains('skel')).map(e => e.textContent.trim().slice(0, 30)),
            said: document.querySelector('#pane0 .skel .sk-said')?.textContent || '' };
 });

@@ -76,9 +76,11 @@ def of(project):
                      "who": (names.get(uid) or uid) if uid else owner,
                      "kind": kind,
                      "agent": (agents.get(kind).name if agents.get(kind) else ""),
+                     # Which of the person's sessions of that agent (R143).
+                     "slot": agents.slot_of(BASE(s["name"])) if kind != "shell" else 0,
                      "state": (s.get("claude") or {}).get("state", ""),
                      "attached": bool(s.get("attached"))})
-    rows.sort(key=lambda r: (r["who"], r["kind"] == "shell", r["name"]))
+    rows.sort(key=lambda r: (r["who"], r["kind"] == "shell", r["kind"], r["slot"], r["name"]))
     return rows
 
 
@@ -158,10 +160,11 @@ def asking(sessions):
 
 
 def where(sessions):
-    """{project: [{who, node, working}, ...]}: every Claude session running,
-    one row per account per node, so a project row can say which machine
-    each is on and whether it is working there (the operator, 30 Sep). An
-    account with a session on two nodes is two rows."""
+    """{project: [{who, node, agent, slot, working, asking, behind}, ...]}:
+    every agent session running, one row per account per agent per slot per
+    node, so a project row can say which machine each is on and whether it
+    is working there (the operator, 30 Sep). An account with a session on
+    two nodes is two rows, and with two of one agent's slots too (R143)."""
     by_uid = ACCOUNTS()
     owner = OWNER_NAME()
     out = {}
@@ -173,7 +176,7 @@ def where(sessions):
         if who:
             out.setdefault(stem, []).append({
                 "who": who, "node": str(s.get("node") or ""),
-                "agent": agent.id,
+                "agent": agent.id, "slot": agents.slot_of(BASE(s["name"])),
                 "working": (s.get("claude") or {}).get("state") == "working",
                 "asking": (s.get("claude") or {}).get("state") == "asking",
                 # What changed since it started that it will not see until
@@ -218,10 +221,10 @@ def live_token():
 # a restart, when the title stands in until the next one.
 TASK_MAX = 120
 SKEW = 120
-_asked = {}           # (uid, agent, tmux name of the project) -> (when, first line)
+_asked = {}           # (uid, agent, tmux name of the project, slot) -> (when, first line)
 
 
-def asked(uid, project, text, now=None, agent="claude"):
+def asked(uid, project, text, now=None, agent="claude", slot=1):
     """Note what a session was just asked: the first line of what the person
     typed, trimmed. A turn that was all machinery (text "") changes nothing."""
     line = next((x.strip() for x in str(text or "").splitlines() if x.strip()), "")
@@ -231,14 +234,15 @@ def asked(uid, project, text, now=None, agent="claude"):
         line = line[:TASK_MAX - 1].rstrip() + "…"
     # Per agent (R95 step 19): one person's Claude and Codex sessions on a
     # project are two rows, each with its own task.
-    _asked[(uid, agent or "claude", tmux_name(project))] = (time.time() if now is None else now, line)
+    # ...and per slot (R143): a person's two Claude sessions there, two.
+    _asked[(uid, agent or "claude", tmux_name(project), int(slot or 1))] = (time.time() if now is None else now, line)
 
 
-def latest_task(uid, stem, created=0, agent="claude"):
+def latest_task(uid, stem, created=0, agent="claude", slot=1):
     """What the session `<agent>-<stem>` of `uid` was last asked, or "" when
     nothing has been heard since it began (a prompt to an earlier session of
     the same name is not this one's)."""
-    got = _asked.get((uid, agent or "claude", stem))
+    got = _asked.get((uid, agent or "claude", stem, int(slot or 1)))
     # `created` is the node's clock and the note this one's: a little slack,
     # so a node running ahead does not lose a session's first prompt.
     if not got or (created and got[0] < created - SKEW):

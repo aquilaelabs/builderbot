@@ -4,7 +4,7 @@
 // clone path is tested up to its URL allow-list: the list is the thing under
 // test, and a real clone would need GitHub on the other end.
 import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring, tmuxNew, tmuxKill,
-         refreshUntil, unfold } from './lib.mjs';
+         refreshUntil, unfold, projectKey, holdPoll, freePoll } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, chmodSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -13,11 +13,15 @@ import { dirname, join } from 'node:path';
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 
-// New project is on the Projects page (R218 step 3): opened, then pressed.
+// The create dialog, as first run and Getting started open it: a project
+// made around the repository it makes (R138). The Projects page's own New
+// project asks for a name alone, and a card's Add repository opens this
+// dialog into that project; both are checked under "projects first".
 const newProject = async () => {
-  await page.evaluate(() => openProjectsTab());
-  await page.waitForSelector('#bNewProjTab', { timeout: 15000 });
-  await page.click('#bNewProjTab');
+  // The pointer leaves the last Create, where its toast came up and is held
+  // while hovered, as a person's hand moves on to the next thing.
+  await page.mouse.move(5, 5);
+  await page.evaluate(() => { openProjectsTab(); openNewProject(); });
 };await page.goto(URL);
 await ready(page);
 
@@ -64,7 +68,56 @@ const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => 
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('#bNewProjTab', { timeout: 15000 });
 ok(await page.$eval('#bNewProjTab', b => b.textContent.includes('New project')),
-   'New project sits at the foot of the Projects card');
+   'New project sits in the Projects page\'s bar');
+
+// ---- projects first (R138) -------------------------------------------
+// New project asks for a name alone, spaces and punctuation kept, and makes
+// a project with nothing in it; its card's Add repository opens the dialog
+// into it, without the node and the dials, which are the project's.
+{
+  // The harness answers the page's questions (lib.mjs): this one with the
+  // name typed, its title kept to check.
+  let asked = null;
+  page.answers.push(q => { asked = q; return { index: 0, text: 'Web shop, v2' }; });
+  await page.click('#bNewProjTab');
+  await page.waitForFunction(() => Object.values(state?.repos || {}).some(r => r.name === 'Web shop, v2'), null, { timeout: 15000 });
+  ok(asked?.title === 'New project' && JSON.stringify(asked?.choices) === '["Create"]',
+     `New project asks for a name alone (${JSON.stringify(asked)})`);
+  const key = await page.evaluate(() => Object.entries(state.repos).find(([, r]) => r.name === 'Web shop, v2')[0]);
+  const card = `.pgrid .pcard[data-pkey="${key}"]`;
+  await page.waitForSelector(card, { timeout: 15000 });
+  // The page goes to it, and it wears a ring in the accent that fades
+  // (the operator, 26 Oct).
+  await page.waitForSelector(`${card}.pjnew`, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(800);
+  const fresh = await page.$eval(card, c => { const r = c.getBoundingClientRect(), d = c.closest('.doc').getBoundingClientRect();
+    return { ring: c.classList.contains('pjnew'), seen: r.top >= d.top - 1 && r.bottom <= d.bottom + 1 }; });
+  ok(fresh.ring && fresh.seen, `a new project's card is scrolled into sight and wears the new ring (${JSON.stringify(fresh)})`);
+  await page.waitForFunction(c => !document.querySelector(c).classList.contains('pjnew'), card, { timeout: 5000 }).catch(() => {});
+  ok(!await page.$eval(card, c => c.classList.contains('pjnew')), '...which goes after a moment');
+  ok(await page.$eval(card, c => /no repository yet/.test(c.querySelector('.pcfront').textContent) && !c.querySelector('.pcfront [data-c]')),
+     '...a card with no repository in it says so, and has no agent to start');
+  await page.click(`${card} .pcfront [data-repadd]`);
+  await page.waitForSelector('#pmodal:not([hidden])', { timeout: 5000 });
+  const into = await page.evaluate(() => ({ title: $('pTitle').textContent, node: $('pNodeField').hidden, gate: $('pGateField').hidden }));
+  ok(into.title === 'Add a repository to Web shop, v2' && into.node && into.gate,
+     `Add repository opens the dialog into the project, its node and dials left to the project (${JSON.stringify(into)})`);
+  await page.fill('#pName', 'webshop');
+  await page.click('#pCreate');
+  await page.waitForFunction(k => JSON.stringify(state?.repos?.[k]?.members) === '["webshop"]', key, { timeout: 15000 });
+  ok(await page.$eval(card, c => [...c.querySelectorAll('.pcfront .pcrepo > .namelink')].map(b => b.textContent.trim()).join() === 'webshop'),
+     '...and the repository made is on the project\'s card');
+  // A project with something in it offers no Delete project; empty, it does.
+  await page.evaluate(k => postJSON('/api/trash', { name: 'webshop' }).then(() => refresh()), key);
+  await page.waitForFunction(k => !state?.repos?.[k]?.members.length, key, { timeout: 15000 });
+  await page.click(`${card} .pcfront [data-pedit]`);
+  await page.waitForSelector(`${card}.flipped .pcback [data-pdel]`, { timeout: 5000 });
+  await page.click(`${card} .pcback [data-pdel]`);            // its question answered Delete by the harness
+  await page.waitForFunction(k => !state?.repos?.[k], key, { timeout: 15000 });
+  ok(true, 'an empty project is deleted from its card\'s back');
+  await page.evaluate(() => postJSON('/api/trash-purge', { name: 'webshop', confirm: 'webshop' }));
+}
+
 await newProject();
 ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
 // The four gates are on the dialog (R78): what a session may enter into
@@ -92,7 +145,12 @@ const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    '...with the cursor in none of its fields');
 ok(await page.$eval('#pUrlField', el => el.hidden), 'local repo is the default; no URL field');
+const boxH = sel => page.$eval(sel, b => Math.round(b.getBoundingClientRect().height));
+await page.waitForTimeout(500);              // the dialog's own opening scale
+const localH = await boxH('#pmodal .box');
 const cloneSlide = await animatedDuring(page, () => page.click('#pClone'));
+await page.waitForTimeout(300);
+ok(Math.abs(await boxH('#pmodal .box') - localH) <= 1, `the dialog keeps its size from a new repository to a clone (${localH} then ${await boxH('#pmodal .box')})`);
 ok(await page.$eval('#pUrlField', el => !el.hidden)
    && await page.$eval('#pClone', b => b.classList.contains('on')),
    'clone mode shows the URL field and takes the green');
@@ -143,10 +201,14 @@ ok(await page.$eval('#pNamePreview', el => el.hidden),
      '...and a name whose folder a deleted project had says it is shown as itself in the folder Name-2');
   // ...while a folder a live project is in says which, not that a deleted
   // project had it (B93).
+  // The poll held: one landing between the plant and the typing put the
+  // server's projects back, and the preview found no live one.
+  await holdPoll(page);
   await page.evaluate(() => { state.projects.push({ name: 'held-2', label: 'held' }); pTakenDirs.add('held-2'); });
   await page.fill('#pName', 'held-2');
   const heldSaid = await page.$eval('#pNamePreview', el => el.hidden ? '' : el.textContent);
   await page.evaluate(() => { state.projects = state.projects.filter(p => p.name !== 'held-2'); pTakenDirs.delete('held-2'); });
+  await freePoll(page);
   ok(/in the folder held-2-2: held is in the folder held-2/.test(heldSaid) && !/deleted/.test(heldSaid),
      `...and a live project's folder is named as that project's, not a deleted one's (${heldSaid})`);
   await page.fill('#pName', 'plain');
@@ -222,7 +284,7 @@ ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
 await page.evaluate(() => { setProjectPinned('beta', false); openProjectsTab(); });
 // The page shows every project, pinned or not; the card's menu says which.
 await page.waitForFunction(
-  () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-p]')?.textContent.trim() === 'Pin', { timeout: 15000 });
+  () => document.querySelector('.pgrid .pcard[data-row="beta"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false', { timeout: 15000 });
 await newProject();           // zeta's create closed the dialog
 await page.waitForSelector('#pmodal:not([hidden])');
 await page.fill('#pName', 'pinme');
@@ -233,7 +295,7 @@ ok(!Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, '
    'a project created while a pins file exists is on the Projects page and pinned for nobody');
 await page.evaluate(() => setProjectPinned('pinme', true));
 await page.waitForFunction(
-  () => document.querySelector('.pgrid .pcard[data-row="pinme"] [data-p]')?.textContent.trim() === 'Unpin', { timeout: 15000 });
+  () => document.querySelector('.pgrid .pcard[data-row="pinme"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true', { timeout: 15000 });
 
 // ---- starting a local repo from an archive -------------------------------
 // A code base somebody already has, dropped into a fresh repo: unpacked
@@ -408,15 +470,17 @@ ok(rn.status === 200 && rn.body.name === 'pinme' && rn.body.label === 'Pinned-Ag
    `renaming answers with the directory and the name it is shown under now, spelled as GitHub would (${JSON.stringify(rn.body).slice(0, 120)})`);
 ok(existsSync(`${DIR}/ws/pinme/.git`) && !existsSync(`${DIR}/ws/Pinned Again`),
    '...the directory did not move');
-ok(Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('pinme'),
-   '...so what is keyed by it is still its own');
+// Its pin is its project's (R138), kept by the project's key.
+const pinmeKey = await page.evaluate(() => state.projects.find(p => p.name === 'pinme')?.project);
+ok(Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes(pinmeKey),
+   `...so what is keyed by it is still its own (${pinmeKey})`);
 await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
   .some(n => n.textContent.startsWith('Pinned-Again')), { timeout: 15000 });
 ok(true, '...and the row is shown under the new name');
 // The refusals: another project's name (any case), a project that is not
 // there, the name it already has, and one with nothing in it.
 const onto = await postJson({ name: 'pinme', to: 'ALPHA' }, '/api/rename');
-ok(onto.status === 400 && /already a project's name/.test(onto.body.error || ''),
+ok(onto.status === 400 && /already a repository's name/.test(onto.body.error || ''),
    `renaming onto a name another project is shown under is refused (${onto.body.error})`);
 ok(await post({ name: 'nosuchproject', to: 'whatever' }, '/api/rename') === 400,
    'renaming something that is not a project is refused');
@@ -473,7 +537,10 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
   // the page's copy is a status poll away, and on a loaded box, with every
   // project's git to walk, the polls ran past the wait.
   const docked = await postJson({ name: 'Docked App', mode: 'init', devbuild: 'ask' });
-  const dockedPrefs = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects?.['Docked-App'] || {};
+  // A dial is the project's (R138): read on the key of the project it was made in.
+  const dockedKey = Object.entries(JSON.parse(readFileSync(`${DIR}/state/project-repos.json`, 'utf8')).projects || {})
+    .find(([, r]) => (r.members || []).includes('Docked-App'))?.[0];
+  const dockedPrefs = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects?.[dockedKey] || {};
   ok(docked.status === 200 && dockedPrefs.devbuild === 'ask',
      `a project is created with Run its container set, and carries it (${docked.status}, ${dockedPrefs.devbuild}${docked.body.note ? '; ' + docked.body.note : ''})`);
   // ...and the signing and reporting dials, when one differs from the
@@ -740,7 +807,7 @@ ok(tj.line === 'https://oauth2:ghp_ExampleTokenValue123@github.com',
    'a token is stored in git\'s own credential-store format');
 ok(tj.mode === '0o600' && tj.dirmode === '0o700',
    '...readable only by the user that runs git, in a directory to match');
-ok(tj.helper.startsWith('store --file=') && tj.helper.endsWith('/gitcreds/alpha'),
+ok(/git-credential-bb/.test(tj.helper) && tj.helper.endsWith('/gitcreds/alpha'),
    '...and the helper git is given names that one file');
 ok(tj.lookup === tj.helper && tj.other === '',
    'a project with no token gets no helper: it is not shared, it is absent');
@@ -1167,6 +1234,7 @@ tmp = tempfile.mkdtemp()
 forges.configure(run=lambda *a, **k: {"code": 1, "out": ""}, state=tmp,
                  write_json=lambda p, d: Path(p).write_text(json.dumps(d)))
 projects.STATE = Path(tmp)
+import gitcreds; gitcreds.configure(state=projects.STATE)
 out = {}
 # a token with the characters git's store has to see percent-encoded
 projects.write_token("p", "ab/cd+ef=@gh", "git.home.lan:3000", "http", "bob")
@@ -1277,6 +1345,10 @@ await page.waitForFunction(() => !document.querySelector('#tList .trow[data-t="o
                            { timeout: 10000 });
 ok(existsSync(`${DIR}/ws/oldproj/keep.txt`) && !existsSync(`${DIR}/ws/.trash/oldproj`),
    '...and Put back is a move, so the files arrive with the name');
+// From before projects came first it was in none (R138): back in a project
+// of its own, as every repository was made one then, with nothing asked.
+await refreshUntil(page, () => Object.values(state?.repos || {}).some(r => r.members.includes('oldproj')), { timeout: 15000 });
+ok(true, '...into a project of its own, as one deleted before projects came first');
 
 // Destroying one asks for the name to be typed. A click is not enough for the
 // one control here with nothing behind it.
@@ -1319,7 +1391,11 @@ await page.waitForFunction(() => document.getElementById('tmodal').hidden);
   const madeBy = await call('/api/create', { name: 'maker-made', mode: 'init' }, MAKER);
   const listed = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.maker'].projects || [];
   const worked = await call('/api/prefs', { project: 'maker-made', color: 'teal' }, MAKER);
-  ok(madeBy.status === 200 && listed.includes('maker-made') && worked.status === 200,
+  // Kept by its project (R138): the key of the project made around it, given
+  // as the project list places the new repository.
+  await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: MAKER }).catch(() => {});
+  const makerKey = projectKey('maker-made');
+  ok(madeBy.status === 200 && !!makerKey && listed.includes(makerKey) && worked.status === 200,
      `an administrator's new project goes on their own list, and they may work on it at once (${
        JSON.stringify(listed)}, ${worked.status}${worked.error ? ': ' + worked.error : ''})`);
 }

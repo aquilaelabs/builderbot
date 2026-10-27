@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import projects  # noqa: E402
+import registry  # noqa: E402
 
 
 class Groups(unittest.TestCase):
@@ -27,6 +28,7 @@ class Groups(unittest.TestCase):
         projects.configure(run=None, workspace=ws, agent_keys=lambda: [], gh_authed=lambda: False,
                            ensure_deploy_alias=lambda *a: "", project_name=re.compile(r"[A-Za-z0-9._-]+"),
                            state=state, home=self.tmp, write_json=lambda p, d: Path(p).write_text(json.dumps(d)))
+        registry.configure(state=state, workspace=ws, write_json=lambda p, d: Path(p).write_text(json.dumps(d)))
         self.addCleanup(setattr, projects, "lock", projects.lock)
         projects.lock = threading.Lock()
 

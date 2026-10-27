@@ -46,6 +46,8 @@ class Refused(Exception):
 def configure(*, state, workspace, push_record_fn=None, config_fn=None, parse_fn=None):
     globals().update(STATE=Path(state), WORKSPACE=Path(workspace), push_record=push_record_fn,
                      read_config=config_fn, parse_url=parse_fn)
+    import gitcreds                                         # noqa: PLC0415
+    gitcreds.configure(state=state)
 
 
 def repo_of(project):
@@ -67,13 +69,10 @@ def repo_of(project):
 
 def _token(project):
     """The project's own token, else the shared PAT; "" when neither."""
-    try:
-        line = (STATE / "gitcreds" / project).read_text().strip().splitlines()[0]
-        m = re.match(r"https?://[^:@/]*:([^@/]+)@github\.com$", line)
-        if m:
-            return urllib.parse.unquote(m.group(1))
-    except (OSError, IndexError):
-        pass
+    import gitcreds                                         # noqa: PLC0415
+    m = re.match(r"https?://[^:@/]*:([^@/]+)@github\.com$", gitcreds.read_line(project) if gitcreds.STATE else "")
+    if m:
+        return urllib.parse.unquote(m.group(1))
     try:
         r = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10)
         return r.stdout.strip() if r.returncode == 0 else ""

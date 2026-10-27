@@ -133,9 +133,10 @@ def skipped(rel):
 # projects root, so it reaches every node holding the project and comes back
 # from the one it was made on (B615). A dot directory, so no project scan
 # meets it.
-# ...or one of its agents' other than Claude's (u_xxxxxxxx-codex, R95): the
+# ...or one of its agents' other than Claude's (u_xxxxxxxx-codex, R95), or a
+# slot past the first (u_xxxxxxxx-2, u_xxxxxxxx-codex-2, R143): the
 # account's all the same, so the uid is still the group a check reads.
-WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})(?:-[a-z]+)?")
+WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})(?:-[a-z]+)?(?:-[2-9])?")
 
 
 def _worktrees():
@@ -154,7 +155,7 @@ def worktrees_of(project):
     d = _worktrees() / project
     try:
         return sorted(f".worktrees/{project}/{u.name}" for u in d.iterdir()
-                      if u.is_dir() and not u.is_symlink() and re.fullmatch(r"u_[0-9a-f]{8}(?:-[a-z]+)?", u.name))
+                      if u.is_dir() and not u.is_symlink() and re.fullmatch(r"u_[0-9a-f]{8}(?:-[a-z]+)?(?:-[2-9])?", u.name))
     except OSError:
         return []
 

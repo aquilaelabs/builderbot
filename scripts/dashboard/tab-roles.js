@@ -104,7 +104,7 @@ function rolesAccessFields(name){
       <b class="rprojname">${esc(projLabel(pn))}</b>
       <span class="upick">${rolesOnProject(pn).map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
         have.includes(r.name) ? " checked" : ""}${dead}> ${esc(r.label || r.name)}</label>`).join("")}</span>
-      ${ro ? "" : `<button type="button" class="ic" data-rprojoff="${esc(pn)}" aria-label="take ${esc(p.name)} off ${esc(projLabel(pn))}" title="take off this project">×</button>`}
+      ${ro ? "" : rmIcon(`data-rprojoff="${esc(pn)}"`, `Take ${p.name} off ${projLabel(pn)}`, {title: "take off this project: every role there goes"})}
     </div>`;
   }).join("");
   // The projects it is not on that offer a role (another project's owner
@@ -359,8 +359,8 @@ function rolesRoleBody(){
       : ""}
     ${r.fresh ? "" : `<label class="ndcap rtwofactor"><input type="checkbox" id="rolesTf"${
       d.roles[r.name]?.two_factor ? " checked" : ""}${d.admin ? "" : " disabled"}> Require two-factor sign-in of everybody holding it${
-      helpIcon("each holder without an authenticator app or a passkey is sent to set one up at their next sign-in, and reaches nothing else until they have (R127)")}</label>`}
-    ${ro ? "" : `${saveBar({save: 'id="rolesSave"', revert: 'id="rolesRevert"', state: rolesRoleDirty() ? "unsaved" : ""})}
+      helpIcon("each holder without an authenticator app or a passkey is sent to set one up at their next sign-in, and reaches nothing else until they have")}</label>`}
+    ${ro ? "" : `${saveBar({save: 'id="rolesSave"', revert: 'id="rolesRevert"', state: rolesRoleDirty() ? "unsaved" : "", dead: !rolesRoleDirty()})}
       ${r.fresh ? "" : `<div class="rfoot"><button type="button" class="danger" id="rolesRemove">Remove ${esc(d.roles[r.name]?.label || r.name)}</button></div>`}`}`);
 }
 
@@ -413,7 +413,8 @@ function renderRolesInto(i){
   const nRoles = Object.keys(rolesData?.roles || {}).length;
   // Refused outright (a plain account by link): the refusal is the page (B38).
   const refused = rolesErr && !nRoles;
-  d.setBar(`<span class="dim">${rolesData === null ? skv(4) : refused ? "" : `${nRoles} role${nRoles === 1 ? "" : "s"}`}</span><span class="sp"></span>${
+  // No count beside the button (the operator, 25 Oct): the list says it.
+  d.setBar(`<span class="sp"></span>${
     // Waiting, who may add a role is the status read's to say, and the
     // button is there and dead, as it will land.
     (rolesData ? rolesData.admin : state?.can?.admin) ? `<span class="actbar"><button type="button" class="primary"${
@@ -483,7 +484,13 @@ function wireRoles(el){
   if (tf) tf.onchange = () => rolesAct({action: "two-factor", name: rolesDraft.name, on: tf.checked},
     tf.checked ? `${rolesDraft.name}: two-factor sign-in required` : `${rolesDraft.name}: two-factor sign-in no longer required`);
   const note = el.querySelector("#rolesNote");
-  if (note) note.oninput = () => { rolesDraft.note = note.value; };
+  if (note) note.oninput = () => {
+    rolesDraft.note = note.value;
+    // Save and Revert awake only while the role is unsaved (the operator, 26 Oct).
+    const dirty = rolesRoleDirty(), st = el.querySelector("#rolesSave")?.closest(".actbar")?.querySelector(".state");
+    if (st) st.textContent = dirty ? "unsaved" : "";
+    for (const b of el.querySelectorAll("#rolesSave, #rolesRevert")) if (!b.dataset.busy) b.disabled = !dirty;
+  };
   // The area's own boxes say it for every instance: Read ticked reads on
   // every one (keeping Write where it was), cleared reads on none; Write
   // ticked writes on every one, cleared leaves each reading.

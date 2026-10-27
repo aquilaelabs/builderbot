@@ -13,7 +13,7 @@ function nbMemoryView({$, nb}){
       j = await r.json();
     }catch(e){ j = {error: String(e)}; }
     if (gen !== nb.memGen) return;              // closed, or reopened elsewhere
-    if (j.error){ viewGlance($("memWhere"), [], esc("memory: " + j.error)); return; }
+    if (j.error){ viewGlance($("memWhere"), [], esc("memory: " + j.error), "", "bad"); return; }
     drawMemory(j);
   }
 

@@ -71,18 +71,18 @@ function armModal(el){
         // to, and a field focused on the way in scrolled it further, so one
         // opened on a phone could start halfway down (the operator, 30 Sep).
         // Again after the frame, for what the opener fills and focuses.
-        if (was){ modalTop(this); modalOpened(this); requestAnimationFrame(() => { modalTop(this); scrollHints(this); toastReplace(); }); }
+        if (was){ modalTop(this); modalOpened(this); requestAnimationFrame(() => { modalTop(this); scrollHints(this); }); }
         return;
       }
       if (this.hasAttribute("hidden") || this.classList.contains("leaving")) return;
       modalClosed(this);
-      if (noMotion()){ this.setAttribute("hidden", ""); toastReplace(); return; }
+      if (noMotion()){ this.setAttribute("hidden", ""); return; }
       this.classList.add("leaving");
       this.querySelector(":scope > .box")?.animate(
         [{opacity: 1, transform: "none"}, {opacity: 0, transform: "translateY(6px) scale(.985)"}],
         {duration: 150, easing: "ease"});
       this.animate([{opacity: 1}, {opacity: 0}], {duration: 150, easing: "ease"}).finished.then(
-        () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); toastReplace(); } },
+        () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); } },
         () => {});                        // canceled: it was shown again, and stays
     }});
 }
@@ -218,17 +218,22 @@ function scrollHints(root){
   if (root?.matches?.(SCROLL_HINTED)) scrollHint(root);
 }
 
-function flip(els, key){
+// Things that move to a new place slide there from the old one: their
+// places read before a change (`els`, each known by `key`), and the returned
+// function, called once it is drawn, plays each from its old place to its
+// new over `ms`.
+function flip(els, key, ms = 140){
   if (noMotion()) return () => {};
   const before = new Map([...els()].map(el => [key(el), el.getBoundingClientRect()]));
   return () => [...els()].forEach(el => {
     const a = before.get(key(el));
-    if (!a) return;
+    if (!a || !a.width) return;                // not on screen before: nothing to slide from
     const b = el.getBoundingClientRect();
+    if (!b.width) return;
     const dx = a.left - b.left, dy = a.top - b.top;
     if (dx || dy)
       el.animate([{transform: `translate(${dx}px,${dy}px)`}, {transform: "none"}],
-                 {duration: 140, easing: "ease"});
+                 {duration: ms, easing: ms > 200 ? "cubic-bezier(.2,.8,.2,1)" : "ease"});
   });
 }
 
@@ -355,6 +360,22 @@ function fadeThrough(pick, swap){
   const now = parts();
   was.forEach((w, i) => ghostOut(w, (now[i] || now[0])?.parentNode));
   fadeIn(now);
+}
+
+// A change inside a project's card fades in what it brings to the face on
+// show (the operator, 26 Oct: a box opening on the card appeared with a cut):
+// the box opened, or the repositories coming back as it shuts. Only those,
+// never the face through a copy of it: the copy went out before the face
+// came in, and the card's own ground showed between them, a flicker. `el`
+// is anything in the card, `swap` the change. Elsewhere it is the change
+// alone.
+function faceFade(el, swap){
+  const face = el?.closest?.(".pcface");
+  if (!face) return swap();
+  const shown = () => [...face.children].filter(e => e.offsetParent && !e.classList.contains("fghost"));
+  const was = new Set(shown());
+  swap();
+  if (face.isConnected) fadeIn(shown().filter(e => !was.has(e)));
 }
 
 // The marker on the item on show slides to the one pressed (the operator,

@@ -75,6 +75,7 @@ _lock = threading.Lock()
 _busy = set()
 _cache = {}
 _bare = set()        # (project, run id): finished runs that handed over no APK
+_rev = [0]           # moved when a look starts or ends: the revisions poll's "releasesign"
 
 
 def configure(*, state, workspace, write_json_fn, projects=None):
@@ -108,6 +109,18 @@ def _save(d):
     if write_json:
         write_json(_file(), d)
     _cache.clear()
+    _rev[0] += 1
+
+
+def rev():
+    """The token a Signing view and the bell re-read on: a look started, or
+    one ended and wrote what it found."""
+    return _rev[0]
+
+
+def looking(project):
+    """Whether a look at the project's runs is going now."""
+    return project in _busy
 
 
 # ---- what the project asks for ----------------------------------------------
@@ -199,7 +212,8 @@ def status(project):
     rec = _load().get(project) or {}
     newest = lambda d: sorted(({"tag": t, **v} for t, v in (d or {}).items() if isinstance(v, dict)),
                               key=lambda x: -int(x.get("at") or 0))[:5]
-    return readiness(project, fresh=True) | {"signed": newest(rec.get("signed")), "failed": newest(rec.get("failed"))}
+    return readiness(project, fresh=True) | {"signed": newest(rec.get("signed")), "failed": newest(rec.get("failed")),
+                                             "looking": looking(project)}
 
 
 # ---- GitHub -----------------------------------------------------------------
@@ -413,12 +427,14 @@ def _claim(project):
         if project in _busy:
             return False
         _busy.add(project)
+        _rev[0] += 1
         return True
 
 
 def _release(project):
     with _lock:
         _busy.discard(project)
+        _rev[0] += 1
 
 
 def check_soon(project, force=False):

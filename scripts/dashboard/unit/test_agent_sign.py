@@ -55,6 +55,8 @@ class Sign(unittest.TestCase):
         agent.os.geteuid = lambda: 0
         self.addCleanup(setattr, agent, "tc_root", agent.tc_root)
         agent.tc_root = lambda st: STORE
+        self.addCleanup(setattr, agent, "SIGN_WORK", agent.SIGN_WORK)
+        agent.SIGN_WORK = os.path.join(self.tmp, "signwork")
 
     def agent_with(self, src, key, user="builder", sessions="sessions"):
         a = object.__new__(agent.Agent)
@@ -95,7 +97,8 @@ class Sign(unittest.TestCase):
         self.assertIn("&signed=play&cert=", a.ctl.path)
         self.assertTrue(a.ctl.path.endswith("&schemes=jar&key=default"), a.ctl.path)
         self.assertEqual(j.outputs[0]["signed"], "play")
-        self.assertEqual(os.listdir(os.path.join(self.tmp, "data", "sign")), [])
+        self.assertEqual(os.listdir(os.path.join(self.tmp, "signwork", "build")), [])
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "data", "sign")), "never on the data store (B315)")
         self.assertNotIn("pw123456", "".join(j.lines))
 
 
@@ -152,7 +155,8 @@ class SignKey(unittest.TestCase):
         self.assertEqual(a3.sign_key(j3, {"op": "inspect"}), ("failed", 1))
         self.assertEqual(a3.ctl.said[0][1]["error"], "the keystore's password is not that")
         self.assertNotIn("pw-made-here", "".join(j.lines + j2.lines + j3.lines))
-        self.assertEqual(os.listdir(os.path.join(self.tmp, "data", "sign-key")), [])
+        self.assertEqual(os.listdir(os.path.join(self.tmp, "signwork", "key")), [])
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "data", "sign-key")), "never on the data store (B315)")
 
 
 if __name__ == "__main__":

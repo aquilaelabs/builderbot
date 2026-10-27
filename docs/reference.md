@@ -18,7 +18,7 @@ runner's token is typed on the CI runner page.
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
 | `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked under the gear in the header |
-| `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
+| `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (websockets at `/termws`) |
 | `FEATURES_OFF` | *(empty)* | Features switched off for the whole install, comma-separated: `tunnel`, `ftp`, `phone`, `devices`, `apps`, `image-updates`, `runner`, `enroll`, `shell` (a terminal on the controller itself; a node's stay), `vms` (virtual machines on nodes: the VMs page, `bb vm` and installing VM host), `internet` (an install meant to run offline: apps, image updates, the tunnel and runners with it, and the Doctor skips asking the outside). Each one's controls are drawn dead with the sentence below under them, its requests are refused, and Settings lists them |
 | `BANNER_TEXT` | *(empty)* | One line every visitor sees under the header, on every page and the sign-in page: a shared install's word to whoever is on it |
 | `BANNER_LINK` | *(empty)* | A link at the banner's end, http(s) or a path on this site; anything else is dropped |
@@ -32,6 +32,102 @@ Mounts: the projects folder, the state directories (`home`, `config`), the
 toolchains), and three optional ones: `/secrets` (ro,
 shielded credentials), `/reports` (ro, a scanner's output) and `/logs`
 (the logs on a share of their own).
+
+### A controller installed bare metal: its env file
+
+A controller installed with `nodes/install-controller.sh` ([install.md](install.md#bare-metal))
+reads `/etc/builderbot-controller/controller.env` at every start, in place of
+compose's `.env`. It carries the same settings as the table above, under the
+same names and with the same defaults (`TZ`, `DASHBOARD_PORT`,
+`FEATURES_OFF`, `FEATURES_OFF_WHY`, `BANNER_TEXT`, `BANNER_LINK`,
+`BANNER_LINK_LABEL`), but `PUID` and `PGID`, which are the container's alone:
+the installer makes an account with ids of its own. In place of compose's
+mounts it names the folders:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DASHBOARD_STATE` | `/var/lib/builderbot-controller/config` | The state, compose's `/config`: accounts, settings, notebooks, logs |
+| `BUILDER_HOME` | `/var/lib/builderbot-controller/home` | The controller's own home, compose's `/home/builder` |
+| `WORKSPACE` | `/srv/builderbot/projects` | The projects, compose's `/workspace` (the installer's `--workspace`); never `/workspace`, which is the machine's own node's synced copy |
+| `SDK_ROOT` | `/var/lib/builderbot-controller/sdk` | The toolchain store, compose's `/sdk` |
+| `BB_SECRETS_DIR` | `/etc/builderbot-controller/secrets` | The root-only secrets folder, compose's `/secrets`: `*.env` files and `ssh/` |
+| `SSH_AUTH_SOCK` | `/run/builderbot-controller/ssh-agent.sock` | The deploy-key agent's socket, in a folder only the controller's account enters |
+| `BB_ACCOUNT` | `builderbot` | The account the controller runs as, written by the installer (`--account`); change it by running the installer again |
+| `BB_INSTALL` | `bare-metal` | What the install is, written by the installer and read by the controller, never guessed: on a bare-metal install the first run's node is the machine's own, set up by the installer, and Finish waits for it |
+
+A value with spaces in it goes in double quotes. After an edit, `sudo
+systemctl restart builderbot-controller`. The file is root's and readable by
+the controller's account alone; a session on the machine's own node is kept
+out of it, with the rest of the controller (the wall,
+[decisions.md](decisions.md#a-controller-installed-bare-metal-and-its-own-node)).
+
+### The install key
+
+The install key seals at rest what BuilderBot keeps that would let somebody
+in: the settings' tokens, each project's signing keys, the git credentials a
+project holds, the two-factor secrets, and each account's own key; the
+sign-in cookies' key is made from it too.
+
+An install makes its own at its first start, so there is nothing to set:
+32 random bytes in an `install-key` folder only the controller's account
+reads, inside the secrets folder (compose's `/secrets`, the template's
+**Secrets directory**, a bare-metal install's `BB_SECRETS_DIR`) when that is
+mounted read-write, and beside the state in `/config/.install-key` when
+there is none. Kept beside the state, a copy of `/config` carries the key,
+so the Keys page and `bb doctor` say so; mount a secrets folder the
+controller may write to and the next start moves the key into it. On
+Unraid that is the container's **Edit**, **Secrets directory** set to a
+folder such as `/mnt/user/appdata/BuilderBot/secrets` with access
+**Read/Write**, then **Apply**: an install from a template before 0.8.0
+keeps the read-only mount it was made with until it is changed there.
+
+**Controller, Keys** (an administrator's) shows where the key is kept and
+its fingerprint, which names it and opens nothing. **Show** puts the key on
+the page to copy or download, and **I saved it** marks it saved: keep that
+copy apart from `/config`, since a backup restored on a new install opens
+nothing that was sealed without it. **Change** makes a new key, or takes one
+pasted, and seals everything kept under the one before again under it at
+once; people stay signed in until the next restart. The page also lists
+everything kept under the key, each with what uses it and where it is
+changed.
+
+Each account has a key of its own, kept by the controller under the install
+key, for its coding agents' sign-ins sealed on the nodes; changing the
+install key leaves those as they are. A person changes their own on
+**Profile, Your key**. A sign-in sealed under a key before one that changed
+opens with the old key the next time its person opens a terminal on that
+node, and is sealed again under the new one; the old key is kept until then.
+
+That key also seals the account's own **key store**, on **Profile, Your key
+store**: a token the person gives a repository (an access token in its
+settings, or one given when cloning it or linking it to a host) is kept
+under their key, not the install's, and the project is linked to it; the
+store holds any number for one host, each listed with the projects that use
+it, never shown again and never downloaded. Their own git work uses it
+ahead of a project's: a `bb git` push or pull from their session, and their
+presses in the Git view (one the view hands to a background job uses the
+project's). A project's settings list the person's tokens for its remote's
+host, with **Use for this project**; CI watching, releases and anybody
+without a token of their own then use the one the project is linked to. A
+token a project kept before goes into the project owner's store at the
+first start that can seal it, BuilderBot's owner taking those of a project
+with none. **Purge**
+empties the store after a plain confirmation: the key, every forge linked,
+and the link of every project that used it, each of which then says on the
+bell that its git access went with that account. Deleting the account does
+the same, and an administrator can purge an account's store from the Users
+page. Purging asks for no password or code, so a person who forgot theirs,
+or fears it stolen, can still do it.
+
+`INSTALL_KEY=` in a `*.env` file in the secrets folder (16 characters or
+more; never in `.env` or the template's plain fields) sets the key instead,
+and the install then makes none. With the secrets folder read-write, the
+first start copies that key into its key folder (never beside the state),
+and the Keys page says so: take `INSTALL_KEY` out and restart, and the
+install carries on with the same key, changed on the page from then on.
+Until it is copied, the Keys page says to change it there, with the old one as `INSTALL_KEY_PREVIOUS=` beside it until each
+sign-in has moved. `SIGNING_SECRET=`, its name before 0.8.0, is read for one
+release.
 
 ## The `bb` helper
 
@@ -77,12 +173,15 @@ bb version unbump      take the last unreleased bump or set back; its
                    stays. Once: the bump before it is not taken back too.
                    A section dated under the wrong number is fixed with
                    unbump, then set to the number meant
-bb version release --why "..."
+bb version release --why "..." [--without-apk]
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
                    credentials. The project's settings say whether an agent may
                    (Tag and publish a release): auto releases, ask waits for
-                   the project's owner, with --why as the reason
+                   the project's owner, with --why as the reason. A release
+                   whose Android APK could not be signed is refused before the
+                   tag, saying why; --without-apk goes on, and bb sign release
+                   signs it once that is put right
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
                    change the published release under the same setting, each
                    edit its own ask: the notes replaced whole (- reads stdin),
@@ -113,10 +212,13 @@ bb changelog add "..." --cat NAME   log what a change means for the person using
                    category is required, and the tool is where the rule lives:
                    Added (somebody can do something they could not), Changed
                    (already here, now different), Deprecated (going away),
-                   Removed (gone), Fixed (was wrong, now right), Security
-                   (act on it because of what it exposed). When two fit, the
-                   one a reader would look under; something nobody using the
-                   product would notice gets no entry. Run without a category
+                   Removed (gone), Fixed (was wrong in a released version,
+                   now right), Security (act on it because of what it
+                   exposed). When two fit, the one a reader would look under;
+                   something nobody using the product would notice gets no
+                   entry, and neither does a fix to something no release has
+                   carried yet: the changelog is read by somebody upgrading
+                   from a release, who never met that bug. Run without a category
                    and it prints this. A name that means one of the six is
                    spelled the one way (`fix` files under Fixed), the six keep
                    their usual order among themselves, and a project that
@@ -208,9 +310,10 @@ bb nodes           the machines enrolled as nodes, each with the agent it runs,
                    read-only in a terminal; the Nodes page is where they are edited
 bb nodes show NAME one of them in full, by name or id: its agent against the one
                    this controller ships, and what Update agent would fix
-bb nodes enroll-token NAME [--user U]
+bb nodes enroll-token NAME [--user U] [--own]
                    a new node's enrollment token, printed once, from a shell on
-                   the controller: Enroll node's Just a token, for a scripted setup
+                   the controller: Enroll node's Just a token, for a scripted setup;
+                   --own is the controller's own machine, on a bare-metal install
 bb projects adopt FOLDER [--name NAME]
                    a folder already under the projects share made a project, as
                    if BuilderBot had made it, from a shell on the controller: a
@@ -291,7 +394,7 @@ bb devapp override FILE|none
                    (compose's -f after -f), or none; the next rebuild takes it, and a
                    service it adds is asked about as any new one is. On ask it is a
                    person's, in the container's settings
-bb devapp ls       every container that belongs to this project on its node
+bb devapp ls       every container that belongs to this project, on every node it has one
 bb devapp log NAME one of those containers' log
 bb devapp start|stop|restart NAME [--why "..."]
                    one of those, under the same setting; --container NAME on the
@@ -318,6 +421,15 @@ bb sign rotate OLD NEW --why "..."
                    moves the apps OLD's sideload key signs to NEW's: builds go out
                    signed with both and a proof, Android 9 and newer take NEW,
                    older devices keep checking OLD, which is kept for good
+bb sign status [TAG]
+                   whether a release's APK can be signed (the sideload key, the
+                   node with its tools) and how the newest went: handed over,
+                   signed and attached with the key's fingerprint, or what
+                   stopped it, in the bell's words
+bb sign release --why "..."
+                   look for unsigned release APKs now and sign a failed one
+                   again, as the Signing view's Look for unsigned APKs now,
+                   under Sign a build: auto starts it, ask waits for the owner
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -364,7 +476,10 @@ bb bug find TEXT   search the reports themselves: area, repro and notes too
 bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
 bb bug pending     reports a session filed that are waiting for your approval
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
-                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
+                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`. With
+                   --repro, --reproduces always|sometimes|once|untried says how
+                   often those steps showed it; --report N files diagnostics
+                   report N with its words, area, repro and that answer
 bb tests run [ARGS]  run the project's test command, time it, and record the run: says first when it should
                    finish, and ends by NAMING what went wrong: the failed assertions per file, and for a file
                    that CRASHED the line it died on, the assertions that had already failed before it did,
@@ -397,7 +512,10 @@ bb tests lab       the lab suites (test/lab-*.mjs) against real services rather 
                    one you are willing to have that happen to. A VM host there as well
                    (`BB_LAB_VMHOST`, with `BB_LAB_KEY` an ssh public key) walks every Linux
                    system Enroll node offers as a VM made a node, enrolled to Uninstall
-                   (lab-systems, slow: each system takes its ten to twenty minutes)
+                   (lab-systems, slow: each system takes its ten to twenty minutes);
+                   with `BB_LAB_SSH` (that key's private half, a path on the VM host) and
+                   `BB_LAB_REF` (a pushed ref) it installs a controller bare metal in a VM
+                   and tries the wall around its own node (lab-baremetal)
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours
@@ -422,7 +540,9 @@ bb design          what this project looks like, from the notebook's Design view
                    its design language in a line, and its pages
 bb design show [ID|NAME]   the prompt for one page, or for the language alone:
                    the colors as tokens, the type, the shape, the layout
-bb design file     docs/design-language.md as the notebook writes it
+bb design file [--from FILE]   docs/design-language.md as the notebook writes it;
+                   --from renders it from a record (bb design json, edited) instead
+                   of the saved design, so a branch writes the file from its own
 bb design json     the record: the language, the pages, and the presets by key
 bb design schema   the record's shape with every limit, for a save that lands first time
 bb design save FILE   write a record of that shape back, whole: how a session
@@ -446,6 +566,14 @@ bb transcripts show ID [--tz ZONE] [--all]   one of them as text: what was said,
 bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
                    for it: how a node holding its projects as a synced copy
                    resumes a conversation it does not have (bb-tty runs it)
+bb memory          your memories on this repository, kept for every coding agent:
+                   the index, newest first (bb -p REPO for another repository
+                   of the project, which keeps them when it moves)
+bb memory show NAME   one of them whole
+bb memory add NAME --type user|feedback|project|reference --about "one line" "what to remember"
+                   save one, with its line in the index: a fact about one
+                   repository on that repository
+bb memory forget NAME   take one out
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -546,10 +674,10 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
-bb logs --node NAME [--agent|--runner|--terminal|--nginx|--system|--kernel|--crash] [N]
-                   a machine's own log: the agent's journal, the CI runner's,
-                   the terminal server's, its nginx's where the nginx page put
-                   one, this boot's system journal, its kernel ring, and the
+bb logs --node NAME [--agent|--runner|--nginx|--system|--kernel|--crash] [N]
+                   a machine's own log: the agent's journal (its terminals'
+                   among it), the CI runner's, its nginx's where the nginx
+                   page put one, this boot's system journal, its kernel ring, and the
                    previous boot's last lines (--crash: what the box said
                    before it went). Root's on that box: the enrolled
                    account is in neither `adm` nor `systemd-journal`, so a
@@ -570,11 +698,11 @@ bb diag [--json] [SECTION...]
                    trail, with anything shaped like a credential redacted. The
                    **debug** grant's: the owner's, or a role's that names it.
                    A session reads it only while **debug mode** is on, its
-                   project is granted **the controller's diagnostics** under
-                   Debug in its settings, and its account has the grant.
+                   project is granted **the controller's diagnostics** on
+                   the Debug page, and its account has the grant.
                    Its `reports` section is what sessions on any project
                    reported about BuilderBot, kept until a person clears them
-bb report "..." [--area A] [--repro "..."]
+bb report "..." [--area A] [--repro "..." --reproduces always|sometimes|once|untried]
                    a problem with BuilderBot itself, from a session on any
                    project: it goes into the controller's diagnostics rather
                    than the project's tracker (the briefing's notebook section
@@ -731,16 +859,15 @@ administrator who works on the project.
 | Play upload key | Google Play with Play App Signing: you sign the `.aab` with it, Google re-signs what users download with the key it holds | Play Console resets it |
 | Sideload signing key | an APK you hand out yourself, or that F-Droid publishes from a reproducible build | gone for good: no update reaches an existing install, or anybody can ship one over it |
 
-On the controller every key is sealed at rest once the install has a
-**signing secret**: `SIGNING_SECRET=` (16 characters or more; `openssl rand
--hex 32` makes one) in an `*.env` file in the root-only secrets folder, as
-`NPM_TOKEN` is. Each keystore and its passwords under `/config/signing` are
-then ciphertext, so a copy of `/config`, or a backup of it, opens no key;
-keys kept from before are sealed at the next start. The secret is never
-written into `/config`: keep it with your other secrets. Lost or changed, the
-sealed keys cannot be opened, the Signing view says so, and each key comes
-back by **Import a backup**; without a secret, the keys are kept unsealed and
-the view says that too. Root on the running controller can still read them.
+On the controller every key is sealed at rest under the **install key**
+([The install key](#the-install-key)), which the install makes itself
+unless `INSTALL_KEY=` sets one. Each keystore and its passwords under
+`/config/signing` are ciphertext, so a copy of `/config`, or a backup of it,
+opens no key; keys kept from before are sealed at the next start. Changing
+the key on the Keys page seals them again under the new one. A key lost, or
+replaced outside the page, leaves the sealed keys shut: the Signing view
+says so, and each key comes back by **Import a backup**. Root on the running
+controller can still read them.
 
 So a sideload key is downloaded once with **Download backup** and kept
 offline, with its password somewhere apart from it; its row says so in red

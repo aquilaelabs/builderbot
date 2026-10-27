@@ -48,7 +48,7 @@ if verb == "list":
         print(f"no conversations of yours on {proj} yet")
         raise SystemExit(0)
     # Each row marked with its agent (R95), in both lists.
-    names = {"claude": "Claude", "codex": "ChatGPT", "copilot": "Copilot", "open": "Any model"}
+    names = {"claude": "Claude", "codex": "ChatGPT", "copilot": "Copilot", "grok": "Grok", "open": "Any model"}
 
     def line(row, who=""):
         when = time.strftime("%d %b %H:%M", time.localtime(int(row.get("at") or 0)))

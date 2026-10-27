@@ -32,15 +32,14 @@ DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   # machine, and an optional /devdata mount to go with it.
                   "appdata": "/var/lib/builderbot/appdata"}
 
-# The session half (roadmap #24): the ttyd this node runs bb-tty under, the
-# ports it binds, and the address. Seams for the suite, which runs a ttyd
-# that only records what it was asked, and for a node whose ports are taken.
-# The bind address defaults to the address the default route leaves by (the
-# LAN one the controller reaches), not the loopback: the controller's proxy
-# dials in from another machine. Phase 10b's firewall keeps it to the
-# controller; until then nothing but the network's own rules does.
-TTYD_BIN = os.environ.get("BUILDERBOT_TTYD_BIN", "ttyd")
-SESSION_PORT = int(os.environ.get("BUILDERBOT_SESSION_PORT") or 7681)
+# The session half (roadmap #24): the screen relay's port, the one a
+# terminal (R133) and a VM's screen (R99) come in on, and the address it
+# binds. The bind address defaults to the address the default route leaves
+# by (the LAN one the controller reaches), not the loopback: the controller
+# dials in from another machine, and the firewall keeps the port to it. The
+# port is a seam for the suite alone, which runs several agents on one box;
+# the census says it, so the controller dials what the node listens on.
+SCREEN_PORT = int(os.environ.get("BUILDERBOT_SCREEN_PORT") or 7684)
 SESSION_BIND = os.environ.get("BUILDERBOT_SESSION_BIND", "")
 # What the census reports about it, kept by the Agent and read by census():
 # the census is a function of the machine, and the session's state is the
@@ -109,6 +108,11 @@ TOOLS_DIR = os.environ.get("BUILDERBOT_TOOLS_DIR", "/var/lib/builderbot/agent/to
 # nothing outside a view can change what every account's terminal runs (the
 # toolchain store is a share squashed to one uid).
 ROOT_BUNDLE_DIR = os.environ.get("BUILDERBOT_ROOT_BUNDLE", "/usr/local/lib/builderbot/bundle")
+# Where a signing job works with a key (B315): this machine's own memory,
+# never a store. A data store may be a share squashed to one uid, the session
+# account's on the documented one, and a key written there was a session's to
+# read while the job ran. Root's, 0711, each job's folder its account's, 0700.
+SIGN_WORK = os.environ.get("BUILDERBOT_SIGN_WORK", "/run/builderbot/sign")
 ROOT_TOOLS = ("nodes/provision-linux.sh", "nodes/bb-session")
 # Where an updated Claude Code is pinned, root-owned, for the sessions (claude_update).
 CLAUDE_DIR = "/usr/local/lib/builderbot/claude"
@@ -127,8 +131,8 @@ AGENTS_DIR = os.environ.get("BUILDERBOT_AGENTS_DIR", "/usr/local/lib/builderbot/
 # table (agents.py login_job, logout_job), to the agent `bb login --flow` and
 # `bb login --out` are run for. Claude's are the claude-login and
 # claude-logout of old, which name no agent.
-AGENT_LOGINS = {"codex-login": "codex", "copilot-login": "copilot"}
-AGENT_LOGOUTS = {"codex-logout": "codex", "copilot-logout": "copilot"}
+AGENT_LOGINS = {"codex-login": "codex", "copilot-login": "copilot", "grok-login": "grok"}
+AGENT_LOGOUTS = {"codex-logout": "codex", "copilot-logout": "copilot", "grok-logout": "grok"}
 AGENT_INSTALLS = {
     "codex-update": {"id": "codex", "command": "codex", "product": "Codex CLI", "reported": "codex",
                      "script": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
@@ -138,6 +142,13 @@ AGENT_INSTALLS = {
                        "script": "curl -fsSL https://gh.io/copilot-install | bash",
                        "pin": ("VERSION", "v{v}"), "env": {"PREFIX": "{home}/.local"},
                        "bin": ".local/bin/copilot"},
+    # Grok Build's installer takes the version as its argument, not from its
+    # environment: handed over through BB_PIN, empty for the newest. It does
+    # not check its download against anything published (25 Oct).
+    "grok-update": {"id": "grok", "command": "grok", "product": "Grok Build", "reported": "grok",
+                    "script": 'curl -fsSL https://x.ai/cli/install.sh | bash -s -- ${BB_PIN:-}',
+                    "pin": ("BB_PIN", "{v}"), "env": {"GROK_BIN_DIR": "{home}/.local/bin"},
+                    "bin": ".local/bin/grok"},
 }
 # Claude Code's row in the same shape, for the claude-update job: kept out of
 # AGENT_INSTALLS, which the census and the session PATH read for the agents
@@ -177,24 +188,20 @@ SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
 # carries no dashboard module; unit/test_agents.py holds the two to each
 # other. The session prefixes, the launchers a respawn may run and the
 # process kinds a busy machine is read by are all made from it.
-AGENT_IDS = ("claude", "codex", "copilot")
+AGENT_IDS = ("claude", "codex", "copilot", "grok")
 # The pane a respawn may run again: bb-tty's launcher of a coding agent
-# (claude-run.sh, codex-run.sh, copilot-run.sh), in the project's cache
+# (claude-run.sh, codex-run.sh, copilot-run.sh, grok-run.sh; a second slot's
+# claude-2-run.sh, R143), in the project's cache
 # folder and started inside the project's view when the node builds one.
 _PATHCH = r"[A-Za-z0-9._/@+-]"
 RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"
                rf"{_PATHCH}*/builderbot/(?:u/u_[0-9a-f]{{8}}/)?"
-               rf"project/[A-Za-z0-9._-]+/(?:{'|'.join(AGENT_IDS)})-run\.sh")
+               rf"project/[A-Za-z0-9._-]+/(?:{'|'.join(AGENT_IDS)})(?:-[2-9])?-run\.sh")
 NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
 NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
 # How long a network change has to dial back in before it is reverted.
 DIAL_BACK_S = 180
-# How long after a ttyd start this will try another. A port already taken
-# would otherwise spin the loop on a failing exec. Settable only so the suite
-# can stop waiting on it: the test that proves a dead ttyd is started again
-# waits exactly this long, and it was the slowest interval in the suite.
-SESSION_RETRY_S = int(os.environ.get("BUILDERBOT_SESSION_RETRY_S") or 30)
 # The Actions runner as a per-node service (docs/nodes.md §14, phase 7):
 # where it lives, and, for the tests, a tarball to unpack instead of the
 # GitHub release download.
@@ -270,14 +277,6 @@ ACT_RUNNER_RELEASES = "https://gitea.com/api/v1/repos/gitea/runner/releases/late
 # Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
 # stand in for it, like the rest of the tools the agent drives.
 TAILSCALE_BIN = os.environ.get("BUILDERBOT_TAILSCALE_BIN", "tailscale")
-
-
-def _zombie(pid):
-    try:
-        with open(f"/proc/{pid}/stat") as f:
-            return f.read().rsplit(")", 1)[-1].split()[0] == "Z"
-    except (OSError, IndexError):
-        return False
 
 
 def log(msg):

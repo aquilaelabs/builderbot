@@ -4,8 +4,8 @@
 // card beside the part of the page it is about, with Back, Next and Done;
 // Skip tour ends it, and its box skips the tour on every page. Which pages
 // an account has toured is the account's, kept on the server with its theme
-// (users.own_prefs), so a phone does not start over; Show the tours again on
-// Profile and in About clears it.
+// (users.own_prefs), so a phone does not start over; Show the tours again in
+// About clears it.
 
 // Each page's steps: `at` the part of the page it is about (the first of
 // the selectors on screen, under the page's own pane), none for a step about
@@ -20,13 +20,23 @@ const TOUR_STEPS = {
     {at: "#rail, .railbar", say: "Every page is here, grouped. A group with several tools opens on the first and carries the rest along its top."},
     {at: "#jump", say: "Search jumps to a page, a project, a container or a node by name. Enter opens the first match."},
     {at: "#bBell", say: "The bell holds what needs a person: updates due, failures, and anything a session is asking you to allow."},
-    {at: `${TOUR_PANE} .tiles, ${TOUR_PANE} .hometiles, ${TOUR_PANE} .stattiles`, say: "Each number opens the page that holds it."},
+    {at: `${TOUR_PANE} .tiles, ${TOUR_PANE} .hometiles`, say: "Each number opens the page that holds it."},
     {at: "#pane1 .bar, .dockline", say: "The dock at the foot keeps the chat and your terminals and agents' sessions, whichever page you are on. Pull it up to work in one."},
   ],
   projects: [
-    {say: "Every project you work on. A project is a git repository with its own notebook: a roadmap, bugs, tests, its containers and VMs."},
-    {at: TOUR_BAR, say: "Search and the view switch are here, and New project at the right."},
-    {at: `${TOUR_PANE} .pcard`, say: "A project's card: its branch, its sessions, and Start agent. Its name opens the notebook."},
+    {say: "Every project you work on. A project holds one or more git repositories, each with its own notebook: a roadmap, bugs, tests, its containers and VMs."},
+    {at: TOUR_BAR, say: "Search narrows the cards by name, branch or node. New project is at the right, and the trash beside it keeps the projects you deleted."},
+    // A page with no project yet shows an example card, as Containers and
+    // VMs do; the three steps after it turn the card over, the example or
+    // the first card on the page, and back again after (the operator, 26 Oct).
+    {at: `${TOUR_PANE} .pcard:not(.flipped) .pcfront`, sample: () => tourSampleProject(false), sampleKey: "project", part: true,
+     say: "A project's card: its repositories with their branches, who has a session there, and Start agent. A repository's name opens its notebook; the pin keeps it on Home and the box beside it archives it. Edit turns the card over."},
+    {at: `${TOUR_PANE} .pcard.flipped .pcback .pcrepo`, sample: () => tourSampleProject(true), sampleKey: "project", part: true, flip: true,
+     say: "The back of the card. Each repository has a shell in it, its git host, a rename, a move to another project, and delete, which puts it in the trash."},
+    {at: `${TOUR_PANE} .pcard.flipped .pcback .pcfoot`, sample: () => tourSampleProject(true), sampleKey: "project", part: true, flip: true,
+     say: "Along the foot: your own color for the project, its group, the lock, Report bug and its settings. A project with nothing in it has Delete project here too."},
+    {at: `${TOUR_PANE} .pcard.flipped .pcback .pcname`, sample: () => tourSampleProject(true), sampleKey: "project", part: true, flip: true,
+     say: "The pencil renames the project. Each control saves its own change as you make it, so Back only turns the card over again."},
   ],
   notebook: [
     {say: "A project's notebook: everything about it in one place, shared by the people and the sessions working on it."},
@@ -43,7 +53,7 @@ const TOUR_STEPS = {
     {at: TOUR_FIRST, say: "Each toolchain says what is installed and whether a newer one is out. Some ask you to accept a license first, and that is always yours to accept."},
   ],
   agents: [
-    {say: "The coding agents a session on a node can run: Claude Code, and Codex CLI and Copilot CLI beside it, each installed for the node's session account."},
+    {say: "The coding agents a session on a node can run: Claude Code, Codex CLI, Copilot CLI and Grok Build, each installed once on the node for every account there."},
     {at: TOUR_BAR, say: "Pick the node here. Each agent's section says its version and updates it, and holds your sign-in on that node: a sign-in is one node's, never carried to another."},
   ],
   emulator: [
@@ -66,11 +76,11 @@ const TOUR_STEPS = {
     {at: TOUR_BAR, say: "Pick the node, search, and switch between cards and a list. New container and Check for updates sit at the right."},
     // Its rows by name: TOUR_FIRST matched an empty page's own notice, so
     // the example never came (the operator, 21 Oct, on a phone).
-    {at: `${TOUR_PANE} .dmtab .dmcard, ${TOUR_PANE} .dmtab > .tbl`, sample: () => tourSampleCard(), say: "A project's card: each container with its state, where it answers, and its buttons. The menu holds the rest, Remove last."},
+    {at: `${TOUR_PANE} .dmtab .dmcard, ${TOUR_PANE} .dmtab > .tbl`, sample: () => tourSampleCard(), say: "A project's card: each container with its state, where it answers, and its buttons. The ⋯ menu holds the rest: Log opens what it prints in a tab of the dock, and Remove is last."},
   ],
   vms: [
     {say: "VMs: a project's virtual machines on the nodes with VM host installed, made from the cloud images of a dozen Linux systems."},
-    {at: TOUR_BAR, say: "New VM is here. A session can make one too, with bb vm new, where the project's Make VMs setting allows it."},
+    {at: TOUR_BAR, say: "Pick the node, search, and switch between cards and a list; the tiles and chips under it count the VMs and narrow them to one project's. New VM is at the right; a session can make one too, with bb vm new, where the project's Make VMs setting allows it."},
     {at: `${TOUR_PANE} .vmtab [data-vm-key]`, sample: () => vmGroupsHtml([{key: "example/db", project: "example", name: "db", state: "running",
       os_name: "Debian 13", node_name: "your-node", vcpus: 2, mem_mb: 2048, disk_gb: 20, ip: "10.232.0.12", user: "builder",
       snapshots: ["clean"], screen: true}]),
@@ -78,11 +88,16 @@ const TOUR_STEPS = {
   ],
   nginx: [
     {say: "nginx: BuilderBot's own reverse proxy on a node, putting your containers behind hostnames and certificates."},
-    {at: TOUR_FIRST, say: "Hostnames, routes, certificates and the image each have a section. A route sends a hostname to a port a container publishes."},
+    {at: TOUR_BAR, say: "Pick the node here. Deploy puts nginx on a node that has none yet."},
+    {at: TOUR_FIRST, say: "The image comes first, with an update when one is out; then hostnames, routes and certificates, each a section. A route sends a hostname to a port a container publishes."},
   ],
   settings: [
     {say: "The controller's settings: how this BuilderBot itself behaves, the room it keeps on the nodes among them. Each section says what it changes."},
-    {at: TOUR_FIRST, say: "A section's changes are saved with its own Save, never another's."},
+    {at: `${TOUR_PANE} .snav, ${TOUR_FIRST}`, say: "Pick a section here. Its changes are saved with its own Save, never another's."},
+  ],
+  keys: [
+    {say: "Keys: the install key, which seals what this BuilderBot keeps, and everything kept under it. Save a copy of the key apart from /config; Change makes another and seals everything again."},
+    {at: TOUR_FIRST, say: "Each person keeps a key store of their own on their Profile, for their agents' sign-ins and the forge tokens they link."},
   ],
   nodes: [
     {say: "Nodes are the machines your builds, tests, containers, VMs and sessions run on. The controller itself runs none of them."},
@@ -97,7 +112,13 @@ const TOUR_STEPS = {
   ],
   jobs: [
     {say: "Jobs: every build, test, install and system job sent to a node, with its log."},
-    {at: TOUR_BAR, say: "Narrow it to what is running, failed or waiting here."},
+    {at: `${TOUR_PANE} .chips[data-chips="data-jbshow"]`, say: "Narrow the list to what is running, failed or waiting here."},
+    {at: TOUR_SUB, say: "Schedules, beside Jobs, runs a command on a node at the times you set, each run a job here."},
+  ],
+  schedules: [
+    {say: "Schedules: commands run on a node at the times you set, as cron runs them. Each run is a job, with its log on the Jobs page."},
+    {at: TOUR_BAR, say: "New schedule is here. The static analysis scan is built in, off until you turn it on."},
+    {at: `${TOUR_PANE} .schedrow`, say: "Each schedule says when it runs, where and as whom, and how its last run went. Run now runs it once."},
   ],
   users: [
     {say: "Users: the accounts that sign in here, and the roles each holds."},
@@ -116,6 +137,7 @@ const TOUR_STEPS = {
 
 let tourKind = "", tourI = 0, tourSteps = [];
 const tourAsked = new Set();
+let tourWait = null, tourTries = 0;   // a tour held by a page still loading, asked again shortly
 
 function tourSeen(){ return new Set(state?.tour?.seen || []); }
 
@@ -123,6 +145,9 @@ function tourSeen(){ return new Set(state?.tour?.seen || []); }
 function tourSoon(kind){
   // A step's example, put back after a draw of the page wiped it.
   if (tourKind && tourSteps[tourI]?.sample && !$("tourSample") && tourKind === kind) return tourDraw();
+  // Another page come on show: the tour of the one left is put away, not
+  // counted as seen, so that page tours on the next visit and this one now.
+  if (tourKind && kind && tourKind !== kind) tourLeft();
   // BB_NO_TOUR: a page the test harness or the README's pictures opened.
   if (!kind || !TOUR_STEPS[kind] || !state?.me || state?.tour?.off || tourKind || window.BB_NO_TOUR) return;
   if (tourSeen().has(kind) || tourAsked.has(kind)) return;
@@ -131,12 +156,13 @@ function tourSoon(kind){
   if (document.querySelector(".modal:not([hidden])")) return;
   // ...nor over a placeholder: the page's own draw, once its data has
   // landed, asks again (the operator, 21 Oct: the tour pointed at shimmer).
-  if (tourLoading()) return;
+  if (tourLoading()) return tourRetry(kind);
   // ...nor over the setup page, which is the whole page until Finish: a new
   // owner's first look was Home's tour over its four steps.
   if (setupNeeded()) return;
   tourAsked.add(kind);
-  setTimeout(() => tourStart(kind), 700);
+  // ...and only if the page is still the one in front by then.
+  setTimeout(() => { if (tabOf(panes[0])?.kind === kind) tourStart(kind); else tourAsked.delete(kind); }, 700);
 }
 
 // The part a step is about: its selectors tried in the order written (the
@@ -163,13 +189,23 @@ function tourLoading(){
   return document.body.classList.contains("booting")
     || [...document.querySelectorAll(".doc.on .skel, .doc.on .loading, .doc.on .sk-b")].some(e => e.checkVisibility());
 }
+// A page that draws once and then sits (paint writes only on change) never
+// asks again after its data lands, so a tour held by its placeholder asks
+// again itself for a while: Show the tours again waited for a reload.
+function tourRetry(kind){
+  clearTimeout(tourWait);
+  if (++tourTries > 20) return;
+  tourWait = setTimeout(() => tourSoon(tabOf(panes[0])?.kind), 500);
+}
 function tourStart(kind){
   // Still the page in front, and nothing over it: a tour asked for a page
   // left meanwhile waits for that page's next visit.
   if (tourKind || document.querySelector(".modal:not([hidden])") || setupNeeded() || tourLoading() || tabOf(panes[0])?.kind !== kind){
     tourAsked.delete(kind);
+    if (tourLoading() && tabOf(panes[0])?.kind === kind) tourRetry(kind);
     return;
   }
+  tourTries = 0;
   // A step about a row the page has none of yet keeps its place with an
   // example of one (the operator, 21 Oct): an empty Containers or VMs page.
   tourSteps = TOUR_STEPS[kind].filter(s => !s.at || s.sample || tourTarget(s.at));
@@ -200,7 +236,16 @@ function tourStart(kind){
 // and taken away after: drawn by the page's own renderer where it has one,
 // inert, and marked as an example.
 function tourSample(s){
-  $("tourSample")?.remove();
+  // The same example from step to step (the project card's) stays, and
+  // turns over for a step about its back rather than being drawn again.
+  const was = $("tourSample");
+  if (was && s?.sampleKey && was.dataset.key === s.sampleKey){
+    const c = was.querySelector(".pcard"), turn = !!s.flip !== c?.classList.contains("flipped");
+    c?.classList.toggle("flipped", !!s.flip);
+    was.dataset.turning = turn ? "1" : "";
+    return was;
+  }
+  was?.remove();
   if (!s?.sample || (s.at && tourTarget(s.at))) return null;
   // The page on show's, not the first the pane keeps: after Home, the
   // example went into Home's hidden page and the ring wrapped an empty box
@@ -209,11 +254,48 @@ function tourSample(s){
   if (!doc) return null;
   const box = document.createElement("div");
   box.id = "tourSample"; box.className = "toursample"; box.inert = true;
+  if (s.sampleKey) box.dataset.key = s.sampleKey;
   box.innerHTML = `<div class="field"><span class="pill note">example</span> <span class="sub">what one looks like once there is one</span></div>${s.sample()}`;
   const bar = doc.querySelector(":scope > .docbarrow, :scope > .vbar");
   if (bar) bar.after(box); else doc.prepend(box);
   return box;
 }
+// An example project's card in the Projects page's own markup, on its front
+// or turned over to its back.
+function tourSampleProject(back){
+  const ic = (icon, label, extra = "") => `<button type="button" class="eye bare" aria-label="${label}"${extra}>${icon}</button>`;
+  const fb = (icon, label) => `<button type="button" class="ic" aria-label="${label}">${icon}</button>`;
+  return `<div class="field pgridband"><div class="pgrid"><div class="pcard pflip${back ? " flipped" : ""}">
+    <div class="pcface pcfront"><div class="pcname"><span class="name">example</span><span class="sp"></span>
+        <button type="button" class="eye bare pcmark">${PIN}</button><button type="button" class="eye bare pcmark">${ARCHIVE}</button></div>
+      <div class="pcmeta"><span class="pcfacts"><span class="pid">P1</span> · your-node</span></div>
+      <div class="pcrepos"><div class="pcrepo"><button type="button" class="namelink">example-web</button><span class="pcfacts"><span class="pbr">main</span></span></div></div>
+      <div class="pcacts actbar"><button type="button">Start agent</button><button type="button">Add repository</button><button type="button">Edit</button></div></div>
+    <div class="pcface pcback"><div class="pcname"><span class="name">example</span>${ic(PENCIL, "Rename")}
+        <span class="sp"></span><span class="actbar"><button type="button">Back</button></span></div>
+      <div class="pcrepos"><div class="pcrepo"><span class="name">example-web</span><span class="sp"></span>
+        ${ic(TERM, "A shell")}${ic(LINK, "Its git host")}${ic(PENCIL, "Rename")}${ic(MOVE, "Move")}${ic(BIN, "Delete", ' data-danger="1"')}</div></div>
+      <div class="pcacts actbar pcfoot">${fb(SWATCH, "Color")}${fb(TAG, "Group")}${fb(LOCK_OPEN, "Lock")}${fb(BUG, "Report bug")}${fb(GEAR, "Settings")}</div></div>
+  </div></div></div>`;
+}
+
+// The card a step turned over on the page (a step with `flip`), turned back
+// once the tour leaves those steps.
+let tourFlipped = "";
+function tourFlip(want){
+  if (!want){
+    const k = tourFlipped;
+    tourFlipped = "";
+    if (k && pjEditing.has(k)) flipCard(k);
+    return false;
+  }
+  const card = document.querySelector(`${TOUR_PANE} .doc.on .pgrid .pcard[data-pkey]`);
+  if (!card || card.classList.contains("flipped")) return false;
+  tourFlipped = card.dataset.pkey;
+  flipCard(tourFlipped);
+  return true;
+}
+
 function tourSampleCard(){
   return `<section class="dmcard"><div class="field dmgroup" style="--gc:var(--accent)"><b>example</b></div>
     <div class="row stack2"><div class="grow"><div class="dmhead"><div class="dmid">
@@ -246,7 +328,14 @@ function tourKeepSample(on){
 function tourDraw(){
   const ring = $("tourRing"), card = $("tourCard");
   const s = tourSteps[tourI], last = tourI === tourSteps.length - 1;
-  const el = tourSample(s) || tourTarget(s.at);
+  // A real card turned over for a step about its back, drawn once it has
+  // turned; and turned back for any other step.
+  if (!s.flip) tourFlip(false);
+  else if (tourFlip(true)){ ring.hidden = true; return setTimeout(() => { if (tourKind) tourDraw(); }, 480); }
+  // ...and a step's example ringed at the part the step is about.
+  const box = tourSample(s);
+  if (box?.dataset.turning){ box.dataset.turning = ""; ring.hidden = true; return setTimeout(() => { if (tourKind) tourDraw(); }, 480); }
+  const el = (box && s.part && box.querySelector(s.at.replace(TOUR_PANE, "").trim())) || box || tourTarget(s.at);
   tourKeepSample(!!s.sample);
   card.innerHTML = `<div class="tourstep">${tourI + 1} of ${tourSteps.length}</div>
     <div class="toursay">${esc(s.say)}</div>
@@ -302,6 +391,7 @@ function tourGo(d){
 function tourEnd(all){
   const kind = tourKind;
   tourKind = "";
+  tourFlip(false);
   tourKeepSample(false);
   $("tourCard").hidden = $("tourRing").hidden = true;
   $("tourSample")?.remove();
@@ -315,6 +405,16 @@ function tourEnd(all){
                        body: JSON.stringify({action: "prefs", prefs: {tour_seen: seen, tour_off: state.tour.off}})}).catch(() => {});
 }
 
+// A tour put away because its page was left: nothing is saved.
+function tourLeft(){
+  tourAsked.delete(tourKind);
+  tourKind = "";
+  tourFlip(false);
+  tourKeepSample(false);
+  $("tourCard").hidden = $("tourRing").hidden = true;
+  $("tourSample")?.remove();
+}
+
 // Show the tours again: every page's, from the next one opened.
 async function tourReset(){
   tourAsked.clear();
@@ -325,8 +425,12 @@ async function tourReset(){
   const r = await fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
                                        body: JSON.stringify({action: "prefs", prefs: {tour_seen: [], tour_off: false}})});
   const j = await r.json().catch(() => ({}));
+  // ...and a poll sent while this was on its way read the list from before it.
+  adoptSeq++;
   if (j.error) notify(j.error, true);
   else {
+    state.tour = {seen: [], off: false};
+    tourTries = 0;
     notify("The tours show again, on each page the next time you open it");
     // ...starting with the page in front, without waiting for a draw.
     tourSoon(tabOf(panes[0])?.kind);

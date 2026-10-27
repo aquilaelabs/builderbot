@@ -1,12 +1,11 @@
 // A pane keeps the terminals behind the visible one loaded.
 //
-// Switching tabs used to rebuild the pane's innerHTML, which threw the iframe
-// away, and ttyd is 700KB of javascript that then had to parse, connect a
-// websocket, attach to tmux and draw. On a phone that was a second and a half
-// of blank pane, every switch. The frames now sit on top of one another at the
-// same size with one visible, so coming back to one is a class toggle.
+// Switching tabs used to rebuild the pane's innerHTML, which threw the
+// terminal away, and it then had to connect a websocket, attach to tmux and
+// draw. The terminals now sit on top of one another at the same size with
+// one visible, so coming back to one is a class toggle.
 //
-// Same size matters as much as staying loaded: a hidden frame is still an
+// Same size matters as much as staying loaded: a hidden terminal is still an
 // attached tmux client, and tmux sizes a window to its smallest client.
 import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -31,8 +30,8 @@ const seen = () => page.evaluate(() => [...document.querySelectorAll('#pane1 .st
   .map(c => ({ key: c.dataset.key, on: c.classList.contains('on') })));
 
 await show(ids[0]);
-await page.waitForSelector('#pane1 .slot.on iframe');
-// Stamp the frame, so a rebuild is detectable: a new element loses the mark.
+await page.waitForSelector('#pane1 .slot.on.ownterm .xterm');
+// Stamp the terminal, so a rebuild is detectable: a new element loses the mark.
 await page.evaluate(() => { document.querySelector('#pane1 .slot.on').dataset.mark = 'first'; });
 
 await show(ids[1]);
@@ -56,7 +55,7 @@ ok(await page.$eval('#pane1 .stack > [data-mark="first"]', el => {
 await show(ids[0]);
 ok(await page.$eval('#pane1 .slot.on', el => el.dataset.mark === 'first'),
    'coming back shows the same element (no reload)');
-ok(await page.$$eval('#pane1 .slot.on iframe', f => f.length === 1),
+ok(await page.$$eval('#pane1 .slot.on.ownterm', f => f.length === 1),
    '...and exactly one terminal is on screen');
 
 // No ceiling below the strip's own (the operator, 6 Oct): every terminal tab
@@ -76,7 +75,7 @@ await page.waitForFunction(id => ![...document.querySelectorAll('#pane1 .stack >
   .some(c => c.dataset.key?.startsWith(id + '|')), id4, { timeout: 5000 }).catch(() => {});
 rows = await seen();
 ok(rows.length === before - 1 && !rows.some(r => r.key?.startsWith(id4 + '|')),
-   `...and Minimize detaches one: its frame goes with its tab (${rows.length})`);
+   `...and Minimize detaches one: its terminal goes with its tab (${rows.length})`);
 void fourth;
 
 // A document tab is not kept: it redraws from state instantly, and one #docN
@@ -96,16 +95,21 @@ ok(await page.$$eval('#pane1 .stack > .slot', (s, n) => s.length === n, slotsBef
    `...and opening it did not disturb the terminals behind it (${
      await page.$$eval('#pane1 .stack > *', c => c.map(x => x.dataset.key).join(' '))})`);
 
-// Coming back to a page a phone had backgrounded reconnects the terminal that
-// is on screen, and only that one. All of them at once was six ttyd instances
-// starting together (700KB of javascript, a websocket and a full repaint
-// each) on the device least able to afford it, which is what the page spent
-// its first seconds back doing.
+// Coming back to a page a phone had backgrounded opens again every terminal
+// whose socket dropped while it was away, and leaves the rest as they are.
 await page.evaluate(() => openTab({kind: 'term', arg: 'shell', label: 'sh'}));
-await page.waitForSelector('#pane1 .slot.on iframe');
+await page.waitForSelector('#pane1 .slot.on.ownterm .xterm');
 await page.setViewportSize({ width: 412, height: 900 });      // the phone path
-let reloads = 0;
-page.on('framenavigated', f => { if (f.url().includes('/term')) reloads++; });
+await page.waitForFunction(() => [...TERMS.values()].filter(r => r.el.isConnected).every(r => r.ws?.readyState === 1),
+                           null, { timeout: 20000 }).catch(() => {});
+// Two sockets dropped, one on screen and one behind it; the rest stay up.
+const dropped = await page.evaluate(() => {
+  const recs = [...TERMS.values()].filter(r => r.el.isConnected);
+  const on = recs.find(r => r.el.classList.contains('on')), off = recs.find(r => !r.el.classList.contains('on'));
+  for (const r of [on, off]){ const ws = r.ws; ws.onclose({ code: 1006, reason: '' }); ws.close(); }
+  recs.forEach(r => { r.ws.__before = true; });
+  return [on.key, off.key];
+});
 // Headless Chromium never really backgrounds a page, so the state it reads is
 // faked and the event it listens for is dispatched by hand.
 await page.evaluate(() => {
@@ -116,25 +120,16 @@ await page.evaluate(() => {
   document.dispatchEvent(new Event('visibilitychange'));
 });
 await new Promise(r => setTimeout(r, 3600));    // past the "really dropped" gate
-reloads = 0;
 await page.evaluate(() => window.__show());
-await new Promise(r => setTimeout(r, 1500));
-ok(reloads === 1, `returning reconnects the terminal on screen, and only it (${reloads})`);
-const behind = await page.$$eval('#pane1 .slot:not(.on) iframe',
-                                 f => f.map(x => !!x.dataset.stale));
-ok(behind.length > 0 && behind.every(Boolean),
-   `...the ones behind it are marked instead (${behind.length})`);
-
-// ...and a marked one reconnects when it is next brought forward.
+const after = await page.waitForFunction(keys => {
+  const recs = [...TERMS.values()].filter(r => r.el.isConnected);
+  const back = keys.every(k => { const r = TERMS.get(k); return r && !r.ended && r.ws?.readyState === 1 && !r.ws.__before; });
+  const kept = recs.filter(r => !keys.includes(r.key)).every(r => r.ws?.__before);
+  return back && kept ? { back, kept, n: recs.length } : null;
+}, dropped, { timeout: 10000 }).then(h => h.jsonValue(), () => null);
+ok(after?.back && after?.kept,
+   `returning opens again the terminals whose sockets dropped, on screen and behind, and leaves the rest (${JSON.stringify(after)})`);
 await page.setViewportSize({ width: 1280, height: 800 });
-const asleep = await page.$eval('#pane1 .slot:not(.on) iframe',
-                                f => f.closest('.slot').dataset.key.split('|')[0]);
-reloads = 0;
-await show(asleep);
-await new Promise(r => setTimeout(r, 1500));
-ok(reloads === 1, `bringing one forward reconnects it then (${reloads})`);
-ok(await page.$$eval('#pane1 .slot.on iframe', f => !f[0].dataset.stale),
-   '...and it is not marked twice');
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
@@ -208,25 +203,56 @@ ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
   await page.evaluate(() => { window.__pops = []; window.open = (url, name) => {
     const w = { url, name, closed: false, close(){ this.closed = true; } }; window.__pops.push(w); return w; }; });
   await page.click('#pane1 .bar [data-pop]');
-  ok(await page.evaluate(() => window.__pops.length === 1 && /^\/term\/\?arg=/.test(window.__pops[0].url) && /^bb-pop-/.test(window.__pops[0].name)),
-     'the pop-out opens the terminal in its own window, on its own /term connection');
+  ok(await page.evaluate(() => window.__pops.length === 1 && /^\/terminal\?arg=/.test(window.__pops[0].url) && /^bb-pop-/.test(window.__pops[0].name)),
+     'the pop-out opens the terminal in its own window, on its own connection');
   ok(await page.evaluate(id => tabOf(id).popped === true
-       && !document.querySelector(`#pane1 .stack > [data-key^="${id}|"] iframe`)
+       && !document.querySelector(`#pane1 .stack > [data-key^="${id}|"].ownterm`)
        && !!document.querySelector('#pane1 .slot.popped.on .reattach'), id),
-     '...and the tab stays, blank, with Reattach, its frame torn down');
+     '...and the tab stays, blank, with Reattach, its terminal closed');
   ok(await page.evaluate(id => layoutNow().tabs.find(t => t.id === id).popped === true, id),
      '...and the layout carries the flag');
   ok(await page.$eval('#pane1 .bar [data-pop]', b => /reattach/.test(saidOf(b))),
      "...and the dock's button now says reattach");
   await page.click('#pane1 .slot.popped.on .reattach');
   ok(await page.evaluate(id => tabOf(id).popped === false && window.__pops[0].closed === true
-       && !!document.querySelector(`#pane1 .stack > [data-key^="${id}|"].on iframe`), id),
+       && !!document.querySelector(`#pane1 .stack > [data-key^="${id}|"].on.ownterm`), id),
      'Reattach closes the window and the terminal is back in the pane');
   await page.click('#pane1 .bar [data-pop]');
   await page.evaluate(() => { window.__pops[1].closed = true; });
   await page.waitForFunction(id => tabOf(id).popped === false, id, { timeout: 6000 });
-  ok(await page.evaluate(id => !!document.querySelector(`#pane1 .stack > [data-key^="${id}|"].on iframe`), id),
+  ok(await page.evaluate(id => !!document.querySelector(`#pane1 .stack > [data-key^="${id}|"].on.ownterm`), id),
      'closing the popped window brings the tab back on its own');
+}
+
+// The dock's line with more tabs than fit has an arrow at the end with more
+// past it on a desk, as a row of big chips has, and a press on it moves the
+// line along (the operator, 24 Oct).
+{
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => { for (let n = 0; n < 14; n++) openTab({ kind: 'term', arg: `sh:${40 + n}:alpha`, label: `many ${n}` });
+                              panes[1] = tabs.find(t => t.arg === 'sh:40:alpha').id; dockUp = false; render(); });
+  await page.waitForFunction(() => document.querySelector('.dockline')?.classList.contains('chr'), null, { timeout: 10000 }).catch(() => {});
+  // From the line's start: it keeps where the tabs just opened left it.
+  await page.$eval('.dockline', l => { l.scrollLeft = 0; });
+  await page.waitForFunction(() => !document.querySelector('.dockline').classList.contains('chl'), null, { timeout: 3000 }).catch(() => {});
+  const was = await page.$eval('.dockline', l => ({ chr: l.classList.contains('chr'), left: l.scrollLeft }));
+  const r = await page.$eval('.dockline', l => { const b = l.getBoundingClientRect(); return { x: b.right - 10, y: b.top + b.height / 2 }; });
+  await page.mouse.click(r.x, r.y);
+  await page.waitForFunction(() => document.querySelector('.dockline').scrollLeft > 60, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(400);
+  const now = await page.$eval('.dockline', l => ({ left: l.scrollLeft, chl: l.classList.contains('chl') }));
+  ok(was.chr && was.left === 0 && now.left > 0 && now.chl,
+     `the dock's line has an arrow at the end with more tabs past it, and a press on it moves the line along (${JSON.stringify({ was, now })})`);
+  // Drawn again (a tab's label moved, as a session's dot does), the line
+  // stays where the press put it rather than going back to the tab in
+  // front (B322).
+  const before = await page.$eval('.dockline', l => l.scrollLeft);
+  await page.evaluate(() => { tabs.find(t => t.arg === 'sh:45:alpha').label = 'many 5 renamed'; render(); });
+  await page.waitForTimeout(200);
+  const after = await page.$eval('.dockline', l => ({ left: l.scrollLeft, drawn: [...l.querySelectorAll('.dtab')].some(e => /renamed/.test(e.textContent)) }));
+  ok(after.drawn && before > 0 && Math.abs(after.left - before) < 2,
+     `the dock's line drawn again keeps where it was scrolled to (${JSON.stringify({ before, after })})`);
+  await page.evaluate(() => { tabs.filter(t => /^sh:(4\d|5[0-3]):alpha$/.test(t.arg)).forEach(t => dropTab(t.id)); });
 }
 
 await done(browser);

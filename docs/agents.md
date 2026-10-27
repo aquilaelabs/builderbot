@@ -1,8 +1,8 @@
 # Coding agents
 
 A session on a project runs a coding agent in a terminal on a node: Claude
-(Anthropic's Claude Code), ChatGPT (OpenAI's Codex CLI) or Copilot (GitHub's
-Copilot CLI), each used the same way and held to the same briefing and
+(Anthropic's Claude Code), ChatGPT (OpenAI's Codex CLI), Copilot (GitHub's
+Copilot CLI) or Grok (xAI's Grok Build), each used the same way and held to the same briefing and
 guards. This page says what each agent is to BuilderBot, where it is
 installed and signed in to, and how each is wired.
 
@@ -21,6 +21,7 @@ transcripts are read from.
 | Claude | Claude Code | an Anthropic account | `claude-update` | `claude-login`, `claude-logout` | yes |
 | ChatGPT | Codex CLI | an OpenAI account (ChatGPT) | `codex-update` | `codex-login`, `codex-logout` | yes |
 | Copilot | Copilot CLI | a GitHub account with a Copilot plan | `copilot-update` | `copilot-login`, `copilot-logout` | yes |
+| Grok | Grok Build | a SuperGrok or X Premium+ account | `grok-update` | `grok-login`, `grok-logout` | yes |
 | Any model | an open agent, in a later release | none: a model router would hold the keys | | | not yet |
 
 A row whose sessions are not wired yet is read by nothing that names a
@@ -31,13 +32,29 @@ on one project at once, and two people may run different agents on it.
 
 ## Starting a session
 
-A project's **Start agent** opens the chooser: each node the project works
-on, and a line for each agent installed on that node, the project's own
-first. Each line is the same for every agent: **Resume** its last
-conversation and **New** where none of yours is running there; **Open**,
-**Restart** and **End** where one is; or **Sign in** where you have no
-sign-in to it there, which opens the Agents page at that agent's section.
+A project's **Start agent** opens the chooser, in three bands under the
+node it shows (a picker where the project works on several):
+
+- **Yours here.** Every session of yours on the project, each agent's and
+  each slot's on whichever node, with its state (working, waiting for you,
+  asking you) and its **Open**, **Restart** and **End**.
+- **Start.** A line for each agent installed on that node, the project's own
+  first: **New** starts a conversation, or **Sign in** where you have no
+  sign-in to it there, which opens the Agents page at that agent's section.
+- **Resume.** Your conversations on the project, newest first, each with its
+  agent, when it was and its first words; one running in a session of yours
+  is marked so and not offered, since two sessions would write over it.
+
 While one of yours runs, the button reads **Manage agent**.
+
+- **Several sessions of one agent.** New while a session of that agent is
+  yours already starts a second one beside it, a **slot** of its own: its
+  own session (`claude-alpha~2`), its own worktree on `<agent>/<name>-2`
+  (the owner's too) and its own conversation, read as *Claude 2* in the
+  dock, the card and Sessions. A Send with several of yours running asks
+  which one. Each person may run three of one agent on a project at once
+  unless its settings say otherwise (Agents may, *Sessions of one agent*,
+  1 to 9); a slot past it is refused at the terminal.
 
 - **A tree of its own.** Each agent's session works in a tree of its own: an
   agent other than Claude in a worktree on a branch `<agent>/<name>`
@@ -49,7 +66,8 @@ While one of yours runs, the button reads **Manage agent**.
   developer instructions (`-c developer_instructions=...`, read from the
   file at exec), which add to its own rather than replace them; Copilot CLI
   reads it as an `AGENTS.md` in a folder named by
-  `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`.
+  `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`; Grok Build has it appended to its own
+  prompt (`--rules`, read from the file at exec).
 - **Its first-run questions answered.** The session's tree is marked trusted
   in the agent's own config (Codex's `[projects."DIR"]`, Copilot's
   `trustedFolders`), so a read-only console never meets a question it cannot
@@ -59,6 +77,7 @@ While one of yours runs, the button reads **Manage agent**.
   CLI's from `codex debug models`, Copilot CLI's from `copilot help config`,
   read on 22 Oct); the pick rides the terminal's argument and bb-tty passes
   only a word on that agent's list. Nothing is saved for the next start.
+  Grok runs its own default model: no list of its is kept yet.
 - **Which agents a project allows.** Its settings' Agents may section has
   Coding agents, a tick for each agent beside Claude; one left unticked is
   not offered there and its terminal refuses. Claude always may.
@@ -70,9 +89,9 @@ While one of yours runs, the button reads **Manage agent**.
   agent listed first in Start agent's menu, and the one a project offers to
   install where its node lacks it; Claude unless it names another. The
   menu still offers every allowed agent installed on each node.
-- **Signed in or refused.** A terminal that would start a Codex or Copilot
-  session with no sign-in there says so and where to sign in, as Claude's
-  does.
+- **Signed in or refused.** A terminal that would start a Codex, Copilot or
+  Grok session with no sign-in there says so and where to sign in, as
+  Claude's does.
 
 ## The Agents page
 
@@ -81,7 +100,8 @@ bar, and a section per coding agent installed there.
 
 - **The version.** Each section says what the node's session account runs
   against the newest release: Claude Code's from Anthropic's download
-  service, Codex CLI's and Copilot CLI's from the npm registry, asked once
+  service, Codex CLI's and Copilot CLI's from the npm registry, Grok Build's
+  from its stable channel (`x.ai/cli/stable`), asked once
   after the controller starts, weekly, when a node starts, and on Check for
   updates on the Toolchains page. A node behind is a row in the bell, which
   opens this page when only agents are behind.
@@ -89,14 +109,16 @@ bar, and a section per coding agent installed there.
   toolchains on that node. Each ends that agent's sessions on the node
   first, then runs the vendor's own installer as the session account
   (`claude.ai/install.sh`, `chatgpt.com/codex/install.sh`,
-  `gh.io/copilot-install`), and where the node's agent is root copies the
+  `gh.io/copilot-install`, `x.ai/cli/install.sh`), and where the node's agent is root copies the
   binary somewhere the account cannot write, so an update typed in a
-  session changes nothing that runs. Nothing installs or updates by itself.
+  session changes nothing that runs. Nothing installs or updates by itself:
+  Copilot's and Grok's own updaters are switched off in a session. Grok's
+  installer checks its download against nothing published.
 - **Your sign-in on that node.** A sign-in is one account's on one node and
   never travels to another. Claude's flow prints a link and waits for the
-  code the page gives back. Codex's and Copilot's are device flows: the
-  section shows the link and a one-time code, which you enter on OpenAI's or
-  GitHub's page; nothing is pasted back. Codex's device login has to be
+  code the page gives back. Codex's, Copilot's and Grok's are device flows: the
+  section shows the link and a one-time code, which you enter on OpenAI's,
+  GitHub's or xAI's page; nothing is pasted back. Codex's device login has to be
   switched on in the ChatGPT account's security settings first.
 
 - **Your plugins and MCP servers.** Each section lists what you added to
@@ -110,28 +132,32 @@ project's Start sends a person here when they have no sign-in on its node.
 
 ## The guards
 
-Every guard a Claude session is held by holds for Codex and Copilot too,
+Every guard a Claude session is held by holds for Codex, Copilot and Grok too,
 through their own hooks rather than Claude Code's: BuilderBot writes them
 into the account's hooks file for each (Codex's `hooks.json`, Copilot's
-`hooks/builderbot.json`), each calling `bb-agent-hook` with the agent and
+`hooks/builderbot.json`, Grok's `~/.grok/hooks/builderbot.json`), each calling `bb-agent-hook` with the agent and
 the event, which says the agent's payload again in Claude's shape and runs
 the same hooks in the same order: before a tool the hold while BuilderBot
 updates, the house rules' command guard and the work note; on a prompt the
 relay, the rules and the node's turn limit; at the stop the house rules'
 checks and the turn handed back; on the agent's own permission prompt the
-asking mark. A refusal reaches Codex as Claude's does (exit 2) and Copilot
-as its own `deny`. The hooks act only in a session BuilderBot started; the
+asking mark. A refusal reaches Codex and Grok as Claude's does (exit 2) and Copilot
+as its own `deny`. Grok also reads Claude's hooks from `~/.claude/settings.json`
+on its own; a session turns that off, so each guard runs once. The hooks act only in a session BuilderBot started; the
 same agent run by hand is untouched. Codex's own hook trust is passed over
 for BuilderBot's where its version has the flag for it.
 
 Not every guard has a place on every agent, and the project's settings
 (Agents may, Coding agents) say which hold for which: Copilot has no hook
-after a summary, so the house rules are not said again then, and neither
-has a search tool for the code map's hint.
+after a summary, so the house rules are not said again then, and Codex's and
+Copilot's searches are in the shell, out of the code map's hint's reach.
+Grok has no hook for its permission prompt alone, so its dot is never
+asking, and it does not pass a prompt hook's words on to the model, so a
+house rule named in a prompt is not said to it then.
 
 ## In the dock, the bell and the turn limit
 
-A Codex or Copilot session's dot in the dock reads from its own hooks, since
+A Codex, Copilot or Grok session's dot in the dock reads from its own hooks, since
 its pane title is not Claude Code's: working from the prompt its turn began
 on, waiting once the turn ended, asking while its own permission prompt is
 up, which the bell shows as it does a Claude session's. Its turn on a node
@@ -146,22 +172,26 @@ on the project, from every coding agent that account uses, each marked with
 its agent, and never another account's (unless its person made one visible
 on the Sessions view): the controller looks under that account's transcripts
 and nowhere else. Codex's and Copilot's are kept by their Stop hook at the
-end of every turn, copied from the agent's own log into an `<agent>/` folder
+end of every turn (Grok's too), copied from the agent's own log into an `<agent>/` folder
 of the tree's folder in the account's transcripts, which the projects share
 or claudesync carries to the controller as it carries Claude Code's. The
 Sessions view shows each row's agent, reads and downloads it, shares and
 deletes it, and Resume opens that agent and no other: the log is put back
 where the agent looks for it on a node that never ran it (Codex's
 `sessions/`, Copilot's `session-state/`) and the agent is told to resume it.
+Grok keeps a session under a folder of its own encoding, so a Grok
+conversation resumes on the node that ran it, and elsewhere says so.
 
 ## What the node reports
 
 The node's agent probes each agent's `--version` as the session account on
 its heartbeat, under the census key the table names (`claude`, `codex`,
-`copilot`). Every few minutes it reads, for each account, who it is signed
+`copilot`, `grok`). Every few minutes it reads, for each account, who it is signed
 in as: Claude Code's account from `.claude.json`, Codex CLI's from the id
 token in `~/.codex/auth.json` (the account it names and its plan, never a
-token), Copilot CLI's from the GitHub login its config remembers. The
+token), Copilot CLI's from the GitHub login its config remembers, Grok
+Build's from `~/.grok/auth.json` (the email its token names, never the
+token). The
 controller keeps that per account, per node, per agent, and holds no
 credential of any of them.
 

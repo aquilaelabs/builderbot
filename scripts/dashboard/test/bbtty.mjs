@@ -1,20 +1,19 @@
-// bb-tty's Claude launch: the one path the browser files cannot reach, since
-// the harness runs no ttyd. This drives the script the way ttyd does (one URL
-// argument, one connection) against the same private tmux server, with stubs
-// standing in for `bb` and `claude`.
+// bb-tty's Claude launch, driven directly the way a terminal runs it (its
+// words as arguments, one connection) against the same private tmux server,
+// with stubs standing in for `bb` and `claude`.
 //
 // What it is here for: tmux hands `new-session` its command in a single 16KB
 // message and answers a longer one with `command too long`. The system prompt
 // bb-tty appends carries the project's whole roadmap and open bugs, so it grows
 // with the project, and once past that line, every Claude session on that
-// project became unstartable, ttyd reconnecting into the same error every five
-// seconds. The command goes through a launcher file now, and this is the test
+// project became unstartable, its terminal reconnecting into the same error
+// every five seconds. The command goes through a launcher file now, and this is the test
 // that says so.
 import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt, takeOn, member } from './lib.mjs';
 import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync, symlinkSync, realpathSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 
 // bb-tty leaves git's GIT_CONFIG_n to whoever set them, and a Claude session
 // running this suite has set its own: they are not this suite's to inherit
@@ -108,7 +107,7 @@ printf '%s\\0' "$@" > "${argvOut}"
 chmodSync(join(bin, 'bb'), 0o755);
 chmodSync(join(bin, 'claude'), 0o755);
 
-// One connection, the way ttyd makes one. bb-tty ends by exec'ing `tmux
+// One connection, the way a terminal makes one. bb-tty ends by exec'ing `tmux
 // attach-session`, which fails without a terminal; by then the session either
 // exists or does not, which is the whole question.
 // `as` is the account the /term proxy stamps on the argument. The model and
@@ -143,7 +142,7 @@ const launcher = () => existsSync(LAUNCHER) ? readFileSync(LAUNCHER, 'utf8') : '
 
 // A roadmap of 40KB. Under the old code this was `command too long` and no
 // session at all: the operator's report was a pane filling with that line as
-// ttyd reconnected into it every five seconds.
+// its terminal reconnected into it every five seconds.
 let out = connect(40000);
 await sleep(400);
 ok(!/command too long/.test(out),
@@ -184,10 +183,13 @@ ok(genv('GIT_CONFIG_KEY_0') === 'GIT_CONFIG_KEY_0=credential.helper'
 // ...and git's own user.name and user.email say the same author (B5), so
 // `git config user.name` agrees with the commits whatever a home's
 // .gitconfig still holds.
-ok(genv('GIT_CONFIG_COUNT') === 'GIT_CONFIG_COUNT=3'
-   && genv('GIT_CONFIG_KEY_1') === 'GIT_CONFIG_KEY_1=user.name' && genv('GIT_CONFIG_VALUE_1') === 'GIT_CONFIG_VALUE_1=Pat Tester'
-   && genv('GIT_CONFIG_KEY_2') === 'GIT_CONFIG_KEY_2=user.email' && genv('GIT_CONFIG_VALUE_2') === 'GIT_CONFIG_VALUE_2=pat@example.invalid',
-   `...and git's user.name and user.email are the same author (${genv('GIT_CONFIG_VALUE_1') || 'unset'})`);
+// ...after every tree taken as the session's own (R125 step 7: a tree
+// another user owns is otherwise refused as dubious).
+ok(genv('GIT_CONFIG_COUNT') === 'GIT_CONFIG_COUNT=4'
+   && genv('GIT_CONFIG_KEY_1') === 'GIT_CONFIG_KEY_1=safe.directory' && genv('GIT_CONFIG_VALUE_1') === 'GIT_CONFIG_VALUE_1=*'
+   && genv('GIT_CONFIG_KEY_2') === 'GIT_CONFIG_KEY_2=user.name' && genv('GIT_CONFIG_VALUE_2') === 'GIT_CONFIG_VALUE_2=Pat Tester'
+   && genv('GIT_CONFIG_KEY_3') === 'GIT_CONFIG_KEY_3=user.email' && genv('GIT_CONFIG_VALUE_3') === 'GIT_CONFIG_VALUE_3=pat@example.invalid',
+   `...and git's user.name and user.email are the same author, every tree its own (${genv('GIT_CONFIG_VALUE_2') || 'unset'})`);
 // ...and the toolchains its project's settings switch off (R77), which bb
 // reads as not there and the view leaves out.
 ok(genv('BB_TOOLCHAINS_OFF') === 'BB_TOOLCHAINS_OFF=hexkit flutter',
@@ -291,7 +293,7 @@ ok(alive('claude-alpha') && /project\/alpha\/claude-run\.sh$/.test(paneCmd()),
    'a project with no roadmap starts the same way');
 
 // A locked project. Enforced HERE rather than by graying the button out,
-// because the ttyd URL is reachable directly and a rule only the page honors
+// because a terminal's URL can be asked for directly and a rule only the page honors
 // is a suggestion, the same reason `excluded` is checked in this script.
 const LOCKS = join(DIR, 'state', 'locked-projects.json');
 // An administrator's lock (R119), which holds everybody out, read from the
@@ -304,7 +306,7 @@ await sleep(400);
 ok(/locked/.test(out) && !alive('claude-alpha'),
    'a locked project refuses a Claude session, whatever the URL asks for');
 // A refusal holds the terminal open for ten seconds so the browser can show
-// the reason: ttyd closes the connection the moment this exits. Only when
+// the reason: the terminal closes the moment this exits. Only when
 // something is holding one: called from here, with stderr on a pipe, there is
 // nobody to show it to, and five tests in this suite were paying it.
 ok(refusedIn < 5000,
@@ -387,8 +389,11 @@ ok(!/dangerously/.test(a) && /--effort\0max\0/.test(a),
 // the same launcher, re-reading the file and resuming what was running.
 writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
   { users: { [SEAT]: { alpha: { model: 'opus', effort: 'low' } } } }));
+// Named as Claude Code names a tree's folder, every character that is not a
+// letter or a digit a dash: the temp directory's dot made the slashes-only
+// name the respawn read a folder Claude never writes (B348).
 const tdir = join(DIR, 'home', '.claude', 'projects',
-                  join(DIR, 'ws', 'alpha').replaceAll('/', '-'));
+                  join(DIR, 'ws', 'alpha').replace(/[^A-Za-z0-9]/g, '-'));
 mkdirSync(tdir, { recursive: true });
 writeFileSync(join(tdir, 'old-one.jsonl'), '');
 await sleep(1100);                       // ls -t sorts by mtime, at 1s here
@@ -673,6 +678,32 @@ sleep 60
       const odd = shell(`u:${ownerUid}:codex:${proj}:m:opus;rm:b:${boot}`);
       ok(/Not a model ChatGPT offers here/.test(odd) && !alive(`codex-${proj}`),
          '...and a model not on its list opens nothing');
+      // A second session of one agent on one project is a slot of its own
+      // (R143): its own name, launcher, tree and branch, the first untouched;
+      // the owner's second Claude is a worktree too, the project directory
+      // staying the first's.
+      shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      shell(`u:${ownerUid}:codex:${proj}:s:2:b:${boot}`);
+      shell(`u:${ownerUid}:claude:${proj}:s:2:b:${boot}`);
+      await sleep(600);
+      const cwt2 = `${cwt}-2`, clt2 = join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-2`);
+      const cx2Run = join(HOMEDIR, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'codex-2-run.sh');
+      const wts = git(['worktree', 'list', '--porcelain']);
+      ok(alive(`codex-${proj}`) && alive(`codex-${proj}~2`) && tmuxFmt(`codex-${proj}~2`, '#{pane_start_path}') === cwt2
+         && /refs\/heads\/codex\/[^\n]*-2\n/.test(wts + '\n'),
+         `a second Codex session on the project is its own slot: codex-${proj}~2 beside the first, in ${cwt2} on a codex/NAME-2 branch`);
+      ok(existsSync(cx2Run) && /export BB_SLOT=2/.test(readFileSync(cx2Run, 'utf8'))
+         && /export BB_SLOT=1/.test(readFileSync(join(HOMEDIR, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'codex-run.sh'), 'utf8'))
+         && /codex-2-run\.sh$/.test(tmuxFmt(`codex-${proj}~2`, '#{pane_start_command}')),
+         '...through a launcher of its own that names its slot to its hooks, the first slot\'s left as it was');
+      ok(alive(`claude-${proj}~2`) && tmuxFmt(`claude-${proj}~2`, '#{pane_start_path}') === clt2
+         && tmuxFmt(`claude-${proj}`, '#{pane_start_path}') === join(DIR, 'ws', proj),
+         `...and the owner's second Claude works in a worktree (${clt2}), the project directory staying the first's`);
+      const noSlot = shell(`u:${ownerUid}:codex:${proj}:s:0:b:${boot}`);
+      ok(/Not a slot/.test(noSlot), '...and a slot out of range opens nothing, saying so');
+      tmuxKill(`codex-${proj}~2`); tmuxKill(`claude-${proj}~2`);
+      // ...put away again, so the trees counted below are the ones they were.
+      for (const t of [cwt2, clt2]) try { git(['worktree', 'remove', '--force', t]); } catch { /* not made */ }
       // Copilot: no status verb of its own, so the login its config
       // remembers is what says it is signed in.
       rmSync(join(HOMEDIR, '.copilot'), { recursive: true, force: true });
@@ -704,9 +735,49 @@ sleep 60
       ok((cpConf.trustedFolders || []).includes(join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-copilot`))
          && cpConf.lastLoggedInUser?.login === 'octo',
          '...its tree trusted in its config, and what was there kept, its // lines too');
-      tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`);
+      // Grok Build (R95 step 21): its session token or an API key says it
+      // is signed in; its briefing is appended to its prompt, Claude's hooks
+      // and its own updater are off, and its guards are its own hooks.
+      {
+        const gkArgv = join(bin, 'grok-argv');
+        writeFileSync(join(bin, 'grok'), `#!/usr/bin/env bash
+printf '%s\\0' "$@" > "${gkArgv}"
+printf '%s %s' "\${GROK_CLAUDE_HOOKS_ENABLED:-}" "\${GROK_DISABLE_AUTOUPDATER:-}" > "${gkArgv}.env"
+sleep 60
+`, { mode: 0o755 });
+        tmuxKill(`grok-${proj}`);
+        rmSync(join(HOMEDIR, '.grok'), { recursive: true, force: true });
+        const gkRefused = shell(`u:${ownerUid}:grok:${proj}:b:${boot}`);
+        ok(/not signed in to Grok/.test(gkRefused) && !alive(`grok-${proj}`),
+           'a Grok session with no session token or key is refused the same way');
+        mkdirSync(join(HOMEDIR, '.grok'), { recursive: true });
+        writeFileSync(join(HOMEDIR, '.grok', 'auth.json'), JSON.stringify({ token: 'not-real' }));
+        shell(`u:${ownerUid}:grok:${proj}:b:${boot}`);
+        await sleep(400);
+        const gk = existsSync(gkArgv) ? readFileSync(gkArgv, 'utf8').split('\0') : [];
+        const genv = existsSync(`${gkArgv}.env`) ? readFileSync(`${gkArgv}.env`, 'utf8') : '';
+        const ri = gk.indexOf('--rules');
+        ok(alive(`grok-${proj}`) && ri >= 0 && /THE HOUSE RULES/.test(gk[ri + 1] || '') && genv === '0 1',
+           `signed in, a Grok session starts with the briefing appended to its prompt, Claude's hooks and its own updater off (${genv})`);
+        const rgk = respawn('grok');
+        ok(rgk.includes('-c'), `...and a respawn goes on with Grok's newest session (${rgk.slice(-2).join(' ')})`);
+        const gkh = existsSync(join(HOMEDIR, '.grok', 'hooks', 'builderbot.json'))
+          ? JSON.parse(readFileSync(join(HOMEDIR, '.grok', 'hooks', 'builderbot.json'), 'utf8')) : {};
+        ok(/bb-agent-hook grok pre$/.test(gkh.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command || '')
+           && /bb-agent-hook grok stop$/.test(gkh.hooks?.Stop?.[0]?.hooks?.[0]?.command || '') && !gkh.hooks?.Notification,
+           `...its guards Grok's own hooks in a file of BuilderBot's, no asking mark among them (${Object.keys(gkh.hooks || {}).join(', ')})`);
+        tmuxKill(`grok-${proj}`);
+        // Kept, as its Stop hook keeps it, but never run on this node.
+        const gsid = '0199cccc-0000-7000-8000-000000000009';
+        const gkd = join(HOMEDIR, '.claude', 'projects', join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-grok`).replace(/[^A-Za-z0-9]/g, '-'), 'grok');
+        mkdirSync(gkd, { recursive: true });
+        writeFileSync(join(gkd, `${gsid}.jsonl`), '{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"hi"}}\n');
+        const away = shell(`u:${ownerUid}:grok:${proj}:r:${gsid}:b:${boot}`);
+        ok(/not on this node/.test(away) && !alive(`grok-${proj}`), '...and a Grok conversation this node never ran opens nothing, saying so');
+      }
+      tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`); tmuxKill(`grok-${proj}`);
       // Their trees go, so what follows counts the two people's alone.
-      for (const ag of ['codex', 'copilot']){
+      for (const ag of ['codex', 'copilot', 'grok']){
         try { git(['worktree', 'remove', '--force', join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-${ag}`)]); } catch { /* not made */ }
       }
     }
@@ -747,8 +818,11 @@ sleep 60
     // ...and the memory of its own tree allowed, which Claude Code keeps
     // outside the tree: a session asked the person to approve reading a
     // memory it was updating (6 Oct).
+    // The rest are the project's other repositories (BB_WORK_DIRS), which
+    // this fixture has: they were never seen while the scope failed to be
+    // written for a project of several (B380).
     const mem = scope.permissions.additionalDirectories || [];
-    ok(mem.length === 1 && mem[0].endsWith(`/.claude/projects/${wt.replaceAll('/', '-')}/memory`),
+    ok(mem.filter(d => /\/\.claude\/projects\//.test(d)).length === 1 && mem[0].endsWith(`/.claude/projects/${wt.replace(/[^A-Za-z0-9]/g, '-')}/memory`),
        `...and the memory of its own tree is a directory it may use without asking (${mem.join(', ')})`);
     // The scope file also carries the work hook, which is how the finer half
     // of `bb work` gets anything to report.
@@ -840,6 +914,28 @@ sleep 60
     tmuxKill(`${other}~shell-9`);
   }
 
+  // ---- no history on disk (the operator, 27 Oct) -----------------------------
+  // A person's shell and their agents run as one user, so a history file in
+  // the home was the agents' to read: each shell keeps its own in memory,
+  // and the files kept before are taken away.
+  {
+    const hist = join(HOMEDIR, 'users', other, '.bash_history');
+    mkdirSync(dirname(hist), { recursive: true });
+    writeFileSync(hist, 'export SECRET=hunter2\n');
+    writeFileSync(join(HOMEDIR, 'users', other, '.python_history'), 'x\n');
+    tmuxKill(`${other}~shell-9`);
+    shell(`u:${other}:sh:9:`);
+    await sleep(300);
+    const env = k => { try {
+      return execFileSync('tmux', ['show-environment', '-t', `${other}~shell-9`, k], { encoding: 'utf8', env: process.env }).trim();
+    } catch { return ''; } };
+    ok(env('HISTFILE') === 'HISTFILE=' && env('PYTHON_HISTORY') === 'PYTHON_HISTORY=/dev/null',
+       `a shell keeps no history file, nor a REPL (${env('HISTFILE')}, ${env('PYTHON_HISTORY')})`);
+    ok(!existsSync(hist) && !existsSync(join(HOMEDIR, 'users', other, '.python_history')),
+       '...and the history files kept in the home before are gone');
+    tmuxKill(`${other}~shell-9`);
+  }
+
   // ---- the same script on a NODE (roadmap #24) ------------------------------
   // BUILDERBOT_ROLE=node is what the agent exports into every session it
   // starts, and it changes three answers: there is no owner (nothing on a
@@ -893,8 +989,8 @@ print(uid)`);
     tmuxKill(`${ownerUid}~shell-wtproj-10`);
 
     // B166: what the URL claims is not who the terminal is for. A session on
-    // a node reaches its ttyd over loopback, so these are the URLs it could
-    // type. The account, its name and ownership come from the controller's
+    // a node can start bb-tty itself with any words, so these are the URLs
+    // it could type. The account, its name and ownership come from the controller's
     // answer to the token, and a URL the controller will not vouch for opens
     // nothing.
     {
@@ -924,8 +1020,8 @@ print(uid)`);
       const nowhere = shOut(`u:${ownerUid}:sh:13:`, [`tok:${ownerTok}`]);
       ok(/was refused/.test(nowhere) && !alive(`${ownerUid}~shell-13`),
          '...and a shell that is no project\'s, which the proxy never sends to a node, is refused there');
-      // The proxy sends an account with no shell to the read-only twin; the
-      // writable ttyd, reached directly, does not take it either.
+      // The server opens an account with no shell read-only; bb-tty started
+      // writable by hand does not take it either.
       const plainOut = (() => { try {
         return execFileSync('bash', [BBTTY, `u:${plainUid}:claude:wtproj:b:${boot}`, `tok:${tok('wtproj', plainUid)}`], {
           encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
@@ -942,7 +1038,7 @@ print(uid)`);
     const proj = 'wtproj';
     tmuxKill(`${otherUid}~claude-${proj}`);
     // The two extra URL arguments the proxy will add (phase 10b): the name
-    // and a session token. Passed the way ttyd passes them, one argv each.
+    // and a session token. Passed the way a terminal passes them, one argv each.
     const out = (() => { try {
       return execFileSync('bash', [BBTTY, `u:${otherUid}:claude:${proj}:b:${boot}`,
         `tok:${tok(proj, otherUid)}`, 'name:the.owner'], {
@@ -1073,10 +1169,17 @@ print(uid)`);
         // the listing, which has not met a directory made a moment ago,
         // and prefs.get reads the file fresh on every grant.
         const prefsFile = join(DIR, 'state', 'claude-prefs.json');
+        // What it reads and sees is its project's (R138): kept on the key
+        // of the project it is in, where the settings write it.
+        const projKey = () => {
+          try { return Object.entries(JSON.parse(readFileSync(join(DIR, 'state', 'project-repos.json'), 'utf8')).projects || {})
+                  .find(([, r]) => (r.members || []).includes(vproj))?.[0] || vproj; }
+          catch { return vproj; }
+        };
         const setReads = reads => {
           const d = existsSync(prefsFile) ? JSON.parse(readFileSync(prefsFile, 'utf8')) : { projects: {}, users: {} };
           d.projects = d.projects || {};
-          d.projects[vproj] = { ...(d.projects[vproj] || {}), reads };
+          d.projects[projKey()] = { ...(d.projects[projKey()] || {}), reads };
           writeFileSync(prefsFile, JSON.stringify(d));
         };
         setReads(['alpha']);
@@ -1099,7 +1202,7 @@ print(uid)`);
         const setSees = sees => {
           const d = existsSync(prefsFile) ? JSON.parse(readFileSync(prefsFile, 'utf8')) : { projects: {}, users: {} };
           d.projects = d.projects || {};
-          d.projects[vproj] = { ...(d.projects[vproj] || {}), sees };
+          d.projects[projKey()] = { ...(d.projects[projKey()] || {}), sees };
           writeFileSync(prefsFile, JSON.stringify(d));
         };
         setSees(['/mnt/media', '/srv/samples']);
@@ -1256,6 +1359,7 @@ print(uid)`);
            `a prompt asks for a turn and waits under its own timeout, and Stop hands it back (${prompt?.timeout}, ${!!stop})`);
       }
       tmuxKill(`${ownerUid}~claude-${proj}`);
+      let said = '';
       try {
         execFileSync('bash', [join(digest, 'scripts', 'dashboard', 'bb-tty'), `u:${ownerUid}:claude:${proj}:b:${boot}`,
                               `tok:${ownerTok}`, 'name:the.owner', 'owner:1'], {
@@ -1263,13 +1367,15 @@ print(uid)`);
           env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
                  BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
         });
-      } catch { /* the attach fails without a terminal */ }
+      } catch (e) { said = `${e.stdout || ''}${e.stderr || ''}`; /* the attach fails without a terminal */ }
       await sleep(400);
       const cur = join(realpathSync(bundles), 'current', 'scripts', 'dashboard');
       const hooks = scopeOf();
       ok(hooks.includes(`${cur}/bb-gate ${proj} `) && hooks.includes(`${cur}/bb-work-note ${proj} `)
          && hooks.includes(`${cur}/bb-check-relay ${proj} `) && !hooks.includes('0123456789abcdef'),
-         `run from a node's bundle, every hook names .bb/current, so a delivery reaches a session already open (${hooks.slice(0, 100)})`);
+         `run from a node's bundle, every hook names .bb/current, so a delivery reaches a session already open (${hooks.slice(0, 100)}; it said: ${said.trim().slice(-300)}; list ${
+           JSON.stringify(Object.values(JSON.parse(readFileSync(join(DIR, 'state', 'users.json'), 'utf8')).users || {}).find(u => u.uid === ownerUid)?.projects)}; repos ${
+           (() => { try { return readFileSync(join(DIR, 'state', 'project-repos.json'), 'utf8').slice(0, 300); } catch { return 'none'; } })()}; proj ${proj})`);
       tmuxKill(`${ownerUid}~claude-${proj}`);
       rmSync(join(DIR, 'store'), { recursive: true, force: true });
     }
@@ -1371,8 +1477,8 @@ esac
   ok(/cannot reach docker on this machine, or alpha-db-1 is gone/.test(gone) && !alive('ctr-alpha-db-1'),
      '...and one docker cannot inspect says so rather than opening an empty session');
   tmuxKill('ctr-alpha-app-1');
-  // The container terminal server's mode (BB_TTY_CTR, the agent's third
-  // ttyd, as the docker account): a node's and nowhere else's, and nothing
+  // The container terminal's mode (BB_TTY_CTR, the agent's ctr kind, as the
+  // docker account): a node's and nowhere else's, and nothing
   // opens there without the controller's grant for the token that came in.
   const ctrMode = (role, arg) => {
     try {

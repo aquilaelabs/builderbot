@@ -232,6 +232,20 @@ class Signs(Base):
         self.fail_why = ""
         self.assertEqual(releasesign.check("app", force=True)["signed"], ["v0.7.0"])
         self.assertFalse([a for a in releasesign.attention(["app"]) if a["bad"]])
+        self.assertFalse(releasesign.status("app")["failed"])
+
+    def test_a_look_moves_the_token_as_it_starts_and_ends(self):
+        # The Signing view re-reads on it, so a press is followed to its end
+        # rather than read once a few seconds on, mid-look.
+        was = releasesign.rev()
+        self.assertTrue(releasesign._claim("app"))
+        self.assertTrue(releasesign.status("app")["looking"])
+        self.assertGreater(releasesign.rev(), was)
+        mid = releasesign.rev()
+        releasesign.check("app")
+        releasesign._release("app")
+        self.assertGreater(releasesign.rev(), mid)
+        self.assertFalse(releasesign.status("app")["looking"])
 
     def test_a_release_whose_apk_never_came_is_said(self):
         releasesign.expect("app", "v0.9.0")
@@ -367,7 +381,8 @@ class RealSigning(unittest.TestCase):
         self.assertIn(r["key"]["sha256"].replace(":", "").lower(), v.stdout.lower())
         job = [j for j in self.node.jobs.values() if j["spec"]["op"] == "release"][0]
         self.assertEqual((job["type"], job["state"]), ("sign-key", "succeeded"), job["log"])
-        self.assertEqual(os.listdir(self.tmp / "data" / "sign-key"), [])
+        self.assertEqual(os.listdir(self.tmp / "signwork" / "key"), [])
+        self.assertFalse((self.tmp / "data" / "sign-key").exists(), "never on the data store (B315)")
         self.assertEqual(signing._handover, {})
 
     def test_a_rotated_key_signs_with_the_proof(self):

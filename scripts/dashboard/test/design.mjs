@@ -419,6 +419,21 @@ ok(bb('show', 'the home dashboard') === shown && /^Build or restyle the home das
    && /Platform: an Android app/.test(shown),
    'bb design show prints a page by id or by name, the same words');
 ok(bb('file') === written, 'bb design file prints the file as the notebook wrote it');
+// A branch's own record, not the saved one (B227): bb design json, edited,
+// renders through --from, and the notebook's design is left as it was.
+{
+  const mine = `${DIR}/design-mine.json`;
+  writeFileSync(mine, bb('json').replaceAll('#ff8800', '#00aa55'));
+  const fromMine = bb('file', '--from', mine);
+  ok(/\| `--accent` \| `#00aa55` \|/.test(fromMine) && !/#ff8800/.test(fromMine)
+     && /### the home dashboard \(Android app\)/.test(fromMine),
+     'bb design file --from FILE renders the file from the record given, its pages included');
+  ok(bb('file') === written, '...and the saved design is not touched by it');
+  let bad = '';
+  writeFileSync(mine, JSON.stringify({ language: { themes: [{ name: 'x', mode: 'sideways' }] }, pages: [] }));
+  try { bb('file', '--from', mine); } catch (e) { bad = String(e.stderr); }
+  ok(/ERROR/.test(bad), `...and a record that would not save is refused the way a save is (${bad.trim()})`);
+}
 let err = '';
 try { bb('show', 'nowhere'); } catch (e) { err = String(e.stderr); }
 ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that is not there is refused by name (${err.trim()})`);

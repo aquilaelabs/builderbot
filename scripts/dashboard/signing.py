@@ -13,7 +13,7 @@ Two routes, either or both per project:
 The keystore and its passwords live under /config/signing/PROJECT/, the
 directory 0700 and every file 0600, beside the git tokens and like them
 outside every session's view, and sealed there (R111 step 2) under the
-install's signing secret, which is never in /config: a copied /config, or a
+install's key, which is never in /config: a copied /config, or a
 backup of it, holds ciphertext alone. Root on the running controller still
 reads them, as it reads everything the dashboard can. A session never receives either: a signing is
 a job on the project's node that fetches the key over the agent's own
@@ -75,26 +75,31 @@ def configure(*, state, project_name, secret_file=None):
 
 
 # ---- sealed at rest (R111 step 2) ------------------------------------------
-# The install's signing secret: SIGNING_SECRET in the container's environment,
+# The install's key: INSTALL_KEY in the container's environment (R135, named
+# SIGNING_SECRET before 0.8.0),
 # which the entrypoint shields like every secret and hands the dashboard as a
-# file of its own in /run (never /config). Each keystore and each record's
+# file of its own in /run (never /config), or with none set the key the
+# install made itself and the page changes (R154, installkey.py), with the
+# one before it while anything is still sealed under that. Each keystore and each record's
 # passwords are sealed under it. The standard library has no cipher, so the
 # seal is built from what it has: HMAC-SHA256 as a pseudorandom function in
 # counter mode for the keystream (a fresh 16-byte nonce per seal) and a
 # second HMAC over the whole for its tag, checked before anything is opened
 # (encrypt-then-MAC, two keys derived from the secret apart).
-SECRET_FILE = "/run/builderbot-signing"
+SECRET_FILE = "/run/builderbot-key"
+PREVIOUS_FILE = "/run/builderbot-key-previous"
 MAGIC = b"BBSEAL1\n"
 MASTER = None
+PREVIOUS = None
 
 
 class Locked(Exception):
-    """A sealed file this controller cannot open: no signing secret, or not
+    """A sealed file this controller cannot open: no install key, or not
     the one it was sealed under."""
 
 
 def load_master(path=None):
-    """Read the signing secret, or none: a missing file is an install that
+    """Read the install key, or none: a missing file is an install that
     has not set one, and keeps its keys unsealed as before."""
     f = Path(path or os.environ.get("BB_SIGNING_SECRET_FILE") or SECRET_FILE)
     try:
@@ -102,11 +107,16 @@ def load_master(path=None):
     except OSError:
         raw = b""
     globals()["MASTER"] = raw if len(raw) >= 16 else None
+    try:
+        prev = Path(os.environ.get("BB_INSTALL_KEY_PREVIOUS_FILE") or PREVIOUS_FILE).read_bytes().strip()
+    except OSError:
+        prev = b""
+    globals()["PREVIOUS"] = prev if len(prev) >= 16 and MASTER is not None and prev != MASTER else None
     return MASTER is not None
 
 
-def _subkeys():
-    root = hashlib.sha256(b"builderbot signing seal v1\0" + MASTER).digest()
+def _subkeys(key=None):
+    root = hashlib.sha256(b"builderbot signing seal v1\0" + (key or MASTER)).digest()
     return (hmac.new(root, b"encrypt", hashlib.sha256).digest(),
             hmac.new(root, b"authenticate", hashlib.sha256).digest())
 
@@ -119,24 +129,50 @@ def _stream(key, nonce, n):
     return bytes(out[:n])
 
 
-def seal(data):
-    """`data` sealed under the signing secret: MAGIC, nonce, ciphertext, tag."""
-    enc, mac = _subkeys()
+def seal(data, key=None):
+    """`data` sealed under the install key, or under `key` (an account's own,
+    R154): MAGIC, nonce, ciphertext, tag."""
+    enc, mac = _subkeys(key)
     nonce = secrets.token_bytes(16)
     ct = bytes(a ^ b for a, b in zip(data, _stream(enc, nonce, len(data)), strict=True))
     return MAGIC + nonce + ct + hmac.new(mac, MAGIC + nonce + ct, hashlib.sha256).digest()
 
 
-def unseal(blob):
-    """The data a seal holds, or Locked: checked whole before it is opened."""
-    if MASTER is None:
-        raise Locked("this controller has no signing secret: set SIGNING_SECRET as it was, or import the key's backup")
-    enc, mac = _subkeys()
+def _open_with(key, blob):
+    """The data a seal holds under `key`, or None: checked whole first."""
+    enc, mac = _subkeys(key)
     body, tag = blob[:-32], blob[-32:]
     if len(blob) < len(MAGIC) + 48 or not hmac.compare_digest(tag, hmac.new(mac, body, hashlib.sha256).digest()):
-        raise Locked("sealed under another signing secret: set SIGNING_SECRET as it was, or import the key's backup")
+        return None
     nonce, ct = body[len(MAGIC):len(MAGIC) + 16], body[len(MAGIC) + 16:]
     return bytes(a ^ b for a, b in zip(ct, _stream(enc, nonce, len(ct)), strict=True))
+
+
+def unseal(blob):
+    """The data a seal holds, or Locked: under the install key, or the one
+    before it while a change keeps it (R154)."""
+    if MASTER is None:
+        raise Locked("this controller has no install key: set INSTALL_KEY as it was, or import the key's backup")
+    for key in (MASTER, PREVIOUS):
+        if key:
+            data = _open_with(key, blob)
+            if data is not None:
+                return data
+    raise Locked("sealed under another install key: set INSTALL_KEY as it was, or import the key's backup")
+
+
+def open_with(key, blob):
+    """The data a seal holds under `key` (an account's own), or Locked."""
+    data = _open_with(key, blob) if key else None
+    if data is None:
+        raise Locked("sealed under another key")
+    return data
+
+
+def current(blob):
+    """Whether a seal is under today's install key, so a change's pass knows
+    which to seal again."""
+    return MASTER is not None and _open_with(MASTER, blob) is not None
 
 
 def _read_secret(path):
@@ -146,13 +182,13 @@ def _read_secret(path):
 
 
 def _write_secret(path, data):
-    """A keystore written sealed where there is a signing secret."""
+    """A keystore written sealed where there is an install key."""
     _write_private(path, seal(data) if MASTER is not None else data)
 
 
 def _save_rec(project, key, route, rec):
     """A key's record written with its passwords sealed (in `sealed`) where
-    there is a signing secret, and never the opened copy _record hands out."""
+    there is an install key, and never the opened copy _record hands out."""
     out = {k: v for k, v in rec.items() if k not in ("store_pass", "key_pass", "sealed", "locked")}
     pw = {"store_pass": rec.get("store_pass"), "key_pass": rec.get("key_pass")}
     if rec.get("locked"):
@@ -192,9 +228,11 @@ def _projects():
         return []
 
 
-def seal_all():
+def seal_all(again=False):
     """Seal every key kept open, at start and whenever a secret first
-    arrives: its keystore and its record's passwords. Returns how many."""
+    arrives: its keystore and its record's passwords. `again`, after the
+    install key changed (R154): one sealed under the key before it is
+    sealed again under today's. Returns how many."""
     if MASTER is None:
         return 0
     n = 0
@@ -202,14 +240,20 @@ def seal_all():
         for k in key_names(proj):
             for r in ROUTES:
                 rec = _record(proj, r, k)
-                if not rec or rec.get("sealed") or rec.get("locked"):
+                if not rec or rec.get("locked"):
                     continue
+                stale = bool(again and rec.get("sealed") and not current(base64.b64decode(rec["sealed"])))
                 ks = _dir(proj, k) / f"{r}.ks"
                 try:
                     data = ks.read_bytes()
                     if not data.startswith(MAGIC):
                         _write_private(ks, seal(data))
-                except OSError:
+                    elif again and not current(data):
+                        _write_private(ks, seal(unseal(data)))
+                        stale = True
+                except (OSError, Locked):
+                    continue
+                if rec.get("sealed") and not stale:
                     continue
                 _save_rec(proj, k, r, rec)
                 n += 1
@@ -331,7 +375,7 @@ def listing(project):
             # from happening there now ("" when nothing does).
             "node": signer_name(project), "node_why": signer(project)[1],
             "backup_locked": bool(backup_locked(project)),
-            # Sealed under the install's signing secret, kept open, or
+            # Sealed under the install's key, kept open, or
             # locked (R111 step 2): the view says which.
             "at_rest": at_rest(project)}, 200
 

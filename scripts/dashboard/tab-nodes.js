@@ -19,7 +19,7 @@ let nodesList = null;            // last answer, or null before the first
 // its dialog opened still has its nodes.
 let nodesStale = false;
 // The pages that draw the list: a node picker each, or the rows themselves.
-const NODE_READERS = ["nodes", "toolchains", "agents", "emulator", "docker", "projects", "settings"];
+const NODE_READERS = ["nodes", "toolchains", "agents", "emulator", "docker", "projects", "settings", "debug"];
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
@@ -31,7 +31,6 @@ let nodesPick = "";              // which node the tab is showing, "" until the 
 // the DOM because the tab repaints on every heartbeat: a field that lived
 // only in the row would lose its text every 25 seconds.
 const nodesConf = {};
-let nodesCheck = {};             // node id -> {text, warn}: Check paths' last verdict (B850)
 let nodesFocus = null;           // {id, key, i}: the field to refocus after a repaint
 // When Update agent was pressed per node, so the button stays busy until the
 // agent comes back with the new digest (see renderNodesInto).
@@ -424,12 +423,12 @@ function nodeRunnerSection(n, c, between = ""){
   // The node-scoped tool's shape, the Phone tab's too (R121 step 5): the
   // state row first, the things below it, the add band, and at the foot
   // what a workflow (or a session) does to reach this node.
-  // `between` is what the CI runner page puts under the state line: every
+  // `between` is what the CI runner page puts under the head: every
   // node's runner at a glance (runnerRows). This node's runners are a list
   // of their own, a card on that page (the operator, 18 Oct: it read as
   // loose rows under lines that ran to the edge).
-  return `${headLine(`<span class="pill ${pill}">${esc(status)}</span> One runner per git host; its labels decide which workflows land here.`,
-        "", "toolstate")}${between}
+  return `${pageHead({title: n.name || "", cls: "toolstate", pills: `<span class="pill ${pill}">${esc(status)}</span>`,
+        facts: [["Runners", "one per git host, its labels deciding which workflows land here"]]})}${between}
       ${addbar ? `<div class="field">${addbar}</div>` : ""}
       <div class="ndruns">${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}</div>
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
@@ -474,9 +473,18 @@ function nodeSyncRow(n){
     <div><button type="button" data-nd="sync-clean" ${live} ${drained ? "" : "disabled"}>Clean up /workspace</button>
       <button type="button" data-nd="sync-resume" ${live}>Keep syncing</button></div>`;
   }
-  return `<div class="sub">Projects here are a copy kept in step through the controller${
-    rows.length ? `: ${rows.map(one).join(", ")}` : "; none is bound to this node yet"}.</div>
-    <div><button type="button" data-nd="sync-stop" ${live}>Stop syncing</button></div>`;
+  // In step, each repository's state is on its row in Repositories, with
+  // Stop syncing under them (the operator, 26 Oct: said twice otherwise).
+  void rows; void one;
+  return "";
+}
+// A repository's copy here, as its row in Repositories says it.
+function nodeSyncSaid(n, name){
+  const v = (n.reported?.sync || {})[name];
+  if (!v || n.kind !== "agent") return "";
+  return v.error ? `<span class="bad">${esc(v.error)}</span>`
+    : !v.ready ? `copying${v.copying ? ` (${v.copying} to go)` : ""}`
+    : v.pending ? `${v.pending} change${v.pending === 1 ? "" : "s"} going up` : "in step";
 }
 
 // Hosting only (the operator, 10 Oct): a node that runs containers sent to
@@ -578,8 +586,7 @@ function nodeFeaturesSection(n){
   others.push(elsewhere("emulator", "Android emulator", emu, "The emulator and its system images, from the Toolchains page, where Google's SDK license is accepted.",
     `<button type="button" data-ndtc="${esc(n.id)}">Toolchains</button>`));
   const runs = ((r.services || {}).runners || []).length;
-  others.push(elsewhere("runner", "CI runner", runs > 0, runs ? `${runs} runner${runs === 1 ? "" : "s"} registered here.` : "A forge's runner, registered with a token from the forge on the CI runner page.",
-    `<button type="button" data-ndrunner="${esc(n.id)}">CI runner</button>`));
+  others.push(elsewhere("runner", "CI runner", runs > 0, runs ? `${runs} runner${runs === 1 ? "" : "s"} registered here.` : "A forge's runner, registered with a token from the forge on the CI runner page.", ""));
   rows.push(...others);
   const have = fe ? [fe.vmhost?.installed, n.config?.host_only && fe.firewall?.installed].filter(Boolean).length
     + others.filter(h => / ok">installed/.test(h)).length : 0;
@@ -691,11 +698,10 @@ function openUnenroll(n){
 }
 
 // The projects that have this node among theirs (the operator, 10 Oct): read
-// off the projects this account is shown, primary first in each, with Remove
-// on the ones the account is on. Remove is the project's settings saved
-// without the node, so the same gates hold (the node grant, a read-only
-// project) and the server names the refusal; a project the account is not on
-// says so rather than offering it, the accident guard the pickers keep too.
+// off the projects this account is shown, primary first in each. Which node
+// a project uses is its settings' to say (the operator, 26 Oct: not removed
+// from here), so each one the account is on carries Settings, opening its
+// settings at where it runs; one the account is not on says so.
 function nodeProjects(id){
   return (state?.projects || []).filter(p => (p.prefs?.nodes || []).includes(id) || p.prefs?.node === id)
     .sort((a, b) => projLabel(a.name).localeCompare(projLabel(b.name), undefined, {sensitivity: "base"}));
@@ -703,19 +709,20 @@ function nodeProjects(id){
 function nodeProjectsSection(n){
   const list = nodeProjects(n.id);
   const rows = list.map(p => {
-    const set = p.prefs?.nodes || [];
-    const primary = p.prefs?.node === n.id;
-    const rest = set.filter(x => x !== n.id);
-    const then = !rest.length ? "it is then on no node, so nothing builds or runs a session until one is picked"
-      : primary ? `${esc((nodesList || []).find(x => x.id === rest[0])?.name || rest[0])} becomes its primary` : "";
+    const primary = p.prefs?.node === n.id, sync = nodeSyncSaid(n, p.name);
     return `<div class="row ndproj">
-      <div class="grow"><div class="name">${esc(projLabel(p.name))}${primary ? ` <span class="dim">· primary</span>` : ""}</div>
-        ${p.mine ? (then ? `<div class="sub dim">Removing it: ${then}.</div>` : "")
-          : `<div class="sub dim">Not one of your projects: add yourself to it to change its nodes.</div>`}</div>
-      ${p.mine ? `<button type="button" data-ndproj="${esc(p.name)}">Remove</button>` : ""}
+      <div class="grow"><div class="name"><button type="button" class="namelink" data-ndopen="${esc(p.name)}" title="open its notebook">${esc(projLabel(p.name))}</button>${
+          primary ? ` <span class="dim">· primary</span>` : ""}</div>
+        ${sync ? `<div class="sub">${sync}</div>` : ""}
+        ${p.mine ? "" : `<div class="sub dim">Not one of your repositories: add yourself to its project to change its nodes.</div>`}</div>
+      ${p.mine ? `<button type="button" data-ndproj="${esc(p.name)}" title="its nodes are set in its settings, under where it builds, tests and runs">Settings</button>` : ""}
     </div>`;
   }).join("");
-  const body = rows || `<div class="empty">No project you can see has this node. A project's settings add one.</div>`;
+  // Stop syncing, where the copies it stops are listed (R164).
+  const conf = n.config || {};
+  const stop = n.kind === "agent" && !conf.host_only && (conf.workspace || "sync") === "sync" && !conf.leaving
+    ? `<div class="field"><div class="actbar"><span class="sp"></span><button type="button" data-nd="sync-stop" ${n.live ? "" : "disabled"}>Stop syncing</button></div></div>` : "";
+  const body = (rows || `<div class="empty">No repository you can see is on this node. A project's settings add one.</div>`) + stop;
   return docSection("nodes", "projects", ndTitle("projects"), list.length ? `${list.length}` : "none", body);
 }
 
@@ -768,7 +775,6 @@ function nodeSessionsSection(n){
       ${nodeHostRow(n)}
       ${host ? "" : nodeSyncRow(n)}
       ${host ? "" : nodeAgentsLine(n)}
-      ${nodeToolsLine(n)}
     </div>`;
   return docSection("nodes", "sessions", ndTitle("sessions"), status, body, {cls});
 }
@@ -781,7 +787,8 @@ function nodeSessSettings(n){
   const rows = host ? nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n)
     : nodeSessNetRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeTurnsRow(n);
   const t = n.turns || {};
-  const now = host ? "" : `${t.working || 0} working now${t.limit ? ` of ${t.limit}` : ""}${t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
+  // Sessions, said so: under the test workers' field it read as them (B394).
+  const now = host ? "" : `${t.working || 0} session${(t.working || 0) === 1 ? "" : "s"} working now${t.limit ? ` of ${t.limit}` : ""}${t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
   const dirty = nodeSessDirty(n);
   return `<div class="ndsettings">${rows}
     <div class="actbar sectbar"><span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span><span class="sp"></span>
@@ -798,6 +805,7 @@ function nodeSessDirty(n){
   return (c.sessnetOn !== undefined && c.sessnetOn !== !!conf.session_net)
     || (c.rootAsks !== undefined && c.rootAsks !== !conf.no_root)
     || (c.acctUsers !== undefined && c.acctUsers !== !!conf.account_users)
+    || (c.tokSeal !== undefined && c.tokSeal !== !!conf.token_seal)
     || (c.ctrNet !== undefined && c.ctrNet !== ctrOn)
     || (c.portsLocal !== undefined && c.portsLocal !== portsOn)
     || (c.turnsText !== undefined && String(Number(c.turnsText) || 0) !== String((n.turns || {}).limit || 0))
@@ -826,7 +834,6 @@ function nodeAgentsLine(n){
     : `${have.map(a => a.name).join(", ")} installed; ${signed.length ? `you are signed in to ${signed.map(a => a.name).join(", ")}` : "you are signed in to none of them"} here.`;
   return `<div class="actbar ndagents">
       <span class="state${have.length ? (signed.length ? "" : " warn") : " bad"}">${esc(said)}</span>
-      ${railAllows("agents") ? `<button type="button" data-ndag="${esc(n.id)}" title="install, update and sign in to each on the Agents page">Agents</button>` : ""}
     </div>`;
 }
 
@@ -859,7 +866,7 @@ function nodeHostRootRow(n){
 // draft until its Save, like the switches beside it.
 function nodeContainerNetRow(n){
   const c = nodeDraft(n);
-  const on = "container_net" in (n.config || {}) ? !!n.config.container_net : !!n.config?.host_only;
+  const on = "container_net" in (n.config || {}) ? !!n.config.container_net : true;
   if (c.draft.ctrNet === undefined || c.draft.ctrFrom !== on){
     c.draft.ctrNet = on; c.draft.ctrFrom = on;
   }
@@ -874,6 +881,7 @@ function nodeContainerNetRow(n){
     <label class="ndcap"><input type="checkbox" data-k="ctrnet" ${c.draft.ctrNet ? "checked" : ""}>
       keep each project's containers to their own network (a container reaches another project's only where its project reads it)</label>
     ${line}
+    <div class="sub dim">This switch goes in 0.9.0, and the network is kept apart on every node from then.</div>
   </div>`;
 }
 
@@ -900,7 +908,7 @@ function nodePortsLocalRow(n){
 }
 
 function nodeSessNetRow(n){
-  const on = !!n.config?.session_net;
+  const on = "session_net" in (n.config || {}) ? !!n.config.session_net : !n.config?.host_only;
   // A draft until the section's Save is pressed (the rule apply-not-onchange,
   // the operator, 24 Sep): the tick is kept across the repaints a heartbeat
   // brings, and the press is where it is made.
@@ -919,6 +927,18 @@ function nodeSessNetRow(n){
   if (c.draft.acctUsers === undefined || c.draft.acctFrom !== acctOn){
     c.draft.acctUsers = acctOn; c.draft.acctFrom = acctOn;
   }
+  // ...and, with that, its coding agents' sign-ins sealed here (R126).
+  const sealOn = !!n.config?.token_seal;
+  if (c.draft.tokSeal === undefined || c.draft.tokFrom !== sealOn){
+    c.draft.tokSeal = sealOn; c.draft.tokFrom = sealOn;
+  }
+  const sealed = Object.values(n.reported?.tokseal?.sealed || {}).reduce((t, a) => t + Object.keys(a).length, 0);
+  const sealLine = !acctOn ? `<div class="sub dim">Needs each account a user of its own first.</div>`
+    : !sealOn ? ""
+    : !n.reported?.tokseal ? `<div class="sub dim">The node has not reported it yet.</div>`
+    : !sealed ? `<div class="sub dim">Nothing is signed in here yet: a sign-in made here is sealed as the login writes it.</div>`
+    : `<div class="sub">${sealed} sign-in${sealed === 1 ? "" : "s"} sealed here. Each opens only while its person has a terminal open on this node, so a copy of its disk signs in to nothing.</div>`
+      + (n.tokseal_stale ? `<div class="sub">${n.tokseal_stale} still sealed under an older key: ${n.tokseal_stale === 1 ? "it moves" : "each moves"} to its account's own key when ${n.tokseal_stale === 1 ? "its person opens" : "their people open"} a terminal here.</div>` : "");
   const ac = n.reported?.session?.accounts || {};
   const acctLine = !acctOn ? (ac.users ? `<div class="sub dim">${ac.users} account${ac.users === 1 ? "" : "s"} still ${ac.users === 1 ? "has" : "have"} a home of ${ac.users === 1 ? "its" : "their"} own user, moved back once ${ac.users === 1 ? "its" : "their"} sessions end.</div>` : "")
     : ac.error ? `<div class="sub bad">Not in force: ${esc(ac.error)}.</div>`
@@ -935,15 +955,24 @@ function nodeSessNetRow(n){
     : on ? `<div class="sub dim">Setting it up.</div>`
     : sn.sessions ? `<div class="sub dim">${sn.sessions} session${sn.sessions === 1 ? "" : "s"} started while it was on keep their own network until they end.</div>`
     : "";
-  return `<div class="field"><label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}>
+  // The controller's own machine (R90): on, and staying on, since it is
+  // what keeps a session there off the controller's own ports; said on the
+  // row, muted, rather than a box that refuses at Save.
+  const own = !!n.config?.own;
+  return `<div class="field"><label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}${own ? " disabled" : ""}>
       keep each session to its own project's network</label>
+    ${own ? `<div class="sub dim">Always on here: this is the controller's own machine, and its own network is what keeps a session off the controller's ports.</div>`
+      : `<div class="sub dim">This switch goes in 0.9.0, and each session is kept to its own network on every node from then.</div>`}
     ${line}</div>
     <div class="field"><label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
       let a session ask for a root command (bb root run), which a person then allows or denies</label>
     ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}</div>
     ${acctOn || state?.settings?.settings?.offer_unvetted?.value ? `<div class="field"><label class="ndcap"><input type="checkbox" data-k="acctusers" ${c.draft.acctUsers ? "checked" : ""}>
       run each account as a user of its own, so no account and no shell as the session account reaches another's sign-ins or terminals <span class="pill">dev</span></label>
-    ${acctLine}</div>` : ""}`;
+    ${acctLine}</div>
+    <div class="field"><label class="ndcap"><input type="checkbox" data-k="tokseal" ${c.draft.tokSeal ? "checked" : ""}${acctOn || sealOn ? "" : " disabled"}>
+      keep the coding agents' sign-ins sealed, opened only while their person has a terminal open here <span class="pill">dev</span></label>
+    ${sealLine}</div>` : ""}`;
 }
 
 // How many Claude sessions here may work on a prompt at once (turns.py on
@@ -1013,7 +1042,7 @@ function nodeAdvancedSection(n, stale, inflight){
       <div class="sub">${say}</div></div><div class="acts actbar">${btn}</div></div>`;
   const body = `
     <div class="ndname actbar ctlrow">
-      <div class="setrow col grow ctlrow">${lbl("", "Name", "its name in the pickers, on the project rows and as a runner label")}
+      <div class="setrow col grow ctlrow">${lbl("", "Name", "its name in the pickers, on the project cards and as a runner label")}
       <input data-k="name" value="${esc(c.draft.nameText)}" spellcheck="false" autocomplete="off"
         maxlength="60" aria-label="node name"></div>
       <button type="button" data-nd="rename"${!String(c.draft.nameText || "").trim() || String(c.draft.nameText).trim() === n.name ? " disabled" : ""}
@@ -1025,10 +1054,7 @@ function nodeAdvancedSection(n, stale, inflight){
         placeholder="/workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
         aria-label="path mapping"></div>
       <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
-      <button type="button" data-nd="check-paths"
-        title="check both machines see the same projects directory">Check</button>
     </div>
-    <div class="sub ndcheck${nodesCheck[n.id]?.warn ? " warn" : ""}"${nodesCheck[n.id] ? "" : " hidden"}>${esc(nodesCheck[n.id]?.text || "")}</div>
     <div class="ndacts">
     ${n.kind !== "agent" || !n.config?.host_only ? "" : act("Lock down",
         n.config?.lockdown ? "Locking down: it may take nothing but the job that stops its containers and shuts its door, and its credential is revoked when that ends, or within five minutes if it never answers."
@@ -1535,7 +1561,7 @@ function nodeCharts(n){
 // template written beside the page fell behind it), so a change to either
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
-const ND_SECTS = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["gpu", "GPU"],
+const ND_SECTS = [["health", "Health"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"],
                   ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
@@ -1697,6 +1723,8 @@ function renderNodesInto(i){
               : `Update the agent to ${esc(nodesAgent.version)} once its running jobs finish`}">${
             updating ? "Updating…" : "Update agent"}</button>` : ""}
           ${ndAgentButtons(false)}
+          ${state?.can?.debug === false ? "" : `<button type="button" data-ndlog="${esc(n.id)}" data-ndlogname="${esc(n.name)}"
+            title="the agent's own journal, in the dock, read again every ten seconds">Agent log</button>`}
         </div>
         <div class="sub ndtest" hidden></div>` : "";
     const health = docSection("nodes", "health", ndTitle("health"),
@@ -1717,7 +1745,10 @@ function renderNodesInto(i){
     return askRows + `
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
       <div class="grow">
-        <div class="name">${esc(n.name)} ${nodeStatePill(n)}${stalePill}</div>
+        <div class="name">${esc(n.name)} ${
+          // The controller's own machine, installed bare metal (R90): an
+          // ordinary node in every other way, behind the wall.
+          n.config?.own ? `<span class="tag ndown">this machine</span> ` : ""}${nodeStatePill(n)}${stalePill}</div>
         ${
         // Its facts in the facts voice, its id among them (R218 step 26):
         // the id is the one in its enroll script's name.
@@ -1758,19 +1789,6 @@ function renderNodesInto(i){
     nodesReveal = null;
     requestAnimationFrame(() => want.scrollIntoView({block: "center", behavior: noMotion() ? "instant" : "smooth"}));
   }
-}
-
-// The node's phone (tab-phone.js), where the phone is: a node with adb is a
-// place a phone is paired, connected and lent, each node its own (the
-// operator, 2 Oct). Only on a node the phone answer lists, which is a node
-// carrying adb; the answer is fetched the first time the section is drawn.
-// The node's phone and CI runner are tools of their own now (R121): a line
-// here says so and opens them on this node, so somebody who looks for them
-// where they were is sent where they are.
-function nodeToolsLine(n){
-  return `<div class="actbar ndtoolsline"><span class="state">This node's phone and CI runner are on their own tabs.</span>
-    <button type="button" data-ndphone="${esc(n.id)}">Phone</button>
-    <button type="button" data-ndrunner="${esc(n.id)}">CI runner</button></div>`;
 }
 
 // The CI runner tab (R121): a node picked in its bar, and that node's runners
@@ -1817,8 +1835,8 @@ function renderRunnerInto(i){
     // page's own; the node and its runners are on their way.
     // In the node's panel, as it lands: its rows are bands there, not a card.
     d.setBar(skNodeBar([["Add runner", "primary"]]));
-    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${headLine(`${skv(5)} One runner per git host; its labels decide which workflows land here.`,
-      "", "toolstate")}<div class="ndruns">${skRows(1)}</div></div>`);
+    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${pageHead({title: GHOST, cls: "toolstate",
+      facts: [["Runners", "one per git host, its labels deciding which workflows land here"]]})}<div class="ndruns">${skRows(1)}</div></div>`);
     return;
   }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
@@ -1879,30 +1897,6 @@ function nodesReadOnly(root){
   if (!(nodesList || []).some(n => nodeMay(n) === "write")) dead(root);
 }
 
-// Remove a project from this node: its settings saved with the node out of
-// its set, the primary moving to the next of the set as the dialog's own
-// save does. What ends with it is said before the press.
-async function nodeProjectRemove(b, name, id){
-  const p = (state?.projects || []).find(x => x.name === name);
-  if (!p || !id) return;
-  const nname = (nodesList || []).find(x => x.id === id)?.name || "this node";
-  const rest = (p.prefs?.nodes || []).filter(x => x !== id);
-  const node = p.prefs?.node === id ? (rest[0] || "") : (p.prefs?.node || "");
-  const inIt = c => { const m = /^\/workspace\/(?:\.worktrees\/)?([^/]+)/.exec(c || ""); return m && m[1] === name; };
-  const here = (state?.sessions || []).filter(x => x.node_id === id && inIt(x.cwd));
-  if (!await askYes(`Remove ${projLabel(name)} from ${nname}?\n\n`
-        + (rest.length ? "" : "It is then on no node: nothing builds, tests or opens a session for it until one is picked. ")
-        + (here.length ? `Its ${here.length} session${here.length === 1 ? "" : "s"} open there keep running until closed. ` : "")
-        + "Its containers there keep running, and the Containers page still reaches them.")) return;
-  busy(b, "Removing");
-  const j = await (await postJSON("/api/prefs", {project: name, node, nodes: rest}))
-    .json().catch(() => ({error: "no answer"}));
-  if (j.error) notify(j.error, true);
-  else notify(`${projLabel(name)} no longer uses ${nname}`);
-  await refresh();
-  nodesRev++; drawPanes();
-}
-
 // The enroll and sandbox VM dialogs, drawn into #ndmodal (outside every
 // page's DOM, so a poll landing mid-type cannot take what was typed): the
 // Nodes page's two buttons open them, and so does first run's node step
@@ -1944,7 +1938,7 @@ function ndDialogs(){
             <input id="ndEnUser" maxlength="32" autocomplete="off" spellcheck="false"
               value="bb"></div>
           <div class="setrow col ctlrow">${lbl("ndEnSystem", "System",
-            "what the machine runs. The script is built for it and refuses another machine by name; a system marked dev has not been walked on a node yet, and is offered with Offer dev features on")}
+            "what the machine runs. The script is built for it and refuses another machine by name. A system tagged dev is untested, and is offered only with Offer dev features on")}
             <select id="ndEnSystem">${optionList((nodesSystems.length ? nodesSystems : [{id: "ubuntu", name: "Ubuntu 24.04 or later", vetted: true}])
               .map(s => [s.id, s.vetted ? s.name : devOpt(s.name)]))}</select></div>
         </div>
@@ -2304,10 +2298,8 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
 function wireNodesTab(root){
   wireSignin(root);
   wireCharts(root);
-  root.querySelectorAll("[data-ndphone]").forEach(b => b.onclick = () => { phNode = b.dataset.ndphone; openPhoneTab(); });
-  root.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
-  root.querySelectorAll("[data-ndproj]").forEach(b => b.onclick = () =>
-    nodeProjectRemove(b, b.dataset.ndproj, b.closest("[data-node]")?.dataset.node || ""));
+  root.querySelectorAll("[data-ndopen]").forEach(b => b.onclick = () => openNotebook(b.dataset.ndopen));
+  root.querySelectorAll("[data-ndproj]").forEach(b => b.onclick = () => openProjectSettings(b.dataset.ndproj, "runs"));
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };
@@ -2329,7 +2321,9 @@ function wireNodesTab(root){
     const id = box.dataset.node;
     // The driver is the Toolchains tab's row (R102): this opens it on the node.
     box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
-    box.querySelectorAll("[data-ndag]").forEach(b => b.onclick = () => openAgentsOn(b.dataset.ndag));
+    // The agent's journal in the dock (R133 step 12).
+    box.querySelectorAll("[data-ndlog]").forEach(b => b.onclick = () =>
+      openLogTab(`log:node:${b.dataset.ndlog}:agent`, `Log: ${b.dataset.ndlogname}'s agent`));
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
       if (act === "disable" || act === "enable"){
@@ -2365,19 +2359,22 @@ function wireNodesTab(root){
               + "If the box itself may be taken over, also power it off from its provider's console: that stop does not need the agent.")) return;
       }
       if (act === "reboot" || act === "poweroff"){
-        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        const here = (state?.sessions || []).filter(x => x.node_id === id);
+        const nd = (nodesList || []).find(n => n.id === id), name = nd?.name || "this node";
+        // Everybody's, as the node reports them, not only this account's
+        // (the operator, 26 Oct): each is ended cleanly before the machine
+        // goes, so none is left open on the record.
+        const here = nd?.reported?.sessions || (state?.sessions || []).filter(x => x.node_id === id);
         const mine = here.filter(x => agentOfSession(tmuxBase(x.name)));
         const open = here.length
-          ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open there`
-            + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}; transcripts are kept. `
+          ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open there, everybody's`
+            + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}, each closed before the machine goes; transcripts are kept. `
           : "";
         if (!await askYes(act === "reboot"
               ? `Reboot ${name}?\n\n${open}Whatever is running there stops; the agent dials in again when the machine is back up.`
               : `Shut down ${name}?\n\n${open}It does not come back on its own: switch it on from its console or its hypervisor.`)) return;
       }
       // An agent update RESTARTS the agent, and until B107 is fixed that
-      // takes every session on the node with it: the ttyds, their tmux
+      // takes every session on the node with it: their tmux
       // servers and the Claude processes inside them are all in the agent's
       // systemd cgroup, so systemd's default kill reaches the lot. Said
       // before the press, naming what is open there, because the operator
@@ -2447,7 +2444,7 @@ function wireNodesTab(root){
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
                retire: "Removing", discard: "Discarding", uninstall: "Uninstalling", lockdown: "Locking down", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
-               paths: "Saving", "check-paths": "Checking", "to-sync": "Moving",
+               paths: "Saving", "to-sync": "Moving",
                "sync-stop": "Stopping", "sync-resume": "Resuming", "sync-clean": "Cleaning",
                rename: "Renaming", turns: "Saving",
                feature: b.dataset.op === "remove" ? "Uninstalling" : "Installing"}[act] || "Working");
@@ -2476,7 +2473,7 @@ function wireNodesTab(root){
       }
       if (act === "sess-revert"){
         const c = nodesConf[id];
-        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "tokSeal", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         nodesRev++; drawPanes();
         return;
       }
@@ -2507,12 +2504,14 @@ function wireNodesTab(root){
                         v => v ? "a session here may ask for a root command" : "a session here asking for a root command is refused")
           && await step(val("acctusers"), !!conf.account_users, v => ({action: "account-users", on: v}),
                         v => v ? "each account here becomes a user of its own; a home moves once its older sessions end" : "accounts here run as the session account again once their sessions end")
+          && await step(val("tokseal"), !!conf.token_seal, v => ({action: "token-seal", on: v}),
+                        v => v ? "coding agents' sign-ins here are sealed from the next hello, each opened only for a terminal its person opens" : "coding agents' sign-ins here are kept as plain files again, each from the next terminal its person opens")
           && await step(val("ctrnet"), "container_net" in conf ? !!conf.container_net : !!conf.host_only, v => ({action: "container-net", on: v}),
                         v => v ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello")
           && await step(val("portslocal"), "ports_local" in conf ? !!conf.ports_local : !!conf.host_only, v => ({action: "ports-local", on: v}),
                         v => v ? "published ports here bind to 127.0.0.1 from the next hello; docker restarts once" : "published ports here bind to every address from the next hello; docker restarts once");
         const c = nodesConf[id];
-        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "tokSeal", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         if (said.length) notify(said.join("; "));
         await loadNodes();
         return;
@@ -2547,20 +2546,8 @@ function wireNodesTab(root){
       }
       if (act === "paths"){
         const inp = box.querySelector('[data-k="paths"]');
-        delete nodesCheck[id];             // a new mapping wants a new check
         await nodeAct({action: "paths", id, paths: inp ? inp.value : ""});
         const c = nodesConf[id]; if (c && c.draft) c.draft.pathsText = undefined;
-        return;
-      }
-      if (act === "check-paths"){
-        // Roadmap #13. The verdict is kept, not only written on the line:
-        // the next heartbeat's repaint drew the row without it (B850).
-        nodesCheck[id] = {text: "checking…", warn: false};
-        nodesRev++; drawPanes();
-        const j = await nodeAct({action: "check-paths", id});
-        nodesCheck[id] = {text: j.error || j.why || (j.same ? "the same directory" : "not the same directory"),
-                          warn: !j.same};
-        nodesRev++; drawPanes();
         return;
       }
       if (act === "test"){
@@ -2586,7 +2573,6 @@ function wireNodesTab(root){
       await nodeAct({action: act, id, ...(act === "door" ? {on: b.dataset.on === "1"} : {}),
                      ...(act === "feature" ? {feature: b.dataset.feature, op: b.dataset.op} : {})});
     }));
-    box.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
     box.querySelectorAll("[data-ndvmlan]").forEach(c => c.onchange = async () => {
       const j = await nodeAct({action: "vm-lan", id, on: c.checked});
       if (j.error){ c.checked = !c.checked; notify(j.error, true); }
@@ -2622,7 +2608,7 @@ function wireNodesTab(root){
     // Revert, which sleep again when every field is back where it was.
     const sessWake = () => { const dirty = nodeSessDirty(nodesList.find(x => x.id === id) || {});
       box.querySelectorAll('[data-nd="sess-save"], [data-nd="sess-revert"]').forEach(x => { x.disabled = !dirty; }); };
-    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["acctusers", "acctUsers"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
+    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["acctusers", "acctUsers"], ["tokseal", "tokSeal"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
       const el = box.querySelector(`[data-k="${k}"]`);
       if (el) el.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft[key] = el.checked; sessWake(); };
     }

@@ -30,7 +30,7 @@ const PLAIN = { Authorization: 'Basic ' + Buffer.from('w.watch:w.watch-pass-1').
 const here = [`${uid}~claude-alpha`, `${uid}~shell-alpha-1`, `${uid}~claude-beta`];
 here.forEach(n => tmuxNew(n));
 const box = await call('/api/v1/nodes', { action: 'enroll', name: 'sessbox' });
-const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true,
+const SE = { up: true, term: true, user: 'bb', workspace: true, writable: true,
              boot: '3.3', up_s: 5000 };
 const agent = await call('/api/v1/agent/enroll',
   { user: 'bb', version: 'harness', census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', session: SE } },
@@ -75,8 +75,8 @@ ok(asSession.status === 403, `...and neither can a session, the owner's included
 const wrong = await call('/api/project-sessions', { project: 'alpha', action: 'end', session: here[2] });
 ok(wrong.status === 400 && /no such session on this project/.test(wrong.error || ''),
    `another project's session cannot be ended from this one (${wrong.error})`);
-const keys = await call('/api/keys', { session: here[0], key: 'enter' });
-ok(keys.status === 403, `a key in another account's session is still refused, administrator or not (B172, ${keys.status})`);
+const keys = await call('/api/send', { session: here[0], macro: 'lx-ls' });
+ok(keys.status === 403, `typing into another account's session is still refused, administrator or not (B172, ${keys.status})`);
 const ended = await call('/api/project-sessions', { project: 'alpha', action: 'end', session: nodeShell, node: box.id });
 const poll = await beat();
 ok(ended.ok && ended.who === 'w.sess' && (poll.kill_sessions || []).includes(nodeShell),

@@ -43,11 +43,21 @@ def gles():
 
 
 def prefs():
+    """The repository's node: its project's (R138), as the server's overlay
+    reads it, the repository's own record where it is in no project."""
+    st = os.environ["DASHBOARD_STATE"]
     try:
-        d = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "claude-prefs.json")))
-        print((d.get("projects") or {}).get(args[0], {}).get("node") or "")
+        d = json.load(open(os.path.join(st, "claude-prefs.json")))
     except (OSError, ValueError):
         print("")
+        return
+    try:
+        groups = (json.load(open(os.path.join(st, "project-repos.json"))).get("projects") or {})
+    except (OSError, ValueError, AttributeError):
+        groups = {}
+    key = next((k for k, g in groups.items() if isinstance(g, dict) and args[0] in (g.get("members") or [])), "")
+    ps = d.get("projects") or {}
+    print(((ps.get(key) or {}).get("node") if key else "") or (ps.get(args[0]) or {}).get("node") or "")
 
 
 def identity():
@@ -97,6 +107,29 @@ def node():
         print("  [warn] no node can run a session, and this container carries no Claude Code")
         print("         enroll one on the Nodes page, or wait for one to come back: a node")
         print("         that has just restarted or updated its agent is back in a minute")
+    for n in rows:
+        wall(nodes, n)
+
+
+def wall(nodes, n):
+    """The controller's own machine as a node (R90): whether the wall
+    between its sessions and this controller holds, as its bb-session last
+    told it (the census's isolation, `bb-session check`). Said in red when it
+    does not, since no session starts there until it does."""
+    if not nodes.own_machine(n) or n.get("state") == "retired":
+        return
+    rep = n.get("reported") or {}
+    iso = rep.get("isolation") if isinstance(rep.get("isolation"), dict) else None
+    name = n.get("name") or n.get("id")
+    if n.get("state") != "online" or n.get("live") is False or iso is None:
+        print(f"  [warn] the wall on this controller's own node ({name}) is not known: the node has not")
+        print("         reported since it was enrolled, so no session runs there until it does")
+    elif iso.get("sessions"):
+        print(f"  [ok]   the wall holds on this controller's own node ({name}): its sessions reach")
+        print("         none of the controller's state, secrets, ports or docker")
+    else:
+        print(f"  [FAIL] the wall on this controller's own node ({name}) is not in force, so no")
+        print("         session starts there: " + str(iso.get("why") or "bb-session check failed")[:400])
 
 
 def login():
@@ -108,14 +141,14 @@ def login():
 
 
 def signed():
-    """Codex's or Copilot's account here, read as `bb login --list` reads
+    """Codex's, Copilot's or Grok's account here, read as `bb login --list` reads
     it (login-list.py), so doctor and the Agents page cannot disagree."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "login_list", os.path.join(os.path.dirname(os.path.abspath(__file__)), "login-list.py"))
     ll = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ll)
-    got = {"codex": ll.codex_of, "copilot": ll.copilot_of}[args[0]](os.path.expanduser("~"))
+    got = {"codex": ll.codex_of, "copilot": ll.copilot_of, "grok": ll.grok_of}[args[0]](os.path.expanduser("~"))
     if not got or not got.get("email"):
         sys.exit(1)
     sys.stdout.write(f" ({got['email']})")

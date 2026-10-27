@@ -67,6 +67,8 @@ class Refused(Exception):
 
 def configure(*, state, workspace, write_json_fn):
     globals().update(STATE=Path(state), WORKSPACE=Path(workspace), write_json=write_json_fn)
+    import gitcreds                                         # noqa: PLC0415
+    gitcreds.configure(state=state)
 
 
 def _file():
@@ -292,10 +294,8 @@ def _own_token(project, host):
     """(token, scheme) from the project's stored credential line when it was
     written for this host, else ("", ""). The scheme is the line's: a token
     stored for http://host:3000 is the address that host answers on."""
-    try:
-        line = (STATE / "gitcreds" / project).read_text().strip().splitlines()[0]
-    except (OSError, IndexError):
-        return "", ""
+    import gitcreds                                         # noqa: PLC0415
+    line = gitcreds.read_line(project) if gitcreds.STATE else ""
     m = re.match(r"(https?)://[^:@/]*:([^@/]+)@([A-Za-z0-9.:%-]+)$", line)
     if not m:
         return "", ""

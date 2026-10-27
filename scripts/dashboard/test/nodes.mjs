@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, openArchived, closeFold, patience, saveDialog, sectSave, openSection, splitPick, holdPoll, freePoll, refreshUntil } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, openArchived, closeFold, patience, saveDialog, sectSave, openSection, splitPick, refreshUntil, prefsOf } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -260,9 +260,14 @@ print(json.dumps(out))
   await page.evaluate(() => { const c = document.getElementById('cardTools');
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
   await page.evaluate(() => openNodesTab());
-  await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
-  ok((await nodeOptions(page)).length === 1,
-     'the Nodes page lists the enrolled machines, and not this container');
+  // A node's own row, not the template's: the template drawn while the list
+  // is on its way has a row of the same class and a placeholder where the
+  // picker goes, and read then (a loaded run, the list slow to land) the
+  // picker had no options at all (B219).
+  await page.waitForSelector('.nodestab .ndrow[data-node]', { timeout: 15000 });
+  const listed = await nodeOptions(page);
+  ok(listed.length === 1 && !listed.includes('local'),
+     `the Nodes page lists the enrolled machines, and not this container (${listed.join(', ') || 'none'})`);
   // ...and with nothing enrolled it says so where the rows would be, rather
   // than an empty picker over an empty page. Driven by handing the page a
   // registry holding only the controller's own record, which is what a fresh
@@ -334,10 +339,10 @@ print(json.dumps(out))
     ok(rows.length === 2 && rows[0].id === sb.id && rows[1].id === added.id && rows[1].where === 'refused'
        && /buildbox/.test(rows[1].why),
        `a project on two nodes carries a row per node for the chooser, each judged (${JSON.stringify(rows.map(r => [r.name, r.where]))})`);
-    const t = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:beta:n:' + added.id), { headers: H });
+    const t = await fetch(base + '/termws?arg=' + encodeURIComponent('claude:beta:n:' + added.id), { headers: H });
     const body = await t.text();
     ok(t.status === 503 && /buildbox/.test(body), `...and a terminal asked for on the second node is judged there (${t.status})`);
-    const t2 = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:beta:n:n_notinset'), { headers: H });
+    const t2 = await fetch(base + '/termws?arg=' + encodeURIComponent('claude:beta:n:n_notinset'), { headers: H });
     ok(!/buildbox/.test(await t2.text()), '...while a node outside the set falls to the primary');
     // A build from the dashboard falls over to a node of the set that is
     // up (R82 step 6): buildbox's enrolment counted as a heartbeat, so its
@@ -902,8 +907,8 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await page.waitForSelector(`${ROW} .ndconfbody`, { timeout: 15000 });
   ok(await page.$eval(`${ROW} .ndconfbody`, e => ![...e.querySelectorAll(':scope > details.sect > summary .t')]
        .some(t => t.textContent.trim() === 'CI runners'))
-     && await page.$(`${ROW} [data-ndrunner]`) !== null,
-     '...and the Nodes page has no runner section, only a line that opens the CI runner page on this node');
+     && await page.$(`${ROW} [data-ndrunner]`) === null,
+     '...and the Nodes page has no runner section, nor a button to the CI runner page (the operator, 26 Oct)');
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
@@ -1290,8 +1295,9 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(fresh.config.workspace === 'sync', `a node enrolled holds its projects as a synced copy (${fresh.config.workspace})`);
     await page.evaluate(() => loadNodes());
     await page.waitForSelector(`${ROW} [data-nd="sync-stop"]`, { timeout: 10000 });
-    ok(/a copy kept in step/.test(await page.$eval(ROW, r => r.textContent)),
-       '...and the row says its projects are a synced copy');
+    ok(!/a copy kept in step/.test(await page.$eval(ROW, r => r.textContent))
+       && !!await page.$(`${ROW} [data-sect="nodes:projects"] [data-nd="sync-stop"]`),
+       '...and Stop syncing is under its Repositories, with no line of its own saying what that list says (the operator, 26 Oct)');
     const again = await napi('/api/v1/nodes', { action: 'to-sync', id: minted.id });
     ok(/already/.test(again.error || ''), `Move to a synced copy is refused in words while it holds one (${again.error})`);
     // ...and off it again (R164): Stop syncing holds sessions while what is
@@ -1364,24 +1370,26 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const held = await napi('/api/v1/nodes', { action: 'host-only', id: minted.id });
     ok(/gamma lists this node/.test(held.error || ''),
        `a node a project lists cannot be made hosting only until it is moved off (${held.error})`);
-    // ...which the node's own Projects section does (the operator, 10 Oct):
-    // the projects that have it, each with Remove, asked first.
+    // The node's Repositories section lists the ones that have it, each name
+    // opening its notebook and Settings opening its project's settings at
+    // where it runs, which is where a node is taken off (the operator, 26
+    // Oct: not removed from the node's page).
     await page.evaluate(async () => { await refresh(); await loadNodes(); });
     const projBtn = `${ROW} .ndproj [data-ndproj="gamma"]`;
     await page.waitForSelector(projBtn, { timeout: 10000 });
-    ok(/primary/.test(await page.textContent(`${ROW} .ndproj`)) &&
-       /on no node/.test(await page.textContent(`${ROW} .ndproj`)),
-       'the node\'s Projects section lists gamma as its primary, and says it would then be on no node');
-    page.dialogs.length = 0;
+    const repoRow = await page.$eval(`${ROW} .ndproj`, r => ({ text: r.textContent, link: !!r.querySelector('[data-ndopen="gamma"]'),
+      btn: r.querySelector('[data-ndproj]')?.textContent.trim(), head: r.closest('details.sect')?.querySelector('summary .t')?.textContent }));
+    ok(/primary/.test(repoRow.text) && repoRow.link && repoRow.btn === 'Settings' && repoRow.head === 'Repositories',
+       `the node's Repositories section lists gamma as its primary, its name a link, with Settings and no Remove (${JSON.stringify(repoRow)})`);
     await page.click(projBtn);
-    await page.waitForFunction(() => !(state.projects.find(p => p.name === 'gamma')?.prefs?.nodes || []).length,
-                               null, { timeout: 10000 });
-    ok(page.dialogs.length === 1 && /Remove gamma from[\s\S]*on no node/.test(page.dialogs[0]),
-       `Remove asks first, naming what it leaves (${page.dialogs[0]?.slice(0, 60)})`);
-    // The section is drawn after the poll that brings the change, so its
-    // going is waited for rather than read the moment the state moves.
+    await page.waitForFunction(() => document.querySelector('#pane0 .nbview[data-view="settings"] .snav .rrow.on')?.dataset.spick === 'runs', null, { timeout: 15000 }).catch(() => {});
+    ok(await page.evaluate(() => document.querySelector('#pane0 .nbview[data-view="settings"] .snav .rrow.on')?.dataset.spick) === 'runs',
+       '...and Settings opens gamma\'s settings at where it builds, tests and runs');
+    await napi('/api/prefs', { project: 'gamma', node: '', nodes: [] });
+    await page.evaluate(() => openNodesTab());
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
     await page.waitForSelector(projBtn, { state: 'detached', timeout: 10000 }).catch(() => {});
-    ok(!(await page.$(projBtn)), '...and gamma is gone from the node\'s Projects section');
+    ok(!(await page.$(projBtn)), '...and gamma taken off the node in its settings is gone from the node\'s Repositories');
     await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
     await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
     page.dialogs.length = 0;
@@ -1685,6 +1693,15 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       if (rm) await napi('/api/v1/jobs', { action: 'cancel', id: rm.id });
     }
     await hello(CENSUS);
+    // Agent log beside it (R133 step 12): the agent's own journal opened in
+    // the dock, a read-only tab of its own.
+    await page.waitForSelector(`${ROW} [data-ndlog]`, { timeout: 10000 });
+    await page.click(`${ROW} [data-ndlog]`);
+    const logTab = await page.waitForFunction(id => tabs.find(t => t.kind === 'term' && t.arg === `log:node:${id}:agent`),
+      minted.id, { timeout: 10000 }).then(h => h.jsonValue(), () => null);
+    ok(logTab && /^Log: shed's agent$/.test(logTab.label), `Agent log opens the node's agent journal in the dock (${logTab?.label})`);
+    await page.evaluate(id => { const t = tabs.find(x => x.arg === `log:node:${id}:agent`); if (t) dropTab(t.id); dockToggle(false); openNodesTab(); }, minted.id);
+    await page.waitForSelector(`${ROW} [data-nd="reenroll"]`, { timeout: 10000 });
     // Enroll script on the row (R177): a new script for this node, bound
     // to the machine it reported, with no secret in it; run on another
     // machine the controller refuses it, on the same it enrolls again
@@ -1772,7 +1789,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
      'the Tools tab picks among nodes and never offers this container (roadmap #26)');
   const tcBefore = await page.evaluate(() => tcNode);
   await page.selectOption('.tctab #tcNodeSel', minted.id);
-  await page.waitForFunction(() => /on shed/.test(document.querySelector('.tctab .tcact .state')?.textContent || ''),
+  await page.waitForFunction(() => /^\s*shed\b/.test(document.querySelector('.tctab .tcact .name')?.textContent || ''),
                              null, { timeout: 15000 });
   // A pick is a history entry (B31): Back returns to the node before, on
   // this page, and Forward to the one picked.
@@ -1787,7 +1804,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        `picking a node pushes its address, and Back returns to the node before on Toolchains (${atPick} then ${await page.evaluate(() => location.hash)})`);
     await page.goForward();
     await page.waitForFunction(id => tcNode === id
-      && /on shed/.test(document.querySelector('.tctab .tcact .state')?.textContent || ''), minted.id, { timeout: 15000 });
+      && /^\s*shed\b/.test(document.querySelector('.tctab .tcact .name')?.textContent || ''), minted.id, { timeout: 15000 });
   }
   const tools = await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
   ok(tools.some(t => /6655482e/.test(t)) && tools.some(t => /29\.0\.14206865/.test(t))
@@ -1797,7 +1814,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   // status line's again.
   const room = await page.$eval('.tctab .tiles', e => e.textContent.replace(/\s+/g, ' '));
   ok(tools.some(t => /6655482e/.test(t)) && /(40|39)(\.\d)? ?GB free/.test(room)
-     && !/GB free|MB free/.test(await page.$eval('.tctab .tcact .state', e => e.textContent)),
+     && !/GB free|MB free/.test(await page.$eval('.tctab .tcact', e => e.textContent)),
      `picking the node lists what its census says it has, and its store's headroom in its tile alone (${room.slice(0, 120)} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.tctab', e => e.textContent)),
      'an installed toolchain on a node reads "installed", not "installed at" with nothing after it');
@@ -2215,6 +2232,13 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
 
   // ---- the project's nodes, in its settings dialog (phase 6) --------------
   await page.evaluate(() => openProjectsTab());
+  // The form reads what is saved from the page's last poll, and the block
+  // above set alpha's node and cleared it again through the API a moment
+  // ago: read on a poll from between the two, the form took the node as
+  // saved already, and its Save refused a section as changed since the
+  // settings were opened, which left the record without what this block
+  // typed (and the busy check below with no node to ask about, B219).
+  await page.evaluate(() => refresh());
   // As on the first opening after a page load: the node list has not been
   // fetched yet. The picker used to stay hidden until the dialog was closed
   // and opened again; it has to appear on this opening, when the list lands.
@@ -2232,12 +2256,13 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
   await page.fill('#rnCaptureDays', '3');
   await page.fill('#rnDevKeep', '5');
-  await saveDialog(page);
-  const saved = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha;
+  const saidNo = await saveDialog(page);
+  const saved = prefsOf('alpha');
   ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
      && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi' && saved.capture_days === 3
      && saved.dev_keep === 5,
-     'Save writes the project\'s node, the command, the outputs, the days captures are kept and the dev builds kept of each onto the project record');
+     `Save writes the project's node, the command, the outputs, the days captures are kept and the dev builds kept of each onto the project record (${
+       saidNo || 'saved'}: ${JSON.stringify({ node: saved.node, build: saved.build, outputs: saved.outputs, capture_days: saved.capture_days, dev_keep: saved.dev_keep })})`);
   // Whether that node is quiet enough to time on (R108): the agent's
   // heartbeat says its load and what runs there by kind, and the answer
   // joins it with the jobs and sessions there, naming no other project.
@@ -2248,7 +2273,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   const busyNow = await page.evaluate(async () => (await fetch('/api/node-busy?project=alpha')).json());
   ok(busyNow.verdict === 'busy' && busyNow.cores === 4 && busyNow.kinds.emulator === 1 && !('made_up' in busyNow.kinds)
      && busyNow.why.some(w => /1 emulator, 2 gradle/.test(w)) && busyNow.why.some(w => /load 2\.6 on 4 cores/.test(w)),
-     `the project's node says it is busy and why: its load, and an emulator and Gradle running there (${JSON.stringify(busyNow.why)})`);
+     `the project's node says it is busy and why: its load, and an emulator and Gradle running there (${JSON.stringify(busyNow.why || busyNow)})`);
 
   // ---- saved is not applied ----------------------------------------------
   // Apply used to be live whenever anything had been saved, so a node that
@@ -2511,7 +2536,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   const syncBeat = sync => fetch(base + '/api/v1/agent/work', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [], sync }, running: [], wait: 0 }) });
-  const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: false, writable: false, boot: '12.5', up_s: 40 };
+  const SE = { up: true, term: true, user: 'bb', workspace: false, writable: false, boot: '12.5', up_s: 40 };
   await napi('/api/prefs', { project: 'alpha', node: minted.id });
   await sessionCensus(SE);
   await syncBeat({ alpha: { ready: false, rev: 0, copying: 12 } });
@@ -2625,43 +2650,6 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await papi({ action: 'update', id: sb.id, fields: { name: 'sandbox' } });
     await page.waitForFunction(id => nodesList?.find(n => n.id === id)?.name === 'sandbox', sb.id, { timeout: 15000 });
   }
-
-  // ---- Check: the pair nothing else verifies (roadmap #13) ------------------
-  // A marker made under the share here, looked for through the node's
-  // daemon by the same guarded one-shot container that makes the dev-data
-  // directory. The stub answers yes; run.testfail makes it say no the way
-  // `test -d` does. The marker never outlives the check.
-  const { readFileSync: rf, writeFileSync: wf, unlinkSync: ul, readdirSync: rd } = await import('node:fs');
-  const chk = `.nodestab .ndrow[data-node="${sb.id}"] .ndcheck`;
-  // The verdict was written onto the row and kept nowhere else, so the next
-  // repaint drew the row without it (B850, kept in the page since), and a
-  // poll's repaint as the button is pressed can take the press (B486). So the
-  // poll is held over each check, and the verdict is read in the frame the
-  // wait sees it rather than by a second read after it.
-  const checkPaths = async want => {
-    await holdPoll(page);
-    try{
-      await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="check-paths"]`);
-      return await page.waitForFunction(([s, w]) => { const e = document.querySelector(s);
-        return !!e && new RegExp(w).test(e.textContent) && { text: e.textContent, warn: e.classList.contains('warn') }; },
-        [chk, want], { timeout: 20000 }).then(h => h.jsonValue());
-    } finally { await freePoll(page); }
-  };
-  const same = await checkPaths('same directory');
-  ok(/^the same directory/.test(same.text) && !same.warn,
-     `Check makes a marker under the projects share here and finds it through the daemon: the same directory (${same.text})`);
-  const dlog = rf(`${DIR}/dockerstate/docker.log`, 'utf8');
-  ok(/run --rm -u \d+:\d+ -v \/[^ ]+:\/d alpine test -d \/d\/\S*bb-path-check-[0-9a-f]+/.test(dlog),
-     '...as a one-shot test -d through the guarded probe, mounting the share root');
-  ok(!rd(`${DIR}/ws`).some(f => f.startsWith('bb-path-check-')),
-     '...and the marker is gone afterwards');
-  wf(`${DIR}/dockerstate/run.testfail`, '');
-  const notSame = await checkPaths('NOT the same');
-  ok(notSame.warn && /would bind an empty tree/.test(notSame.text),
-     `a marker the daemon cannot see is said plainly, with what it would cost (${notSame.text})`);
-  ul(`${DIR}/dockerstate/run.testfail`);
-  ok(!rd(`${DIR}/ws`).some(f => f.startsWith('bb-path-check-')),
-     '...and the marker is gone after a no as well');
 }
 
 // ...and put the sandbox's path mapping back: it lives on the node record
@@ -3133,17 +3121,10 @@ await page.click('#ndBody #vmCancel');
     return { status: r.status, ...(await r.json()) };
   }, [node, extra]);
 
-  // The switch first. Off (the default), nothing is offered to anybody,
-  // whatever any node has been granted.
-  let r = await read(n.name);
-  ok(r.status === 403 && /debug mode is off/.test(r.error || ''),
-     `with debug mode off a machine's logs are refused, saying what turns it on (${
-       (r.error || '').slice(0, 48)})`);
-  await page.evaluate(async () => {
-    await fetch('/api/settings', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ set: { debug_mode: true } }) });
-  });
+  // Debug mode is on here: the harness starts the controller with
+  // DEBUG_MODE=1, which is what turns it on (the operator, 26 Oct); off is a
+  // controller started without it, which reset_debug's unit test holds.
+  let r;
 
   // On, and still refused: the switch grants nothing. The grant is the
   // PROJECT's since 6 Oct (its settings' Debug), not the node's, so another
@@ -3175,9 +3156,6 @@ await page.click('#ndBody #vmCancel');
      `a log this table does not name is refused, not run (${(r.error || '').slice(0, 40)})`);
   await grant([]);
   await page.evaluate(async () => {
-    await fetch('/api/settings', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ set: { debug_mode: false } }) });
     await fetch('/api/prefs', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project: 'alpha', node: '' }) });
@@ -3609,7 +3587,7 @@ ok(page.errors.length === 0,
   const shipped = (await napi('/api/v1/nodes')).agent || {};
   const census = { cpu: 2, mem_mb: 4096, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64', sandbox: true,
                    stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 } },
-                   session: { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true,
+                   session: { up: true, term: true, user: 'bb', workspace: true, writable: true,
                               boot: '77.1', up_s: 900, claude: '1.0.0 (Claude Code)' } };
   // The enrollment token enrolls and nothing else: the exchange hands the
   // agent its own, which every hello and heartbeat carries.
@@ -3713,8 +3691,8 @@ ok(page.errors.length === 0,
   await pickNode(page, en.id);
   const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
   await page.waitForFunction(sel => /Claude installed/.test(document.querySelector(sel + ' [data-sect="nodes:sessions"] .ndagents')?.textContent || ''), ROWC, { timeout: 15000 });
-  ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !!await page.$(`${ROWC} [data-ndag="${en.id}"]`),
-     'the Nodes page says which coding agents are installed there in one line and points at the Agents page, with no update of its own (R95)');
+  ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !await page.$(`${ROWC} [data-ndag]`),
+     'the Nodes page says which coding agents are installed there in one line, with no update of its own (R95) and no button to the Agents page (the operator, 26 Oct)');
   await page.evaluate(id => openAgentsOn(id), en.id);
   const AGC = `.agentstab [data-agnode="${en.id}"] [data-sect="agents:claude"]`;
   await page.waitForSelector(`${AGC} [data-agact="install"]`, { timeout: 15000 });
@@ -3941,6 +3919,98 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
   await page.keyboard.press('Escape');
   await napi('/api/prefs', { project: 'delta', node: was });
   writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ delta: { by: 'u_0000aaaa', admin: true } }));
+}
+
+// The controller's own machine, a bare-metal install's node of itself (R90
+// step 8): minted from a shell with --own, its row wears "this machine",
+// its session network is set and its box cannot be cleared (said on the
+// row), a project's node pickers say which it is, and the container
+// picker does not offer it, since it runs no containers.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  const napi = async (path, body) => (await fetch(base + path, { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+  const tok = execFileSync('python3', [`${REPO}/scripts/lib/nodes-verbs.py`, 'enroll-token', `${REPO}/scripts/dashboard/nodes.py`,
+    'nasbox', '--user', 'bb', '--own'], { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } }).trim();
+  const en = await (await fetch(base + '/api/v1/agent/enroll', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: 'bb', version: '1', digest: 'sha256:' + '1'.repeat(64),
+                           census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' } }) })).json();
+  ok(en.ok && /^bbn_/.test(en.token || ''), `the controller's own machine enrolls with an --own token (${en.error || 'ok'})`);
+  const own = await page.evaluate(async () => { await loadNodes(); return nodesList.find(n => n.name === 'nasbox'); });
+  ok(own?.kind === 'agent' && own.config?.own === true && own.config?.session_net === true
+     && JSON.stringify(own.capabilities) === '["package-build"]',
+     `...as an ordinary agent row: this machine, its sessions in a network of their own, no containers (${JSON.stringify(own?.capabilities)})`);
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
+  await pickNode(page, own.id);
+  const tag = await page.evaluate(id => {
+    const t = document.querySelector(`.nodestab .ndrow[data-node="${id}"] .name .tag.ndown`);
+    const probe = document.createElement('i'); probe.style.color = 'var(--purple)'; document.body.append(probe);
+    const purple = getComputedStyle(probe).color; probe.remove();
+    return t ? { text: t.textContent.trim(), color: getComputedStyle(t).color, purple } : null;
+  }, own.id);
+  ok(tag && tag.text === 'this machine' && tag.color === tag.purple,
+     `its row on the Nodes page is marked this machine, in the reference's color (${JSON.stringify(tag)})`);
+  const box = await page.evaluate(id => {
+    const row = document.querySelector(`.nodestab .ndrow[data-node="${id}"]`);
+    const i = row?.querySelector('input[data-k="sessnet"]');
+    return i ? { checked: i.checked, disabled: i.disabled, said: i.closest('.field')?.textContent || '' } : null;
+  }, own.id);
+  ok(!box || (box.checked && box.disabled && /controller's own machine/.test(box.said)),
+     `its session network box is ticked and cannot be cleared, with why on the row (${JSON.stringify(box)?.slice(0, 120)})`);
+  const off = await napi('/api/v1/nodes', { action: 'session-net', id: own.id, on: false });
+  ok(/controller's own machine/.test(off.error || ''), `...and the server refuses it off as well (${off.error || 'no error'})`);
+  const opts = await page.evaluate(async () => {
+    // The dialog fills its picker once the project's settings are read, and
+    // the options of the last opening are there until then: waited on by
+    // what this one draws, for as long as a loaded box takes.
+    // The dialog may still be open on alpha from the block above, whose
+    // Escape a held key can miss, and opening the same project again draws
+    // nothing new: the picker is filled again from the list as it is now.
+    openProjectSettings('alpha');
+    rnFillNode();
+    const has = () => [...(document.getElementById('rnNode')?.options || [])].some(o => /nasbox/.test(o.textContent));
+    for (let i = 0; i < 100 && !has(); i++) await new Promise(r => setTimeout(r, 100));
+    const proj = [...document.getElementById('rnNode').options].map(o => o.textContent.trim());
+    const sel = document.createElement('select'), wrap = document.createElement('div');
+    fillNodeSelect(sel, wrap, '', null, null);
+    return { proj, ctr: [...sel.options].map(o => o.textContent.trim()),
+             list: (nodesList || []).map(n => `${n.name}:${n.kind}:${n.state}:${n.live}:${!!n.config?.host_only}`) };
+  });
+  await page.keyboard.press('Escape');
+  ok(opts.proj.some(o => /^nasbox \(this machine, agent/.test(o)),
+     `a project's node picker offers it, saying it is this machine (${JSON.stringify(opts.proj)}; nodes ${JSON.stringify(opts.list)})`);
+  ok(!opts.ctr.some(o => /nasbox/.test(o)), `the container picker does not offer it (${JSON.stringify(opts.ctr)})`);
+  // A session there with the wall down is refused before anything starts,
+  // in bb-session's own words, though the node's session half is up and
+  // its copy of the project is there: the census says the wall does not
+  // hold, which is the one thing that differs from any other node.
+  const census = iso => execFileSync('python3', ['-c', `
+import importlib.util, json, sys, time
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+n = m.node("${own.id}")
+rep = n["reported"]; rep.update({"session": {"up": True, "boot": "b-nas", "term": True, "user": "builder"},
+                                 "sync": {"beta": {"ready": True}}, "isolation": json.loads(sys.argv[1])})
+ag = n["agent"]; ag["last_seen"] = int(time.time())
+m._exec("UPDATE nodes SET reported = ?, agent = ? WHERE id = ?", (json.dumps(rep), json.dumps(ag), "${own.id}"))`, JSON.stringify(iso)],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const wasBeta = (await (await fetch(`${base}/api/status`, { headers: H })).json()).projects.find(p => p.name === 'beta')?.prefs || {};
+  await napi('/api/prefs', { project: 'beta', node: own.id, nodes: [own.id] });
+  census({ sessions: false, why: "bb-session: the wall around this machine's controller does not hold: the job account (bb) is in the docker group" });
+  const why = async () => (await (await fetch(`${base}/api/status`, { headers: H })).json())
+    .projects.find(p => p.name === 'beta')?.session_why || '';
+  const shut = await why();
+  ok(/this controller's own machine, and the wall between its sessions and the controller is not in force/.test(shut)
+     && /the job account \(bb\) is in the docker group/.test(shut),
+     `a session on it with the wall down is refused, saying why (${shut.slice(0, 160)})`);
+  census({ sessions: true, why: '' });
+  const open = await why();
+  ok(!/wall between its sessions/.test(open), `...and with the wall up it is not refused for it (${open.slice(0, 80) || 'no refusal'})`);
+  await napi('/api/prefs', { project: 'beta', node: wasBeta.node || '', nodes: wasBeta.nodes || [] });
+  await napi('/api/v1/nodes', { action: 'retire', id: own.id });
 }
 
 await done(browser);

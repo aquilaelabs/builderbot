@@ -66,7 +66,9 @@ INDEX_DIR = ".bb-map"
 # own files during the window when both exist.
 FORMAT = 3
 INDEX_FILE = f"map{FORMAT}.json"
-SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchpad",
+# vendor: libraries a project carries as they were published (the dashboard's
+# xterm.js, Go's vendor/), minified or not, and not its own code.
+SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchpad", "vendor",
              "_work", "build", ".gradle", ".idea", "venv", ".venv"}
 # The brace-counting scanner covers every C-shaped language: what differs
 # is the word that opens a function (`fun`, `func`, `fn`, `function`) or

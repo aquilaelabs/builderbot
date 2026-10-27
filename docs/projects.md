@@ -1,20 +1,23 @@
 # Projects
 
-Every project is a git repository under `/workspace`, shown as a card on
-the **Projects** page (Projects on the rail) and opened as a page of its own,
-described in [notebook.md](notebook.md). This doc covers the Projects page,
-making a project (new, cloned or from an archive), linking it to a git host,
-its menu and its settings, archiving and deleting it, and how its repository
-is reached: push rights, tokens, deploy keys and FTP.
+A project is a named thing of its own that holds git repositories under
+`/workspace`, each repository in exactly one project. A project is a card on
+the **Projects** page (Projects on the rail), and each repository opens as a
+page of its own, described in [notebook.md](notebook.md). This doc covers the
+Projects page, making a project and adding repositories to it (new, cloned or
+from an archive), linking a repository to a git host, a card's two faces and
+a project's settings, archiving and deleting, and how a repository is
+reached: push rights, tokens, deploy keys and FTP.
 
 ## The Projects page
 
-The **Projects** page shows every project under `/workspace` as a card with
-its branch and node, and **Start agent** (**Open** and the agent's name, in green, while
-your session runs), **Shell** and a menu on each. The bar holds a search,
-**New project** and the bin; the cards can be kept together in groups of your
-own (**Group**, in a card's menu), and archived projects are folded under
-**Archived** at the page's foot. A problem is
+The **Projects** page shows every project as a card: its name, its
+repositories with their branches, who has a session there, and **Start
+agent** (**Manage agent**, in green, while your session runs), **Add
+repository** and **Edit** on each. The bar holds a search, the bin and **New
+project**; the cards can be kept together in groups of your own (**Group**,
+on a card's back), and archived projects are folded under **Archived** at the
+page's foot. A problem with a repository is
 said on the card rather than hidden: an **error** in red, a directory the
 container user cannot read/write/enter (with the `chown` that fixes it) or
 one holding no valid git repository, and a **warning** in amber, because
@@ -32,8 +35,16 @@ different promise.
 
 ## Making a project
 
-In the page's bar, **New project** creates one. A fresh local repo
-(`git init`) asks for a name and a free-text *Brief*: what you want
+In the page's bar, **New project** asks for a name and nothing else, and
+makes a project with no repository in it. Its name is what people read, so
+spaces and punctuation are kept ("Web shop, v2"); two projects never share
+one. **Add repository** on its card then makes or clones a repository into
+it, in the dialog described next, which leaves out the node and the Agents
+may dials, since those are the project's. First run and Home's Getting
+started open the same dialog on its own, and the project is made around the
+repository, named as it is.
+
+A fresh local repo (`git init`) asks for a name and a free-text *Brief*: what you want
 built. The brief is not the project's `CLAUDE.md`, which every session
 reads as standing instructions and which would go on asserting the first
 day's decisions after the project moved past them. It is kept in the tree
@@ -133,23 +144,39 @@ passing through a toast you may not have been there to see. `git init` is
 the exception and stays synchronous; it is done before a spinner would
 render, and a row that flashes up for one frame is worse than none.
 
-## A project's card and its menu
+## A project's card
 
-A card, and the header of the project's own page, carry two actions,
-**Start agent** and **Shell**, and a menu for the rest: **Link to a git
-host** (or the host's settings, once linked), **Lend your phone** when your
-phone is connected on its node, **Report a BuilderBot bug**, **Archive**,
-**Pin**, **Group**, **Color**, **Settings**, and, on the card, **Delete**.
-**Color** is your own color for the project, a stripe down its card, its
-page's header and its terminals' tabs, so several projects tell apart
-without reading each name; **Group** is a label of yours that keeps
-projects together on the Projects page, and nothing else follows from it.
+A card has two faces. Its **front** says what the project is: its name, with
+**Pin** and **Archive** as icons beside it (lit where they are set), its id
+and node, who has a session there with the agent each runs and what it is
+doing, each repository with its branch (the name opens its page), and
+**Start agent**, **Add repository** and **Edit**. A press on the card
+itself opens nothing. A project with no repository yet says so, and its
+Start agent waits for one.
+
+**Edit** turns the card over in place, to its **back**, the same size as the
+front: the project's name with a pencil to rename it; each repository with
+icons for a **shell** in it, its **git host** (linking it, or the host's
+settings once linked), lending it **your phone** when your phone is
+connected on its node, **rename**, **move** to another project and
+**delete**; and along the foot one line of icons, each named when hovered:
+**Color**, **Group**, **Lock** (its owner's or an administrator's), **Report
+bug** (which repository it is about, the first unless you pick another) and
+**Settings**. **Done** turns it back. Each face's buttons are one line, and
+there is no menu on a card.
+
+A repository's own page keeps **Start agent**, **Shell** and a menu in its
+header (link, phone, report, archive, lock, pin, settings). **Color** is your
+own color for the project, a stripe down its card, its repositories' pages'
+headers and its terminals' tabs, so several projects tell apart without
+reading each name; **Group** is a label of yours that keeps projects together
+on the Projects page, and nothing else follows from it.
 
 **The node** beside the branch on every project's card and in its page's
 header is the node its work runs on. A project with none says nothing more;
 its Start agent is ghosted with where to pick one.
 
-**A pin** per project, **Pin** or **Unpin** in its menu, decides whether
+**A pin** per project, the pin by its name or **Pin** on its back, decides whether
 Home's glance shows it.
 The pins are each person's own: unpinning takes a project off your glance
 and nobody else's, and nothing else: the Projects page lists everything
@@ -160,17 +187,19 @@ nothing pinned and pins what it wants from the Projects page; one made
 before that with no set yet still sees everything pinned. The page lists
 projects by name, case aside.
 
-**Delete** moves a project to `/workspace/.trash/<name>` with every
-file kept: a second delete of the same name is numbered rather than
-overwriting the first, and `/config` is not touched, so putting one back is
-a `mv`. It is **Delete** in each card's menu on the Projects page and
-**Delete project…** at the foot of every project's settings, and the bin in
-the page's bar lists what was deleted, to put back. It is deliberately not a
-bare button on the card.
+**Delete**, a repository's bin icon on a card's back, moves it to
+`/workspace/.trash/<name>` with every file kept: a second delete of the same
+name is numbered rather than overwriting the first, and `/config` is not
+touched, so putting one back is a `mv`. It is also **Delete project…** at the
+foot of every repository's settings. The bin in the page's bar lists what was
+deleted and which project each was in; **Put back** returns it to that
+project, or asks which project when that one is gone. A project is deleted
+only once nothing is left in it: **Delete project** is on its back then, and
+not before.
 
 ## A project's settings
 
-**Settings** in each project's menu opens that project's own settings, which
+**Settings** on a card's back, or in a repository's menu, opens its own settings, which
 are also the Settings view of its page, in sections: General (its name),
 People, Agents may (what a session may enter into the notebook, and how much
 of the tree it may change without asking), Just for you (how a session replies
@@ -203,10 +232,10 @@ already there when this arrived were recorded once, as they were.
 
 ## Archiving and locking a project
 
-**Archive**, in a project's menu, puts a project out of sight and changes
+**Archive**, by a project's name or on its back, puts a project out of sight and changes
 nothing else: its card folds under **Archived** at the foot of the Projects
 page and leaves Home's pinned projects, and the project keeps working for
-everybody on it, sessions included. **Unarchive**, in the same menu, brings
+everybody on it, sessions included. **Unarchive**, in the same places, brings
 it back. The project's owner or an administrator archives one.
 
 **Lock** keeps people out of a project, and it comes in two kinds. The
@@ -229,10 +258,44 @@ Both lists live under `/config` (`archived-projects.json` and
 `locked-projects.json`), so they survive restarts and image updates. The lock
 is enforced by the server on every write and by the terminal launcher on
 every session, which on a node asks the controller with the session's own
-token, because the ttyd URL and the API paths are reachable on their own and
+token, because a terminal's words and the API paths are reachable on their own and
 a rule only the page honored would be advice. It is not a sandbox: the file
 tools are denied on every project but a session's own, and a session in
 another project can still reach this directory through Bash.
+
+## A project and its repositories
+
+Each repository in a project stays what it was: its folder, its notebook,
+its git host link (remote, token or deploy key, push rights, forge, CI and
+releases), its version and changelog, its signing keys and its dev
+instance. Nothing on disk moves when a repository joins a project or leaves
+one.
+
+What one session needs is the project's: its node, its coding agents, its
+people and roles, its owner, its Agents may dials, and each person's pin,
+group and color, and its archive and lock. One **Start agent** starts the
+project's session, which runs on the first repository and works in all of
+them: each one's tree is in its view to write, on the same branch name, and
+`bb` answers for the repository whose tree it is run in. A session asked for
+on another of its repositories is refused and pointed at the first. A
+repository's page names the project, with its repositories as a switch beside
+the name when there are several, and its Roadmap and Bugs carry the other
+repositories' open items under **Also in** the project's name.
+
+What a project grants others goes by the project: one that reads it reads
+every repository in it, including one added later, with no setting changed.
+
+**Move**, a repository's icon on a card's back, puts it in another project of
+yours. It is refused while a session runs on either project, since each was
+started with the trees it had, and while either is locked; it says why. The
+owner of both projects, or an administrator, moves one; never a session.
+
+The record is `project-repos.json` under `/config`, beside each project's
+name and id in `projects.json`. An install from before 0.8.0 is moved once,
+at its first start: each repository becomes a project of its own under the
+name it was shown as, its settings, owner, people, pins, groups, colors,
+archive and lock going with it, and a project of several repositories keeps
+its own name.
 
 ## Push rights
 

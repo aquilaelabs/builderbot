@@ -35,7 +35,6 @@ pkg_names() {
         guestsvc) echo "qemu-guest-agent" ;;
         python) echo "dev-lang/python" ;;
         session) echo "app-misc/tmux app-misc/jq dev-vcs/git" ;;
-        ttyd) echo "" ;;
         reel) echo "x11-base/xorg-server x11-misc/xdotool x11-apps/xdpyinfo" ;;
         wg) echo "net-vpn/wireguard-tools" ;;
         nft) echo "net-firewall/nftables" ;;

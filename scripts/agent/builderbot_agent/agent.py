@@ -23,6 +23,7 @@ from .claudesync import ClaudeMirror
 from .screen import ScreenRelay
 from .sessions import SessionWatch, SessionsMixin
 from .accounts import AccountsMixin
+from .tokens import TokensMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
 from .configplane import ConfigPlaneMixin
@@ -30,7 +31,8 @@ from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, AccountsMixin):
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, AccountsMixin,
+            TokensMixin):
     def __init__(self, state):
         self.state = state
         # Its own directory under the toolchain store, by its node id (R196),
@@ -47,14 +49,15 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.census_stale = False         # ...and was asked for once more meanwhile
         self.controller_digest = ""
         self.warned_caps = False
-        # The session half (roadmap #24): the two ttyd processes, the bundle
-        # they run bb-tty from, and when the last start was tried.
-        self.ttyd = []
-        self.session_bundle = ""          # the digest the ttyds run from
+        # The session half (roadmap #24): whether its terminals are set up,
+        # the bundle they run bb-tty from, and when the last start was tried.
+        self.session_up = False
+        self.term_kinds = {}
+        self.session_bundle = ""          # the digest the terminals run from
         self.session_digest = ""          # the digest bundle() last fetched
         self.session_tried = 0
         self.session_stale = ""           # a newer bundle's directory, for the loop to restart onto
-        self.session_bound = ""           # the address the ttyds were bound to, to notice it moving
+        self.session_bound = ""           # the address the relay was bound to, to notice it moving
         # The census for the loop's next hello, taken beside the loop rather
         # than in it (B380): the thread, and what it came back with.
         self.census_thread = None
@@ -112,6 +115,25 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         env.update({"HOME": pw.pw_dir, "USER": user, "LOGNAME": user})
         groups = [g.gr_gid for g in grp.getgrall() if user in g.gr_mem]
         return {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": groups}
+
+    def take_token(self, new):
+        """The controller's next token for this node (R135 step 4): kept in
+        node.json in place of the old one and used from the next call. The
+        old one is remembered for the screen relay's grace, since the
+        controller signs with it until this node has used the new one."""
+        if not isinstance(new, str) or not new.startswith("bbn_") or new == self.state.get("token"):
+            return
+        # Written first and used only once it is: a node.json that kept the
+        # old token past a restart would present a retired one, which reads
+        # as a stolen copy and revokes this node.
+        try:
+            save_state(dict(self.state, token=new))
+        except OSError as e:
+            log(f"the controller's next token was not kept, so the current one stays: {e}")
+            return
+        self.prev_token = (self.state.get("token") or "", time.monotonic())
+        self.state["token"] = new
+        self.ctl.token = new
 
     # -- the channel -------------------------------------------------------
     def census_take(self):
@@ -216,12 +238,21 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 and self.census_thread.is_alive():
             self.census_stale = True
         c = taken if taken is not None else self.census_beating()
+        # This boot's public half and the seals here (R126), in the census
+        # the controller keeps of the node, while there are any.
+        if isinstance(c, dict):
+            ts = self.token_census()
+            if ts:
+                c["tokseal"] = ts
         st, r = self.ctl.call("hello", {"census": c,
                                         "version": AGENT_VERSION,
                                         "digest": own_digest(),
                                         "running": self.running_ids(),
-                                        "keep": self.keep_report()}, timeout=30)
+                                        "keep": self.keep_report(),
+                                        # A fresh token each hello (R135 step 4).
+                                        "rotates": True}, timeout=30)
         if st == 200:
+            self.take_token(r.get("token"))
             self.hello_at = time.monotonic()
             self.hello_said = True           # the first is said on the loop; the rest beside it
             self.poll = int(r.get("poll") or 25)
@@ -269,8 +300,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     self.session_stop()
             # Accounts as their own users (R125): the controller's switch,
             # kept in node.json. When it moves the layout file and the sudo
-            # rule are rewritten and the ttyds start again on the other way
-            # in; tmux sessions are untouched either way.
+            # rule are rewritten and the terminals open the other way from
+            # then on; tmux sessions are untouched either way.
             au = bool(r.get("account_users"))
             if au != bool(self.state.get("account_users")):
                 self.state["account_users"] = au
@@ -280,6 +311,15 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 self.account_users_pass()
                 self.refresh_session_tool()
                 self.session_renew()
+            # The coding agents' sign-ins sealed (R126): the controller's
+            # switch, and each account's public key here, kept in node.json.
+            ts, pubs = bool(r.get("token_seal")), r.get("token_pubs") if isinstance(r.get("token_pubs"), dict) else {}
+            if ts != bool(self.state.get("token_seal")) or pubs != (self.state.get("token_pubs") or {}):
+                self.state["token_seal"], self.state["token_pubs"] = ts, pubs
+                save_state(self.state)
+                if ts != bool(self.state.get("token_seal_said")):
+                    self.state["token_seal_said"] = ts
+                    log("the coding agents' sign-ins are kept sealed here" if ts else "sign-ins are no longer sealed here")
             self.keep_session_tokens(r.get("session_tokens") or [])
             # Whether each session here is kept to its own project's network,
             # and what each project owns here (R79), kept in node.json so it
@@ -334,9 +374,9 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             log(f"hello: node {n.get('id')} ({n.get('name')}), state "
                 f"{n.get('state')}, poll {self.poll}s")
             # The sessions this node runs use the bb the controller ships;
-            # when that moves, fetch it and restart the ttyds onto it. The
-            # running sessions are tmux's and survive the restart; only the
-            # next connection runs the new bb-tty. Never fatal: the session
+            # when that moves, fetch it and open terminals from it. The
+            # running sessions are tmux's and are untouched; only the next
+            # terminal runs the new bb-tty. Never fatal: the session
             # half must not take the job half down with it: a toolchain
             # store this process cannot write is a node with no sessions,
             # not a node with no agent.
@@ -364,12 +404,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
 
     def cap_logs(self):
         """The node's own log files kept bounded on every hello (the
-        operator, 12 Oct): the terminal server's and the runners' in the
-        data store, this agent's own output where it goes to a file (a
+        operator, 12 Oct): the runners' in the data store, this agent's own output where it goes to a file (a
         guest's and a Mac's unit, OpenRC's), and each runner's _diag to its
         newest RUNNER_DIAG_KEEP."""
         data = (self.state.get("stores") or {}).get("data") or "/tmp"
-        files = [os.path.join(data, "ttyd.log"), os.path.join(data, "runner.log")]
+        files = [os.path.join(data, "runner.log")]
         with contextlib.suppress(OSError):
             out = os.readlink("/proc/self/fd/1")
             if out.startswith("/") and os.path.isfile(out):
@@ -432,11 +471,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         delay = wdelay = 1
         # The hourly walk of the disks, on its own thread (storage.py).
         storage.start(lambda: self.state)
-        # What is THIS process's to end, ended by it. The ttyds go: a stop of
-        # the unit is an update or a reboot, and the new agent starts its own.
+        # What is THIS process's to end, ended by it: a stop of the unit is
+        # an update or a reboot, and the new agent opens its own terminals.
         # The tmux servers they attached do not: they are their own daemons,
         # the sessions are inside them, and a conversation should survive an
-        # agent update the way it survives a ttyd restart.
+        # agent update.
         #
         # That was already the intent and systemd was undoing it: the default
         # KillMode=control-group takes every process in the cgroup after this
@@ -530,6 +569,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             timed("session_check", self.session_check)
             timed("firewall_check", self.session_firewall_check)
             timed("account_users", self.account_users_pass)
+            timed("tokens", self.token_pass)
             timed("idle_reap", self.session_idle_reap)
             timed("runner_check", self.runner_check)
             n = self.running()
@@ -545,7 +585,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             sample = timed("sample", self.sampler.sample, self.state, n)
             # The sessions this node runs ride the heartbeat (roadmap #24),
             # so the dashboard's Sessions card lists them beside its own.
-            if self.ttyd:
+            if self.session_up:
                 sample["sessions"] = timed("sessions", self.sessions_now)
             # ...and the ports its containers publish, for other nodes'
             # sessions of the same project (R82).
@@ -726,11 +766,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         return p.returncode
 
     def reexec(self):
-        # The ttyds first: execv keeps the children and loses every handle
-        # to them, so the new image would find its ports held by processes
-        # it cannot see and serve nothing new for as long as they lived.
-        # The sessions are tmux's and stay; the new agent starts ttyd from
-        # the bundle that is current, which is the point of updating.
+        # The sessions are tmux's and stay; the new agent opens terminals
+        # from the bundle that is current, which is the point of updating.
         self.session_stop()
         log("re-executing the new agent")
         if _COV_OUT:

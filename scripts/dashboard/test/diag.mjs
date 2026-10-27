@@ -93,7 +93,6 @@ ${code}`], { encoding: 'utf8' }).trim();
   ok(!!node, `the harness has an agent node to ask from (${node?.name})`);
   const wasNode = prefsPy('print(p.get("alpha").get("node") or "")');
   const wasDiag = prefsPy('print(p.get("alpha").get("diag"))') === 'True';
-  const wasDebug = !!(await call('/api/diag', { sections: ['settings'] })).body.settings?.debug_mode;
   await call('/api/prefs', { project: 'alpha', node: node.id });
   const mk = (name, role) => usersPy(`
 d = u.load()
@@ -105,15 +104,16 @@ u._save(d)
 print(uid)`);
   const plainUid = mk('diag.plain', 'user'), adminUid = mk('diag.admin', 'admin');
   const asOwner = bearer(tok(ownerUid)), asPlain = bearer(tok(plainUid)), asAdmin = bearer(tok(adminUid));
-  await call('/api/settings', { set: { debug_mode: false } });
   await call('/api/prefs', { project: 'alpha', diag: false, log_from: [] });
 
+  // Debug mode is DEBUG_MODE's (the operator, 26 Oct): on here, since the
+  // harness starts the controller with it, and not a setting to save.
+  const saved = await call('/api/settings', { set: { debug_mode: false } });
+  ok(/started with DEBUG_MODE=1/.test(saved.body.error || '')
+     && (await call('/api/diag', { sections: ['settings'] })).body.settings?.debug_mode === true,
+     `debug mode follows DEBUG_MODE, on here, and saving it is refused saying so (${saved.body.error})`);
   let r = await call('/api/diag', {}, asOwner);
-  ok(r.status === 403 && /debug mode is off/.test(r.body.error || ''),
-     `with debug mode off, the owner's session is refused, saying why (${r.body.error})`);
-  await call('/api/settings', { set: { debug_mode: true } });
-  r = await call('/api/diag', {}, asOwner);
-  ok(r.status === 403 && /alpha has not been granted the controller's diagnostics: Debug in its settings/.test(r.body.error || ''),
+  ok(r.status === 403 && /alpha has not been granted the controller's diagnostics: the Debug page grants them/.test(r.body.error || ''),
      `...and on, still refused until the PROJECT is granted it (${r.body.error})`);
   const g = (await call('/api/prefs', { project: 'alpha', diag: true })).body;
   ok(!g.error && prefsPy('print(p.get("alpha").get("diag"))') === 'True', `the grant is the project's (${g.error || 'set'})`);
@@ -161,7 +161,6 @@ print(json.dumps(m.job_add('system', {'node': '${node.id}'}, 'exec', {'argv': ['
   // Everything back as it was found.
   await call('/api/roles', { action: 'remove', name: 'debugger' });
   await call('/api/prefs', { project: 'alpha', diag: wasDiag, log_from: [] });
-  await call('/api/settings', { set: { debug_mode: wasDebug } });
   await call('/api/prefs', { project: 'alpha', node: wasNode });
   usersPy('d = u.load(); d["users"].pop("diag.plain", None); d["users"].pop("diag.admin", None); u._save(d)');
   ok(prefsPy('print(p.get("alpha").get("node") or "")') === wasNode,

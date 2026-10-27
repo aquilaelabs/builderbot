@@ -29,6 +29,30 @@ def _claims(jwt):
         return {}
 
 
+# Where a node keeps the coding agents' sign-ins sealed (R126, the agent's
+# tokens.py): a seal there is a sign-in, its header saying whose, though the
+# home's own file is a link to a copy that is only open while the account
+# works here. Read as root, as this runs on a node.
+SEAL_DIR = "/var/lib/builderbot/tokens"
+
+
+def sealed_of(home, agent):
+    """{email, plan} from the seal of `agent` for the account whose home this
+    is, or None: the header alone, never the sealed sign-in."""
+    try:
+        with open(os.path.join(SEAL_DIR, os.path.basename(home.rstrip("/")), agent + ".seal"), "rb") as f:
+            blob = f.read(8192)
+    except OSError:
+        return None
+    if not blob.startswith(b"BBTOK1\n"):
+        return None
+    try:
+        h = json.loads(blob[7:blob.index(b"\n", 7)])
+    except ValueError:
+        return None
+    return {"email": str(h.get("email") or "")[:120], "plan": str(h.get("plan") or "")[:40]}
+
+
 def codex_of(home):
     """Who this account's Codex CLI is signed in as here, {email, plan}, or
     None. $CODEX_HOME is ~/.codex for a session (bb-tty sets none). None
@@ -38,7 +62,9 @@ def codex_of(home):
         with open(os.path.join(home, ".codex", "auth.json")) as f:
             d = json.load(f)
     except FileNotFoundError:
-        return None
+        # Sealed, its copy not open now (R126): still a sign-in.
+        got = sealed_of(home, "codex")
+        return got if got and got["email"] else None
     except (OSError, ValueError) as e:
         return {"error": f"{type(e).__name__}: {e}"[:200]}
     if not isinstance(d, dict):
@@ -53,6 +79,49 @@ def codex_of(home):
     if d.get("OPENAI_API_KEY"):
         return {"email": "an OpenAI API key", "plan": "API"}
     return None
+
+
+def _jwt_email(d, depth=0):
+    """The email a JSON Web Token anywhere in this record says it is for,
+    read from its claims without checking its signature (a name to show,
+    never a credential to trust), or ""."""
+    if depth > 4:
+        return ""
+    vals = d.values() if isinstance(d, dict) else d if isinstance(d, list) else [d]
+    for v in vals:
+        if isinstance(v, (dict, list)):
+            got = _jwt_email(v, depth + 1)
+            if got:
+                return got
+        elif isinstance(v, str) and v.count(".") == 2 and len(v) < 8192:
+            try:
+                part = v.split(".")[1]
+                claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+            except (ValueError, TypeError):
+                continue
+            mail = claims.get("email") if isinstance(claims, dict) else None
+            if isinstance(mail, str) and "@" in mail:
+                return mail[:120]
+    return ""
+
+
+def grok_of(home):
+    """Who this account's Grok Build is signed in as here, {email, plan}, or
+    None: its session in ~/.grok/auth.json (R95 step 21), the email its
+    token names where it names one."""
+    p = os.path.join(home, ".grok", "auth.json")
+    try:
+        with open(p) as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        # Sealed, its copy not open now (R126): still a sign-in.
+        got = sealed_of(home, "grok")
+        return got if got and got["email"] else None
+    except (OSError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"[:200]}
+    if not d:
+        return None
+    return {"email": _jwt_email(d) or "an xAI account", "plan": ""}
 
 
 def _copilot_config(home):
@@ -192,9 +261,11 @@ def main():
         # The credential is what makes it a login rather than a leftover name: a
         # signed-out home keeps .claude.json and loses this file, and reporting
         # the stale name would keep the card claiming a login that is gone.
-        if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
+        if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")) \
+                and not sealed_of(home, "claude"):
             email = ""
-        agents = {k: v for k, v in (("codex", codex_of(home)), ("copilot", copilot_of(home))) if v}
+        agents = {k: v for k, v in (("codex", codex_of(home)), ("copilot", copilot_of(home)),
+                                    ("grok", grok_of(home))) if v}
         out.append({"uid": name, "email": email, "plugins": plugins_of(home), "agents": agents, "mcp": mcp_of(home)})
     print(json.dumps(out))
 

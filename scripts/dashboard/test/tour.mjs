@@ -3,7 +3,7 @@
 // stands over it with the step's part ringed; Next and Back walk it, Done
 // ends it and the page is not toured again, on this browser or another;
 // Skip tour with its box ticked skips every page's; Show the tours again in
-// About and on Profile brings them back. A phone's is a sheet.
+// About brings them back. A phone's is a sheet.
 import { URL, launch, newPage, ok, done, ready } from './lib.mjs';
 
 const browser = await launch();
@@ -65,10 +65,19 @@ await page.click('#aboutTours');
 await page.waitForFunction(async () => true);
 const back = await (await fetch(base + '/api/status', { headers: H })).json();
 ok(!back.tour?.off && !(back.tour?.seen || []).length, `About's Show the tours again clears what was seen and the box (${JSON.stringify(back.tour)})`);
+// Close is all a person does: no reload and no redraw by hand (the
+// operator, 26 Oct: the tour waited for a refresh).
 await page.click('#aboutClose');
-await page.evaluate(() => { tourAsked.clear(); drawPanes(); });
 await page.waitForSelector('#tourCard:not([hidden])', { timeout: 15000 });
 ok(/Nodes are the machines/.test(await page.$eval('#tourCard .toursay', e => e.textContent)), '...and the page in front tours again');
+// Another page opened from the rail with that tour up: it is put away,
+// not counted as seen, and the page opened tours (it stood over the next
+// page, and that page's own never came).
+await page.click('[data-rail="jobs"]');
+await page.waitForFunction(() => tourKind === 'jobs' && !$('tourCard').hidden, null, { timeout: 15000 }).catch(() => {});
+const moved = await page.evaluate(() => ({ kind: tourKind, card: !$('tourCard').hidden, nodes: tourSeen().has('nodes') }));
+ok(moved.kind === 'jobs' && moved.card && !moved.nodes,
+   `a tour up when another page is opened gives way to that page's, the one left not counted as seen (${JSON.stringify(moved)})`);
 await page.click('#tourSkip');
 
 // Never over the setup page, which is the whole page until Finish.
@@ -228,4 +237,65 @@ const phoneSample = await phone.evaluate(async () => {
 });
 ok(phoneSample.shown && phoneSample.row, `...and on a phone an empty VMs page's last step shows an example VM (${JSON.stringify(phoneSample)})`);
 await prefs({ tour_seen: [], tour_off: true });
+
+// Projects' tour turns a card over for the steps about its back (the
+// operator, 26 Oct): the first card on the page, turned back after; and on a
+// page with none, the example card, which turns over in place.
+const flips = await page.evaluate(async () => {
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const ringOn = sel => { const r = $('tourRing').getBoundingClientRect(), t = document.querySelector(sel)?.getBoundingClientRect();
+    return !!t && !$('tourRing').hidden && r.left <= t.left + 1 && r.right >= t.right - 1 && r.top <= t.top + 1 && r.bottom >= t.bottom - 1; };
+  openProjectsTab(); await sleep(1200);
+  tourAsked.clear(); tourStart('projects'); await sleep(300);
+  tourGo(1); tourGo(1); tourGo(1); await sleep(900);
+  const card = document.querySelector('#pane0 .pgrid .pcard[data-pkey]');
+  const real = { steps: tourSteps.length, turned: card.classList.contains('flipped'), ringed: ringOn('#pane0 .pcard.flipped .pcback .pcrepo'),
+                 sample: !!$('tourSample') };
+  tourEnd(false); await sleep(600);
+  real.back = !card.isConnected || !document.querySelector(`#pane0 .pcard[data-pkey="${card.dataset.pkey}"]`).classList.contains('flipped');
+  pjQuery = 'no-project-is-called-this'; drawProjects(state.projects); await sleep(300);
+  tourAsked.clear(); tourStart('projects'); await sleep(300);
+  tourGo(1); tourGo(1); await sleep(300);
+  const ex = { front: !!document.querySelector('#tourSample .pcard:not(.flipped)'), ringed: ringOn('#tourSample .pcard .pcfront') };
+  tourGo(1); await sleep(900);
+  ex.turned = !!document.querySelector('#tourSample .pcard.flipped'); ex.ringedBack = ringOn('#tourSample .pcard .pcback .pcrepo');
+  tourGo(1); await sleep(300);
+  ex.foot = ringOn('#tourSample .pcard .pcback .pcfoot');
+  tourEnd(false); await sleep(300);
+  ex.gone = !$('tourSample');
+  pjQuery = ''; drawProjects(state.projects);
+  return { real, ex };
+});
+ok(flips.real.steps === 6 && flips.real.turned && flips.real.ringed && !flips.real.sample && flips.real.back,
+   `the Projects tour turns the first card over for its back's steps, ringing each part, and turns it back after (${JSON.stringify(flips.real)})`);
+ok(flips.ex.front && flips.ex.ringed && flips.ex.turned && flips.ex.ringedBack && flips.ex.foot && flips.ex.gone,
+   `...and with no project, an example card, its front then its back as it turns over (${JSON.stringify(flips.ex)})`);
+
+// Every page on the rail has a tour, and each step's part is on the page as
+// it is now (R142): a step whose part went with a redesign is left out by
+// tourStart, so a tour shrank without anybody seeing it. A step the
+// fixture's world cannot show is named here with why.
+const UNSHOWN = {
+  // the fixture's node has no nginx deployed: one line and Deploy
+  nginx: [2],
+  // the chips come with jobs in two states or more, which the fixture has not
+  jobs: [1],
+};
+for (const p of [page, phone]){
+  const where = p === phone ? 'on a phone' : 'at a desk';
+  const kinds = await p.evaluate(() => [...RAIL.flatMap(g => g.tools.map(([k]) => [k, g.key])), ['notebook', '']]);
+  // The Debug page excepted: not an advertised feature (the operator, 26 Oct).
+  const untoured = await p.evaluate(ks => ks.map(([k]) => k).filter(k => !TOUR_STEPS[k] && k !== 'debug'), kinds);
+  ok(!untoured.length, `every page on the rail has a tour ${where}${untoured.length ? `: none for ${untoured.join(', ')}` : ''}`);
+  const lost = [];
+  for (const [k, g] of kinds){
+    if (k === 'notebook') await p.evaluate(() => openNotebook('alpha', 'overview'));
+    else await p.evaluate(([g, k]) => { location.hash = g === k ? `#/${g}` : `#/${g}/${k}`; }, [g, k]);
+    await p.waitForFunction(k => tabOf(panes[0])?.kind === k && !tourLoading(), k, { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(600);
+    const miss = await p.evaluate(k => (TOUR_STEPS[k] || []).map((s, j) => s.at && !s.sample && !tourTarget(s.at) ? j : -1).filter(j => j >= 0), k);
+    for (const j of miss) if (!(UNSHOWN[k] || []).includes(j)) lost.push(`${k} step ${j + 1}`);
+  }
+  ok(!lost.length, `each tour step points at a part that is on its page ${where}${lost.length ? `: not found for ${lost.join(', ')}` : ''}`);
+}
 await done(browser);

@@ -1,6 +1,8 @@
 """touch.py's mapping from a screen pixel to the touch panel's own frame and
 range, at each rotation (R101). test/capture.mjs drives it through a
 stand-in adb; this pins the arithmetic."""
+import contextlib
+import io
 import os
 import re
 import shutil
@@ -44,6 +46,21 @@ class Panel(unittest.TestCase):
     """Which touch device a tap goes to: with several virtio multi-touch
     devices, the first by number, which is the one bound to the display
     (report 43: sorted as text, event10 came before event2)."""
+
+    def test_no_device_at_all_says_the_emulator_is_not_answering(self):
+        # A dying emulator lists nothing (B321, diagnostics #128), which read
+        # as an emulator with no touch panel.
+        for said, want in (("", "not answering"),
+                           ("add device 1: /dev/input/event1\n  name: \"keys\"", "no touch panel")):
+            was = touch.shell
+            touch.shell = lambda a, *w, s=said: s
+            err = io.StringIO()
+            try:
+                with self.assertRaises(SystemExit), contextlib.redirect_stderr(err):
+                    touch.panel("adb")
+                self.assertIn(want, err.getvalue())
+            finally:
+                touch.shell = was
 
     def test_the_first_device_by_number(self):
         lines = []

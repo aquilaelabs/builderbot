@@ -8,9 +8,9 @@ it in Help.
 ## What it is
 
 A workstation for coding agents you reach in a browser. Each project on the
-Projects page is a git repository on a shared disk. A **session** is a coding
-agent working in that repository (Claude, through Claude Code; ChatGPT,
-through Codex CLI; or Copilot, through Copilot CLI), on one of the machines
+Projects page holds git repositories on a shared disk. A **session** is a coding
+agent working in them (Claude, through Claude Code; ChatGPT, through Codex
+CLI; Copilot, through Copilot CLI; or Grok, through Grok Build), on one of the machines
 behind the dashboard, with a terminal you can watch and type into. A
 project's page holds its **notebook**, where you and the sessions keep the
 plan: the roadmap, the bugs, the house rules and the git view.

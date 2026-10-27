@@ -64,7 +64,7 @@ ok(JSON.stringify(mine?.mcp) === JSON.stringify({ claude: ['github'], codex: ['d
 const shipped = (await call('/api/v1/nodes')).agent || {};
 const minted = await call('/api/v1/nodes', { action: 'enroll', name: 'plugbox' });
 const en = await call('/api/v1/agent/enroll', { census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
-    session: { up: true, port: 7681, user: 'bb', claude: '1.0.0 (Claude Code)', codex: 'codex-cli 0.163.0' } },
+    session: { up: true, term: true, user: 'bb', claude: '1.0.0 (Claude Code)', codex: 'codex-cli 0.163.0' } },
   version: shipped.version, digest: shipped.digest, user: 'bb' }, bearer(minted.token));
 const beat = logins => call('/api/v1/agent/work', { sample: { cpu_pct: 1, logins }, running: 0, wait: 0 }, bearer(en.token));
 await beat([{ ...mine, email: '' }]);

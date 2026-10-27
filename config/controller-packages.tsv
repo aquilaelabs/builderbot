@@ -1,0 +1,79 @@
+# What the controller needs installed, one row per thing, read by both the Dockerfile and
+# nodes/install-controller.sh (R90 step 2), so the image and a bare-metal install cannot drift.
+# Columns: what, need, then the packages for each provisioner family (nodes/families/*.sh).
+# need is one of:
+#   core    the controller does not run without it: a bare-metal install stops when it does not install
+#   tools   what a shell on the controller carries: installed where the family has it, said where not
+#   image   the container's alone: its init, its user switch, apt's own helpers, and libraries only
+#           the image's other layers need
+#   vendor  the image takes it from the vendor's repository in the layer after the first; a bare-metal
+#           install from the family's (EPEL's, on a RHEL rebuild)
+#   docker  the image takes it from Docker's repository with the vendor rows; a bare-metal install has
+#           it from the family's docker_install, which the cells say as @docker
+#   host    a bare-metal install's alone: the image's base system carries it already
+# A cell is packages split by spaces; a|b takes the first the machine's repositories have; - is none.
+what	need	deb	rhel	arch	suse	alpine	void	gentoo
+ca-certificates	core	ca-certificates	ca-certificates	ca-certificates	ca-certificates	ca-certificates	ca-certificates	app-misc/ca-certificates
+curl	core	curl	curl	curl	curl	curl	curl	net-misc/curl
+wget	tools	wget	wget2-wget|wget	wget	wget	wget	wget	net-misc/wget
+gnupg	tools	gnupg	gnupg2	gnupg	gpg2	gnupg	gnupg	app-crypt/gnupg
+lsb-release	image	lsb-release	-	-	-	-	-	-
+apt-transport-https	image	apt-transport-https	-	-	-	-	-	-
+git	core	git	git	git	git	git	git	dev-vcs/git
+git-lfs	tools	git-lfs	git-lfs	git-lfs	git-lfs	git-lfs	git-lfs	dev-vcs/git-lfs
+openssh-client	core	openssh-client	openssh-clients	openssh	openssh-clients	openssh-client-default|openssh-client	openssh	net-misc/openssh
+build-essential	tools	build-essential	gcc gcc-c++ make	base-devel	gcc gcc-c++ make	build-base	base-devel	-
+pkg-config	tools	pkg-config	pkgconf-pkg-config	pkgconf	pkgconf-pkg-config|pkg-config	pkgconf	pkg-config	dev-util/pkgconf
+make	tools	make	make	make	make	make	make	-
+cmake	tools	cmake	cmake	cmake	cmake	cmake	cmake	dev-build/cmake
+python3	core	python3	python3.12|python3	python	python313|python312|python3	python3	python3	dev-lang/python
+python3-pip	tools	python3-pip	python3.12-pip|python3-pip	python-pip	python313-pip|python312-pip|python3-pip	py3-pip	python3-pip	dev-python/pip
+python3-venv	tools	python3-venv	-	-	-	-	-	-
+python3-dev	tools	python3-dev	python3.12-devel|python3-devel	-	python313-devel|python312-devel|python3-devel	python3-dev	python3-devel	-
+pipx	tools	pipx	pipx	python-pipx	python313-pipx|python312-pipx|python3-pipx	pipx	python3-pipx	dev-python/pipx
+jq	core	jq	jq	jq	jq	jq	jq	app-misc/jq
+unzip	tools	unzip	unzip	unzip	unzip	unzip	unzip	app-arch/unzip
+zip	tools	zip	zip	zip	zip	zip	zip	app-arch/zip
+xz-utils	tools	xz-utils	xz	xz	xz	xz	xz	app-arch/xz-utils
+bzip2	tools	bzip2	bzip2	bzip2	bzip2	bzip2	bzip2	app-arch/bzip2
+tar	core	tar	tar	tar	tar	tar	tar	app-arch/tar
+rsync	tools	rsync	rsync	rsync	rsync	rsync	rsync	net-misc/rsync
+tmux	core	tmux	tmux	tmux	tmux	tmux	tmux	app-misc/tmux
+ripgrep	tools	ripgrep	ripgrep	ripgrep	ripgrep	ripgrep	ripgrep	sys-apps/ripgrep
+fd-find	tools	fd-find	fd-find	fd	fd	fd	fd	sys-apps/fd
+fzf	tools	fzf	fzf	fzf	fzf	fzf	fzf	app-shells/fzf
+less	tools	less	less	less	less	less	less	sys-apps/less
+nano	tools	nano	nano	nano	nano	nano	nano	app-editors/nano
+vim	tools	vim	vim-enhanced	vim	vim	vim	vim	app-editors/vim
+tini	image	tini	-	-	-	-	-	-
+gosu	image	gosu	-	-	-	-	-	-
+sudo	core	sudo	sudo	sudo	sudo	sudo	sudo	app-admin/sudo
+procps	core	procps	procps-ng	procps-ng	procps	procps-ng|procps	procps-ng	sys-process/procps
+psmisc	tools	psmisc	psmisc	psmisc	psmisc	psmisc	psmisc	sys-process/psmisc
+file	tools	file	file	file	file	file	file	sys-apps/file
+lsof	tools	lsof	lsof	lsof	lsof	lsof	lsof	sys-process/lsof
+strace	tools	strace	strace	strace	strace	strace	strace	dev-debug/strace
+tree	tools	tree	tree	tree	tree	tree	tree	app-text/tree
+iproute2	core	iproute2	iproute	iproute2	iproute2	iproute2	iproute2	sys-apps/iproute2
+iputils-ping	tools	iputils-ping	iputils	iputils	iputils	iputils	iputils	net-misc/iputils
+dnsutils	tools	dnsutils	bind-utils	bind	bind-utils	bind-tools	bind-utils	net-dns/bind-tools
+netcat-openbsd	tools	netcat-openbsd	nmap-ncat	openbsd-netcat	netcat-openbsd	netcat-openbsd	openbsd-netcat	net-analyzer/openbsd-netcat
+socat	core	socat	socat	socat	socat	socat	socat	net-misc/socat
+shellcheck	tools	shellcheck	ShellCheck	shellcheck	ShellCheck	shellcheck	shellcheck	-
+locales	image	locales	-	-	-	-	-	-
+tzdata	tools	tzdata	tzdata	tzdata	timezone	tzdata	tzdata	sys-libs/timezone-data
+libicu74	image	libicu74	-	-	-	-	-	-
+libssl3	image	libssl3	-	-	-	-	-	-
+libkrb5-3	image	libkrb5-3	-	-	-	-	-	-
+zlib1g	image	zlib1g	-	-	-	-	-	-
+liblttng-ust1	image	liblttng-ust1	-	-	-	-	-	-
+sqlite3	tools	sqlite3	sqlite	sqlite	sqlite3	sqlite	sqlite	dev-db/sqlite
+imagemagick	tools	imagemagick	ImageMagick	imagemagick	ImageMagick	imagemagick	ImageMagick	media-gfx/imagemagick
+ffmpeg	tools	ffmpeg	-	ffmpeg	ffmpeg-7|ffmpeg	ffmpeg	ffmpeg	media-video/ffmpeg
+nodejs	vendor	nodejs	nodejs nodejs-npm|npm	nodejs npm	nodejs24|nodejs22|nodejs20|nodejs npm24|npm22|npm20|npm	nodejs npm	nodejs	net-libs/nodejs
+gh	vendor	gh	gh	github-cli	gh	github-cli	github-cli	dev-util/github-cli
+docker-ce-cli	docker	docker-ce-cli	@docker	@docker	@docker	@docker	@docker	@docker
+docker-compose-plugin	docker	docker-compose-plugin	@docker	@docker	@docker	@docker	@docker	@docker
+docker-buildx-plugin	docker	docker-buildx-plugin	@docker	@docker	@docker	@docker	@docker	@docker
+setpriv	host	util-linux	util-linux	util-linux	util-linux	setpriv	util-linux	sys-apps/util-linux
+nftables	host	nftables	nftables	nftables	nftables	nftables	nftables	net-firewall/nftables

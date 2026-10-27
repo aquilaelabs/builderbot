@@ -85,7 +85,7 @@
    `design` and measured by test/uniform.mjs. */
 :root,.sw[data-theme="default"]{
   --bg:#1a1f26; --panel:#212730; --line:#4d5c6f; --ink:#e6edf3;
-  --dim:#9fa9b4; --accent:#3fb950; --warn:#d29922; --bad:#f8524a;
+  --dim:#9fa9b4; --accent:#3fb950; --warn:#d29922; --bad:#f07178;
   --note:#58a6ff;
   /* A check that passed is green in every scheme (the operator, 16 Oct: the
      doctor read teal on Abyss and orange on Ember, an accent that reads as
@@ -569,6 +569,7 @@ header h1{font-size:15px;margin:0;font-weight:600}
 /* Maintenance mode's, for the owner while it is on: in the warning color,
    since everybody else is kept out until it is off. */
 .banner.maint{background:color-mix(in srgb, var(--warn) 18%, var(--panel))}
+.banner.maint a{margin-left:0}
 .banner[hidden]{display:none}
 /* Every header button one box, at every width: the bell carried the tap
    size on its own and the bug, gear and sign-out got it only on a narrow
@@ -829,6 +830,21 @@ html[data-motion="reduce"] .tourring{transition:none}
 .ssplit{display:grid;grid-template-columns:minmax(13rem,17rem) minmax(0,1fr);align-items:start}
 .ssplit>*{grid-column:2;min-width:0}
 .ssplit>.snav{grid-column:1;grid-row:1 / span 99;align-self:stretch}
+/* A page's head (the operator, 25 Oct) in the content column, where every
+   band of the page starts; at a desk it spans the list too (below). */
+.ssplit>.pghead{grid-column:2}
+/* ...and at a desk a card of its own, as a node's head is on the Nodes
+   page (the operator, 26 Oct: its facts loose over the cards read as part
+   of none): on the page's margin, or on the content column's edge beside a
+   settings page's list, with the cards' gap under it. */
+@media(min-width:901px){
+  :is(.doctab,.nbview,.dmtab) .pghead{margin:var(--card-gap) var(--row-x) 0;padding:var(--row-y) var(--row-x);
+    background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface)}
+  /* A page of settings': over the list and the section both, the whole
+     page's head (the operator, 26 Oct), the list starting under it. */
+  :is(.doctab,.nbview,.dmtab) .ssplit>.pghead{margin:0 0 var(--card-gap);grid-column:1 / -1;grid-row:1}
+  .ssplit:has(>.pghead)>.snav{grid-row:2 / span 98}
+}
 /* The jump bar is the list's job here: hidden, over the dialog's own
    .field.sectjump rule, which outranks a plain one. */
 .snav,.shback,.ssplit>.sectjump,.ssplit>.field.sectjump,.ssplit>h3{display:none}
@@ -843,7 +859,10 @@ html[data-motion="reduce"] .tourring{transition:none}
   .ssplit{grid-template-columns:minmax(0,1fr)}
   .ssplit>*,.ssplit>.snav{grid-column:1;grid-row:auto}
   .ssplit>.snav{border-right:0}
-  .ssplit:not(.sopen)>:not(.snav){display:none}
+  .ssplit:not(.sopen)>:not(.snav):not(.pghead){display:none}
+  /* ...over the list on a phone, and gone with it once a section opens. */
+  .ssplit.sopen>.pghead{display:none}
+  .ssplit>.pghead{grid-row:auto;grid-column:1;order:-1}   /* first, as at a desk: the list comes before it in the markup */
   .ssplit.sopen>.snav{display:none}
   /* The open section's head is the way back: a chevron before its name,
      the whole head the press (splitSects). */
@@ -870,11 +889,20 @@ html[data-motion="reduce"] .tourring{transition:none}
   border-top:var(--hair) solid var(--line)}
 .rdetail>.setgrid{margin:var(--row-y) 0}
 .rprojects{display:flex;flex-direction:column}
-.rproj{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:6px 0;border-bottom:var(--hair) solid var(--line)}
-.rproj .rprojname{min-width:8rem}
-.rproj .upick{flex:1 1 auto;margin:0}
-.raddon{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
-.raddon select{flex:1 1 10em;width:auto;min-width:0}
+/* A project an account is on, one row (the operator, 26 Oct): its name, its
+   roles there beside it, and taking it off at the row's end, never a lone
+   button wrapped onto a line of its own. */
+.rproj{display:grid;grid-template-columns:minmax(8rem,14rem) minmax(0,1fr) auto;align-items:start;gap:6px 12px;
+  padding:6px 0;border-bottom:var(--hair) solid var(--line)}
+.rproj .rprojname{min-width:0;overflow-wrap:anywhere;min-height:var(--ctl);display:flex;align-items:center}
+.rproj .upick{margin:0;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center}
+@media (max-width:600px){ .rproj{grid-template-columns:minmax(0,1fr) auto} .rproj .upick{grid-column:1 / -1;grid-row:2} }
+.raddon{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:center;margin-top:8px}
+.raddon select{width:100%;min-width:0}
+@media (max-width:600px){ .raddon{grid-template-columns:minmax(0,1fr) auto} .raddon>select:first-child{grid-column:1 / -1} }
+/* Its groups apart (the operator, 26 Oct): Everywhere roles, Projects and
+   what the account can do each start a little below the one before. */
+#ueAccess>.setrow.col+.setrow.col{margin-top:14px}
 .rlvl{font:var(--f-note);font-weight:600;color:var(--dim)}
 .rlvl.write{color:var(--accent)}
 .rcan .td:not(.lead),.rcan .th:not(:first-child){text-align:center}
@@ -931,12 +959,15 @@ html[data-motion="reduce"] .tourring{transition:none}
   font:11px/1 system-ui,sans-serif;vertical-align:middle;cursor:help;
   transition:color .15s ease,border-color .15s ease}
 .help:hover,.help:focus-visible{color:var(--ink);border-color:var(--ink)}
-/* A ? opens its words as a line on the page, under the label it sits in,
-   and a second press folds them away: a box floating over the field was
-   cut off by whatever scrolled around it, and covered what it explained. */
+/* A ? opens its words in a tooltip (the operator, 26 Oct): fixed to the
+   window, so no pane clips it, beside the ? and inside the screen's edges
+   (helpShow places it), in the floating cards' panel and hairline. */
 .help.on{color:var(--ink);border-color:var(--ink)}
-.helptext{display:block;margin:4px 0 6px;color:var(--dim);font:var(--f-hint, 12px/1.45 system-ui,sans-serif);
-  white-space:normal;overflow-wrap:anywhere}
+.helppop{position:fixed;z-index:400;max-width:min(320px, calc(100vw - 16px));padding:8px 10px;background:var(--panel);
+  border:var(--hair) solid var(--line);border-radius:var(--r-surface);box-shadow:0 10px 28px rgba(0,0,0,.38);
+  color:var(--ink);font:var(--f-hint, 12px/1.45 system-ui,sans-serif);white-space:normal;overflow-wrap:anywhere;
+  pointer-events:none;animation:menuIn .16s cubic-bezier(.33,1,.68,1)}
+.helppop[hidden]{display:none}
 /* What the page cannot say because it cannot reach the container: under
    the header, the light's reason in words (it was the light's tooltip). */
 .pollwhy{padding:4px 12px;color:var(--bad);font:12px/1.45 system-ui,sans-serif;
@@ -1003,9 +1034,12 @@ html[data-motion="reduce"] .tourring{transition:none}
 .bnote .bdetail pre{font:var(--f-data);white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;margin:6px 0 0;padding:8px;background:var(--sunk);border-radius:var(--r-control)}
 .bnote .bcmd{font:11px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere;
   margin-top:3px}
-.bnote .bfoot{display:flex;gap:10px;align-items:center;margin-top:5px;
+/* Its actions beside what it says while they fit, and on a line of their
+   own under it when they do not, each button's words kept whole (B332). */
+.bnote .bfoot{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:5px;
   color:var(--dim);font:var(--f-note)}
-.bnote .bfoot .acts{margin-left:auto;display:flex;gap:12px}
+.bnote .bfoot .acts{margin-left:auto;display:flex;gap:8px}
+.bnote .bfoot .acts a{white-space:nowrap}
 .bnote .bfoot a{color:var(--dim)}
 /* Approve is a filled control, its text the page's dark on the amber: an
    older rule painted it the accent, which won by coming later and put
@@ -1195,8 +1229,7 @@ body.firstrun #panes{display:none}
 .hproj .name{font:var(--f-row);font-weight:600}
 /* ...its name a link to the project, not a box (a project card's is a
    heading), and its facts in the project card's voices. */
-.hproj .name.link{align-self:flex-start;background:none;border:0;padding:0;min-height:0;color:var(--ink);text-align:left;white-space:normal}
-@media(hover:hover){ .hproj .name.link:hover{background:none;color:var(--note)} }
+.hproj .name.namelink{align-self:flex-start}
 .hproj .pcfacts{font:var(--f-data);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hproj .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
 .hproj .pnote{font:var(--f-ui)} .hproj .pnote.bad{color:var(--bad)} .hproj .pnote.warn{color:var(--warn)} .hproj .pnote.dim{color:var(--dim)}
@@ -1248,6 +1281,12 @@ body.firstrun #panes{display:none}
    handing the whole page a sideways scroll. */
 .row .name{font-weight:600;overflow-wrap:anywhere}
 .row .name.go{cursor:pointer}
+/* A name that opens what it names (a repository, a project, a person) is
+   linked text, as a session's name is on Sessions: the row's own ink, no box,
+   underlined under the pointer. Every list draws its names with .namelink. */
+.namelink{background:none;border:0;padding:0;min-height:0;color:var(--ink);font:inherit;
+  text-align:left;white-space:normal;cursor:pointer;display:inline}
+@media(hover:hover){ .namelink:hover{background:none;text-decoration:underline} }
 .row .sub{color:var(--dim);font:var(--f-data);overflow-wrap:anywhere}
 /* A NOTICE: what is wrong or what to know, under a row, in a voice of its
    own (the operator, 13 Oct: facts, warnings and settings all wore the same
@@ -1634,6 +1673,9 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
    it is leaving, the arrival must not replay, and nothing under it may take
    a tap meant for the page behind. */
 .modal.leaving,.modal.leaving>.box{animation:none;pointer-events:none}
+/* A row's settings dialog shown again by a redraw is the one that was open:
+   no opening (dmNoteOpen). */
+.modal.dmsetdlg.still,.modal.dmsetdlg.still>.box{animation:none}
 .modal[hidden]{display:none}
 /* A dialog's box shown in place, in a notebook view (the project's Settings):
    no overlay, no shadow, the document's width, and its own scroll is the
@@ -1769,14 +1811,18 @@ textarea,select{
 .uimenu input:where(:not([type="checkbox"],[type="radio"])),.uimenu textarea,.uimenu select,
 .doctab input:where(:not([type="checkbox"],[type="radio"])),
 .doctab select,.doctab textarea,
-.nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
+.nb input,.nb textarea,.nb select,
+.resumemenu select{width:100%;box-sizing:border-box;
   padding:8px 9px;font:var(--f-field)}
 /* ...and one height for all of them, the buttons beside them included
    (the header keeps its own smaller buttons: they sit beside no field). */
 .modal input:where(:not([type="checkbox"],[type="radio"])),.modal select,
 .doc .row input,.doc .row select,.uimenu input:where(:not([type="checkbox"],[type="radio"])),.uimenu select,
 .doctab input:where(:not([type="checkbox"],[type="radio"])),.doctab select,
-.nb input:where(:not([type="checkbox"],[type="radio"])),.nb select{min-height:var(--ctl)}
+.nb input:where(:not([type="checkbox"],[type="radio"])),.nb select,
+/* ...and the session chooser's, which opens on a project's card, inside none
+   of those (the operator, 26 Oct: its pulldowns were the browser's size). */
+.resumemenu select{min-height:var(--ctl)}
 .modal button,.nb button,.doctab button,.uimenu button,.doc .row button{min-height:var(--ctl)}
 /* Not the color swatches: a circle, sized by its own rule. */
 .modal .pcpick button,.pcpick button{min-height:0}
@@ -1868,6 +1914,13 @@ select:focus{outline-offset:-2px}
    one answer: `.rm` used to be a second word for it and is now only what it
    also was, the dim icon that drops a row from a list. */
 .danger{color:var(--bad);border-color:var(--red2-edge)}
+/* A destructive button is filled, never an outline alone (the operator, 27
+   Oct): a tint of the scheme's own red under its red words, a little more of
+   it under the pointer, its edge the same red mixed down. */
+button.danger,a.btn.danger{background:color-mix(in srgb, var(--bad) 22%, var(--panel));
+  border-color:color-mix(in srgb, var(--bad) 50%, var(--panel))}
+@media(hover:hover){ button.danger:not([disabled]):hover,a.btn.danger:hover{background:color-mix(in srgb, var(--bad) 32%, var(--panel))} }
+button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel))}
 /* Revert is amber rather than red. It throws away what has not been saved
    yet: a decision you might want back, and the color this page already uses
    for "wants a decision from you". Red is kept for the controls that destroy
@@ -1947,6 +2000,9 @@ select:focus{outline-offset:-2px}
    their own inset, so the body adds none; the setup steps in a list. */
 .settingstab .setsteps{margin:6px 0 0;padding-left:1.2em}
 .settingstab .setsteps li{margin:2px 0}
+/* The Keys page (tab-keys.js, R154): a key shown to save wraps anywhere,
+   being one word of 64 characters. */
+.keystab .keyval{font:var(--f-data);overflow-wrap:anywhere}
 /* The Storage tab (tab-storage.js): its sections hold field bands and rows,
    so the body adds no inset; the project rows carry their numbers in
    fixed columns, right-aligned, so the stack reads as a comparison. */
@@ -2167,8 +2223,30 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
    one line. The field starts at a control's width, so a wrapping bar sent
    Save under Cancel in a card before the field gave up any of it. */
 .askline .askrow{flex-wrap:nowrap}
-.askline .askrow input{flex:1 1 auto;min-width:0;width:auto}
+.askline .askrow input,.askline .askrow>.combo{flex:1 1 auto;min-width:0;width:auto}
+/* (the combo's field too: .actbar input's 12em cap came later and won, a
+   short field beside two buttons on a card at every width) */
+.askline .askrow>.combo>input{flex:1 1 auto;width:100%}
 .askline .askrow>button{flex:none}
+/* A field that is also a pulldown (askInline with options; the operator,
+   26 Oct): the chevron inside its right edge as a select's, the list a
+   floating card under it with every option, the one picked by arrow keys
+   tinted in the accent. */
+.combo{position:relative;display:flex;flex:1 1 auto;min-width:0}
+.combo>input{flex:1 1 auto;min-width:0;width:auto;padding-right:34px}
+.combo>.combobtn{position:absolute;right:2px;top:2px;bottom:2px;width:30px;min-height:0;padding:0;border:0;background:transparent;
+  color:var(--dim);display:flex;align-items:center;justify-content:center}
+.combo>.combobtn svg{width:14px;height:14px}
+.combo>.combobtn:hover{color:var(--ink)}
+.combolist{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;max-height:220px;overflow:auto;padding:4px;
+  display:flex;flex-direction:column;background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
+  box-shadow:0 10px 28px rgba(0,0,0,.38)}
+.combolist[hidden]{display:none}
+.combolist>button{text-align:left;background:transparent;border:0;border-radius:var(--r-small);padding:6px 10px;min-height:34px;color:var(--ink);
+  font:var(--f-ui);flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.combolist>button:hover,.combolist>button.on{background:color-mix(in srgb, var(--accent) 18%, transparent)}
+.combonone{padding:6px 10px;color:var(--dim);font:var(--f-note)}
+@media (pointer:coarse){.combolist>button{min-height:44px}}
 /* A finger, not a pointer: the small controls that measured under 32px in the
    polish tour (18 Sep, 344 to 840px wide) grow to a thumb's size on a touch
    screen, and a desktop keeps its tighter strip. The bell stays bare (see its
@@ -2674,7 +2752,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* No pages yet: no nav, so the empty state is the whole width, not the
    nav's 200px column (B457's walk). */
 .wkreader:not(:has(.wknav)){grid-template-columns:minmax(0,1fr)}
-.wknav{position:sticky;top:0;font:var(--f-row);border-right:var(--hair) solid var(--line);padding-right:14px}
+/* Room under its last entry (the operator, 26 Oct): a list longer than the
+   pane ends, at the page's foot, above the 22px fade at the pane's edge
+   rather than inside it. */
+.wknav{position:sticky;top:0;font:var(--f-row);border-right:var(--hair) solid var(--line);padding-right:14px;padding-bottom:40px}
 .wknav ul{list-style:none;margin:0;padding:0}
 .wknav li{margin:0 0 6px}
 .wknav p,.wknav h2,.wknav h3{margin:0 0 6px;font-size:inherit}
@@ -2705,9 +2786,11 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .wktitle{font:400 1.75em/1.25 var(--serif);color:var(--ink);margin:4px 0 2px;padding-bottom:4px;border-bottom:var(--hair) solid var(--line)}
 .wkmeta{color:var(--dim);font:var(--f-note);margin:4px 0 14px}
 .wktoc{display:inline-block;min-width:180px;max-width:100%;border:var(--hair) solid var(--line);border-radius:var(--r-small);
-  background:var(--panel);padding:8px 14px 8px 12px;margin:0 0 16px;font:var(--f-row)}
+  background:var(--panel);padding:8px 14px;margin:0 0 16px;font:var(--f-row)}
 .wktochead{font-weight:600;text-align:center;margin-bottom:4px;color:var(--ink)}
-.wktoc ol{margin:0;padding-left:1.4em}
+/* Room for the numbers inside the box's own inset (the operator, 26 Oct:
+   they sat on its left line). */
+.wktoc ol{margin:0;padding-left:2.2em}
 .wktoc li.l2{margin-left:1em}
 .wktoc li.l3{margin-left:2em}
 .wkpage{font:1.02rem/1.65 var(--serif);color:var(--ink);overflow-wrap:anywhere;max-width:72ch}
@@ -3107,9 +3190,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    notebook's rows as wide as the pages' beside them. */
 .dmsrc{padding:var(--row-y) var(--row-x)}
 /* The last answer while a new one is on its way, or one the server kept
-   from before the node's job: dimmed as a whole, still readable, with no
-   motion. The word at the foot says which, and only when it has been slow. */
-.dmtab.dmstale .row{opacity:.6}
+   from before the node's job, is drawn as it is (the operator, 26 Oct: the
+   rows dimmed on every slow read, which on a node was most of them); the
+   word at the foot says which, and only when it has been slow. */
 /* The heading over each group of rows: where these came from, which is what
    decides what can be done to them (R68). Quiet, because it is a label on a
    list and not a section of its own. */
@@ -3305,6 +3388,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pane .bar.proj .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);white-space:nowrap}
 .pane .bar.proj .sp{flex:1}
 .pane .bar.proj .phead>button{min-height:32px;padding:4px 12px;font:var(--f-ui)}
+/* ...and its pulldown one height with them (the operator, 27 Oct: it sat
+   short of the buttons beside it). */
+.pane .bar.proj .phead>select{min-height:32px;padding:4px 10px;font:var(--f-ui);box-sizing:border-box}
 .pane .bar.proj .more{position:relative;display:inline-flex}
 .pane .bar.proj .more>button{min-height:32px;min-width:32px;padding:4px 8px}
 .pane .bar.proj .pnote{flex:1 1 100%;font:var(--f-ui)}
@@ -3312,7 +3398,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pane .bar.proj .pnote.dim{color:var(--dim)}
 @media(max-width:600px){ .pane .bar.proj .pfacts{flex:1 1 100%;max-width:none} }
 /* The Projects page (R218 step 3): a searchable grid of cards with status. */
-.projtab .docbarrow #bTrashTab{min-width:var(--tap);padding:4px 8px}
+.projtab .docbarrow #bTrashTab,.skboot .docbarrow button.ic{min-width:var(--tap);padding:4px 8px}
 /* The Claude chooser drawn in a project page's pane (R218 step 3): as wide
    as its words, never the pane. */
 .pane>.resumemenu{max-width:min(440px,calc(100% - 8px));width:max-content}
@@ -3339,30 +3425,71 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    row of buttons the card holds: its actions and a box it asks in (Group),
    so a form opened on it is the card's too (B863); and a project page's
    header's, as its card's. */
-:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
+:is(.pcard.pc :is(.pcacts,.askrow,.pcname>.actbar),.pane .bar.proj.pc :is(.phead,.askrow))>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
   border-color:color-mix(in srgb, var(--pc) 50%, var(--line));color:var(--ink)}
-:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
+:is(.pcard.pc :is(.pcacts,.askrow,.pcname>.actbar),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
 /* A word asked in a colored card or a project's header (askInline: Group,
    Rename) wears the same color as its buttons, its field tinted and its focus
    ring the project's, where the page's plain skin read as a hole in the card
    (the operator, 22 Oct). */
+/* A project's repositories as a pulldown in its head, in its color. */
+.phead select.prepos{width:auto;max-width:16rem;flex:0 1 auto;min-width:0}
+.pane .bar.proj.pc .phead select.prepos{background-color:color-mix(in srgb, var(--pc) 16%, var(--btn));border-color:color-mix(in srgb, var(--pc) 55%, var(--line))}
 :is(.pcard.pc,.pane .bar.proj.pc) .askrow input{background:color-mix(in srgb, var(--pc) 10%, var(--sunk));
   border-color:color-mix(in srgb, var(--pc) 45%, var(--line))}
 :is(.pcard.pc,.pane .bar.proj.pc) .askrow input:focus{outline:2px solid color-mix(in srgb, var(--pc) 60%, var(--panel));outline-offset:-1px}
 @media(hover:hover){
-  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
-  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
+  :is(.pcard.pc :is(.pcacts,.askrow,.pcname>.actbar),.pane .bar.proj.pc :is(.phead,.askrow))>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
+  :is(.pcard.pc :is(.pcacts,.askrow,.pcname>.actbar),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
 }
-/* The whole card opens the project's page (the operator, 18 Oct), so the
-   whole card answers the pointer, as a tile that is a link does. */
-.pcard[data-row],.hproj{cursor:pointer}
+/* Home's glance card opens its project's page (the operator, 18 Oct), so
+   it answers the pointer as a tile that is a link does; a Projects card is
+   not one (R138: its repositories' names open their notebooks). */
+.hproj{cursor:pointer}
 @media(hover:hover){
-  .pcard[data-row]:hover,.hproj:hover{border-color:var(--accent-mid)}
-  .pcard.pc[data-row]:hover,.hproj.pc:hover{border-color:var(--pc)}
+  .hproj:hover{border-color:var(--accent-mid)}
+  .hproj.pc:hover{border-color:var(--pc)}
 }
-.pcard .pcname{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
-.pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);background:none;border:0;padding:0;min-height:0;text-align:left;cursor:pointer}
-.pcard .pcname .name:hover{text-decoration:underline}
+/* A card turns over to its controls (R138, Edit) and back (Done): its two
+   faces share one grid cell, so the card is the size of the larger and
+   keeps it either way; the face away is turned from the eye and out of
+   reach (inert). Off under reduced motion, where the faces swap. */
+.pcard.pflip{display:grid;perspective:1400px}
+.pcard.pflip>.pcface{grid-area:1/1;display:flex;flex-direction:column;gap:4px;min-width:0;
+  backface-visibility:hidden;-webkit-backface-visibility:hidden;transition:transform .42s cubic-bezier(.33,1,.68,1)}
+.pcard.pflip>.pcback{transform:rotateY(180deg)}
+.pcard.pflip.flipped>.pcfront{transform:rotateY(-180deg)}
+.pcard.pflip.flipped>.pcback{transform:none}
+@media(prefers-reduced-motion:reduce){
+  .pcard.pflip>.pcface{transition:none}
+  .pcard.pflip>.pcface[inert]{visibility:hidden}
+}
+.pcard:has(.pcpop,.askrow){z-index:41}
+/* The one box a press on a card's back opens (a rename, a move, Group, the
+   swatches) takes the repositories' place while it is open (the operator,
+   26 Oct), so the two are never on the card at once; askInline holds the
+   back's height until the box goes. */
+.pcard .pcback:has(>.askline,>.pcpop)>.pcrepos{display:none}
+/* A project just made: a ring in the accent that fades (showNewCard). */
+.pcard.pjnew{animation:pjNew 2.4s cubic-bezier(.33,1,.68,1)}
+@keyframes pjNew{0%,30%{box-shadow:inset 3px 0 var(--pc, transparent),0 0 0 2px var(--accent),0 0 18px 2px color-mix(in srgb, var(--accent) 45%, transparent)}
+  100%{box-shadow:inset 3px 0 var(--pc, transparent),0 0 0 2px transparent,0 0 18px 2px transparent}}
+@media (prefers-reduced-motion: reduce){.pcard.pjnew{animation:none;outline:2px solid var(--accent);outline-offset:-1px}}
+/* One line on either face: a long name wraps within its room, its marks and
+   buttons after it on its first line (the operator, 26 Oct: pin and archive
+   were pushed under a long name). */
+.pcard .pcname{display:flex;align-items:flex-start;gap:6px;min-width:0;flex-wrap:nowrap}
+.pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);min-width:0;overflow-wrap:anywhere}
+.pcard .pcname>.sp{flex:1}
+/* ...so the back holds Back at its top right and the front its pin and
+   archive, the name's first line centered on them. */
+.pcard .pcname .name{flex:0 1 auto;padding-top:calc((var(--tap) - 1.3em) / 2)}
+.pcard .pcname>:not(.name):not(.sp){flex:none}
+/* Pin and Archive by the name (R138), pressed in where they are set: the
+   accent where it is, the quiet ink where it is not. */
+.pcard .pcname .pcmark{color:var(--dim)}
+.pcard .pcname .pcmark.on{color:var(--accent)}
+.pcard .pcname button.eye.bare{min-height:var(--tap);min-width:var(--tap);display:inline-flex;align-items:center;justify-content:center}
 .pcard .pcname .lockmark svg{width:14px;height:14px}
 /* The pin beside a pinned project's name, in the lock's size and the text's
    quieter color. */
@@ -3372,7 +3499,66 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pcard .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
 /* Yours first, then each other person's with a session here, one dot each. */
 .pstates{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 14px;min-width:0}
+/* A project's repositories (R138), one line each under its facts and who
+   is there, with no rule between them (the operator, 25 Oct: the space
+   groups them); a finger's height only where a finger presses. */
+.pcard .pcrepos{display:flex;flex-direction:column;gap:2px;margin:4px 0 2px}
+.pcard .pcrepo{display:flex;align-items:center;gap:var(--field-gap);min-height:28px;min-width:0}
+/* A thumb's height only where the row carries presses (the back's Move and
+   Remove): the front's lines are a name and a branch, set close (the
+   operator, 27 Oct), the name's link too, which a document's button rule
+   otherwise makes a control's height. */
+@media(pointer:coarse){ .pcard .pcback .pcrepo{min-height:var(--tap)} }
+/* The id, the node and who is working there share one line, wrapping. */
+.pcard .pcmeta{display:flex;flex-wrap:wrap;align-items:center;gap:2px 14px;min-width:0}
+.pcard .pcmeta>.pcfacts{flex:none;max-width:100%}
+.pcard .pcrepo>.namelink{font:var(--f-ui);font-weight:600;min-height:0}
+.pcard .pcrepo>.pcfacts{flex:1}
+/* A repository on a card's back: its name, then the icons that change it,
+   each a thumb wide and its picture in the middle. */
+.pcard .pcrepo>.name{font:var(--f-ui);font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcard .pcrepo>.sp{flex:1}
+.pcard .pcrepo>button.eye.bare{flex:none;min-height:32px;min-width:32px;display:inline-flex;align-items:center;justify-content:center;color:var(--dim)}
+/* ...a finger's height on touch, and 32px wide still, so a repository's
+   name keeps its room beside five of them at a phone's 344px. */
+@media(pointer:coarse){ .pcard .pcrepo>button.eye.bare{min-height:var(--tap)} }
+.pcard .pcrepo>button.eye.bare[data-danger]{color:var(--bad)}
+@media(hover:hover){ .pcard .pcrepo>button.eye.bare:hover{color:var(--ink)} .pcard .pcrepo>button.eye.bare[data-danger]:hover{color:var(--bad)} }
+/* A card's buttons share its width on one line, front and back (the
+   operator, 25 Oct): the front's words, the back's icons. */
+.pcard:is(.pflip,.skpcard) .pcacts>button{flex:1 1 auto;white-space:nowrap;padding-inline:8px}
+.pcard.pflip .pcfoot>button.ic{display:inline-flex;align-items:center;justify-content:center;min-height:var(--ctl)}
+.pcard.pflip .pcfoot>button[data-danger]{color:var(--bad)}
+/* The color's swatch filled with the project's own color. */
+.pcard.pflip .pcfoot>button[data-sw] svg{fill:var(--sw);stroke:var(--sw)}
+.pcard.pflip .pcfoot>button[aria-pressed="true"]{color:var(--accent)}
+/* A long list of repositories scrolls inside the back, which keeps the
+   front's size (R138). */
+.pcard .pcback .pcrepos{max-height:calc(var(--tap) * 5 + 2px);overflow-y:auto}
+/* Which agent a person's session runs, after their state, quieter. */
+.pstate .pagent{color:var(--dim)}
+/* A terminal's colors, one swatch each under the preset (the operator, 25
+   Oct): a grid of a swatch and its name, a changed one named in the text's
+   own ink; and a terminal drawn small in them. */
+.tcolors{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px}
+.tcolors .tcolor{display:flex;align-items:center;gap:8px;min-height:var(--tap);color:var(--dim);font:var(--f-ui)}
+.tcolors .tcolor.mine{color:var(--ink)}
+.tcolors input[type=color]{width:36px;height:28px;min-height:0;padding:2px;border:var(--hair) solid var(--line);border-radius:var(--r-control);background:var(--sunk);flex:none}
+.termprev{font-family:var(--mono);line-height:1.45;padding:10px 12px;border-radius:var(--r-control);border:var(--hair) solid var(--line);
+  white-space:pre;overflow-x:auto;max-width:100%}
+.termprev .tpblock{display:inline-block;width:1.6em;height:1em;vertical-align:-.15em;margin-right:2px}
+.termprev .tpcur{display:inline-block;width:.6em}
+.termprev .tpcur.bar{width:0;border-left:2px solid}
+.termprev .tpcur.under{border-bottom:2px solid}
+#rnTermPreview .termprev{margin-top:4px}
 .pcard .pnote{font:var(--f-ui)}
+/* A row of another repository's list (R136, reposAlso): which repository,
+   its number, its words. */
+.alsorow{display:flex;align-items:baseline;gap:var(--field-gap);min-height:var(--tap);padding:var(--label-gap) 0;
+  border-top:var(--hair) solid var(--line);min-width:0}
+.alsorow>.namelink{font-weight:600;flex:none}
+.alsorow>.pid{font:var(--f-data);color:var(--dim);flex:none}
+.alsorow>.alsotext{min-width:0;overflow-wrap:anywhere}
 .pcard .pnote.bad{color:var(--bad)} .pcard .pnote.warn{color:var(--warn)} .pcard .pnote.dim{color:var(--dim)}
 .pcard .pcacts{margin-top:auto;padding:6px 0 0;border:0;background:none}
 .pcard .pcacts .more{position:relative;display:inline-flex;margin-left:auto}
@@ -3508,6 +3694,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 /* What it uses: one band of four sharing hairlines, each its word over its
    figure, CPU with its half hour at the right, memory with how full. Two
    across on a phone. */
+.dmstats[hidden]{display:none}
 .dmstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--hair);background:var(--line);
   border:var(--hair) solid var(--line);border-radius:var(--r-control);overflow:hidden;margin:10px 0 0}
 /* A line under the stats or the services' table keeps the gap the stats
@@ -3580,11 +3767,17 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    around it, so the switch is the height of every control beside it. */
 :is(.dmtab,.dkview,.vmtab) .dmviewseg{border:0;outline:var(--hair) solid var(--line);outline-offset:calc(-1 * var(--hair))}
 :is(.dmtab,.dkview,.vmtab) .dmviewseg button{min-height:var(--ctl)}
+/* Cards and List are their pictures at every width (viewSeg), each in the
+   middle of a square button (B342: a block svg in an inline box sat left). */
+.dmviewseg>button{display:inline-flex;align-items:center;justify-content:center;min-width:var(--ctl);padding:4px 10px}
+.dmviewseg svg{display:block}
 .facts dd a{color:var(--note)}
 /* The row's Log fold: each container's tail under its name, the whole no
    taller than a screen, and the Follow switch on its action bar. */
-.dmlogbox .dmlogsvc + .dmlogsvc{margin-top:8px}
-.dmlogbox pre.dmlog{max-height:40vh;overflow:auto;margin:4px 0 0}
+/* A page's head (pageHead): its name and state as a node's head has them,
+   its facts under it, its buttons at the right (the operator, 25 Oct). */
+.pghead > .name{font-weight:600;font-size:1.05rem;color:var(--ink);display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.pghead > .actbar{margin-top:6px}
 .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px var(--row-x);margin:4px 0 0}
 @media(max-width:900px){ .facts{grid-template-columns:minmax(0,1fr)} }
 .facts .fact{display:grid;grid-template-columns:minmax(5.5rem,auto) minmax(0,1fr);gap:0 8px;align-items:baseline;min-width:0}
@@ -3671,21 +3864,23 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 /* Its ends on a desk (the operator, 23 Oct): an arrow at each end with more
    past it, held there while the row scrolls under it, and the fade on that
    side only; a mouse drags the row. A touch swipes, as before. */
-.chips:not(.chl):not(.chr){mask-image:none}
-.chips.chl:not(.chr){mask-image:linear-gradient(to right,transparent,#000 36px)}
-.chips.chl.chr{mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
+/* ...and the dock's line of tabs the same (the operator, 24 Oct). */
+:is(.chips,.dockline):not(.chl):not(.chr){mask-image:none}
+:is(.chips,.dockline).chl:not(.chr){mask-image:linear-gradient(to right,transparent,#000 36px)}
+:is(.chips,.dockline).chr:not(.chl){mask-image:linear-gradient(to left,transparent,#000 36px)}
+:is(.chips,.dockline).chl.chr{mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
 @media (pointer:fine){
   /* The arrow stands on the panel, whole; the fade starts past it. */
-  .chips.chl:not(.chr){mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px)}
-  .chips.chr:not(.chl){mask-image:linear-gradient(to left,#000 22px,transparent 22px,#000 48px)}
-  .chips.chl.chr{mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px,#000 calc(100% - 48px),transparent calc(100% - 22px),#000 calc(100% - 22px))}
-  .chips.chl,.chips.chr{cursor:grab}
-  .chips.dragging{cursor:grabbing;user-select:none}
-  .chips.dragging .chip{pointer-events:none}
-  .chips.chl::before,.chips.chr::after{position:sticky;z-index:1;flex:0 0 22px;display:grid;place-items:center;
+  :is(.chips,.dockline).chl:not(.chr){mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px)}
+  :is(.chips,.dockline).chr:not(.chl){mask-image:linear-gradient(to left,#000 22px,transparent 22px,#000 48px)}
+  :is(.chips,.dockline).chl.chr{mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px,#000 calc(100% - 48px),transparent calc(100% - 22px),#000 calc(100% - 22px))}
+  :is(.chips,.dockline).chl,:is(.chips,.dockline).chr{cursor:grab}
+  :is(.chips,.dockline).dragging{cursor:grabbing;user-select:none}
+  .chips.dragging .chip,.dockline.dragging .dtab{pointer-events:none}
+  :is(.chips,.dockline).chl::before,:is(.chips,.dockline).chr::after{position:sticky;z-index:1;flex:0 0 22px;display:grid;place-items:center;
     align-self:stretch;font:600 15px/1 system-ui;color:var(--ink);background:var(--panel);cursor:pointer}
-  .chips.chl::before{content:"\2039";left:0;margin-right:-22px;order:-1}
-  .chips.chr::after{content:"\203A";right:0;margin-left:-22px;order:99}
+  :is(.chips,.dockline).chl::before{content:"\2039";left:0;margin-right:-22px;order:-1}
+  :is(.chips,.dockline).chr::after{content:"\203A";right:0;margin-left:-22px;order:99}
 }
 /* A list's narrowing band (R254 step 1): its chips at the left and a search
    at the right, the search taking the whole width under them on a phone.
@@ -4003,7 +4198,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    with every bar control below. */
 .docbarrow>input[type=search]{flex:1 1 12rem;min-width:8rem}
 .docbarrow[hidden]{display:none}
-.ndtest.warn,.ndcheck.warn{color:var(--warn)}
+.ndtest.warn{color:var(--warn)}
 /* The one-time enrollment command: a pre, because a wrapped shell line lies
    about what runs, with the page's pre skin, inset like a field. */
 .ndcmd{margin:6px 0;border:var(--hair) solid var(--line);border-radius:var(--r-control);
@@ -4218,7 +4413,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   /* (the id's rule too, a desk's 12rem base and 8rem floor) */
   :is(.doctab,.nb) .field.docbarrow.dmpick>input{flex:1 1 0;min-width:4em}
   :is(.doctab,.nb) .field.docbarrow.dmpick>.pseg>button{min-width:var(--tap);padding:4px 8px}
-  :is(.doctab,.nb) .field.docbarrow.dmpick>.pseg svg{display:block}
   /* A runner's three actions, in their short words, on the row's one line. */
   .ndrun .actbar{flex-wrap:nowrap}
   .ndrun .actbar>button{flex:0 1 auto;min-width:0;white-space:nowrap}
@@ -4364,6 +4558,8 @@ button[aria-busy="true"]{opacity:.75}
   .nodestab .ndrow>.ndsections>.sectjump{margin:var(--card-gap) 0 0;padding-left:0;padding-right:0;border:0}
 }
 .ndrow .actbar.ndagent{margin-top:4px}
+/* The controller's own machine (R90): a reference, in the reference's color. */
+.ndrow .name .tag.ndown{color:var(--purple);border-color:var(--purple-edge)}
 /* A node's Advanced actions (the operator, 18 Oct): a row each, its name and
    what it does at the left and its button at the right, divided by a
    hairline, as a list of things to do reads. A phone stacks the button
@@ -4555,7 +4751,9 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
   overflow-wrap:anywhere;margin-top:2px}
 /* ...and where it is fixed, when the server knows (B71): a link on its own
    line, a thumb's height on a phone. */
-.doctor .probs .pagelink{display:inline-flex;align-items:center;min-height:32px;color:var(--accent);font:var(--f-ui)}
+/* Under the line it fixes, in its words' font (the operator, 26 Oct: run on
+   after the line, in another face, it read as part of it). */
+.doctor .probs .pagelink{display:flex;width:fit-content;align-items:center;min-height:32px;color:var(--accent);font:inherit}
 @media (pointer:coarse){.doctor .probs .pagelink{min-height:44px}}
 /* A long check wraps rather than ending in an ellipsis: with no tooltips
    (11 Oct) a cut chip says nothing of the rest. A chip of two lines takes the
@@ -4647,7 +4845,7 @@ pre{margin:0;padding:9px 11px;font:var(--f-code);white-space:pre-wrap;
 /* The first paint (bootPage): the pane's bar and a document's frame, laid
    out as the pane lays them, the doc filling what is left under the bar. */
 .skboot{display:flex;flex-direction:column;height:100%;min-height:0;padding:0;margin:0}
-.skboot .skpcard{min-height:196px}
+.skpcard .skv{height:.9em} .skpcard .skv.name{height:1.1em}
 /* A toolchain row closed is its name and what it is for on one line; the
    rest (terms, system packages, needs, its path) on the open row (R218
    step 22). Details beside the name opens it. */
@@ -4726,9 +4924,6 @@ span.skel.sk-word{display:inline-block;vertical-align:middle;padding:0}
 #toast .tx{flex:0 0 auto;min-height:24px;min-width:24px;padding:0;border:0;background:none;color:var(--dim)}
 @media(max-width:900px){ #toast{right:8px;left:8px;width:auto;bottom:calc(112px + env(safe-area-inset-bottom))} }
 @media(hover:none){ #toast .tst{pointer-events:none} #toast .tx{pointer-events:auto} }
-/* Over a dialog with no gutter beside it (toastPlace): at the top, and every press goes through. */
-#toast.overdlg{top:calc(8px + env(safe-area-inset-top));bottom:auto}
-#toast.overdlg .tst,#toast.overdlg .tx{pointer-events:none}
 /* ...and the same less motion where the account asked for it in the gear's
    menu (the operator, 19 Oct; noMotion reads it too): every animation
    and transition ends where it would have, at once, and the two the
@@ -4738,7 +4933,7 @@ html[data-motion="reduce"] *,html[data-motion="reduce"] *::before,html[data-moti
   transition-duration:0s !important;transition-delay:0s !important}
 html[data-motion="reduce"] #bBell.waiting{background:var(--warn)}
 html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
-@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on,.panes.dockup .pane.dock,.panes.dockdown .pane.dock{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
+@media(prefers-reduced-motion:reduce){ .helppop,.bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on,.panes.dockup .pane.dock,.panes.dockdown .pane.dock{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
 
 /* The page column ------------------------------------------------------ */
 /* min-width:0 matters: a grid item's min-content width is its widest nowrap
@@ -4768,6 +4963,7 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
    8px over the same time a menu below it drops (menuIn): the motion goes the
    way the menu opened (the operator, 18 Oct). */
 @keyframes menuRise{from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none}}
+.pinmenu.still{animation:none}
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
   border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:5px;display:flex;
   gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
@@ -4798,13 +4994,27 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
   padding-top:8px;border-top:var(--hair) solid var(--line)}
 .resumemenu .rmline .rmwho{display:flex;align-items:baseline;gap:8px;min-width:0}
 .resumemenu .rmline .rmwho b{font:var(--f-ui);font-weight:600;color:var(--ink)}
+/* Start's agent pulldown (the operator, 26 Oct) in its line, where a name would be. */
+.resumemenu .rmline .rmwho select{flex:0 1 auto;width:auto;min-width:0;align-self:center}
 .resumemenu .rmline .rmsays{font:var(--f-note);color:var(--dim)}
 .resumemenu .rmline.live .rmsays{color:var(--pass)}
 .resumemenu .rmline .rmacts{margin-left:auto}
 .resumemenu .rmacts button{white-space:nowrap}
-.resumemenu .rmfields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* ...in three bands (R143): yours running, Start, Resume, each headed in the
+   tag voice as the bell's groups are; a conversation's first words on a
+   quiet line of their own under its agent and when, the list scrolling past
+   a few. */
+.resumemenu .rmgroup{display:flex;flex-direction:column;gap:8px;min-width:0}
+.resumemenu .rmtitle{font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim)}
+.resumemenu .rmgroup .rmtitle+.rmline{border-top:0;padding-top:0}
+.resumemenu .rmconvs{display:flex;flex-direction:column;gap:8px;max-height:calc(var(--tap) * 5);overflow-y:auto}
+.resumemenu .rmconvs .rmline:first-child{border-top:0;padding-top:0}
+.resumemenu .rmconv .rmfirst{flex:1 0 100%;font:var(--f-note);color:var(--dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resumemenu .rmconv .rmin{margin-left:auto;font:var(--f-note);color:var(--dim)}
+.resumemenu .rmfields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .resumemenu .rmfields select{width:100%;min-width:0}
-@media(max-width:420px){ .resumemenu .rmfields{grid-template-columns:1fr} }
+@media(max-width:420px){ .resumemenu .rmfields{grid-template-columns:minmax(0,1fr)} }
 
 /* Panes -------------------------------------------------------------- */
 /* Closed on every side (the operator, 16 Oct): its top was left open for
@@ -4821,7 +5031,11 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 .panes.docked .pane{min-width:0}
 .panes.docked .pane.dock{border-top:var(--hair) solid var(--line)}
 .panes.docked .pane.dock .stack{display:none}
-.panes.dockup{grid-template-rows:minmax(0,1fr) var(--dock-h,50%)}
+/* --dock-h is pixels, set by dockDress when the dock goes up (half the area
+   then) or by a drag, so the terminal's Commands bar under the panes takes its
+   height from the page and not from the dock; never so tall the page above
+   it goes under 80px. */
+.panes.dockup{grid-template-rows:minmax(0,1fr) min(var(--dock-h,50%),calc(100% - 80px))}
 .panes.dockup .pane.dock{min-height:120px;animation:dockUp .3s cubic-bezier(.33,1,.68,1)}
 /* Up, it slides out of its line rather than appearing (the operator,
    16 Oct): the pane starts where the line sat, all but the line below the
@@ -4836,6 +5050,11 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 .panes.dockdown .pane.dock .stack{display:block}
 @keyframes dockDown{from{top:var(--dock-top,50%)} to{top:calc(100% - 44px)}}
 .panes.docked{background:var(--bg)}
+/* ...and the ground the dock uncovers as it slides up is the page's on show
+   (the operator, 26 Oct: a darker box under the rising dock): a flush page
+   or a notebook stands on the panel, Nostromo's pages on their glass. */
+.panes.docked:has(#pane0 .stack > .doc.on:is(.nbhost,.flush)){background:var(--panel)}
+html[data-theme="nostromo"] .panes.docked:has(#pane0 .stack > .doc.on){background:var(--glass)}
 body.booting .panes.dockup .pane.dock{animation:none}
 .panes.dockup .pane.dock .stack{display:block}
 .pane.dock.active{outline:0}
@@ -4857,13 +5076,6 @@ body.booting .panes.dockup .pane.dock{animation:none}
    untouched, and pull to refresh is vertical. */
 .dockline,.chips,.nbtabs .nbgroups,.nbtabs .nbsub{overscroll-behavior-x:contain}
 html,body{overscroll-behavior-x:none}
-.dockline.fadeL{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px);
-  mask-image:linear-gradient(to right,transparent 0,#000 20px)}
-.dockline.fadeR{-webkit-mask-image:linear-gradient(to left,transparent 0,#000 20px);
-  mask-image:linear-gradient(to left,transparent 0,#000 20px)}
-.dockline.fadeL.fadeR{
-  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);
-  mask-image:linear-gradient(to right,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%)}
 .pane .bar.dockbar>.ic{flex:0 0 auto}
 .dockline .dtab{display:inline-flex;align-items:center;gap:0;flex:0 0 auto;border:var(--hair) solid var(--line);
   border-radius:var(--r-control);background:var(--btn);color:var(--dim)}
@@ -5043,6 +5255,27 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 .slot .veil{position:absolute;inset:0;background:#2b2b2b;pointer-events:none;
   transition:opacity .12s linear}
 .slot .veil.gone{opacity:0}
+/* BuilderBot's own terminal (R133): xterm in the slot, on a plain dark
+   ground, and under it why it ended, with Reconnect. */
+.pane .slot.ownterm{flex-direction:column;background:#2b2b2b}
+.pane .slot.ownterm .xhost{flex:1;min-height:0;overflow:hidden}
+/* Room between the text and the pane's edges, on xterm's own element: the
+   fit addon takes that padding off what it sizes the pty to. */
+.pane .slot.ownterm .xhost .xterm{padding:var(--field-gap);height:100%;box-sizing:border-box}
+.pane .slot.ownterm .xend{display:flex;align-items:center;gap:var(--field-gap);padding:var(--label-gap) var(--field-gap);
+  border-top:1px solid var(--line);background:var(--panel);font:var(--f-note);color:var(--dim)}
+.pane .slot.ownterm .xend[hidden]{display:none}
+.pane .slot.ownterm .xend .xwhy{flex:1;min-width:0}
+/* A held press's selection on a phone (R133 step 11): a grip under each end
+   to drag, and Copy and Done on a small card over the text. */
+.pane .slot.ownterm .xhost{position:relative;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.pane .slot.ownterm .xsel{position:absolute;inset:0;pointer-events:none;z-index:5}
+.pane .slot.ownterm .xgrip{position:absolute;width:22px;height:22px;margin-left:-11px;border-radius:50% 50% 50% 0;
+  background:var(--accent);transform:rotate(-45deg);pointer-events:auto;touch-action:none}
+.pane .slot.ownterm .xgrip[data-end="b"]{border-radius:50% 0 50% 50%;transform:rotate(45deg)}
+.pane .slot.ownterm .xselbar{position:absolute;display:flex;gap:var(--label-gap);padding:var(--label-gap);
+  background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
+  box-shadow:0 10px 24px rgba(0,0,0,.5);pointer-events:auto}
 .pane .empty-pane{margin:auto;color:var(--dim);font-style:italic}
 /* A popped-out terminal's placeholder (R8): the pane's empty voice, and the
    one control under it. */
@@ -5351,6 +5584,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <summary><span class="t">Finished</span><span class="sst" id="roadmapDoneN"></span></summary>
         <div class="body"><div id="roadmapDoneList"></div></div>
       </details></div>
+    <!-- A project of several repositories' other ones (R136, reposAlso). -->
+    <div class="field" id="roadmapRepos" hidden></div>
     </div>
     <!-- What Claude remembers, on its own tab: a handful of files nobody
          edits, on screen because they are the one input to a session nobody
@@ -5433,12 +5668,14 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="field lfilter" id="bugSortBar">
         <div class="chips" id="bugChips"></div>
         <div class="chips relchips" id="bugVers"></div>
+        <div class="chips" id="bugRepro"></div>
         <span class="lsort"><label for="bugSort">Sort</label>
         <select id="bugSort">
           <option value="severity" selected>severity</option>
           <option value="newest">newest first</option>
           <option value="oldest">oldest first</option>
           <option value="updated">recently changed</option>
+          <option value="reproduces">how often it happens</option>
           <option value="title">title A–Z</option>
         </select></span>
       </div>
@@ -5451,6 +5688,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
       <div class="field" id="bugHist" hidden></div>
       <div class="field" id="bugList" data-skel="rows"></div>
+      <!-- A project of several repositories' other ones (R136, reposAlso). -->
+      <div class="field" id="bugRepos" hidden></div>
     </div>
     <!-- The scanner's findings for this project, read-only: the scan runs on
          the host and bb findings reads the same digest in a terminal. -->
@@ -5797,7 +6036,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          owner and Invite only are staged until Save; Invite and Withdraw are
          actions and act on the press. -->
     <div class="field" id="rnPeopleField" hidden>
-      <label id="rnPeopleLabel">People<span class="help" data-help="its owner, who is on it, and who is invited. Any administrator can add people, themselves included; invite only means people join by accepting an invitation, and its owner decides that. Who holds which role here is what the Roles tab sets: a role on this project is what puts somebody on it." tabindex="0">?</span></label>
+      <label id="rnPeopleLabel">People<span class="help" data-help="its owner, who is on it, and who is invited. Any administrator can add people, themselves included; invite only means people join by accepting an invitation, and its owner decides that. A role on this project puts somebody on it; the Roles page sets who holds which." tabindex="0">?</span></label>
       <div id="rnPeople" role="group" aria-labelledby="rnPeopleLabel"></div>
     </div>
     </div></details>
@@ -5906,6 +6145,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="lbox" id="rnAgents" role="group" aria-labelledby="rnAgentsLabel"></div>
       <div class="prefrow ctlrow"><label class="pick wide">Start opens <select id="rnAgentDefault"
         aria-label="the coding agent the project's Start opens"></select></label></div>
+      <!-- How many sessions of one agent each person may run here at once
+           (R143): each its own tree and branch. -->
+      <div class="prefrow ctlrow"><label class="pick wide">Sessions of one agent, each person <select id="rnAgentSlots"
+        aria-label="how many sessions of one coding agent each person may run on this project at once">
+        <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option>
+        <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option>
+        <option value="9">9</option></select></label></div>
       <div class="hint">A session of an agent left unticked does not start on this project. Claude always may.</div>
       <div class="hint" id="rnAgentGuards"></div>
     </div>
@@ -5941,7 +6187,25 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           <option value="fewer">fewer: routine calls made, not asked</option>
           <option value="rarely">rarely: only when going on would be unsafe or useless</option>
         </select></label>
+        <!-- Your terminals' colors here, over your Profile's (R133 step 10):
+             a project told apart at a glance, a production one red. Drawn
+             while BuilderBot's own terminal is on. -->
+        <label class="pick" id="rnTermSchemeRow">Terminal colors <select id="rnTermScheme"
+          aria-label="the colors of your terminals in this project">
+          <option value="">your Profile's</option>
+          <option value="amber">amber</option>
+          <option value="blue">blue</option>
+          <option value="dashboard">the dashboard's scheme</option>
+          <option value="default">default</option>
+          <option value="green">green</option>
+          <option value="light">light</option>
+          <option value="red">red</option>
+        </select></label>
       </div>
+      <!-- ...and how it looks, before a terminal opens (the operator, 25 Oct):
+           a line of its own under the row. -->
+      <div class="field" id="rnTermPreviewField"><label class="lbl" for="rnTermPreview">How your terminals here look</label>
+        <div id="rnTermPreview" aria-live="polite"></div></div>
       <div class="hint" id="rnPrefHint"></div>
       <div class="prefrow ctlrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Commit name <input id="rnGitName" type="text"
@@ -5974,6 +6238,10 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            is what changes the project. -->
       <button type="button" id="rnTokenClear" class="link" hidden></button>
       <div class="hint" id="rnTokenHint"></div>
+      <!-- What the person's own key store keeps for this remote's host
+           (R154), each with Use for this project, which acts at the press as
+           the deploy key's buttons do; and whose account it is linked to. -->
+      <div id="rnStore" hidden></div>
     </div>
     <!-- Its own deploy key, made or pasted here rather than only dropped into
          /secrets/ssh by hand (the operator, 12 Oct). Acts at the press, like
@@ -6042,7 +6310,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            the rest prefs.nodes. Drawn by rnFillNodesMore. -->
       <label id="rnNodesLabel" hidden>Also works on</label>
       <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
-      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Agents may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
+      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Agents may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Containers page.</div>
       <!-- What the project may use there (R102): the card, and where its
            tests run when it has a dev instance. -->
       <div class="prefrow ctlrow">
@@ -6088,7 +6356,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <input id="rnSnapDays" type="number" min="0" max="3650" step="1" inputmode="numeric" aria-label="days a snapshot is kept"> <span class="dim">days</span></div>
       <!-- ...and whether one is taken each day (R105): on unless switched
            off; off takes none, and what is kept ages out by the days. -->
-      <div class="logdays setrow ctlrow"><label class="ndcap"><input type="checkbox" id="rnSnapOn"> Take a snapshot every day<span class="help" data-help="off, none is taken and the days kept here go as they pass the days kept; a pinned day stays either way" tabindex="0">?</span></label></div>
+      <div class="logdays setrow ctlrow"><label class="ndcap"><input type="checkbox" id="rnSnapOn"> Take a snapshot every day<span class="help" data-help="off, no new snapshot is taken; those kept still go once older than the days kept. A pinned day always stays" tabindex="0">?</span></label></div>
       <div class="logdays setrow ctlrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-help="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
         <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each product"> <span class="dim">builds</span></div>
     </div>
@@ -6117,19 +6385,10 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          7 Oct): a machine, or one port on it, without making the project
          read another. An administrator's; applied without a restart. -->
     <div class="field" id="rnReachField" hidden>
-      <label id="rnReachLabel">Also reaches<span class="help" data-help="on a node that keeps each session to its own project's network, other machines a session here may still reach: an address for the whole machine, or address:port for one service, on the project's nodes you tick. Sessions already running get it at once" tabindex="0">?</span></label>
+      <label id="rnReachLabel">Also reaches<span class="help" data-help="other machines a session here may still reach outside its project's network: an address for the whole machine, or address:port for one service, on the nodes you tick. Running sessions get it at once" tabindex="0">?</span></label>
       <div id="rnReachRows" role="group" aria-labelledby="rnReachLabel"></div>
       <div class="rnreachadd"><button type="button" id="rnReachAdd">Add an address</button></div>
       <div class="hint" id="rnReachHint"></div>
-    </div>
-    <!-- What a session here may read for debugging (prefs.log_from,
-         prefs.diag): nodes' machine logs and the controller's diagnostics.
-         Per project since 6 Oct, set by an account with the debug grant,
-         and not drawn for one without it. -->
-    <div class="field" id="rnDebugField" hidden>
-      <label id="rnDebugLabel">Debug<span class="help" data-help="what a session here may read while debug mode is on: the controller's diagnostics and these nodes' machine logs" tabindex="0">?</span></label>
-      <div class="lbox" id="rnDebug" role="group" aria-labelledby="rnDebugLabel"></div>
-      <div class="hint">Read only while Debug mode is on, and only by a session whose account has the debug grant.</div>
     </div>
     </div></details>
     <!-- Which toolchains a session here may use (R77): every one installed
@@ -6149,7 +6408,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          ftp grant (the owner, until a role names it); anybody else sees
          whether it is on and where. Staged until Save, like the rest. -->
     <div class="field" id="rnFtpField" hidden>
-      <label id="rnFtpLabel">Over FTP<span class="help" data-help="an FTPS server on the project's node, rooted at its tree; each account signs in with its own BuilderBot name and password" tabindex="0">?</span></label>
+      <label id="rnFtpLabel">Over FTP<span class="help" data-help="its tree over FTPS from the project's node, and in VS Code or the Windows companion through this controller; each account signs in with its own BuilderBot name and password and gets the access picked below" tabindex="0">?</span></label>
       <div id="rnFtp" role="group" aria-labelledby="rnFtpLabel"></div>
     </div>
     </div></details>
@@ -6338,7 +6597,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="hint" id="rlNodeHint"></div>
     </div>
     <div class="field" id="rlDataField">
-      <label>Its data<span class="help" data-help="its named volumes and its data directory travel either way; this is what happens to them on arrival" tabindex="0">?</span></label>
+      <label>Its data<span class="help" data-help="its named volumes and data directory: unpacked into its volumes there, carried as an archive, or left here" tabindex="0">?</span></label>
       <label class="ndcap"><input type="radio" name="rlData" value="unpack" checked> Unpack it into its volumes there</label>
       <label class="ndcap"><input type="radio" name="rlData" value="archive"> Carry it as an archive, not unpacked</label>
       <label class="ndcap"><input type="radio" name="rlData" value="none"> Leave it here: the container alone goes</label>
@@ -6422,12 +6681,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <!-- One container's log, read on demand: the thing a person opens a docker
      list to do (R68 step 2). A dialog because it is a detour you read and
      dismiss, and because a tail belongs nowhere near a row that repaints. -->
-<div id="dlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlTitle">
-  <div class="box wide">
-    <h3 id="dlTitle">Log</h3>
-    <div id="dlBody"></div>
-  </div>
-</div>
 <!-- Reset BuilderBot (the operator, 12 Oct): which nodes to un-enroll first,
      so each can be enrolled again afterwards, then the word that confirms.
      tab-settings.js draws it and follows the un-enrolling to the reset. -->
@@ -6435,12 +6688,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
   <div class="box">
     <h3 id="resetTitle">Reset BuilderBot</h3>
     <div id="resetBody"></div>
-  </div>
-</div>
-<div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setdbgTitle">
-  <div class="box">
-    <h3 id="setdbgTitle">Debug settings</h3>
-    <div id="setdbgBody"></div>
   </div>
 </div>
 <!-- Report a bug in BuilderBot, from a project's row (page-report.js): a
@@ -6467,6 +6714,10 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <div id="reportModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="reportTitle">
   <div class="box">
     <h3 id="reportTitle">Report a bug</h3>
+    <div class="field" id="reportRepoField" hidden>
+      <label for="reportRepo">Repository</label>
+      <select id="reportRepo"></select>
+    </div>
     <div class="field">
       <label for="reportCat">Category</label>
       <select id="reportCat"></select>
@@ -6603,7 +6854,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          into the new directory before git init. Uploaded on Create rather
          than on choosing, so a change of mind costs nothing. -->
     <div class="field" id="pArchiveField">
-      <label for="pArchive">Start from an archive<span class="help" data-help="optional: zip or tar, unpacked into the new project; a single top-level folder is dropped" tabindex="0">?</span></label>
+      <label for="pArchive">Start from an archive<span class="help" data-help="optional: zip or tar, unpacked into the new repository; a single top-level folder is dropped" tabindex="0">?</span></label>
       <!-- The browser's own chooser is hidden: its button wears the browser's
            skin, not the page's. A button of ours opens it, and the name of
            what was picked stands beside the button. -->
@@ -6666,7 +6917,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
     </div>
     <div class="field" id="pTokenField" hidden>
-      <label for="pToken">Access token<span class="help" data-help="optional: a token for this project only, kept on the controller; a session can push with it but not read it" tabindex="0">?</span></label>
+      <label for="pToken">Access token<span class="help" data-help="optional: a token for this repository alone, kept on the controller; a session can push with it but not read it" tabindex="0">?</span></label>
       <input id="pToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
       <div class="hint" id="pTokenHint"></div>
@@ -6865,10 +7116,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-nodes.js"></script>
 <script src="tab-settings.js"></script>
 <script src="tab-jobs.js"></script>
+<script src="tab-schedules.js"></script>
+<script src="tab-debug.js"></script>
 <script src="tab-nginx.js"></script>
 <script src="tab-vms.js"></script>
 <script src="page-tour.js"></script>
 <script src="tab-storage.js"></script>
+<script src="tab-keys.js"></script>
 <script src="tab-phone.js"></script>
 <script src="tab-users.js"></script>
 <script src="tab-roles.js"></script>
@@ -6917,6 +7171,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="page-help.js"></script>
 <script src="page-paint.js"></script>
 <script src="page-panes.js"></script>
+<script src="page-term.js"></script>
 <script src="page-projsettings.js"></script>
 <script src="page-keys.js"></script>
 <script src="page-sidebar.js"></script>
@@ -6990,11 +7245,12 @@ quietFields(document.documentElement);
 // Its declarations are page-tabs.js; what runs at load is below.
 // ---- tabs ------------------------------------------------------------
 // Its declarations are page-tabs.js; what runs at load is below.
-// A tap on a ? opens its words as a line under its label, and a second tap
-// folds them away. Bound once on the document, so icons drawn later count too.
+// A press on a ? opens its words in a tooltip, and a second press shuts it;
+// anything else, Escape or a scroll shuts it. Bound once on the document, so icons
+// drawn later count too.
 addEventListener("click", e => {
   const h = e.target.closest && e.target.closest(".help");
-  if (!h) return;
+  if (!h){ if (helpAt && !e.target.closest?.("#helpPop")) helpHide(); return; }
   e.preventDefault();
   helpToggle(h);
 });
@@ -7002,8 +7258,9 @@ addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.classList?.contains("help")){
     e.preventDefault();
     helpToggle(e.target);
-  }
+  } else if (e.key === "Escape" && helpAt) helpHide();
 });
+addEventListener("scroll", () => { if (helpAt) helpHide(); }, true);
 untitleWatch();
 
 // ---- the shell (R218 step 2) ---------------------------------------------
@@ -7080,6 +7337,12 @@ document.querySelectorAll(".modal:not(.inline)").forEach(armModal);
 // once (page-motion.js). Before the page's other keydown listeners, so a
 // dialog's Escape is not also a menu's or an armed arrow's.
 document.addEventListener("keydown", modalKeys);
+// A big chip already on is no change, so its press is none (B317, the
+// operator 24 Oct): no list drawn again, no fade, as the rail does nothing
+// for the group already on. Taken before any chip's own handler.
+document.addEventListener("click", e => {
+  if (e.target.closest?.(".chip.on[aria-pressed='true']")){ e.stopPropagation(); e.preventDefault(); }
+}, true);
 // Scroll hints (scrollHints): on any scroll, which does not bubble but is
 // seen on its way down, and on a slow clock for content that grows under a
 // box nobody is scrolling. Only the few hinted boxes are measured.
@@ -7122,8 +7385,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden){ hiddenAt = Date.now(); return; }
   // Only after long enough that the socket was really dropped: a quick glance
   // away keeps it, and reloading then would flash the terminal for nothing.
-  // Gated to touch devices: a desktop page is throttled, not frozen, so ttyd
-  // heals it without a reload, and a desktop reload on every alt-tab is noise.
+  // Gated to touch devices: a desktop page is throttled, not frozen, so its
+  // sockets live through it, and a desktop reload on every alt-tab is noise.
   if (isPhone() && hiddenAt && Date.now() - hiddenAt > 3000) reattachTerminals();
   nudgeTerminals();
 });
@@ -7167,15 +7430,21 @@ $("aboutModal").onclick = e => {
 };
 
 // Which pane of a split is active decides where the keys and the commands
-// go, and clicking into a terminal is the natural way to say "this one",
-// but a click inside a cross-origin iframe never reaches this page. What
-// does reach it is the window losing focus to that iframe, and the iframe
-// is then the active element: that is the click, one step removed.
-window.addEventListener("blur", () => {
-  const f = document.activeElement;
-  if (!isSplit() || f?.tagName !== "IFRAME") return;
-  const i = f.closest(".pane")?.id === "pane1" ? 1 : 0;
+// go, and clicking into a terminal is the natural way to say "this one":
+// focus landing in a pane says it, a terminal's own keyboard included. A
+// VM's screen is a frame, and a click inside it never reaches this page;
+// what does is the window losing focus to it, the frame then the active
+// element: that is the click, one step removed.
+const paneFocused = el => {
+  // Its content, not its bar: a button there has its own press to make.
+  const p = el?.closest?.(".stack")?.closest(".pane");
+  if (!isSplit() || !p) return;
+  const i = p.id === "pane1" ? 1 : 0;
   if (i !== active){ active = i; render(); }
+};
+document.addEventListener("focusin", e => paneFocused(e.target));
+window.addEventListener("blur", () => {
+  if (document.activeElement?.tagName === "IFRAME") paneFocused(document.activeElement);
 });
 
 // ---- keys ------------------------------------------------------------
@@ -7677,6 +7946,8 @@ onRev("chat", () => { if (chatWith && tabOf(panes[1])?.kind === "chat") loadChat
 // open Jobs tab refetches, and nothing about jobs rides the status poll.
 onRev("jobs", () => {
   if (shown("jobs")) loadJobs();
+  // ...and the Schedules page, whose last runs are jobs (R117).
+  if (shown("schedules")) loadSchedules();
   // Home's queue and node counts, its containers kept (R218 step 5).
   if (shown("home")) loadHome(true);
   // ...and the jobs a toast is following (R218 step 6).

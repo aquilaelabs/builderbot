@@ -5,8 +5,8 @@
 <h1 align="center">BuilderBot</h1>
 
 <p align="center">
-  A self-hosted workshop for coding agents (Claude Code, ChatGPT's Codex CLI
-  and GitHub's Copilot CLI): your projects, the machines that build them, and
+  A self-hosted workshop for coding agents (Claude Code, ChatGPT's Codex CLI,
+  GitHub's Copilot CLI and xAI's Grok Build): your projects, the machines that build them, and
   the sessions working on them, in one dashboard.
 </p>
 
@@ -37,8 +37,8 @@ under it, the **nodes**. The controller keeps the dashboard and the record of
 every project: its plan, its bugs, its rules. The nodes do the work: the
 agents' sessions, builds, tests, CI, Android emulators and Docker containers.
 
-Each project is a git repository on a shared disk. Open it from the browser,
-on a desktop or a phone, and a session of Claude, ChatGPT or Copilot starts
+Each project holds git repositories on a shared disk. Open it from the browser,
+on a desktop or a phone, and a session of Claude, ChatGPT, Copilot or Grok starts
 on its node already briefed with the project's house rules, roadmap and open
 bugs. Close the tab and the session keeps going.
 
@@ -48,7 +48,7 @@ your projects mounted straight in, and to grow from one machine to several.
 ## Features
 
 - **Coding agents from the browser.** Claude (Claude Code), ChatGPT (Codex
-  CLI) and Copilot (Copilot CLI), each started with Start agent and held to
+  CLI), Copilot (Copilot CLI) and Grok (Grok Build), each started with Start agent and held to
   the same briefing, rules and guards. Real terminals in a dock at the foot
   of every page, at a desk or on a phone, each session in its own project's
   view of the disk. Resume, restart, pick the model and effort, and see at a
@@ -138,8 +138,8 @@ your projects mounted straight in, and to grow from one machine to several.
 - **Your repositories** on GitHub, Gitea or Forgejo, or any git remote over
   plain git.
 - **An account with the agent each person will use**: Claude (a Claude
-  plan), ChatGPT (a ChatGPT plan) or Copilot (a GitHub account with a Copilot
-  plan). Each person signs in themselves, on the node, from the Agents page.
+  plan), ChatGPT (a ChatGPT plan), Copilot (a GitHub account with a Copilot
+  plan) or Grok (a SuperGrok or X Premium+ account). Each person signs in themselves, on the node, from the Agents page.
 - **Repositories made for trying it** (see the warning above).
 
 ### Install the controller

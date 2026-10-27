@@ -259,6 +259,22 @@ class ConfigPlaneMixin:
             job.say(f"refused: a {verb} is root's, and this agent does not run as root: on the "
                     f"machine, sudo {'reboot' if what == 'reboot' else 'poweroff'}\n")
             return "failed", 77
+        # Every session here ended first, as End does, and said to the
+        # controller before the machine goes (the operator, 26 Oct): cut off
+        # by the power-off they were left open on the record, and a Restart
+        # after the boot met one that was not there.
+        names = [str((r or {}).get("name") or "") for r in (self.sessions_now() or [])]
+        names = [n for n in names if n]
+        if names:
+            job.say(f"ending {len(names)} session{'' if len(names) == 1 else 's'} first: {', '.join(names)}\n")
+            self.kill_sessions(names, why=f"before a {verb}")
+            self.hello_again(f"its sessions ended before a {verb}")
+            # ...and the hello that says so given time to leave: the loop
+            # sends it, and a power-off three seconds out could beat it.
+            for _ in range(20):
+                time.sleep(0.5)
+                if getattr(self, "hello_at", 1):
+                    break
         cmd = ([shutil.which("systemctl"), what] if shutil.which("systemctl")
                else ["shutdown", "-r" if what == "reboot" else "-h", "now"])
         try:

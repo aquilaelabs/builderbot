@@ -177,9 +177,14 @@ def memory_dir(project, home=None):
     except OSError:
         return None
     # The same slug Claude Code uses for transcripts: the working directory's
-    # path with the slashes turned into dashes.
+    # path with every character that is not a letter or a digit a dash
+    # (B349: its slashes alone named a folder Claude never writes for a
+    # project like ep.silon). One named the old way, and not yet the new,
+    # is read where it is.
     root = Path(home) / ".claude" / "projects" if home else CLAUDE_PROJECTS
-    return root / str(d).replace("/", "-") / "memory"
+    new = root / re.sub(r"[^A-Za-z0-9]", "-", str(d)) / "memory"
+    old = root / str(d).replace("/", "-") / "memory"
+    return old if old != new and old.is_dir() and not new.is_dir() else new
 
 
 FIELD_RE = re.compile(r"^\s*(\w+):\s*(.*?)\s*$")

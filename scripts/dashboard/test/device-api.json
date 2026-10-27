@@ -90,8 +90,7 @@
         {"method": "GET", "path": "/api/status", "sends": {},
          "reads": {"boot": "string", "tmux_prefix": "string", "projects": "array", "sessions": "array",
                    "projects[].name": "string", "projects[].session_boot": "string"}},
-        {"method": "GET", "path": "/term/token?arg=", "reads": {"token": "string"}, "needs": "a ttyd, which test/editor.mjs starts and drives"},
-        {"method": "GET", "path": "/term/ws?arg=", "upgrade": "tty", "needs": "a ttyd, which test/editor.mjs starts and drives"}
+        {"method": "GET", "path": "/termws?arg=", "upgrade": "websocket", "needs": "a terminal, which test/editor.mjs opens and drives"}
       ]
     }
   }

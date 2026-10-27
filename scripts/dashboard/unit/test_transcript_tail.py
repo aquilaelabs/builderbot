@@ -42,3 +42,15 @@ class Tail(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Resumable(unittest.TestCase):
+    """A conversation with nothing said in it is not offered as Resume (B276):
+    Claude Code does not resume it, and bb-tty said No transcript."""
+
+    def test_only_a_conversation_with_a_turn_counts(self):
+        d = pathlib.Path(tempfile.mkdtemp())
+        (d / "said.jsonl").write_text(said("fix the login"))
+        (d / "empty.jsonl").write_text(json.dumps({"type": "summary", "summary": "x"}) + "\n")
+        self.assertTrue(transcripts.has_turn(d / "said.jsonl"))
+        self.assertFalse(transcripts.has_turn(d / "empty.jsonl"))
