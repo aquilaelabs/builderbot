@@ -351,7 +351,7 @@ function profileReach(){
     const status = on ? `${on} on` : mine.length ? "off" : "";
     return docSection("profile", `reach-${k}`, c.label, status, `${rows ? `<div class="rows">${rows}</div>` : ""}${form}
       <div class="field"><div class="addbar ctlrow" data-add="reach-${esc(k)}"${form ? " hidden" : ""}><button type="button" data-reachadd="${esc(k)}">${mine.length ? `Add another ${esc(c.label)}` : `Set up ${esc(c.label)}`}</button></div></div>`,
-      {cls: on ? "ok" : "", open: !!(mine.length || form), item: true});
+      {cls: on ? "ok" : "", item: true});
   }).join("");
   return `${dests.length ? "" : `<div class="field"><div class="hint">Nothing yet. The bell's rows reach you here as well as on the page: an ask waiting on you, what a node needs, a red CI run, an invitation, a file changed in two places. More than one can be on at once.</div></div>`}${blocks}`;
 }
