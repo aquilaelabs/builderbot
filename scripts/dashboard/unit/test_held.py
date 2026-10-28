@@ -57,6 +57,16 @@ class Held(unittest.TestCase):
         held.arm_next(True)
         self.assertEqual(held.arm_next(False)["armed"], False)
 
+    def test_a_prepared_configurations_first_start_holds_once(self):
+        # R161 step 11: armed before boot() reads the markers, this boot alone.
+        held.arm_first()
+        got = held.boot()
+        self.assertTrue(got["held"])
+        self.assertIn("prepared configuration", got["why"][0])
+        held.start()
+        held.shutdown_clean()
+        self.assertFalse(held.boot()["held"], "a later boot holds only for its own reasons")
+
     def test_safe_mode_at_the_boot_menu_holds_the_start(self):
         # R161 step 2: GRUB's Safe mode entry puts bbsafe=1 on the command
         # line, and the start is held with that said.

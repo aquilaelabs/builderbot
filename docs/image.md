@@ -121,7 +121,9 @@ password hash is never left there. The controller makes the owner from the
 hash (the dashboard's own scheme, so a tool that writes the file hashes what
 was typed) and each person by name and role, with their SMB password where
 it came with them and no dashboard password until the owner sets one on the
-Users page. `"first_run": "skip"` marks the setup page done; without an
+Users page. `"first_run": "skip"` marks the setup page done, and `"hold_first_start": true`
+holds that first start, so the disks are on This machine before anything
+mounts; without an
 owner's hash the first-run page makes the owner as on any stick. The shares,
 pools, array and apps wait until their disks are adopted. This machine's
 **From the stick** section says what was applied, what waits and what could

@@ -487,8 +487,11 @@ does not draw the page (R90 step 8, R56 step 8).
 
 **A held start** (R56 step 9). Not by default: after a shutdown that was
 not clean (the service writes a marker on a clean stop and the next start
-misses it), or when **Hold the next start** on this page was pressed
-before a restart (that one boot), the install comes up with the dashboard,
+misses it), when **hold the next start** was ticked before a restart (the
+checkbox beside Restart and Shut down, under Controller settings' Power and
+in this machine's Reboot or shut down row; that one boot), or on the first
+start of a stick's prepared configuration that asks for it, so its disks are
+seen before anything mounts, the install comes up with the dashboard,
 its agent and the network and nothing else: no agent session starts (a
 shell still opens), and the pools, shares, apps, VMs and containers the
 installed OS adds are held by their own modules until **Start** is pressed

@@ -1270,7 +1270,7 @@ function nodeAdvancedSection(n, stale, inflight){
         !n.live ? `<span class="bad">They need the agent dialing in, and it is away: power the machine from its console or its hypervisor.</span>`
         : installing ? `<span class="bad">They wait: ${esc(installing)} is running here. Stop it first, or wait for it to finish.</span>`
         : "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on.",
-        ["reboot", "poweroff"].map(w =>
+        (n.id === state?.own_node && typeof holdNextBox === "function" ? holdNextBox() : "") + ["reboot", "poweroff"].map(w =>
           `<button type="button" class="danger" data-nd="${w}" ${!n.live || inflight(w) || installing ? "disabled" : ""}>${
             inflight(w) ? (w === "reboot" ? "Rebooting…" : "Shutting down…")
                         : (w === "reboot" ? "Reboot" : "Shut down")}</button>`).join(""))}
@@ -2517,6 +2517,8 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
 }
 
 function wireNodesTab(root){
+  // The own machine's hold-next checkbox beside Reboot (R161 step 11).
+  if (typeof wireHoldNext === "function") wireHoldNext(root);
   wireSignin(root);
   wireCharts(root);
   root.querySelectorAll("[data-ndopen]").forEach(b => b.onclick = () => openNotebook(b.dataset.ndopen));

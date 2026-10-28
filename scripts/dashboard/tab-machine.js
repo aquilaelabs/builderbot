@@ -27,11 +27,10 @@ function machineHead(n){
   const img = state?.image || {};
   const mem = r.mem_mb ? `${Math.round(r.mem_mb / 1024)} GB` : "";
   const wall = r.session?.up ? "in force" : r.session?.why ? `down: ${r.session.why}` : n.live ? "not reported yet" : "";
-  // A held start (R56 step 9): Start lifts it; Hold the next start arms the
-  // restart after this one to come back held, for a look before anything runs.
+  // A held start (R56 step 9): Start lifts it. Holding the next one is the
+  // checkbox beside Reboot and Shut down (R161 step 11).
   const h = state?.held || {};
-  const actions = `${h.held ? `<button type="button" class="primary" data-heldstart title="${esc((h.why || []).join("; "))}">Start</button>` : ""}
-    <button type="button" data-holdnext="${h.armed ? "0" : "1"}" title="the restart after this one comes back with nothing running, for a look first">${h.armed ? "Next start held: let it run" : "Hold the next start"}</button>`;
+  const actions = h.held ? `<button type="button" class="primary" data-heldstart title="${esc((h.why || []).join("; "))}">Start</button>` : "";
   return pageHead({title: n.name, pills: `<span class="tag ndown">this machine</span> ${nodeStatePill(n)}${h.held ? ` <span class="pill bad">held</span>` : ""}`, actions, facts: [
     ["System", [r.os, r.hostname && r.hostname !== n.name ? r.hostname : ""].filter(Boolean).join(" · ")],
     ["Cores and memory", [r.cpu ? `${r.cpu} cpu` : "", mem].filter(Boolean).join(" · ")],
@@ -76,6 +75,24 @@ function renderMachineInto(i){
   void inflight;
 }
 
+// Hold the next start (R56 step 9, R161 step 11): a checkbox beside Restart
+// and Shut down, ticked for the one restart that follows and shown ticked
+// while it is armed; a bare-metal install's alone.
+function holdNextBox(){
+  if (!state?.bare_metal) return "";
+  const armed = !!state?.held?.armed;
+  return `<label class="ndcap holdnext" title="the restart after this one comes back with nothing running, for a look first"><input type="checkbox" data-holdnextbox${armed ? " checked" : ""}> hold the next start</label>`;
+}
+function wireHoldNext(root){
+  root.querySelectorAll("[data-holdnextbox]").forEach(c => c.onchange = async () => {
+    const on = c.checked;
+    c.disabled = true;
+    const j = await (await postJSON("/api/v1/nodes", {action: "hold-next", on})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || (on ? "the next start is held: nothing runs after the restart until Start is pressed on This machine" : "the next start runs as usual"), !!j.error);
+    await refresh();
+  });
+}
+
 // What a stick's prepared configuration did at the first boot (R161 step 8,
 // firstboot.py): each piece applied, waiting for disks to be adopted, or not
 // applied with why, in the facts voice. Nothing on an install that had none.
@@ -96,10 +113,5 @@ function wireHeld(root){
     notify(j.error || "started: sessions run again", !!j.error);
     await refresh();
   }));
-  root.querySelectorAll("[data-holdnext]").forEach(b => b.onclick = () => pressing(b, async () => {
-    const on = b.dataset.holdnext === "1";
-    const j = await (await postJSON("/api/v1/nodes", {action: "hold-next", on})).json().catch(() => ({error: "no answer"}));
-    notify(j.error || (on ? "the next start is held: nothing runs after the restart until Start is pressed here" : "the next start runs as usual"), !!j.error);
-    await refresh();
-  }));
+  wireHoldNext(root);
 }

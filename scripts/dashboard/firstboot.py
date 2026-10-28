@@ -15,6 +15,7 @@ hash nor an SMB hash. This machine draws the report (view()).
 Format 1:
     {"format": 1, "first_run": "skip" | "ask",
      "machine": {"hostname", "timezone", "network": {...}},
+     "hold_first_start": true | false,
      "owner": {"name", "password_hash"},
      "people": [{"name", "role", "smb_nt"}],
      "shares": [...], "pools": [...], "array": {...}, "apps": [...]}
@@ -27,14 +28,17 @@ from pathlib import Path
 RUN = Path(os.environ.get("BB_FIRSTBOOT_RUN", "/run/builderbot-os/firstboot/firstboot.json"))
 STATE = None
 write_json = users = settings = None
+hold_first = lambda: None    # noqa: E731 (held.arm_first, R161 step 11)
 WAITS = {"shares": "a share is served from a pool or the array, adopted first",
          "pools": "the pools are adopted from This machine's Storage, a later piece",
          "array": "the array is adopted by its disks' serials, a later piece",
          "apps": "an app is a container made from New container once its folders' disks are here"}
 
 
-def configure(*, state, write_json_fn, users_mod, settings_mod):
+def configure(*, state, write_json_fn, users_mod, settings_mod, hold_first_fn=None):
     globals().update(STATE=Path(state), write_json=write_json_fn, users=users_mod, settings=settings_mod)
+    if hold_first_fn:
+        globals()["hold_first"] = hold_first_fn
 
 
 def _file():
@@ -67,6 +71,11 @@ def apply(path=None):
                     done.append({"what": "first run", "said": "skipped: the owner signs in"})
         else:
             waiting.append({"what": "accounts", "said": "no owner's password came with it: the first-run page makes the owner"})
+        # Held on the disks (R161 step 11): the start this configuration came
+        # with shows them on This machine before anything mounts.
+        if cfg.get("hold_first_start"):
+            hold_first()
+            done.append({"what": "first start", "said": "held: Start on This machine once the disks are as they should be"})
         for k, why in WAITS.items():
             if cfg.get(k):
                 waiting.append({"what": k, "said": why, "count": len(cfg[k]) if isinstance(cfg[k], list) else 1})

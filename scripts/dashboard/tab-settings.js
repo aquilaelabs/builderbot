@@ -375,12 +375,13 @@ function powerSection(){
   return `<div class="row stack2" data-group="Power"><div class="grow">
       <div class="sub">Restart ends every session on this machine, everybody's, each closed first, and the machine comes back on its own with the dashboard. Shut down does the same and the machine stays off until somebody switches it on.</div>
       ${why ? `<div class="sub warn">${esc(why)}</div>` : ""}
-      <div class="actbar"><span class="sp"></span>
+      <div class="actbar">${typeof holdNextBox === "function" ? holdNextBox() : ""}<span class="sp"></span>
         <button type="button" class="danger" data-power="reboot"${why || inflight("reboot") ? " disabled" : ""}>${inflight("reboot") ? "Restarting…" : "Restart"}</button>
         <button type="button" class="danger" data-power="poweroff"${why || inflight("poweroff") ? " disabled" : ""}>${inflight("poweroff") ? "Shutting down…" : "Shut down"}</button></div>
     </div></div>`;
 }
 function wirePower(root){
+  if (typeof wireHoldNext === "function") wireHoldNext(root);
   root.querySelectorAll("[data-power]").forEach(b => b.onclick = () => pressing(b, async () => {
     const act = b.dataset.power, id = state?.own_node || "";
     const here = (state?.sessions || []).filter(x => x.node_id === id);

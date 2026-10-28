@@ -22,7 +22,7 @@ import settings  # noqa: E402
 import users  # noqa: E402
 
 NT = "8846F7EAEE8FB117AD06BDD830B7586C"
-CFG = {"format": 1, "first_run": "skip", "machine": {"hostname": "tower", "timezone": "Europe/Berlin", "network": "dhcp"},
+CFG = {"format": 1, "first_run": "skip", "hold_first_start": True, "machine": {"hostname": "tower", "timezone": "Europe/Berlin", "network": "dhcp"},
        "owner": {"name": "boss", "password_hash": users.hash_password("correct horse", iterations=1000)},
        "people": [{"name": "ann", "role": "admin", "smb_nt": NT}, {"name": "bad name!", "role": "user"}],
        "shares": [{"name": "media", "purpose": "array"}], "array": {"disks": [{"serial": "WD-1"}]}}
@@ -65,7 +65,9 @@ class Apply(unittest.TestCase):
         users.configure(state=self.tmp, write_json=wj)
         settings.configure(write_json=wj, state=self.tmp)
         self.addCleanup(lambda: (setattr(settings, "FILE", saved[1]), setattr(settings, "write_json", saved[2])))
-        firstboot.configure(state=self.tmp, write_json_fn=wj, users_mod=users, settings_mod=settings)
+        self.holds = []
+        firstboot.configure(state=self.tmp, write_json_fn=wj, users_mod=users, settings_mod=settings,
+                            hold_first_fn=lambda: self.holds.append(1))
         self.handed = self.tmp / "handed.json"
         self.handed.write_text(json.dumps({"config": CFG, "machine": {"hostname": "applied", "timezone": "'Mars/Base' is not a time zone here"}}))
 
@@ -81,7 +83,8 @@ class Apply(unittest.TestCase):
         self.assertTrue(settings.get("setup_done"))
         self.assertFalse(self.handed.exists(), "the handed file goes")
         whats = lambda k: [x["what"] for x in r[k]]  # noqa: E731
-        self.assertEqual(whats("done"), ["hostname", "accounts", "first run"])
+        self.assertEqual(whats("done"), ["hostname", "accounts", "first run", "first start"])
+        self.assertEqual(self.holds, [1], "the first start held on the disks")
         self.assertEqual(whats("waiting"), ["shares", "array"])
         self.assertIn("timezone", whats("failed"))
         kept = (self.tmp / "firstboot.json").read_text()

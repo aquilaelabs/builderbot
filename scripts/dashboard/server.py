@@ -5201,7 +5201,7 @@ held.configure(state=STATE, bare_metal=lambda: BARE_METAL, write_json_fn=write_j
 # A prepared configuration a stick's first boot handed over (R161 step 8,
 # firstboot.py): applied once, here, before anybody can sign in or claim.
 import firstboot                                                 # noqa: E402
-firstboot.configure(state=STATE, write_json_fn=write_json, users_mod=users, settings_mod=settings)
+firstboot.configure(state=STATE, write_json_fn=write_json, users_mod=users, settings_mod=settings, hold_first_fn=held.arm_first)
 if BARE_METAL:
     try:
         _fb = firstboot.apply()

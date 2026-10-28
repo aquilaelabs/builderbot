@@ -234,6 +234,17 @@ await firstRun(false);
   await bmApi('/api/v1/nodes', { action: 'hold-next', on: false });
   const started = await bmApi('/api/v1/nodes', { action: 'start-held' });
   ok(started.ok && /not held/.test(started.note || ''), `Start with nothing held says so (${JSON.stringify(started)})`);
+  // ...and holding the next start is a checkbox beside Reboot and Shut down
+  // (R161 step 11), ticked while armed, the head's button gone.
+  {
+    await bmApi('/api/v1/nodes', { action: 'hold-next', on: true });
+    await page.evaluate(async () => { await refresh(); drawPanes(); });
+    const box = await page.evaluate(() => ({
+      row: !!document.querySelector('.machinetab details[data-sect="nodes:advanced"] [data-holdnextbox]:checked'),
+      head: !!document.querySelector('.machinetab .pghead [data-holdnext]') }));
+    ok(box.row && !box.head, `hold the next start is a checkbox in the Reboot or shut down row, ticked while armed (${JSON.stringify(box)})`);
+    await bmApi('/api/v1/nodes', { action: 'hold-next', on: false });
+  }
   // Name and time (R161 step 3): the own machine's section, Apply asleep
   // until a field moves, and the press a system job on its node.
   const nt = await page.evaluate(() => {
