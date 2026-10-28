@@ -16,10 +16,12 @@
 
 ### Upgrading
 
+- Accounts become users of their own on every node as this version's agent lands there: a home moves once the account's sessions started before have ended, and until then that account's terminals open the old way; nothing to do. A sign-in is sealed the next time its person opens a terminal on the node or signs in there, and a session can start for an account only while somebody has opened a terminal for it on that node in the last five minutes, so a scheduled start for an account nobody has opened waits for them (e6d74b8)
 - Signing in again once after this upgrade: a browser's sign-in now has a record of its own, which says when a person's tokens may be used, and the cookies from before carry none. A project's token from 0.8.0 stays its owner's for that project; everyone else on it gives their own in the project's settings (Give it to this project) before their pushes go (3b4d293)
 
 ### Removed
 
+- The two dev switches on a node's Sessions section are gone: every account runs as a Unix user of its own on every node that runs sessions (its home, its sign-ins and its terminals are its alone, and only root reaches them), and the coding agents' sign-ins are kept sealed there, Copilot CLI's with the others now, each opened only while its person has a terminal open on that node, so a copy of the node's disk signs in to nothing; the rows say whether each is in force (e6d74b8)
 - The two node switches deprecated in 0.8.0 are gone: every session is kept to its own project's network and every project's containers to their own, on every node that runs them, with no checkbox; a key an older build left in a node's config is read as on (1493a5c)
 
 ### Security

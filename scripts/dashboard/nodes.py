@@ -1994,73 +1994,36 @@ def node_root_asks(principal, node_id, on):
     return {"ok": True, "on": bool(on)}
 
 
-# Whether dev features are offered (settings' offer_unvetted), set by server.py:
-# accounts as their own users are one until the dev pair has walked them.
-unvetted_ok = lambda: False  # noqa: E731
-
-
 def node_account_users(principal, node_id, on):
-    """Whether each account runs as a Unix user of its own on this node
-    (R125): its home, its tokens, its tmux and its sessions that user's, so
-    a shell as the shared session account reaches none of them. The agent
-    moves each home over once nothing of that account runs the old way, and
-    back the same way when this is turned off. An administrator's."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node runs sessions"}
-    if on and not unvetted_ok():
-        return {"error": "accounts as their own users are a dev feature until walked on the dev pair: "
-                         "Offer dev features in Settings offers them"}
-    conf = dict(n.get("config") or {})
-    if on:
-        conf["account_users"] = True
-    else:
-        conf.pop("account_users", None)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-account-users", {"on": bool(on)})
-    return {"ok": True, "on": bool(on)}
+    """The switch that ran each account as a Unix user of its own went in
+    0.9.0 (R125 step 11, the operator, 26 Oct): every account is, on every
+    node that runs sessions."""
+    del principal, node_id, on
+    return {"error": "every account runs as a user of its own on every node now: the switch went in 0.9.0"}
 
 
 def account_users_on(nid):
-    n = node(nid)
-    return bool(n and (n.get("config") or {}).get("account_users")) and not host_only(nid)
+    """Each account a Unix user of its own on this node (R125): on wherever
+    sessions run, which is every node but a hosting-only one. The config's
+    switch, a dev feature in 0.8.x, is gone (R125 step 11) and a key an
+    older build left is read as on."""
+    return not host_only(nid)
 
 
 def node_token_seal(principal, node_id, on):
-    """Whether the coding agents' sign-ins are kept sealed on this node
-    (R126): the agent seals each with the account's public key and opens it
-    only for a terminal a person opened, so a copy of the node's disk opens
-    nothing. Needs accounts as their own users first (R125). An
-    administrator's; a dev feature until walked."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node runs sessions"}
-    if on and not unvetted_ok():
-        return {"error": "sealed sign-ins are a dev feature until walked on the dev pair: "
-                         "Offer dev features in Settings offers them"}
-    if on and not account_users_on(node_id):
-        return {"error": "sealed sign-ins need each account to be a user of its own there first: "
-                         "turn that on, then this"}
-    if on and not (can_seal and can_seal()):
-        return {"error": "sealed sign-ins need an install key, and this controller has none: "
-                         "one is made at its next start (Controller, Keys), then this"}
-    conf = dict(n.get("config") or {})
-    if on:
-        conf["token_seal"] = True
-    else:
-        conf.pop("token_seal", None)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-token-seal", {"on": bool(on)})
-    return {"ok": True, "on": bool(on)}
+    """The switch that kept the coding agents' sign-ins sealed went in 0.9.0
+    (R126 step 6): they are, on every node that runs sessions."""
+    del principal, node_id, on
+    return {"error": "the coding agents' sign-ins are sealed on every node now: the switch went in 0.9.0"}
 
 
 def token_seal_on(nid):
-    n = node(nid)
-    return bool(n and (n.get("config") or {}).get("token_seal")) and account_users_on(nid)
+    """The coding agents' sign-ins sealed on this node (R126): on wherever
+    sessions run, as long as this controller has an install key to make
+    each account's sealing key from (a fresh install makes one at its first
+    start). The config's switch, a dev feature in 0.8.x, is gone (R126
+    step 6) and a key an older build left is read as on."""
+    return account_users_on(nid) and bool(can_seal and can_seal())
 
 
 # Each account's public key for sealing on a node (R126): the server's,
