@@ -85,6 +85,14 @@ KEYS = {
     "tunnel_host": {"default": "", "kind": "text", "applied": "now"},
     "tunnel_token": {"default": "", "kind": "secret", "applied": "now"},
     "cf_api_token": {"default": "", "kind": "secret", "applied": "now"},
+    # The dashboard's own connection (R158 step 2, tls.py): http, self (the
+    # install's own certificate) or acme (Let's Encrypt for the hostname,
+    # by DNS-01 through the Cloudflare API token); "" is self where a
+    # hostname is set and http otherwise. The hostname is the controller's
+    # own public name; the email is the ACME account's.
+    "tls_mode": {"default": "", "kind": "text", "applied": "now"},
+    "tls_host": {"default": "", "kind": "text", "applied": "now"},
+    "tls_email": {"default": "", "kind": "text", "applied": "now"},
     # The apps this controller offers its people (R272 step 3, apps.py):
     # each one on fetches that app from the release matching this
     # controller's version, checks it and serves it from /apps; off, it is

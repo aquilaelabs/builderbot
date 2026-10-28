@@ -5644,6 +5644,24 @@ cmd_doctor() {
         else
             printf '  [warn] no install key: the settings'"'"' tokens, the signing keys and the git credentials are kept open in /config; one is made at the next start (docs/reference.md)\n'
         fi
+        # What the dashboard is served over (R158 step 2): https where it
+        # can be had, said here until it is on.
+        case "$(DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - <<'PY' 2>/dev/null
+import json, os
+try:
+    d = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "settings.json")))
+except Exception:
+    d = {}
+v = d.get("settings", d) if isinstance(d, dict) else {}
+m = str((v.get("tls_mode") or {}).get("value") if isinstance(v.get("tls_mode"), dict) else v.get("tls_mode") or "").lower()
+h = str((v.get("tls_host") or {}).get("value") if isinstance(v.get("tls_host"), dict) else v.get("tls_host") or "")
+print(m if m in ("http", "self", "acme") else ("self" if h else "http"))
+PY
+)" in
+            http) printf '  [warn] the dashboard is served over http: what the page carries crosses the LAN in the clear; Controller settings, Connection turns https on (the install'"'"'s own certificate, or Let'"'"'s Encrypt for a hostname)\n' ;;
+            self) printf '  [ok]   the dashboard is served over https with the install'"'"'s own certificate (pinned by its fingerprint on the Connection section)\n' ;;
+            acme) printf '  [ok]   the dashboard is served over https with a Let'"'"'s Encrypt certificate\n' ;;
+        esac
     fi
     # Claude Code is a node's, so a controller has nothing to check for: a
     # failed check nobody can fix is worse than no check (R47).

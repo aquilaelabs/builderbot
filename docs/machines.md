@@ -314,6 +314,17 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   rules (the agent's API to the controller, everything else 404) are written
   on Apply rather than clicked; the section's line says whether cloudflared
   is in the image, running and registered.
+- **Connection**: what the dashboard is served over (R158 step 2,
+  `tls.py`): http, https with the install's own certificate (made at the
+  switch and remade a month before it ends; its fingerprint on the section
+  for the phone and the companion to pin, Download for the certificate
+  itself, its private key sealed under the install key and listed on the
+  Keys page) or https with a Let's Encrypt certificate for the controller's
+  own hostname, by a DNS-01 record through the Cloudflare API token. One
+  port serves both, so a node keeps dialing http while a browser gets
+  https. A fresh install starts on http and the Doctor says so until https
+  is on; http stays a choice for a LAN with no CA, said with what then
+  crosses in the clear.
 - **Maintenance**: the owner's alone. While *Maintenance mode* is on, only
   the owner signs in and is answered, from the page, the phone app or a
   session of theirs. Everybody else is told BuilderBot is down for

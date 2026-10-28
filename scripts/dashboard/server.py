@@ -1771,6 +1771,47 @@ def _room_loop():
             print(f"[room] {type(e).__name__}: {e}", flush=True)
 
 
+def _tls_issue():
+    """A Let's Encrypt certificate for the Connection section's hostname
+    asked for now (tls.issue_acme), by a DNS-01 record through the
+    Cloudflare API token with nginxproxy's hooks: {ok, started} or {error}."""
+    if tls.mode_of(settings.get) != "acme":
+        return {"error": "the Connection section is not set to a Let's Encrypt certificate"}
+    token = settings.secret("cf_api_token")
+    if not token:
+        return {"error": "a DNS-01 challenge writes the record through Cloudflare's API: set the Cloudflare API token under Reach from outside first"}
+    import acme as acme_mod                                     # noqa: PLC0415
+
+    def present(kind, name, tok, value):
+        del kind, tok
+        err = nginxproxy._cf_txt(token, f"_acme-challenge.{name}", value)
+        if err:
+            raise acme_mod.AcmeError(f"Cloudflare refused the record: {err}")
+        time.sleep(15)
+
+    def cleanup(kind, name, tok, value):
+        del kind, tok
+        nginxproxy._cf_txt(token, f"_acme-challenge.{name}", value, delete=True)
+    return tls.issue_acme(settings.get, nginxproxy.ACME_DIRECTORY, nginxproxy._acme_account_pem(), present, cleanup)
+
+
+def _tls_names(host=""):
+    """What the install's own certificate names (R158 step 2): the
+    Connection section's hostname, the tunnel's, the machine's own name and
+    addresses, and the Host the request came to."""
+    out = [str(settings.get("tls_host") or ""), str(settings.get("tunnel_host") or ""),
+           socket.gethostname(), host.split(":")[0] if host else ""]
+    with contextlib.suppress(OSError):
+        for info in socket.getaddrinfo(socket.gethostname(), None):
+            out.append(info[4][0])
+    seen, keep = set(), []
+    for n in out:
+        n = n.strip().lower()
+        if n and n not in seen and not n.startswith("127.") and n != "::1":
+            seen.add(n); keep.append(n)
+    return keep
+
+
 def _givers_said(project, me):
     """Who has given this project a token (R159): [{uid, name, login, host,
     mine, live}], never the token."""
@@ -3689,6 +3730,11 @@ except OSError as e:
 import gitcreds                                                  # noqa: E402
 gitcreds.configure(state=STATE, seal_fn=signing.seal, unseal_fn=signing.unseal,
                    sealing_fn=lambda: signing.MASTER is not None)
+# The dashboard's own TLS (R158 step 2): the mode the settings say, the
+# certificate's key sealed under the install key.
+import tls                                                       # noqa: E402
+tls.configure(state=STATE, seal_fn=signing.seal, unseal_fn=signing.unseal,
+              sealing_fn=lambda: signing.MASTER is not None)
 try:
     if (_sealed := gitcreds.seal_all()):
         print(f"dashboard: sealed {_sealed} git token(s) under the install's key", flush=True)
@@ -5112,7 +5158,7 @@ def _snapshot(who):
         "mapping": _timed("status:mapping", lambda: mapping.payload()),
         "max_tabs": layout.max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
-        "settings": _timed("status:settings", lambda: settings.payload() | {"tunnel": tunnel.status()}),
+        "settings": _timed("status:settings", lambda: settings.payload() | {"tunnel": tunnel.status(), "tls": tls.status(settings.get)}),
         # The features this install switched off (R81), {feature: why}: each
         # draws its controls dead with the sentence under them.
         "off": featuresoff.sentences(),
@@ -5251,6 +5297,7 @@ GET_ROUTES = (
     ("prefix", "/api/project-sessions", "_get_project_sessions"),
     ("prefix", "/api/changelog", "_get_changelog"),
     ("prefix", "/api/version", "_get_version"),
+    ("prefix", "/api/tls", "_get_tls"),
     ("prefix", "/api/artifacts", "_get_artifacts"),
     ("prefix", "/api/artifact?", "_get_artifact"),
     ("prefix", "/api/signing-backup?", "_get_signing_backup"),
@@ -5378,6 +5425,7 @@ POST_ROUTES = (
     ("prefix", "/api/devapp", "_devapp"),
     ("prefix", "/api/changelog", "_changelog"),
     ("prefix", "/api/version", "_version"),
+    ("prefix", "/api/tls", "_tls"),
     ("exact", "/api/signing", "_signing"),
     ("exact", "/api/keys", "_keys"),
     ("exact", "/api/members", "_members"),
@@ -5662,7 +5710,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Location", "/")
         self.send_header("Set-Cookie",
                          f"bb_session={make_token(users.get(name))}; Path=/; "
-                         f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax")
+                         f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax"
+                         + ("; Secure" if tls.over_tls(self.connection) else ""))
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -5714,13 +5763,14 @@ class Handler(BaseHTTPRequestHandler):
         second factor; then on to `nxt`, or a JSON answer for the passkey's
         fetch."""
         users.touch(u["name"])
-        cookies = [f"bb_session={make_token(u)}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax",
+        sec = "; Secure" if tls.over_tls(self.connection) else ""
+        cookies = [f"bb_session={make_token(u)}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax{sec}",
                    "bb_mfa=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"]
         if remember:
             ua = re.sub(r"[^\w ./();,:-]", "", self.headers.get("User-Agent", ""))[:80]
             tid, _ = mfa.trust_add(u["uid"], ua or "a browser")
             cookies.append(f"bb_trust={purpose_token(u, 'trust', mfa.TRUST_DAYS * 86400, tid)}; Path=/; "
-                           f"Max-Age={mfa.TRUST_DAYS * 86400}; HttpOnly; SameSite=Lax")
+                           f"Max-Age={mfa.TRUST_DAYS * 86400}; HttpOnly; SameSite=Lax{sec}")
         body = json.dumps({"ok": True, "next": nxt}).encode() if json_answer else b""
         self.send_response(200 if json_answer else 303)
         if not json_answer:
@@ -6650,7 +6700,8 @@ class Handler(BaseHTTPRequestHandler):
         # was signed over, such as an account renaming itself.
         if cookie:
             self.send_header("Set-Cookie", f"bb_session={cookie}; Path=/; "
-                             f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax")
+                             f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax"
+                             + ("; Secure" if tls.over_tls(self.connection) else ""))
         # A session token's renewal, when _who decided one was due: bb and
         # the hooks read this header and write the token where bb looks.
         fresh = getattr(self, "_renewed", "")
@@ -6932,6 +6983,37 @@ class Handler(BaseHTTPRequestHandler):
         if self._not_project(name):
             return
         return self._json(*changelog.reading(name, q.get("component", [""])[0]))
+
+    def _get_tls(self):
+        """GET /api/tls: what the dashboard is served over (tls.status), for
+        an account that reads the controller; with download=1 the
+        certificate itself, for a phone or the companion to pin."""
+        if self._refused("controller-read"):
+            return
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        if q.get("download", [""])[0]:
+            pem = tls.certificate_pem().encode()
+            if not pem:
+                return self._json({"error": "no certificate is in force: the dashboard is served over http"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-pem-file")
+            self.send_header("Content-Disposition", 'attachment; filename="builderbot.pem"')
+            self.send_header("Content-Length", str(len(pem)))
+            self.end_headers()
+            self.wfile.write(pem)
+            return None
+        return self._json(tls.status(settings.get))
+
+    def _tls(self, req):
+        """POST /api/tls {action: issue}: a Let's Encrypt certificate for the
+        Connection section's hostname asked for now, by DNS-01 through the
+        Cloudflare API token (nginxproxy's hooks), for an account that
+        changes the controller's settings."""
+        if self._refused("controller"):
+            return
+        if field(req, "action") != "issue":
+            return self._json({"error": "unknown action"}, 400)
+        return self._json(_tls_issue())
 
     def _get_version(self):
         """GET /api/version."""
@@ -8032,6 +8114,11 @@ class Handler(BaseHTTPRequestHandler):
         # rather than at the next daily look (R272 step 3).
         if any(k.startswith("apps_") for k in want):
             apps.check_now()
+        if any(k in ("tls_mode", "tls_host", "tls_email") for k in want):
+            # The connection as set now (R158 step 2): the install's own
+            # certificate made for the hostname and the addresses the page
+            # is reached at, or TLS off.
+            r["tls"] = tls.apply(settings.get, names=_tls_names(self.headers.get("Host", "")))
         if any(k in TUNNEL_SETTINGS for k in want):
             r["tunnel"] = tunnel.apply()
             if settings.secret("cf_api_token") and settings.secret("tunnel_token") and settings.get("tunnel_host"):
@@ -9314,6 +9401,10 @@ class Handler(BaseHTTPRequestHandler):
                 continue
             rows.append({"kind": "git", "name": f.name, "sealed": raw.startswith(gitcreds.SEALED),
                          "uses": "git push and pull for the project's repositories", "go": ["project", f.name]})
+        # The dashboard's own TLS key (R158 step 2), sealed under the install key.
+        if tls.certificate_pem():
+            rows.append({"kind": "tls", "name": "the dashboard's certificate", "sealed": tls._key_sealed(),
+                         "uses": "https on the dashboard's own port (Controller settings, Connection)", "go": ["settings", "connection"]})
         d = settings.load()
         for key, spec in settings.KEYS.items():
             if spec["kind"] == "secret" and d.get(key):
@@ -11247,6 +11338,14 @@ class Server(ThreadingHTTPServer):
     request_queue_size = 128
     daemon_threads = True
 
+    def get_request(self):
+        # One port, both ways (R158 step 2, tls.py): a connection that opens
+        # a TLS handshake is wrapped in the certificate in force, the rest
+        # served as plain http, so a node keeps dialing http while a browser
+        # gets https.
+        sock, addr = super().get_request()
+        return tls.wrap(sock), addr
+
 
 # ---- function coverage (roadmap R76) ----------------------------------------
 # Under `bb tests coverage` the harness names a file, and every function of
@@ -11345,6 +11444,22 @@ def main():
     releasesign.start()       # a release's unsigned APK, signed on its node (R106)
     if "tunnel" not in featuresoff.off():
         tunnel.apply()        # the home tunnel, where the settings say so (R176)
+        # ...and the dashboard's own TLS as the settings say (R158 step 2),
+        # with a loop that remakes the install's own certificate or asks
+        # Let's Encrypt again a month before it ends.
+        with contextlib.suppress(Exception):             # noqa: BLE001 (http is the fallback, said on the Doctor)
+            tls.apply(settings.get, names=_tls_names())
+
+        def _tls_loop():
+            while True:
+                time.sleep(6 * 3600)
+                with contextlib.suppress(Exception):     # noqa: BLE001
+                    if tls.renew_due():
+                        if tls.mode_of(settings.get) == "self":
+                            tls.apply(settings.get, names=_tls_names())
+                        elif tls.mode_of(settings.get) == "acme":
+                            _tls_issue()
+        threading.Thread(target=_tls_loop, name="tls-renew", daemon=True).start()
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()
     # The copies the nodes hold, looked at here on a timer and announced when

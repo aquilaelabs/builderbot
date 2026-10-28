@@ -259,6 +259,24 @@ const SETTING_GROUPS = [
      hint: "From Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), the long eyJ… string in its install command. The controller runs the tunnel itself with it."},
     {key: "cf_api_token", label: "Cloudflare API token (optional)", type: "secret",
      hint: "With Zone DNS Edit and Account Cloudflare Tunnel Edit: the hostname's record and the tunnel's two rules (the agent's API to the controller, everything else 404) are written on Apply rather than clicked."}]},
+  // The dashboard's own connection (R158 step 2, tls.py): http, the
+  // install's own certificate, or Let's Encrypt for the controller's own
+  // hostname; its line says what is in force, with the fingerprint a phone
+  // or the companion pins and Download for the certificate itself.
+  {key: "connection", title: "Connection", status: connectionStatus, intro: connectionIntro,
+   heading: s => !s?.tls ? "" : s.tls.on ? (s.tls.kind === "acme" ? "https, Let's Encrypt" : "https, own certificate") : "http",
+   headingCls: s => s?.tls?.on ? "ok" : "warn",
+   fields: [
+    {key: "tls_mode", label: "Served over", type: "select",
+     options: [["", "as set below: https with the install's own certificate where a hostname is set, else http"],
+               ["http", "http: nothing encrypted, for a LAN with no CA"],
+               ["self", "https with the install's own certificate"],
+               ["acme", "https with a Let's Encrypt certificate for the hostname (DNS-01, Cloudflare)"]],
+     hint: "One port serves both: a browser gets https and a node keeps dialing http. The install's own certificate is made here and remade a month before it ends; a browser warns once until it is pinned. Let's Encrypt needs the hostname below on a domain the Cloudflare API token (Reach from outside) can write a record in; port 80 is not asked for."},
+    {key: "tls_host", label: "Hostname", type: "text", placeholder: "bb.example.com",
+     hint: "The controller's own public name, which the certificate is for. Leave it empty on a LAN with no name: the install's own certificate then names the addresses the page is reached at."},
+    {key: "tls_email", label: "Email (Let's Encrypt)", type: "text", placeholder: "you@example.com",
+     hint: "Where Let's Encrypt writes about the certificate. Optional."}]},
   // The room a node keeps for itself (R110): the numbers the bell, the
   // build gate, a rebuild's check and the hourly prune go by, and a memory
   // limit for a container whose compose file sets none.
@@ -294,6 +312,25 @@ async function maintAsk(rows){
         rows.length === 1 ? "" : "s"} of theirs end now${busyN ? `, ${busyN} of them in the middle of work` : ""}:\n\n${rows.map(line).join("\n")}`
     : "Everybody else is kept out until it is off. Nobody else has a session or a terminal open.";
   return askYes(text, {title: "Turn maintenance mode on?", verb: rows.length ? "End them and turn it on" : "Turn it on", danger: rows.length > 0});
+}
+
+// The Connection section's lines (R158 step 2): what is in force, the
+// certificate's fingerprint and expiry, Download, and an ACME request going.
+function connectionIntro(s){
+  const t = s?.tls || {};
+  if (!t.on) return `<div class="hint">Served over http: what the page carries crosses the network in the clear. https is recommended wherever this is reached beyond one machine; behind the home tunnel, Cloudflare's edge is https already.</div>`;
+  const when = t.expires ? new Date(t.expires * 1000).toLocaleDateString() : "";
+  const p = t.pending || {};
+  return `<div class="hint">https with ${t.kind === "acme" ? "a Let's Encrypt certificate" : "the install's own certificate"} for ${esc((t.names || []).join(", ") || "this install")}${when ? `, until ${esc(when)}` : ""}${
+      t.kind === "self" ? "; a browser warns once until it is pinned, and the phone and the companion pin it by its fingerprint" : ""}.</div>
+    <div class="field"><div class="sub mono">${esc(t.fingerprint || "")}</div></div>
+    <div class="field"><div class="actbar"><span class="sp"></span><a class="btn" href="/api/tls?download=1" download="builderbot.pem">Download the certificate</a>${
+      t.mode === "acme" ? `<button type="button" data-tlsissue${p.state && !["done", "failed"].includes(p.state) ? " disabled" : ""}>Ask Let's Encrypt now</button>` : ""}</div></div>${
+    p.state ? `<div class="field"><div class="sub${p.state === "failed" ? " bad" : ""}">${p.state === "failed" ? `Let's Encrypt: ${esc(p.error || "it failed")}` : p.state === "done" ? "the Let's Encrypt certificate is in force" : `asking Let's Encrypt (${esc(p.state)})`}</div></div>` : ""}`;
+}
+function connectionStatus(s){
+  const t = s?.tls || {};
+  return t.on ? (t.key_sealed ? "applies at once; the private key is sealed under the install key" : "applies at once; the private key is kept open until the install has a key") : "applies at once";
 }
 
 // What the Apps section holds, over its switches, and Look now.
@@ -489,6 +526,13 @@ function settingsSections(){
             }
             // A number is a short field beside its label, held to the
             // range the server keeps (settings.KEYS) by the browser too.
+            // A pick among a few (R158 step 2: the connection's mode).
+            if (f.type === "select"){
+              return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${src(f.key)}</label>
+                <select id="${id}" data-set="${f.key}">${(f.options || []).map(([val, lab]) =>
+                  `<option value="${esc(val)}"${sdVal(id, v ?? "") === val ? " selected" : ""}>${esc(lab)}</option>`).join("")}</select>
+              </div>`;
+            }
             if (f.type === "number"){
               const m = s.meta?.[f.key] || {};
               return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${src(f.key)}</label>
@@ -525,6 +569,16 @@ function settingsSections(){
 }
 
 function wireSettingsSections(el){
+  // Ask Let's Encrypt now (R158 step 2): the Connection section's own press.
+  el.querySelectorAll("[data-tlsissue]").forEach(b => b.onclick = async () => {
+    busy(b, "Asking");
+    try{
+      const j = await (await postJSON("/api/tls", {action: "issue"})).json();
+      if (j.error) notify(j.error, true);
+      else notify("asking Let's Encrypt: the Connection section says how it goes");
+    }catch(e){ notify("could not ask: " + failWords(e), true); }
+    refresh();
+  });
   el.querySelectorAll('[data-group]').forEach(box => {
     const btn = box.querySelector(".setApply");
     if (!btn) return;
