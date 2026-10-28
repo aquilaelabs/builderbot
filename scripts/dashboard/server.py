@@ -10913,11 +10913,14 @@ class Handler(BaseHTTPRequestHandler):
             r = toolpacks.stage(req.get("text") if isinstance(req.get("text"), str) else None,
                                 field(req, "archive"), shipped)
         elif action == "preview":
-            r = toolpacks.fetch(field(req, "url"), shipped=shipped)
+            # From the catalog (R169 step 4): at the commit it pins, the
+            # archive's sha256 checked too.
+            r = toolpacks.fetch(field(req, "url"), field(req, "commit"), shipped=shipped, sha256=field(req, "sha256"))
         elif action == "add" and field(req, "staged"):
             r = toolpacks.add_staged(field(req, "staged"), by, shipped)
         elif action == "add":
-            r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped)
+            r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped, sha256=field(req, "sha256"),
+                              tier="vetted" if field(req, "sha256") else "url")
         elif action == "source":
             r = toolpacks.source(field(req, "name"))
         elif action == "where":

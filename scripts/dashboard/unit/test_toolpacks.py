@@ -112,6 +112,20 @@ class Repository(unittest.TestCase):
         self.assertIn("dump", row["verbs"])
         self.assertEqual(json.loads(toolpacks.catalog_json())["toolchains"][0]["name"], "hexkit")
 
+    def test_the_catalogs_sha256_pins_the_archive(self):
+        # R169 step 4: the index's sha256 of the archive at the commit is
+        # checked on the way in; a different one refuses the pack.
+        import hashlib
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+        tar = subprocess.run(["git", "archive", "--format=tar", "HEAD"], cwd=self.repo, capture_output=True, check=True).stdout
+        good = hashlib.sha256(tar).hexdigest()
+        self.assertNotIn("error", toolpacks.fetch(self.url, commit, sha256=good))
+        self.assertIn("not what the catalog vetted", toolpacks.fetch(self.url, commit, sha256="0" * 64)["error"])
+        self.assertIn("64 hex", toolpacks.fetch(self.url, commit, sha256="junk")["error"])
+        r = toolpacks.add(self.url, commit, "operator", sha256=good, tier="vetted")
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual((r["pack"]["tier"], toolpacks.recipes()[0]["pack"]["tier"]), ("vetted", "vetted"))
+
     def test_what_is_kept_is_what_was_shown(self):
         shown = toolpacks.fetch(self.url)["commit"]
         changed = json.loads(json.dumps(GOOD))
