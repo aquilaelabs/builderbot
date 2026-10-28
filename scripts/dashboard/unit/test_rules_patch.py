@@ -15,9 +15,14 @@ RULES = [{"name": "patch", "paths": ["scripts/dashboard/statemigrations"], "text
 
 
 def run(files, rules=RULES):
+    # Through a file, as bb hands them over: a project's rules outgrow one
+    # environment variable (B434).
     tree = tempfile.mkdtemp()
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        f.write(json.dumps(rules))
     r = subprocess.run([sys.executable, CHECK, tree, "--patch", *files], capture_output=True, text=True,
-                       env=dict(os.environ, RULES_JSON=json.dumps(rules)))
+                       env=dict(os.environ, RULES_JSON_FILE=f.name))
+    os.unlink(f.name)
     os.rmdir(tree)
     return r.returncode, r.stdout
 

@@ -2619,8 +2619,15 @@ cmd_rules() {
                  = "$(git -C "$tree" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]; then
             tree="$top"
         fi
-        RULES_JSON="$rules_json" python3 "$BB_LIB/rules-check.py" "$tree" "$@"
-        return $?
+        # Through a file: one environment variable holds 128 KB at most, and
+        # a project's rules grow past that (B434).
+        local rules_file rc
+        rules_file="$(mktemp)"
+        printf '%s' "$rules_json" > "$rules_file"
+        RULES_JSON_FILE="$rules_file" python3 "$BB_LIB/rules-check.py" "$tree" "$@"
+        rc=$?
+        rm -f "$rules_file"
+        return "$rc"
     fi
     # `bb rules audit [DAYS]` (R200): this account's conversations on the
     # project, counted against the rules that refuse, through the
