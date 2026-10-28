@@ -58,10 +58,13 @@ class Partitions(unittest.TestCase):
         self.assertIn("bbslot=b", g)
         self.assertIn("overlayroot=tmpfs", g)
 
-    def test_the_build_lays_the_disk_out_by_these_names(self):
-        b = read(IMG, "build.sh")
+    def test_the_disk_is_laid_out_by_these_names(self):
+        lay = read(IMG, "lay-disk")
         for k in ("BB_PART_BIOS", "BB_PART_ESP", "BB_PART_ROOT_A", "BB_PART_ROOT_B", "BB_PART_DATA",
                   "BB_SIZE_ESP_MIB", "BB_SIZE_SLOT_MIB", "BB_SIZE_DATA_MIB", "BB_ESP_FSUUID", "BB_ESP_LABEL", "BB_DATA_LABEL"):
+            self.assertIn(k, lay, k)
+        b = read(IMG, "build.sh")
+        for k in ("BB_SIZE_ESP_MIB", "BB_SIZE_SLOT_MIB", "BB_SIZE_DATA_MIB"):
             self.assertIn(k, b, k)
 
 
@@ -199,6 +202,46 @@ class Workflow(unittest.TestCase):
         import xml.dom.minidom
         xml.dom.minidom.parseString(ovf)
         self.assertIn("qemu-utils", read(ROOT, ".github", "workflows", "build-image.yml"))
+
+    def test_the_disk_is_laid_out_by_one_script_the_image_carries(self):
+        # R160 step 2: build.sh lays the image's disk out with lay-disk and
+        # puts lay-disk, the numbers and GRUB's menu into the image, where
+        # the installer runs the same script on a person's disk.
+        b = read(IMG, "build.sh")
+        self.assertIn('bash "$HERE/lay-disk" "$LOOP"', b)
+        self.assertNotIn("sfdisk --quiet", b, "the layout lives in lay-disk alone")
+        for f in ("lay-disk", "partitions.sh", "grub.cfg"):
+            self.assertIn(f'"$TREE/usr/lib/builderbot-os/{f}"', b)
+        lay = read(IMG, "lay-disk")
+        self.assertIn('. "$HERE/partitions.sh"', lay)
+        self.assertIn("--grow", lay)
+        inst = read(EXTRA, "usr", "lib", "builderbot-os", "installer")
+        self.assertIn('bash "$LIB/lay-disk" "$pick"', inst)
+        self.assertIn("--grow", inst)
+        self.assertIn("lib/builderbot-os/features", inst)
+        unit = read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-installer.service")
+        self.assertIn("ConditionKernelCommandLine=bbinstaller=1", unit)
+        self.assertIn("TTYPath=/dev/tty1", unit)
+
+    def test_the_iso_boots_the_same_root_live_with_the_installer(self):
+        b = read(IMG, "build.sh")
+        self.assertIn("grub-mkrescue -o", b)
+        self.assertIn("live/filesystem.squashfs", b)
+        g = read(IMG, "iso-grub.cfg")
+        self.assertIn("boot=live components bbinstaller=1", g)
+        self.assertIn("/live/vmlinuz", g)
+        conf = read(IMG, "mkosi.conf")
+        for p in ("live-boot", "live-boot-initramfs-tools", "whiptail"):
+            self.assertIn(p, conf, p)
+        wf = read(ROOT, ".github", "workflows", "build-image.yml")
+        self.assertIn("xorriso mtools", wf)
+        self.assertIn("out/builderbot-os-*.iso", wf)
+
+    def test_the_first_boot_turns_on_the_features_the_installer_was_asked_for(self):
+        inst = read(ROOT, "nodes", "install-controller.sh")
+        self.assertIn('OS_FEATURES_FILE="$P/var/lib/builderbot-os/features"', inst)
+        self.assertIn('"${OS_FEATURES[@]}"', inst)
+        self.assertIn("vmhost|firewall|iommu) OS_FEATURES+=(--feature", inst)
 
     def test_build_sh_says_how_without_root(self):
         r = sh("bash image/build.sh --help")

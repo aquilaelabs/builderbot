@@ -46,11 +46,26 @@ the initramfs, `fstab` and GRUB alike:
 | `esp` | 512 MiB | the ESP: GRUB for UEFI and BIOS, one menu, its environment, each slot's kernel and initrd under `/builderbot/a` and `/builderbot/b` |
 | `bbroot-a` | 4 GiB | root slot A: a squashfs, read-only |
 | `bbroot-b` | 4 GiB | root slot B: empty until an update writes it |
-| `bbdata` | 2 GiB, grown to the disk | `/var`, and under it the changes to `/etc` |
+| `bbdata` | 2 GiB in the image, the rest of the disk when installed | `/var`, and under it the changes to `/etc` |
 
 Beside the disk, the build leaves the pieces an update and the stick maker
 take: the slot's squashfs (`.root.squashfs`), its kernel and initrd, and the
 release stamp, each with a `.sha256`.
+
+## Installing it on a machine
+
+`builderbot-os-VERSION.iso` boots the same root live (UEFI or BIOS) with
+the installer on the console: it lists the machine's disks (the medium it
+booted from left out), asks which one to lay out and says that everything
+on it is lost, asks which features to turn on at the first boot (VM host
+and the hosting firewall on, the IOMMU off), then lays the disk out with
+the very script that made the image (`image/lay-disk`, carried in the
+image at `/usr/lib/builderbot-os/lay-disk`), the data partition grown to
+the disk, and asks for a restart. Nothing else is asked: the first boot
+makes the machine its own node with those features, and the dashboard's
+first page, at `http://ITS-ADDRESS:7680` on the LAN, makes the owner and
+names the machine. The ISO's second entry boots the live system without
+installing, for a look or a rescue.
 
 ## The same disk for a hypervisor
 
@@ -152,7 +167,7 @@ it, once per release, and the restart still waits for you.
 
 ## What is not here yet
 
-The installable ISO (R160 step 2), the boot of each image in CI before it
-ships (step 5), the weekly rebuild (step 6), and the USB edition with its
-boot counting, Safe mode and the slot kept only once it says it is healthy
-(R161) each build on this image.
+The boot of each image in CI before it ships (R160 step 5), the weekly
+rebuild (step 6), and the USB edition with its boot counting, Safe mode and
+the slot kept only once it says it is healthy (R161) each build on this
+image.

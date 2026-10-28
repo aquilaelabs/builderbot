@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# The BuilderBot OS installer (R160 step 2), on the console of a machine
+# booted from the ISO (bbinstaller=1 on the kernel's command line): the disk
+# to install onto, what will be lost on it, the features to turn on at the
+# first boot, then the disk laid out by the same script that made the image
+# (lay-disk, on the ISO's own squashfs, kernel and initrd), the features
+# written for the first boot, and a restart. Nothing else is asked: the
+# owner, the network and the name are the dashboard's first page's.
+set -euo pipefail
+LIVE="${BB_LIVE_MEDIUM:-/run/live/medium}"
+LIB=/usr/lib/builderbot-os
+say() { whiptail --title "BuilderBot OS" --msgbox "$1" 14 72; }
+bye() { whiptail --title "BuilderBot OS" --msgbox "$1
+
+Press Enter to get a shell; the installer runs again with: installer" 14 72; exec bash; }
+export NEWT_COLORS='root=,black roottext=white,black window=white,black border=white,black title=green,black button=black,green actbutton=black,green listbox=white,black actlistbox=black,green checkbox=white,black actcheckbox=black,green'
+
+[ -d "$LIVE/live" ] || bye "This is not the BuilderBot OS medium: $LIVE/live is not here."
+SQ="$(find "$LIVE/live" -maxdepth 1 -name '*.squashfs' | head -1)"
+[ -f "$SQ" ] || bye "No root image on the medium (live/*.squashfs)."
+VER="$(sed -n 's/^BUILDERBOT_OS_VERSION=//p' "$LIVE/live/release" 2>/dev/null | head -1)"
+
+# The disk this medium is, left out of the offer.
+medium_dev="$(findmnt -no SOURCE "$LIVE" 2>/dev/null | sed 's/\[.*//')"
+medium_disk=""
+[ -n "$medium_dev" ] && medium_disk="$(lsblk -no PKNAME "$medium_dev" 2>/dev/null | head -1)"
+[ -n "$medium_disk" ] || medium_disk="$(basename "${medium_dev:-none}")"
+
+say "Welcome to BuilderBot OS ${VER:-}.
+
+This installs it onto a disk of this machine: the whole disk is laid out again (two root slots for updates and a data partition grown to the disk), and everything on it is lost. The machine comes up as its own controller, reached on the LAN at http://ITS-ADDRESS:7680, where the first page makes the owner."
+
+pick=""
+while [ -z "$pick" ]; do
+    rows=()
+    while read -r name size model tran type; do
+        [ "$type" = disk ] || continue
+        case "$name" in /dev/loop*|/dev/ram*|/dev/zram*|/dev/sr*) continue ;; esac
+        [ "$(basename "$name")" = "$medium_disk" ] && continue
+        rows+=("$name" "$size $(echo "$model" | tr '_' ' ')${tran:+ · $tran}")
+    done < <(lsblk -dnpo NAME,SIZE,MODEL,TRAN,TYPE 2>/dev/null)
+    [ "${#rows[@]}" -gt 0 ] || bye "No disk to install onto: this machine shows none beside the medium it booted from."
+    pick="$(whiptail --title "BuilderBot OS" --menu "The disk to install onto. Everything on it is lost." 20 72 8 "${rows[@]}" 3>&1 1>&2 2>&3)" || bye "Nothing installed."
+    whiptail --title "BuilderBot OS" --yesno "Lay out $pick as BuilderBot OS?
+
+Every partition on it is replaced. There is no undo." 12 72 --defaultno || pick=""
+done
+
+feats="$(whiptail --title "BuilderBot OS" --checklist "Features turned on at the first boot (each can change later on This machine):" 16 72 4 \
+    vmhost "VM host: KVM through libvirt, for the VMs page" ON \
+    firewall "The hosting firewall: only what is published is reachable" ON \
+    iommu "IOMMU on the kernel's command line, for PCI and USB passthrough" OFF 3>&1 1>&2 2>&3)" || bye "Nothing installed."
+
+clear
+echo "== laying out $pick"
+if ! bash "$LIB/lay-disk" "$pick" "$SQ" "$LIVE/live/vmlinuz" "$LIVE/live/initrd" "$LIVE/live/release" "$LIB/grub.cfg" --grow; then
+    bye "The disk was not laid out (above). Nothing is installed; $pick may be partly written."
+fi
+# The features chosen, onto the data partition for the first boot.
+data="$(readlink -f "/dev/disk/by-partuuid/$(sed -n 's/^BB_PART_DATA=\([0-9a-f-]*\).*/\1/p' "$LIB/partitions.sh")" 2>/dev/null || true)"
+mnt="$(mktemp -d)"
+if [ -b "$data" ] && mount "$data" "$mnt" 2>/dev/null; then
+    mkdir -p "$mnt/lib/builderbot-os"
+    echo "$feats" | tr -d '"' | tr ' ' '\n' | grep . > "$mnt/lib/builderbot-os/features" || true
+    umount "$mnt"
+fi
+rmdir "$mnt" 2>/dev/null || true
+sync
+whiptail --title "BuilderBot OS" --msgbox "BuilderBot OS ${VER:-} is on $pick.
+
+Take the medium out and press Enter to restart. The machine comes up as its own controller; the first page, at http://ITS-ADDRESS:7680 on the LAN, makes the owner." 14 72
+systemctl reboot
