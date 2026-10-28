@@ -19,7 +19,8 @@ let storageErr = "";
 let storageRev = 0;
 let storageMay = false;          // whether this account may measure now
 let storageNode = "";            // the node the tab shows
-let storageDisk = "";            // the disk its chips picked, "" for all (R122)
+let storageDisk = "";
+const storageAskedNodes = new Set();   // nodes read into the node list for the header (R177)            // the disk its chips picked, "" for all (R122)
 
 function openStorageTab(node){
   if (node) storageNode = node;
@@ -814,6 +815,11 @@ function renderStorageInto(i){
     loadStorage();
     return;
   }
+  // The Machines header picks from the node list (R177): a node this
+  // page knows that the list does not yet (one just enrolled) is read in.
+  const known = new Set((nodesList || []).map(n => n.id));
+  const missing = (storageList || []).filter(n => !known.has(n.node) && !storageAskedNodes.has(n.node));
+  if (missing.length){ missing.forEach(n => storageAskedNodes.add(n.node)); loadNodes(); }
   if (storageErr){
     d.list.innerHTML = `<div class="hint bad">${esc(storageErr)}</div>`;
     return;

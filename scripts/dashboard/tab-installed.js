@@ -252,7 +252,7 @@ function renderInstalledInto(i){
   const d = docSurface(i, "installed");
   if (!d) return;
   if (inst === null){
-    d.setBar(skNodeBar());
+    d.setBar("");    // the node is the Machines header's (R177)
     d.list.innerHTML = skTpl(pageHead({title: GHOST, facts: [["Installed", GHOST], ["Updates due", GHOST]]})
       + INST_KINDS.map(([k, title]) => docSection("installed", k, title, "", skRows(2))).join(""));
     if (!instSeq) loadInstalled();

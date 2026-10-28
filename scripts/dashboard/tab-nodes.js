@@ -2533,8 +2533,8 @@ function wireNodesTab(root){
   root.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   // Create sandbox VM and Enroll node are the group's header's (R177, wired
-  // by page-shell.js wireMachinesHeader); the dialogs are the page's.
-  ndDialogs();
+  // by page-shell.js wireMachinesHeader); the dialogs stay the page's.
+  const {modal, body, shut, mintForm, vmForm} = ndDialogs();
   wireSections(root);
   root.querySelectorAll(".ndrow").forEach(box => {
     const id = box.dataset.node;
