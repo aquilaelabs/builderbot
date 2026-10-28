@@ -66,6 +66,7 @@
 
 ### Upgrading
 
+- A bare-metal install moves forward only: `install-controller.sh --rollback` is gone. An update whose new release does not answer still goes back to the one before by itself, its state copy put back.
 - The scanners move onto the nodes: open the Scanners page under Containers and press Deploy on each node that holds projects (one press for all of them), and the schedule carried over from the Schedules page runs them there; a host scanner writing into SCANNER_REPORTS_PATH is still read this release and not the next, so take it out of your cron or User Scripts once the page's first run has landed on the Analysis page (e6d74b8)
 - Accounts become users of their own on every node as this version's agent lands there: a home moves once the account's sessions started before have ended, and until then that account's terminals open the old way; nothing to do. A sign-in is sealed the next time its person opens a terminal on the node or signs in there, and a session can start for an account only while somebody has opened a terminal for it on that node in the last five minutes, so a scheduled start for an account nobody has opened waits for them (e6d74b8)
 - Signing in again once after this upgrade: a browser's sign-in now has a record of its own, which says when a person's tokens may be used, and the cookies from before carry none. A project's token from 0.8.0 stays its owner's for that project; everyone else on it gives their own in the project's settings (Give it to this project) before their pushes go (3b4d293)

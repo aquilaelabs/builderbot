@@ -4,8 +4,9 @@ by the Dockerfile's own COPY lines so the image and the install cannot
 drift, gives every process the environment the image's ENV gives the
 container, writes the env file from a template that carries every setting
 compose passes, and updates the way an image pull does: the new release's
-own state gate asked first, the one before kept, and a rollback that puts
-back the copy the newer build took before it migrated."""
+own state gate asked first, the one before kept, and a new release that
+does not come up going back to it by itself, the copy the newer build took
+before it migrated put back; never a roll back by hand."""
 import json
 import os
 import re
@@ -339,13 +340,21 @@ class Rollback(unittest.TestCase):
             self.assertIn("no copy", r.stderr)
             self.assertEqual(os.listdir(state), ["users.json"])
 
-    def test_the_rollback_restores_only_when_the_older_build_refuses(self):
+    def test_going_back_restores_only_when_the_older_build_refuses(self):
         text = open(INSTALLER, encoding="utf-8").read()
-        body = text[text.index("cmd_rollback() {"):]
+        body = text[text.index("back_to_previous() {"):]
         body = body[:body.index("\n}\n")]
         self.assertIn('if ! gate "$prev" "$oldver"', body)
         self.assertLess(body.index("svc_stop"), body.index("restore"))
         self.assertLess(body.index("restore"), body.index('flip "$prev"'))
+
+    def test_there_is_no_roll_back_by_hand(self):
+        # The operator, 28 Oct: a release moves forward only.
+        text = open(INSTALLER, encoding="utf-8").read()
+        self.assertNotIn("--rollback", text)
+        r = subprocess.run(["bash", INSTALLER, "--rollback"], capture_output=True, text=True, timeout=30, check=False)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("unknown option: --rollback", r.stderr)
 
 
 if __name__ == "__main__":

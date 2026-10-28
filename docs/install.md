@@ -291,7 +291,6 @@ controller). The reasons and the threat model are in
 ```bash
 sudo bash /opt/builderbot/nodes/install-controller.sh --update                 # the newest release
 sudo bash /opt/builderbot/nodes/install-controller.sh --update --release v0.7.0
-sudo bash /opt/builderbot/nodes/install-controller.sh --rollback               # the release before
 ```
 
 An update fetches the release's controller bundle
@@ -303,11 +302,10 @@ as unverified), asks its own state check whether it would start on this
 install's state (and changes nothing when it would not), lays it out beside
 the one in use, switches to it and restarts; the release before is kept.
 A new release that does not answer on its port within two minutes is
-rolled back by itself, the state copy put back, so the machine is never
+gone back from by itself, the state copy put back, so the machine is never
 left on a build that does not come up. The controller moves the state
-forward as it does in the container, with the same copy first, and
-`--rollback` puts that copy back when the newer release had moved the
-state on (what the state held then is kept under its `backups/`). The
+forward as it does in the container, with the same copy first. There is
+no going back by hand: a release moves forward only, and the
 [Upgrading](#upgrading) policy is the same.
 
 The page does the same without a shell: a newer release is a line on the

@@ -87,12 +87,6 @@ start_update() {
     echo started
 }
 
-# rollback: the installed release's --rollback, waited for; its exit code.
-rollback() {
-    bash /opt/builderbot/nodes/install-controller.sh --rollback > /root/rollback.log 2>&1; echo "rc=$?"
-    tail -5 /root/rollback.log
-}
-
 # release: the release the install runs now (its link and its stamp).
 release() {
     readlink /opt/builderbot

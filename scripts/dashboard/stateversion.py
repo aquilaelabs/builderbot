@@ -313,8 +313,8 @@ def migrate(state, ctx, version=None):
 
 def restore(state, version):
     """Put back the copy a build took before it migrated `state`
-    (backups/before-VERSION), for a rollback to the build before it (a
-    bare-metal install's --rollback, R90 step 5). With the controller
+    (backups/before-VERSION), for the build before it when a bare-metal
+    install's update did not come up (R90 step 5). With the controller
     stopped: what the state holds of what the copy kept is moved aside, into
     backups/rolled-back-TIME, never deleted, and the copy's own is put in its
     place; what the copy leaves out on purpose (SKIP: the logs, the
