@@ -90,6 +90,14 @@ KEYS = {
     # by DNS-01 through the Cloudflare API token); "" is self where a
     # hostname is set and http otherwise. The hostname is the controller's
     # own public name; the email is the ACME account's.
+    # The mail server the bell's rows go out through (R149, reach.py):
+    # Controller settings, Mail; the password sealed like the tokens.
+    "smtp_host": {"default": "", "kind": "text", "applied": "now"},
+    "smtp_port": {"default": "", "kind": "text", "applied": "now"},
+    "smtp_security": {"default": "starttls", "kind": "text", "applied": "now"},
+    "smtp_user": {"default": "", "kind": "text", "applied": "now"},
+    "smtp_password": {"default": "", "kind": "secret", "applied": "now"},
+    "smtp_from": {"default": "", "kind": "text", "applied": "now"},
     "tls_mode": {"default": "", "kind": "text", "applied": "now"},
     "tls_host": {"default": "", "kind": "text", "applied": "now"},
     "tls_email": {"default": "", "kind": "text", "applied": "now"},

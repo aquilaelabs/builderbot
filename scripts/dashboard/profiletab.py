@@ -19,6 +19,8 @@ node_names = None        # () -> {node id: name}
 logs_of = None           # me -> the account's conversations with Claude (transcripts.mine)
 devices = None           # devices.py: the account's signed-in devices (R272), listed and signed out
 logins = None            # logins.py: the account's browser sign-ins (R158 step 8), listed and ended
+reach = None             # reach.py: where the bell reaches the person (R149)
+smtp_set = None          # () -> whether a mail server is set, for the email destination's hint
 mfa = None               # mfa.py: the account's second factors (R127)
 audit = None             # db.audit
 two_factor_required = None   # account -> whether a role of it requires a second factor
@@ -167,6 +169,21 @@ def verb(me, act, req, origin=""):
         got = two_factor(me, act, req, origin)
         if got:
             return got[0], got[1], None
+    if act == "reach-list":
+        return {"dest": reach.list_for(me.get("uid") or ""), "kinds": [[k, reach.KIND_WORDS[k]] for k in reach.KINDS],
+                "channels": {k: {"label": v["label"], "fields": [[n, lb, sc] for n, lb, sc in v["fields"]]} for k, v in reach.CHANNELS.items()},
+                "mail": bool(smtp_set and smtp_set())}, 200, None
+    if act == "reach-set":
+        r = reach.set_dest(me.get("uid") or "", req)
+        if not r.get("error") and audit:
+            audit(f"user:{me['name']}", "reach-set", r["dest"]["kind"], {})
+        return r, (400 if r.get("error") else 200), None
+    if act == "reach-remove":
+        r = reach.remove(me.get("uid") or "", field(req, "id"))
+        return r, (400 if r.get("error") else 200), None
+    if act == "reach-test":
+        r = reach.test(me.get("uid") or "", field(req, "id"), me.get("name") or "")
+        return r, (400 if r.get("error") else 200), None
     if act == "signin-out":
         # A browser's sign-in ended from here (R158 step 8): its cookie
         # answers nothing from its next request.

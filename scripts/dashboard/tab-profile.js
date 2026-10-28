@@ -63,6 +63,7 @@ const PROFILE_SAYS = {
   uses: "each time a token of yours was opened, and for what",
   terminal: "the size, cursor and colors of your terminals",
   devices: "your browsers and apps, to sign out",
+  reach: "email, a webhook, ntfy, Gotify, Pushover, Telegram, Discord or Slack, each with what it takes and a quiet window",
 };
 // The apps signed in as this account on its own machines (R272 step 1), the
 // last of Profile's sections (the operator, 19 Oct): a table, a line a device (its name,
@@ -171,11 +172,13 @@ function renderProfileInto(i){
     ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
     ${keyMineSection()}
     ${sec("terminal", "Your terminal", profileTerminal())}
+    ${docSection("profile", "reach", "Where the bell reaches you", (pfReach?.dest || []).length ? String(pfReach.dest.length) : "", profileReach())}
     ${docSection("profile", "devices", "Signed in as you", "", profileSignins(profile.signins || []) + profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   wireProfile(d.el);
   wireDeviceOut(d.el);
+  wireReach(d.el);
   wireTwoFactor(d.el);
   wireKeyMine(d.el);
   wireTerminalLook(d.el);
@@ -258,6 +261,96 @@ function wireTerminalLook(root){
 // Disconnect: asked, then that device signed out; the app finds its token
 // refused on its next call and says to sign in again. One of another
 // account's, on the Users page, is an administrator's to cut off for them.
+// Where the bell reaches you (R149, reach.py): each destination a row
+// with its kind, name, what it takes and its quiet window, Test and Remove;
+// Add opens the form for one kind, its fields the channel's own. A secret
+// field (a token, a webhook address) says only that it is set.
+let pfReach = null;              // {dest, kinds, channels, mail}, or null before the first read
+let pfReachAsked = false;
+let pfReachForm = null;          // {kind, id?} while the form is open
+
+async function loadReach(){
+  pfReachAsked = true;
+  pfReach = await pfTf({action: "reach-list"});
+  profileRev++; drawPanes();
+}
+
+const PF_REACH_COLS = [{label: "Where"}, {label: "Takes"}, {label: "Quiet", w: "7rem"}, {label: "Last sent", w: "minmax(0,.7fr)"}, {act: true, w: "9rem"}];
+
+function profileReach(){
+  if (pfReach === null){ if (!pfReachAsked) loadReach(); return `<div class="field">${skRows(1)}</div>`; }
+  if (pfReach.error) return `<div class="hint bad">${esc(pfReach.error)}</div>`;
+  const ch = pfReach.channels || {}, kinds = pfReach.kinds || [];
+  const rows = (pfReach.dest || []).map(d => `<div class="row" data-reach="${esc(d.id)}">${tblLine(PF_REACH_COLS, [
+    `${esc(ch[d.kind]?.label || d.kind)}: ${esc(d.name)}${d.on ? "" : ` <span class="dim">(off)</span>`}`,
+    esc((d.kinds || []).map(k => (kinds.find(x => x[0] === k) || [k, k])[1].replace(/^(a |an )/, "")).join(", ") || "nothing"),
+    esc(d.quiet ? `${d.quiet.from} to ${d.quiet.to}` : "none"),
+    d.last?.at ? `<span class="pill ${d.last.ok ? "ok" : "bad"}">${d.last.ok ? "sent" : "failed"}</span> ${esc(ago(d.last.at))}${d.last.why ? ` ${esc(d.last.why)}` : ""}` : "never",
+    `<button type="button" data-reachtest="${esc(d.id)}">Test</button><button type="button" class="danger" data-reachrm="${esc(d.id)}">Remove</button>`])}</div>`).join("");
+  const list = rows ? tblWrap(PF_REACH_COLS, rows, "pfreach")
+    : `<div class="hint">Nothing yet. The bell's rows reach you here as well as on the page: an ask waiting on you, what a node needs, a red CI run, an invitation, a file changed in two places.</div>`;
+  const form = pfReachForm ? profileReachForm(pfReachForm, ch, kinds) : "";
+  return `${list}${form}
+    <div class="actbar"${pfReachForm ? " hidden" : ""}><span class="sp"></span>
+      <label class="pick"><span class="pickw">Add</span><select id="pfReachKind"><option value="">a destination</option>${
+        Object.entries(ch).map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join("")}</select></label></div>`;
+}
+
+function profileReachForm(f, ch, kinds){
+  const c = ch[f.kind] || {label: f.kind, fields: []};
+  const was = (pfReach?.dest || []).find(d => d.id === f.id) || {};
+  return `<div class="reachform" data-reachform="${esc(f.kind)}">
+    <div class="field"><div class="hint">${esc(c.label)}${f.kind === "email" && !pfReach?.mail ? ": no mail server is set yet (Controller settings, Mail), so nothing is sent until one is" : ""}</div></div>
+    <div class="field">${lbl("pfReachName", "Name")}<input id="pfReachName" type="text" value="${esc(was.name || c.label)}" autocomplete="off"></div>
+    ${c.fields.map(([n, label, secret]) => `<div class="field">${lbl("pfReachF_" + n, label)}
+      <input id="pfReachF_${esc(n)}" data-reachf="${esc(n)}" type="${secret ? "password" : "text"}" value="${esc(secret ? "" : (was.fields || {})[n] || "")}" placeholder="${secret && (was.fields || {})[n] ? "set: type to replace" : ""}" autocomplete="off" spellcheck="false"></div>`).join("")}
+    <div class="field">${lbl("pfReachKinds", "Takes")}<div class="chips">${kinds.map(([k, w]) => `<label class="chip"><input type="checkbox" data-reachk="${esc(k)}" ${!was.kinds || was.kinds.includes(k) ? "checked" : ""}> ${esc(w)}</label>`).join("")}</div></div>
+    <div class="prefrow ctlrow">
+      <div class="setrow col ctlrow">${lbl("pfReachQf", "Quiet from")}<input id="pfReachQf" type="time" value="${esc(was.quiet?.from || "")}"></div>
+      <div class="setrow col ctlrow">${lbl("pfReachQt", "until")}<input id="pfReachQt" type="time" value="${esc(was.quiet?.to || "")}"></div>
+    </div>
+    <div class="field"><div class="hint">Nothing is sent inside the quiet window; what came up then is sent once it ends.</div></div>
+    <div class="actbar"><span class="state" id="pfReachSaid"></span><span class="sp"></span>
+      <button type="button" data-reachcancel>Cancel</button><button type="button" class="primary" data-reachsave>Save</button></div>
+  </div>`;
+}
+
+function wireReach(root){
+  const sel = root.querySelector("#pfReachKind");
+  if (sel) sel.onchange = () => { if (sel.value){ pfReachForm = {kind: sel.value}; profileRev++; drawPanes(); } };
+  root.querySelectorAll("[data-reachcancel]").forEach(b => b.onclick = () => { pfReachForm = null; profileRev++; drawPanes(); });
+  root.querySelectorAll("[data-reachsave]").forEach(b => b.onclick = async () => {
+    const form = root.querySelector("[data-reachform]");
+    const fields = {};
+    form.querySelectorAll("[data-reachf]").forEach(i => { fields[i.dataset.reachf] = i.value; });
+    const kinds = [...form.querySelectorAll("[data-reachk]")].filter(i => i.checked).map(i => i.dataset.reachk);
+    const qf = form.querySelector("#pfReachQf")?.value || "", qt = form.querySelector("#pfReachQt")?.value || "";
+    busy(b, "Saving");
+    const r = await pfTf({action: "reach-set", id: pfReachForm?.id || "", kind: pfReachForm?.kind, name: form.querySelector("#pfReachName")?.value || "",
+                          fields, kinds, quiet: qf && qt ? {from: qf, to: qt} : null});
+    if (r.error){ const s = form.querySelector("#pfReachSaid"); if (s){ s.textContent = r.error; s.classList.add("bad"); } b.disabled = false; b.textContent = "Save"; return; }
+    pfReachForm = null;
+    notify(`the bell reaches you at ${r.dest.name}`);
+    loadReach();
+  });
+  root.querySelectorAll("[data-reachtest]").forEach(b => b.onclick = async () => {
+    busy(b, "Sending");
+    const r = await pfTf({action: "reach-test", id: b.dataset.reachtest});
+    notify(r.error || "a test went out: look for it there", !!r.error);
+    loadReach();
+  });
+  root.querySelectorAll("[data-reachrm]").forEach(b => b.onclick = async () => {
+    if (!await askYes("Remove this destination? The bell stays on the page.", {verb: "Remove", danger: true})) return;
+    busy(b, "Removing");
+    await pfTf({action: "reach-remove", id: b.dataset.reachrm});
+    loadReach();
+  });
+  root.querySelectorAll("[data-reach]").forEach(row => row.ondblclick = () => {
+    const d = (pfReach?.dest || []).find(x => x.id === row.dataset.reach);
+    if (d){ pfReachForm = {kind: d.kind, id: d.id}; profileRev++; drawPanes(); }
+  });
+}
+
 function wireDeviceOut(root){
   root.querySelectorAll("[data-pfsignout]").forEach(b => b.onclick = async () => {
     const r = (profile?.signins || []).find(x => x.id === b.dataset.pfsignout);

@@ -1612,6 +1612,117 @@ def _resume_held(who, nid, session):
     return {"ok": True, **said}, 200
 
 
+def _att_words(a):
+    """One attention row as a title and a line, for the bell sent elsewhere
+    (reach.py): the page's words (page-bell.js attRow), said once here."""
+    k, node, proj = a.get("kind"), a.get("node") or a.get("node_name") or "", a.get("project") or ""
+    label = registry.label(proj) if proj else ""
+    if k in ("toolchain", "agents"):
+        n = len(a.get("tools") or [])
+        return (f"{n} {'coding agent' if k == 'agents' else 'toolchain'} update{'' if n == 1 else 's'} on {node}",
+                ", ".join(t.get("label", "") for t in a.get("tools") or []))
+    if k == "agent":
+        return (f"{node}'s agent is out of window" if a.get("window") else f"Agent update on {node}",
+                f"runs agent {a.get('from', '')} and this controller ships {a.get('to', '')}")
+    if k == "held":
+        return (f"A session in {label} stopped for the update", f"on {node}")
+    if k == "relocate":
+        return (f"Copying or moving {a.get('name', '')} did not happen", a.get("why", ""))
+    if k == "release-sign":
+        return (f"{a.get('tag', '')}'s APK in {label} is not signed" if a.get("bad") else f"Signing in {label}", a.get("why", ""))
+    if k == "git-unlinked":
+        return (f"{label} has no git access", a.get("why", ""))
+    if k == "project-leftover":
+        return (f"{label} can be deleted", a.get("why", ""))
+    if k == "schedule":
+        return (f"{a.get('name') or 'A schedule'}: {'its run did not work' if a.get('bad') else 'a run was skipped'}", a.get("why", ""))
+    if k == "image":
+        n = len(a.get("containers") or [])
+        return (f"{n} container update{'' if n == 1 else 's'} on {node}", ", ".join(c.get("name", "") for c in a.get("containers") or []))
+    if k == "room":
+        return (f"{node} is running short of room", "; ".join(str(x) for x in (a.get("parts") or a.get("short") or [])))
+    if k == "two-factor":
+        return ("A role of yours requires two-factor sign-in" if a.get("required") else "Turn on two-factor sign-in", "")
+    if k == "token-read":
+        return (f"A sign-in on {node} was read", f"{a.get('comm') or 'a process'} opened it")
+    if k == "token-reuse":
+        return (f"{node}'s credential was used from a copy", "every token of that node is revoked")
+    if k == "acme":
+        return (f"{'no certificate' if a.get('bad') else 'a certificate'} for {a.get('host', '')} on {node}", a.get("why", ""))
+    if k == "scan":
+        return (f"{'Scan failed' if a.get('what') == 'failed' else 'Scanner update'} on {node}", a.get("said", ""))
+    if k == "nginx":
+        return (f"nginx update on {node}", f"runs {a.get('from', '')} and {a.get('to', '')} is out")
+    return (str(k or "attention"), a.get("why") or a.get("text") or "")
+
+
+def _ask_words(a):
+    """An ask in one line, the page's (page-bell.js askTag)."""
+    k, proj = a.get("kind"), a.get("project") or ""
+    label = registry.label(proj) if proj else "a project"
+    node = a.get("node_name") or "the default node"
+    return {"root": f"root on {node}", "rebuild": f"{' '.join(a.get('cmd') or [])[:60]} in {label}",
+            "container": f"container {a.get('name') or ''} on {node}", "sign": f"sign a build of {label}",
+            "sign-key": f"a signing key change in {label}", "release": f"release {label} {a.get('tag') or ''}",
+            "release-edit": f"edit the {a.get('tag') or ''} release of {label}", "release-sign": f"sign the release APKs of {label} again",
+            "release-remove": f"remove files from the {a.get('tag') or ''} release of {label}",
+            "phone-use": f"your phone, from {label}", "push": f"a push from {label} looks sensitive"}.get(k, "a session") + ": needs your answer"
+
+
+def _bell_rows_for(who):
+    """The bell as the page draws it, composed here for the rows sent
+    elsewhere (reach.tick): [{key, kind, title, text, url}], each keyed so
+    a repeat is held while unchanged. Kinds: asks, needs, ci, invites,
+    sync."""
+    if not who:
+        return []
+    uid = users.uid_of(who)
+    out = []
+    try:
+        for a in phone.requests_open(uid, users.is_admin(who)):
+            out.append({"key": f"ask:{a.get('id')}", "kind": "asks", "title": _ask_words(a),
+                        "text": " ".join(a.get("cmd") or [])[:200] if a.get("kind") != "rebuild" else "", "url": ""})
+    except Exception as e:                                      # noqa: BLE001 (one source failing is not the bell's end)
+        print(f"[dashboard] reach: the asks could not be read: {type(e).__name__}: {e}", flush=True)
+    att, _hidden = _attention(who)
+    for a in att:
+        key = a.get("key") or f"{a.get('kind')}:{a.get('id') or a.get('node') or a.get('project') or ''}@{a.get('to') or a.get('at') or ''}"
+        t, text = _att_words(a)
+        out.append({"key": "need:" + key, "kind": "needs", "title": t, "text": text, "url": ""})
+    tf = _two_factor_due(who)
+    if tf:
+        t, text = _att_words(tf)
+        out.append({"key": "need:" + (tf.get("key") or f"2fa:{uid}"), "kind": "needs", "title": t, "text": text, "url": ""})
+    for c in bellseen.filter_rows(uid, ciwatch.red(project_names(who)))[0]:
+        out.append({"key": c["key"], "kind": "ci", "title": f"CI failing in {registry.label(c['project'])}", "text": c.get("text", ""), "url": c.get("url", "")})
+    for i in membership.mine(who):
+        out.append({"key": f"invite:{i['id']}", "kind": "invites", "title": f"{i.get('by') or 'Somebody'} invited you to {registry.label(i['project'])}", "text": "", "url": ""})
+    for c in wssync.conflicts(lambda p: users.may_see(who, p)):
+        out.append({"key": f"sync:{c.get('project')}:{c.get('kept_as')}", "kind": "sync",
+                    "title": f"Changed in two places: {registry.label(c.get('project', ''))}", "text": f"{c.get('path', '')}, kept as {c.get('kept_as', '')}", "url": ""})
+    return out
+
+
+def _page_url():
+    """Where the page is reached, for a link in a message: the hostname
+    the Connection or the tunnel names, else nothing."""
+    host = settings.get("tls_host") or settings.get("tunnel_host") or ""
+    return f"https://{host}/" if host else ""
+
+
+def _reach_loop():
+    """The minute loop (R149): each person's bell to the destinations they
+    keep, what is new, outside their quiet window."""
+    while True:
+        time.sleep(60)
+        try:
+            people = {u.get("uid") for u in users.all_users() if u.get("uid")}
+            by_uid = {u.get("uid"): u for u in users.all_users() if u.get("uid")}
+            reach.tick(lambda uid, m=by_uid: _bell_rows_for(m.get(uid)), people, _page_url())
+        except Exception as e:                                  # noqa: BLE001 (the loop outlives one bad pass)
+            print(f"[dashboard] reach: {type(e).__name__}: {e}", flush=True)
+
+
 def _two_factor_due(who):
     """The bell's standing notice (R127 step 8), or None: an account with no
     second factor is told to add one, put away for a day at most (its key
@@ -4227,8 +4338,16 @@ unlocks.clear_all_handouts()
 # signed in as the account counts the same way.
 logins.configure(state=STATE, days=SESSION_DAYS,
                  devices_of=lambda uid: devices.listed({"uid": uid}))
+# The bell's rows sent elsewhere, per person (R149, reach.py): the
+# destinations each keeps on Profile, the mail server from the settings.
+import reach                                                     # noqa: E402
+reach.configure(state=STATE, write_json=write_json, seal=signing.seal, unseal=signing.unseal,
+                sealing=lambda: signing.MASTER is not None,
+                smtp_settings=lambda: {"host": settings.get("smtp_host"), "port": settings.get("smtp_port"),
+                                       "security": settings.get("smtp_security") or "starttls", "user": settings.get("smtp_user"),
+                                       "password": settings.secret("smtp_password"), "from": settings.get("smtp_from")})
 installkey.configure(passes=(signing.seal_all, gitcreds.seal_all, settings.seal_all, mfa.seal_all,
-                             accountkeys.seal_all),
+                             accountkeys.seal_all, reach.seal_all),
                      nodes_previous=lambda: tokenkeys.sealed_under(_node_seals(), signing.PREVIOUS)
                      if signing.PREVIOUS else 0)
 installkey.note_made()
@@ -4865,7 +4984,7 @@ devices.configure(users=users.load, access=lambda acct, p: ftp.access_for(acct, 
                                            else {"error": "the key is 64 hex characters"}),
                   projects=lambda acct: project_names(acct),
                   flags=lambda acct, p: projects.app_flags(p, users.uid_of(acct)))
-profiletab.configure(devices=devices, logins=logins, mfa=mfa, audit=db.audit,
+profiletab.configure(devices=devices, logins=logins, reach=reach, smtp_set=lambda: bool(settings.get("smtp_host")), mfa=mfa, audit=db.audit,
                      two_factor_required=lambda u: roles.two_factor_required(u))
 
 # The apps a person installs, fetched from this controller's release and
@@ -9626,6 +9745,11 @@ class Handler(BaseHTTPRequestHandler):
         what uses it and where it is changed; no value, sealed or not."""
         rows = []
         names = {u.get("uid"): u.get("name") for u in users.all_users() if u.get("uid")}
+        # Where the bell reaches each person (R149): a destination's token
+        # or address, sealed, used by nothing but the send.
+        for r in reach.at_rest():
+            rows.append({"kind": "reach", "name": f"{names.get(r['uid'], r['uid'])}: {r['name']}",
+                         "uses": "the bell sent there", "sealed": r["sealed"], "go": ["profile", ""]})
         for f in sorted((STATE / "gitcreds").iterdir()) if (STATE / "gitcreds").is_dir() else []:
             raw = f.read_text(errors="replace").strip() if f.is_file() else ""
             gv = gitcreds.givers(f.name)
@@ -11722,6 +11846,7 @@ def main():
     if not NODES_OK:
         threading.Thread(target=_room_loop, name="room", daemon=True).start()
         threading.Thread(target=_schedules_loop, name="schedules", daemon=True).start()
+        threading.Thread(target=_reach_loop, name="reach", daemon=True).start()
     ciwatch.start()           # a project's CI, once a day (R117)
     releasesign.start()       # a release's unsigned APK, signed on its node (R106)
     if "tunnel" not in featuresoff.off():

@@ -277,6 +277,26 @@ const SETTING_GROUPS = [
      hint: "The controller's own public name, which the certificate is for. Leave it empty on a LAN with no name: the install's own certificate then names the addresses the page is reached at."},
     {key: "tls_email", label: "Email (Let's Encrypt)", type: "text", placeholder: "you@example.com",
      hint: "Where Let's Encrypt writes about the certificate. Optional."}]},
+  // The mail server the bell's rows go out through (R149, reach.py): each
+  // person picks where the bell reaches them on their Profile; email needs
+  // this server.
+  {key: "mail", title: "Mail", status: s => s?.settings?.smtp_host?.value ? "set" : "no server yet",
+   heading: s => s?.settings?.smtp_host?.value ? "set" : "",
+   headingCls: s => s?.settings?.smtp_host?.value ? "ok" : "",
+   fields: [
+    {key: "smtp_host", label: "SMTP server", type: "text", placeholder: "smtp.example.com",
+     hint: "The server BuilderBot sends mail through, for a person who asked for the bell by email on their Profile. Nothing is sent until one is set."},
+    {key: "smtp_port", label: "Port", type: "text", placeholder: "587",
+     hint: "Empty takes 587 with STARTTLS and 465 with TLS."},
+    {key: "smtp_security", label: "Security", type: "select",
+     options: [["starttls", "STARTTLS (port 587)"], ["tls", "TLS from the start (port 465)"], ["none", "none: a server on this network only"]],
+     hint: "What the connection to the server is: STARTTLS and TLS encrypt it; none sends in the clear."},
+    {key: "smtp_user", label: "Sign-in name", type: "text", placeholder: "you@example.com",
+     hint: "Empty sends without signing in, which a server on this network may allow."},
+    {key: "smtp_password", label: "Password", type: "secret",
+     hint: "Kept sealed under the install key, as the tokens are."},
+    {key: "smtp_from", label: "From", type: "text", placeholder: "BuilderBot <builderbot@example.com>",
+     hint: "The address the mail is from; the sign-in name when empty."}]},
   // The room a node keeps for itself (R110): the numbers the bell, the
   // build gate, a rebuild's check and the hourly prune go by, and a memory
   // limit for a container whose compose file sets none.

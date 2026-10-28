@@ -314,6 +314,10 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   rules (the agent's API to the controller, everything else 404) are written
   on Apply rather than clicked; the section's line says whether cloudflared
   is in the image, running and registered.
+- **Mail**: the SMTP server BuilderBot sends through (its port, security,
+  sign-in and the From address, the password sealed under the install key),
+  for a person who asked on their Profile for the bell by email (R149,
+  `reach.py`); nothing is sent until a server is set.
 - **Connection**: what the dashboard is served over (R158 step 2,
   `tls.py`): http, https with the install's own certificate (made at the
   switch and remade a month before it ends; its fingerprint on the section
