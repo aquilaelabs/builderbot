@@ -34,11 +34,12 @@ from .shares import SharesMixin
 from .pools import PoolsMixin
 from .array import ArrayMixin
 from .power import PowerMixin
+from .extmounts import ExtMountsMixin
 from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, AccountsMixin,
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, ExtMountsMixin, AccountsMixin,
             TokensMixin, ScanMixin):
     def __init__(self, state):
         self.state = state
@@ -335,6 +336,10 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # (R164 step 1), imported into Samba once per change.
             if isinstance(r.get("smb_users"), list):
                 self.smb_users_want(r["smb_users"])
+            # Other disks and shares on the controller's own machine (R162
+            # step 4): the record mounted and unmounted as it says.
+            if isinstance(r.get("ext_mounts"), list):
+                self.ext_mounts_want(r["ext_mounts"])
             # The coding agents' sign-ins sealed (R126): the controller's
             # switch, and each account's public key here, kept in node.json.
             ts, pubs = bool(r.get("token_seal")), r.get("token_pubs") if isinstance(r.get("token_pubs"), dict) else {}
@@ -644,6 +649,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             timed("firewall_check", self.session_firewall_check)
             timed("account_users", self.account_users_pass)
             timed("array", self.array_pass)
+            timed("ext_mounts", self.ext_mounts_pass)
             timed("spindown", self.spindown_pass)
             timed("tokens", self.token_pass)
             timed("idle_reap", self.session_idle_reap)

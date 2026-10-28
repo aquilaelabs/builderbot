@@ -7,6 +7,7 @@ the census, so the Storage page lists the controller's own machine's disks
 before anything is written to one.
 """
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -67,6 +68,28 @@ def _smart(name):
     return out
 
 
+def by_id_link(name):
+    """The /dev/disk/by-id link's name for a disk (the model-and-serial one
+    before the wwn one), "" where the machine has none (a VM's virtio disk);
+    what the Storage page names a disk by when it mounts it (R162 step 4)."""
+    root = "/dev/disk/by-id"
+    best = ""
+    try:
+        for link in sorted(os.listdir(root)):
+            if "-part" in link:
+                continue
+            try:
+                if os.path.basename(os.path.realpath(os.path.join(root, link))) != name:
+                    continue
+            except OSError:
+                continue
+            if not link.startswith("wwn-") or not best:
+                best = link
+    except OSError:
+        return ""
+    return best
+
+
 def disks_now(smart=True):
     """Every whole disk of this machine, loop and RAM devices left out, with
     its partitions' holdings and its SMART facts; at most 32."""
@@ -86,7 +109,7 @@ def disks_now(smart=True):
                           "holds": _holds(p)[:80]})
         row = {"name": name, "model": str(dev.get("model") or "").strip()[:64], "serial": str(dev.get("serial") or "").strip()[:64],
                "size_mb": int(dev.get("size") or 0) // 1048576, "ssd": dev.get("rota") is False,
-               "tran": str(dev.get("tran") or "")[:16], "removable": dev.get("rm") is True,
+               "tran": str(dev.get("tran") or "")[:16], "removable": dev.get("rm") is True, "by_id": by_id_link(name)[:120],
                "holds": _holds(dev)[:80] if not parts else "", "parts": parts[:16],
                "system": any(str(p.get("mountpoint") or "") in ("/", "/boot/efi") for p in (dev.get("children") or []))
                          or str(dev.get("mountpoint") or "") == "/"}

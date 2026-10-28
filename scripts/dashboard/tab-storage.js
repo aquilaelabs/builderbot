@@ -504,6 +504,78 @@ function wireStorageArray(root, n){
   }));
 }
 
+// Other disks and shares (R162 step 4): a USB or eSATA disk here, or a
+// remote SMB share or NFS export, mounted at /mnt/other/NAME as a backup
+// target or a source to copy in, never pooled. The record is the
+// controller's; the machine's agent mounts what it says within a minute,
+// and Eject turns a row off so the disk is unmounted before it is pulled.
+function storageOther(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const recs = n.extmounts || [], live = n.ext_mounts || [];
+  const kindWord = {disk: "a disk here", smb: "an SMB share", nfs: "an NFS export"};
+  const rows = recs.map(r => {
+    const st = live.find(x => x.id === r.id) || {};
+    const src = r.kind === "disk" ? r.source : r.kind === "smb" ? `\\\\${r.host}\\${r.path}` : `${r.host}:${r.path}`;
+    const pill = !r.on ? `<span class="pill">unmounted${r.kind === "disk" ? ", safe to pull" : ""}</span>` : st.mounted ? `<span class="pill ok">mounted</span>`
+      : r.kind === "disk" && st.present === false ? `<span class="pill warn">not plugged in</span>` : `<span class="pill warn">not mounted yet</span>`;
+    const pct = st.size_mb ? (st.used_mb || 0) / st.size_mb * 100 : 0;
+    return `<div class="row stack2 stother${st.error && r.on ? " bad" : ""}" data-extmount="${esc(r.id)}"><div class="grow">
+      <div class="name">${esc(r.name)} ${pill}${r.ro ? ` <span class="pill">read-only</span>` : ""} <span class="dim">${esc(kindWord[r.kind] || r.kind)}</span></div>
+      <div class="sub"><code>/mnt/other/${esc(r.name)}</code> from <code>${esc(src)}</code>${r.kind === "smb" ? ` as ${esc(r.user || "a guest")}` : ""}</div>
+      ${st.mounted ? `<div class="ndmeters">${meter("used", pct, `${sgb(st.used_mb)} / ${sgb(st.size_mb)}`, `${sgb((st.size_mb || 0) - (st.used_mb || 0))} free`)}</div>` : ""}
+      ${st.error && r.on ? `<div class="sub bad">${esc(st.error)}</div>` : ""}
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-stother="${r.on ? "off" : "on"}" data-id="${esc(r.id)}" title="${r.on ? "unmount it, so it is safe to pull or to take elsewhere" : "mount it again"}">${r.on ? (r.kind === "disk" ? "Eject" : "Unmount") : "Mount"}</button>${actMore([
+        `<button type="button" class="danger" data-stother="remove" data-id="${esc(r.id)}" title="unmounted and forgotten; nothing on it is touched">Remove</button>`], true)}</span>` : ""}</div>`;
+  }).join("");
+  const spare = (n.disks || []).filter(d => !d.system && (d.removable || d.tran === "usb" || (d.parts || []).some(p => /not mounted/.test(p.holds || "")) || /not mounted/.test(d.holds || "")));
+  const form = !admin || why ? "" : `<div class="field stnewother"><div class="hint">Mount another disk or share here, by itself: a backup target, or a source to copy in. Nothing on it is changed; it is never pooled.</div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">What</span><select id="stOtherKind"><option value="disk">a disk plugged in here (USB, eSATA)</option><option value="smb">an SMB share on another machine</option><option value="nfs">an NFS export on another machine</option></select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Name</span><input type="text" id="stOtherName" placeholder="backup" maxlength="31" autocomplete="off" spellcheck="false"></label></div>
+      </div>
+      <div class="field" data-stotherk="disk"><label class="pick"><span class="pickw">Disk</span><select id="stOtherDisk">${spare.length ? optionList(spare.map(d => [d.name, `${d.name}: ${d.model || "unnamed"}, ${humanBytes((d.size_mb || 0) * 1048576)}, serial ${d.serial || "none"}`]), spare[0].name) : `<option value="">no disk here is spare</option>`}</select></label></div>
+      <div class="field" data-stotherk="smb nfs" hidden><label class="pick"><span class="pickw">Host</span><input type="text" id="stOtherHost" placeholder="nas.local or 192.168.1.20" autocomplete="off" spellcheck="false"></label>
+        <label class="pick"><span class="pickw" data-stotherpath>Share</span><input type="text" id="stOtherPath" placeholder="media" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field" data-stotherk="smb" hidden><label class="pick"><span class="pickw">User</span><input type="text" id="stOtherUser" placeholder="leave empty for a guest" autocomplete="off" spellcheck="false"></label>
+        <label class="pick"><span class="pickw">Password</span><input type="password" id="stOtherPass" autocomplete="new-password"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stOtherRo"> read-only</label></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stother="set">Mount it</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">Nothing else mounted${admin ? ": the form below mounts a disk or a share" : ""}.</div>`}${form}`;
+  return docSection("storage", "other", "Other disks and shares", recs.length ? `${recs.length}, ${recs.filter(r => (live.find(x => x.id === r.id) || {}).mounted).length} mounted` : "", body);
+}
+function wireStorageOther(root, n){
+  const kind = $("stOtherKind");
+  const showKind = () => root.querySelectorAll("[data-stotherk]").forEach(f => { f.hidden = !f.dataset.stotherk.split(" ").includes(kind.value); });
+  if (kind){ kind.onchange = () => { showKind(); const pw = root.querySelector("[data-stotherpath]"); if (pw) pw.textContent = kind.value === "nfs" ? "Path" : "Share"; const p = $("stOtherPath"); if (p) p.placeholder = kind.value === "nfs" ? "/export/media" : "media"; }; showKind(); }
+  root.querySelectorAll("[data-stother]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stother;
+    let body;
+    if (act === "set"){
+      const k = kind?.value || "disk";
+      body = {action: "set", kind: k, name: ($("stOtherName")?.value || "").trim(), ro: !!$("stOtherRo")?.checked};
+      if (k === "disk"){
+        const d = (n.disks || []).find(x => x.name === $("stOtherDisk")?.value);
+        if (!d){ notify("pick the disk to mount", true); return; }
+        body.source = d.by_id || "";
+        if (!body.source){ notify(`${d.name} has no by-id link the machine lists; a virtual disk cannot be mounted this way`, true); return; }
+      } else {
+        body.host = ($("stOtherHost")?.value || "").trim(); body.path = ($("stOtherPath")?.value || "").trim();
+        if (k === "smb"){ body.user = ($("stOtherUser")?.value || "").trim(); body.password = $("stOtherPass")?.value || ""; }
+      }
+      if (!body.name){ notify("a mount takes a name: its folder under /mnt/other", true); return; }
+    } else if (act === "remove"){
+      if (!await askYes("Forget this mount? It is unmounted first; nothing on it is touched.", {title: "Remove the mount?", verb: "Remove", danger: true})) return;
+      body = {action: "remove", id: b.dataset.id};
+    } else body = {action: act, id: b.dataset.id};
+    busy(b, {set: "Saving", remove: "Removing", off: "Unmounting", on: "Mounting"}[act] || "Working");
+    const j = await (await postJSON("/api/extmounts", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || {set: "recorded: the machine mounts it within a minute", remove: "forgotten", off: "unmounted within a minute: the row says when it is safe to pull", on: "mounted within a minute"}[act], !!j.error);
+    await refresh();
+  }));
+}
+
 function storageProjects(n, where){
   const rows = [...(n.projects || [])];
   if (n.other) rows.push({name: "other projects", other: true, ...n.other});
@@ -586,6 +658,7 @@ function storageBody(n, where){
     ${storageArray(n)}
     ${storageSnapshots(n)}
     ${storageShares(n)}
+    ${storageOther(n)}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
     ${(n.phones || []).length ? docSection("storage", "phones", "Phones", `${n.phones.length}, ${sgb(n.phones.reduce((a, p) => a + (p.mb || 0), 0))}`, storagePhones(n)) : ""}
@@ -620,6 +693,7 @@ function renderStorageInto(i){
   if (n) wireStoragePools(d.el, n);
   if (n) wireStorageSnapshots(d.el, n);
   if (n) wireStorageArray(d.el, n);
+  if (n) wireStorageOther(d.el, n);
 }
 
 function wireStorageTab(root){

@@ -38,6 +38,7 @@ def node_view(n, may_see):
             "disks": (n.get("reported") or {}).get("disks") or [],
             "shares": (n.get("reported") or {}).get("shares") or [],
             "snapshots": (n.get("reported") or {}).get("snapshots") or {},
+            "ext_mounts": (n.get("reported") or {}).get("ext_mounts") or [],
             "array": (n.get("reported") or {}).get("array") or {},
             "mergerfs": bool((((n.get("reported") or {}).get("features") or {}).get("storage") or {}).get("mergerfs")),
             "snapraid": bool((((n.get("reported") or {}).get("features") or {}).get("storage") or {}).get("snapraid")),
