@@ -464,7 +464,10 @@ function rnFillTestNode(p){
   // pick made since stays, as long as it is this project's and still offered;
   // the saved value otherwise.
   const picked = sel.dataset.proj === (p?.name || "") && sel.options.length ? sel.value : null;
-  sel.innerHTML = `<option value="">the session's own node</option>` + ids.map(id => `<option value="${esc(id)}">${esc(names.get(id) || id)}</option>`).join("");
+  // Named off the Node picker's options, else off the nodes list, else by
+  // id (B418: a dialog opened before the picker was drawn listed ids).
+  const named = id => names.get(id) || (nodesList || []).find(n => n.id === id)?.name || id;
+  sel.innerHTML = `<option value="">the session's own node</option>` + ids.map(id => `<option value="${esc(id)}">${esc(named(id))}</option>`).join("");
   sel.dataset.proj = p?.name || "";
   sel.value = picked !== null && (picked === "" || ids.includes(picked)) && picked !== (p?.prefs?.test_node || "") ? picked
     : ids.includes(p?.prefs?.test_node) ? p.prefs.test_node : "";
