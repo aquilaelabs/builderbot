@@ -44,10 +44,13 @@ def sealed_of(home, agent):
             blob = f.read(8192)
     except OSError:
         return None
-    if not blob.startswith(b"BBTOK1\n"):
+    # Either format (B407): BBTOK2 since 0.9 (X25519, R158 step 3), BBTOK1
+    # from a node before; the header line is the same shape in both.
+    magic = next((m for m in (b"BBTOK2\n", b"BBTOK1\n") if blob.startswith(m)), None)
+    if magic is None:
         return None
     try:
-        h = json.loads(blob[7:blob.index(b"\n", 7)])
+        h = json.loads(blob[len(magic):blob.index(b"\n", len(magic))])
     except ValueError:
         return None
     return {"email": str(h.get("email") or "")[:120], "plan": str(h.get("plan") or "")[:40]}
