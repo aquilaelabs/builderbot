@@ -46,7 +46,7 @@ class Helper(unittest.TestCase):
     def test_an_unknown_feature_or_verb_is_refused_by_name(self):
         r = self.run_helper("install", "warpdrive")
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("no such feature: warpdrive; one of: vmhost firewall", r.stderr)
+        self.assertIn("no such feature: warpdrive; one of: vmhost firewall iommu", r.stderr)
         r = self.run_helper("explode", "vmhost")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("usage: bb-sandbox feature install|remove|state", r.stderr)

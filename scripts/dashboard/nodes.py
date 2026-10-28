@@ -1247,6 +1247,24 @@ def _mb(v):
         return 0
 
 
+
+USB_ID_RE = re.compile(r"0x[0-9a-f]{4}")
+PCI_ADDR_RE = re.compile(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]")
+
+
+def _vm_usb(rows):
+    """The USB devices a VM holds as its node names them (R116): vendor,
+    product, serial, port and name, whitelisted field by field."""
+    out = []
+    for r in (rows or [])[:8] if isinstance(rows, list) else []:
+        if not isinstance(r, dict) or not (USB_ID_RE.fullmatch(str(r.get("vendor"))) and USB_ID_RE.fullmatch(str(r.get("product")))):
+            continue
+        out.append({"vendor": r["vendor"], "product": r["product"],
+                    "serial": re.sub(r"[^\w.:+/-]", "", str(r.get("serial") or ""))[:64],
+                    "port": str(r.get("port") or "") if re.fullmatch(r"\d{1,3}-[\d.]{1,20}", str(r.get("port") or "")) else "",
+                    "name": re.sub(r"[^\w .,:()+/-]", "", str(r.get("name") or ""))[:80]})
+    return out
+
 def _vm_hw(hw):
     """A VM's hardware as its node reported it (R100), kept to its shapes."""
     hw = hw if isinstance(hw, dict) else {}
@@ -1392,6 +1410,7 @@ def _census(c):
     fe = c.get("features") if isinstance(c.get("features"), dict) else {}
     vm = fe.get("vmhost") if isinstance(fe.get("vmhost"), dict) else {}
     fw = fe.get("firewall") if isinstance(fe.get("firewall"), dict) else {}
+    io = fe.get("iommu") if isinstance(fe.get("iommu"), dict) else {}
     out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
                                   "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20],
                                   # A kernel built without KVM (R97's walk, openSUSE).
@@ -1399,7 +1418,11 @@ def _census(c):
                                   # A shared folder's virtiofsd (R100), which an
                                   # install from before it did not bring.
                                   **({"virtiofs": vm["virtiofs"] is True} if "virtiofs" in vm else {})},
-                       "firewall": {"installed": fw.get("installed") is True}}
+                       "firewall": {"installed": fw.get("installed") is True},
+                       # The IOMMU on the kernel's command line (R116 step 4):
+                       # put there by BuilderBot, and on now, which a restart
+                       # and the firmware decide.
+                       "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True}}
     # ...and the VMs it runs (R91), each as libvirt says, with the room their
     # disks have: whitelisted field by field like the rest.
     if isinstance(c.get("vms"), list):
@@ -1420,6 +1443,9 @@ def _census(c):
                                # its host (R100), whitelisted field by field.
                                "autostart": v.get("autostart") is True,
                                "hw": _vm_hw(v.get("hw")),
+                               # The USB devices it was given from the node's
+                               # page (R116), as they were named.
+                               "usb": _vm_usb(v.get("usb")),
                                # What its guest agent says (R110 step 8): hostname,
                                # OS, kernel, addresses, who is signed in, every
                                # filesystem, whitelisted field by field.
@@ -1434,14 +1460,26 @@ def _census(c):
         hex_ = lambda x: str(x or "")[:8] if re.fullmatch(r"0x[0-9a-f]{1,6}", str(x or "")) else ""  # noqa: E731
         out["vm_host"] = {
             "cpus": [[int(c) for c in pr[:4] if isinstance(c, int)] for pr in (vh.get("cpus") or [])[:256] if isinstance(pr, list)],
+            # ...each USB device with what names it again and what the host
+            # does with it (R116): its serial, its port, its speed, the
+            # driver holding it, the controller it hangs off, and the use.
             "usb": [{"vendor": hex_(u.get("vendor")), "product": hex_(u.get("product")),
-                     "name": re.sub(r"[^\w .,:()+/-]", "", str(u.get("name") or ""))[:80]}
+                     "name": re.sub(r"[^\w .,:()+/-]", "", str(u.get("name") or ""))[:80],
+                     "serial": re.sub(r"[^\w.:+/-]", "", str(u.get("serial") or ""))[:64],
+                     "port": str(u.get("port") or "") if re.fullmatch(r"\d{1,3}-[\d.]{1,20}", str(u.get("port") or "")) else "",
+                     "bus": int(u.get("bus")) if isinstance(u.get("bus"), int) and 0 <= u["bus"] < 1000 else 0,
+                     "speed": re.sub(r"[^0-9.]", "", str(u.get("speed") or ""))[:8],
+                     "driver": re.sub(r"[^\w,-]", "", str(u.get("driver") or ""))[:60],
+                     "ctl": str(u.get("ctl") or "") if PCI_ADDR_RE.fullmatch(str(u.get("ctl") or "")) else "",
+                     "use": [re.sub(r"[^\w .,:()+/-]", "", str(x))[:120] for x in (u.get("use") or [])[:8] if isinstance(x, str)]}
                     for u in (vh.get("usb") or [])[:64] if isinstance(u, dict)],
             "pci": [{"addr": str(d.get("addr")), "class": hex_(d.get("class")), "vendor": hex_(d.get("vendor")),
                      "device": hex_(d.get("device")), "group": re.sub(r"\D", "", str(d.get("group") or ""))[:6],
-                     "driver": re.sub(r"[^\w-]", "", str(d.get("driver") or ""))[:30]}
+                     "driver": re.sub(r"[^\w-]", "", str(d.get("driver") or ""))[:30],
+                     # What the host itself needs of it (R116 step 4), in words.
+                     "host": re.sub(r"[^\w .,:()+/-]", "", str(d.get("host") or ""))[:120]}
                     for d in (vh.get("pci") or [])[:64]
-                    if isinstance(d, dict) and re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]", str(d.get("addr")))],
+                    if isinstance(d, dict) and PCI_ADDR_RE.fullmatch(str(d.get("addr")))],
             "iommu": vh.get("iommu") is True}
     # ...and the installer ISOs fetched onto it (R99).
     if isinstance(c.get("vm_isos"), list):
@@ -2935,6 +2973,8 @@ def node_feature(principal, node_id, fid, op):
     if op == "install" and fid == "vmhost" and not (fe.get("vmhost") or {}).get("kvm"):
         return {"error": f"{n['name']} has no /dev/kvm, so VMs would run in software, tens of times slower: on a VM, "
                          "its host passes virtualization through (CPU mode host-passthrough, nested KVM on)"}
+    if fid == "iommu" and not str(rep.get("arch") or "").startswith(("x86_64", "amd64")):
+        return {"error": f"the IOMMU switch is for an Intel or AMD machine; {n['name']} is {rep.get('arch') or 'another architecture'}"}
     if op == "install" and fid == "firewall" and not (n.get("config") or {}).get("host_only"):
         return {"error": "the hosting firewall is for a hosting-only node: it would shut the ports the controller "
                          "reaches sessions on"}

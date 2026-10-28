@@ -197,6 +197,10 @@ it, which is a paste rather than a questionnaire.
                        too), and port 22 unless a door closed it. Going
                        out is left alone: the box pulls images, renews
                        certificates and dials the controller.
+  --feature iommu      the IOMMU on the kernel's command line (intel_iommu=on
+                       or amd_iommu=on with iommu=pt), for a PCI device or
+                       a whole USB controller given to a VM; the machine
+                       restarts for it, which is yours to do
   --feature vmhost     a VM host: KVM through libvirt, for the VMs page
                        (needs /dev/kvm; on a VM, its host passes
                        virtualization through). Each feature is bb-sandbox
@@ -314,7 +318,7 @@ if [ -n "$REACH" ]; then
     case "$CONTROLLER" in https://*) ;; *) echo "through a public hostname the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
 fi
 for f in "${FEATURES_WANT[@]}"; do
-    case "$f" in vmhost|firewall) ;; *) echo "--feature takes vmhost or firewall, not ${f}" >&2; exit 1 ;; esac
+    case "$f" in vmhost|firewall|iommu) ;; *) echo "--feature takes vmhost, firewall or iommu, not ${f}" >&2; exit 1 ;; esac
     [ "${GUEST:-0}" != 1 ] || { echo "--feature ${f} needs root, and a guest node runs without it" >&2; exit 1; }
 done
 if [ "$FIREWALL" = 1 ]; then
@@ -3010,7 +3014,70 @@ UNIT
             say "firewall off: this box takes in what its other rules allow" ;;
     esac
 }
-FEATURE_IDS="vmhost firewall"
+# The IOMMU on the kernel's command line (R116 step 4): what passing a PCI
+# device or a whole USB controller to a VM needs. One marked block in the
+# bootloader's defaults, written by whichever of grubby, GRUB's defaults,
+# extlinux or systemd-boot the machine boots by, and taken out the same way;
+# the marker names the way so a remove undoes exactly that. The kernel
+# reads it at the next boot, which is the person's to ask for.
+feature_iommu() {
+    local vendor args marker="$FEATURES_DIR/iommu" way="" f
+    case "$1" in
+        state) [ -f "$marker" ] && echo installed || echo absent ;;
+        install)
+            vendor="$(awk -F: '/^vendor_id/{gsub(/ /,"",$2); print $2; exit}' /proc/cpuinfo 2>/dev/null)"
+            case "$vendor" in
+                GenuineIntel) args="intel_iommu=on iommu=pt" ;;
+                AuthenticAMD) args="amd_iommu=on iommu=pt" ;;
+                *) die "the IOMMU switch is for an Intel or AMD machine; this one's CPU says ${vendor:-nothing}" ;;
+            esac
+            say "IOMMU: $args on the kernel's command line"
+            install -d -m 0755 "$FEATURES_DIR"
+            if have grubby; then
+                grubby --update-kernel=ALL --args="$args" || die "grubby did not take the arguments"
+                way=grubby
+            elif [ -f /etc/default/grub ]; then
+                sed -i '/^# builderbot-iommu-begin$/,/^# builderbot-iommu-end$/d' /etc/default/grub
+                printf '# builderbot-iommu-begin\nGRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT %s"\n# builderbot-iommu-end\n' "$args" >> /etc/default/grub
+                grub_regen || die "GRUB's configuration did not regenerate; the block is in /etc/default/grub"
+                way=grub
+            elif [ -f /etc/update-extlinux.conf ]; then
+                sed -i "s/^default_kernel_opts=\"\(.*\)\"/default_kernel_opts=\"\1 $args\"/" /etc/update-extlinux.conf
+                update-extlinux >/dev/null 2>&1 || die "update-extlinux did not take it"
+                way=extlinux
+            elif [ -d /boot/loader/entries ]; then
+                for f in /boot/loader/entries/*.conf; do
+                    [ -f "$f" ] && sed -i "/^options /{/$args/!s/\$/ $args/}" "$f"
+                done
+                way=sdboot
+            else
+                die "no bootloader here that this knows (grubby, GRUB, extlinux, systemd-boot): add $args to the kernel's command line by hand"
+            fi
+            printf 'way=%s\nargs=%s\n' "$way" "$args" > "$marker"
+            say "IOMMU on at the next restart ($args, by $way); restart the machine, and if its groups stay empty turn VT-d or AMD-Vi on in the firmware" ;;
+        remove)
+            [ -f "$marker" ] || { say "the IOMMU line was not put there by BuilderBot; nothing to remove"; return 0; }
+            way="$(sed -n 's/^way=//p' "$marker")"; args="$(sed -n 's/^args=//p' "$marker")"
+            say "taking $args off the kernel's command line (by $way)"
+            case "$way" in
+                grubby) grubby --update-kernel=ALL --remove-args="$args" || warn "grubby did not take them off" ;;
+                grub) sed -i '/^# builderbot-iommu-begin$/,/^# builderbot-iommu-end$/d' /etc/default/grub; grub_regen || warn "GRUB's configuration did not regenerate" ;;
+                extlinux) sed -i "s/ $args//" /etc/update-extlinux.conf; update-extlinux >/dev/null 2>&1 || warn "update-extlinux did not take it" ;;
+                sdboot) for f in /boot/loader/entries/*.conf; do [ -f "$f" ] && sed -i "s/ $args//" "$f"; done ;;
+            esac
+            rm -f "$marker"
+            say "IOMMU off at the next restart" ;;
+    esac
+}
+# GRUB's configuration written again from its defaults, by whichever
+# command and path this family has.
+grub_regen() {
+    if have update-grub; then update-grub >/dev/null 2>&1
+    elif have grub2-mkconfig; then grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null 2>&1
+    elif have grub-mkconfig; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1
+    else return 1; fi
+}
+FEATURE_IDS="vmhost firewall iommu"
 cmd_feature() {
     local op="${1-}" id="${2-}"
     case "$op" in install|remove|state) ;; *) die "usage: bb-sandbox feature install|remove|state ID (one of: ${FEATURE_IDS})" ;; esac

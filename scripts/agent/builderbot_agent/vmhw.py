@@ -53,14 +53,29 @@ def host_hw(sys_root="/sys"):
             seen.add(sib)
             pairs.append(list(sib))
     usb = []
+    mounts = _mounts()
     for d in sorted(glob.glob(f"{sys_root}/bus/usb/devices/*")):
         v, p = _read(f"{d}/idVendor"), _read(f"{d}/idProduct")
         if not (v and p) or _read(f"{d}/bDeviceClass") == "09":     # hubs are the host's own
             continue
         name = " ".join(x for x in (_read(f"{d}/manufacturer"), _read(f"{d}/product")) if x)[:80]
-        usb.append({"vendor": "0x" + v.lower(), "product": "0x" + p.lower(), "name": name or f"{v}:{p}"})
+        # What names it again after a replug or a reboot (R116): its serial,
+        # and its port (bus-port.port, the physical socket) when two are
+        # alike; and what the host does with it, which a Give refuses on.
+        port = os.path.basename(d)
+        ifaces = glob.glob(f"{d}/{port}:*")
+        drivers = sorted({os.path.basename(os.readlink(f"{i}/driver")) for i in ifaces if os.path.islink(f"{i}/driver")})
+        disks = sorted(os.path.basename(b) for i in ifaces for b in glob.glob(f"{i}/host*/target*/*/block/*"))
+        real = os.path.realpath(d)
+        ctl = next((part for part in real.split("/") if PCI_RE.fullmatch(part)), "")
+        usb.append({"vendor": "0x" + v.lower(), "product": "0x" + p.lower(), "name": name or f"{v}:{p}",
+                    "serial": _read(f"{d}/serial")[:64], "port": port,
+                    "bus": int(_read(f"{d}/busnum") or 0), "dev": int(_read(f"{d}/devnum") or 0),
+                    "speed": _read(f"{d}/speed"), "driver": ",".join(drivers)[:60], "ctl": ctl,
+                    "use": _usb_use(disks, mounts, sys_root)})
     pci = []
     groups = glob.glob(f"{sys_root}/kernel/iommu_groups/*")
+    lan = _lan_pci(sys_root)
     for d in sorted(glob.glob(f"{sys_root}/bus/pci/devices/*")):
         addr = os.path.basename(d)
         cls = _read(f"{d}/class")
@@ -70,10 +85,159 @@ def host_hw(sys_root="/sys"):
             continue
         link = f"{d}/iommu_group"
         drv = f"{d}/driver"
+        # What the host itself needs of it (R116 step 4): the interface its
+        # default route leaves by, a storage controller with a mounted disk
+        # behind it, the USB controller a device the host uses hangs off.
+        host = ""
+        if addr == lan:
+            host = "the host's LAN interface"
+        elif cls.startswith("0x01"):
+            held = [u for u in _pci_disks(d, mounts) if u]
+            host = held[0] if held else ""
+        elif cls.startswith("0x0c03"):
+            held = [u["use"][0] for u in usb if u["ctl"] == addr and u["use"]]
+            host = held[0] if held else ""
         pci.append({"addr": addr, "class": cls[:8], "vendor": _read(f"{d}/vendor"), "device": _read(f"{d}/device"),
                     "group": os.path.basename(os.readlink(link)) if os.path.islink(link) else "",
-                    "driver": os.path.basename(os.readlink(drv)) if os.path.islink(drv) else ""})
+                    "driver": os.path.basename(os.readlink(drv)) if os.path.islink(drv) else "", "host": host})
     return {"cpus": pairs[:256], "usb": usb[:64], "pci": pci[:64], "iommu": bool(groups)}
+
+
+def _mounts():
+    """What is mounted where, by device, with the swap devices."""
+    out = {}
+    for path, col in (("/proc/mounts", 1), ("/proc/swaps", -1)):
+        try:
+            with open(path) as f:
+                for line in f.read().splitlines()[1 if col < 0 else 0:]:
+                    p = line.split()
+                    if len(p) > 1 and p[0].startswith("/dev/"):
+                        out.setdefault(os.path.realpath(p[0]), p[col] if col > 0 else "swap")
+        except OSError:
+            pass
+    return out
+
+
+def _disk_use(dk, mounts, sys_root="/sys"):
+    """How the host uses block device `dk` and its partitions: a mount (the
+    root or /boot said as booting from it), swap, or a pool (md, LVM, a
+    mapper) holding it."""
+    for dev, mnt in mounts.items():
+        base = os.path.basename(dev)
+        if base == dk or re.fullmatch(rf"{re.escape(dk)}p?\d+", base):
+            if mnt in ("/", "/boot", "/boot/efi"):
+                return f"the host boots from it ({base} is {mnt})"
+            return f"{base} is {'swap' if mnt == 'swap' else 'mounted at ' + mnt}"
+    held = glob.glob(f"{sys_root}/block/{dk}/holders/*") + glob.glob(f"{sys_root}/block/{dk}/{dk}*/holders/*")
+    if held:
+        return f"{dk} is in {os.path.basename(held[0])} (a pool or a mapper)"
+    return ""
+
+
+def _usb_use(disks, mounts, sys_root="/sys"):
+    return [u for u in (_disk_use(dk, mounts, sys_root) for dk in disks) if u][:8]
+
+
+def _pci_disks(d, mounts):
+    """The use of each disk behind a storage controller's sysfs directory."""
+    return [_disk_use(os.path.basename(b), mounts) for b in glob.glob(f"{d}/*/host*/target*/*/block/*")
+            + glob.glob(f"{d}/host*/target*/*/block/*") + glob.glob(f"{d}/nvme/nvme*/nvme*n*")]
+
+
+def _lan_pci(sys_root="/sys"):
+    """The PCI address of the interface the default route leaves by."""
+    try:
+        with open("/proc/net/route") as f:
+            for line in f.read().splitlines()[1:]:
+                p = line.split()
+                if len(p) > 3 and p[1] == "00000000" and int(p[3], 16) & 2:
+                    dev = f"{sys_root}/class/net/{p[0]}/device"
+                    return os.path.basename(os.path.realpath(dev)) if os.path.islink(dev) else ""
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
+USB_SERIAL_RE = re.compile(r"[\w.:+/-]{0,64}")
+USB_PORT_RE = re.compile(r"\d{1,3}-[\d.]{1,20}")
+
+
+def usb_want(d):
+    """A device as the controller names one (R116): its vendor and product,
+    its serial and its port; None when it is not that shape."""
+    if not isinstance(d, dict) or not (USB_ID_RE.fullmatch(str(d.get("vendor"))) and USB_ID_RE.fullmatch(str(d.get("product")))):
+        return None
+    serial, port = str(d.get("serial") or ""), str(d.get("port") or "")
+    if not USB_SERIAL_RE.fullmatch(serial) or (port and not USB_PORT_RE.fullmatch(port)):
+        return None
+    return {"vendor": d["vendor"], "product": d["product"], "serial": serial, "port": port}
+
+
+def usb_find(usb, want):
+    """The host's device `want` names, or None: the ones of its vendor and
+    product, the one with its serial among them, and when two are alike with
+    no serial to tell them apart, the one in its port."""
+    same = [u for u in usb if u.get("vendor") == want["vendor"] and u.get("product") == want["product"]]
+    if want.get("serial"):
+        # A serial named is the device: one alike with another serial is
+        # another device, never a match.
+        same = [u for u in same if u.get("serial") == want["serial"]]
+    if len(same) > 1 and want.get("port"):
+        same = [u for u in same if u.get("port") == want["port"]]
+    return same[0] if same else None
+
+
+def usb_same(a, b):
+    """Whether two device names are of one device: vendor and product, and
+    the serial where both have one, else the port where both have one."""
+    if (a.get("vendor"), a.get("product")) != (b.get("vendor"), b.get("product")):
+        return False
+    if a.get("serial") and b.get("serial"):
+        return a["serial"] == b["serial"]
+    if a.get("port") and b.get("port"):
+        return a["port"] == b["port"]
+    return True
+
+
+def usb_hostdev(dev, by_address=False):
+    """libvirt's hostdev for one USB device (R116 step 3): by vendor and
+    product, optional at the VM's start so a stick pulled out does not keep
+    it from starting, and by its bus and device number too when the host
+    has two alike, so the right one goes."""
+    h = ET.Element("hostdev", mode="subsystem", type="usb", managed="yes")
+    src = ET.SubElement(h, "source", startupPolicy="optional")
+    ET.SubElement(src, "vendor", id=dev["vendor"])
+    ET.SubElement(src, "product", id=dev["product"])
+    if by_address:
+        ET.SubElement(src, "address", bus=str(int(dev.get("bus") or 0)), device=str(int(dev.get("dev") or 0)))
+    return ET.tostring(h, encoding="unicode")
+
+
+def usb_refresh(xml, kept, usb):
+    """The domain's USB hostdevs that name a bus and device number, pointed
+    at where each device is now (its numbers move with every replug and
+    reboot): the new XML, or None when nothing moved. A device not here now
+    keeps its old numbers; its source is optional, so the VM starts without
+    it."""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return None
+    moved = False
+    for h in root.findall("devices/hostdev"):
+        if h.get("type") != "usb":
+            continue
+        src, addr = h.find("source"), h.find("source/address")
+        v, p = h.find("source/vendor"), h.find("source/product")
+        if src is None or addr is None or v is None or p is None:
+            continue
+        want = next((k for k in kept if k.get("vendor") == v.get("id") and k.get("product") == p.get("id")), None)
+        dev = usb_find(usb, want) if want else None
+        if dev and (addr.get("bus"), addr.get("device")) != (str(dev["bus"]), str(dev["dev"])):
+            addr.set("bus", str(dev["bus"]))
+            addr.set("device", str(dev["dev"]))
+            moved = True
+    return ET.tostring(root, encoding="unicode") if moved else None
 
 
 def clean(hw, vcpus, mem_mb):
@@ -225,7 +389,7 @@ def apply(xml, hw, vcpus, mem_mb, lan="", network="", vbios_dir="", fsd=""):
         for d in hw["devices"]:
             if d["type"] == "usb":
                 h = ET.SubElement(dev, "hostdev", mode="subsystem", type="usb", managed="yes")
-                src = ET.SubElement(h, "source")
+                src = ET.SubElement(h, "source", startupPolicy="optional")
                 ET.SubElement(src, "vendor", id=d["vendor"])
                 ET.SubElement(src, "product", id=d["product"])
             else:

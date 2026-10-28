@@ -29,7 +29,8 @@ SNAP_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}")
 USER_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
 KEY_RE = re.compile(r"(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/=]{20,800}( [^\n]{0,100})?")
 ACTIONS = ("create", "start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm",
-           "eject", "disk-grow", "disk-add", "iso-add", "iso-rm", "hardware", "autostart", "vbios")
+           "eject", "disk-grow", "disk-add", "iso-add", "iso-rm", "hardware", "autostart", "vbios",
+           "usb-give", "usb-take")
 # An installer ISO a person fetched onto this node (R99), by its own name.
 ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -147,7 +148,7 @@ def vms_now():
         # it starts with its host.
         hw = vmhw.read(_run(VIRSH + ["dumpxml", name, "--inactive"], timeout=10))
         facts = guest_facts(name) if info.get("state") == "running" else {}
-        out.append({"hw": hw, "autostart": info.get("autostart") == "enable",
+        out.append({"hw": hw, "autostart": info.get("autostart") == "enable", "usb": usb_kept(name),
                     **({"guest": facts} if facts else {}),
                     "screen": bool(screen), "iso": iso if ISO_RE.fullmatch(iso) else "",
                     "name": name, "state": _state_word(info.get("state", "")), "ip": ip,
@@ -220,6 +221,36 @@ def vmnet_keep(ctl, lan=False, now=0.0, nft="nft"):
         return f"nft refused the VMs' table: {(p.stderr or p.stdout).strip()[:200]}"
     _vmnet["applied"] = want
     return ""
+
+
+def usb_kept(name):
+    """The USB devices a VM was given from the node's page (R116), as the
+    controller named them (vendor, product, serial, port, name), kept beside
+    its disk so each is found again at its start wherever it is plugged in
+    now; nothing for a VM given none."""
+    try:
+        with open(os.path.join(VM_DIR, "disks", name + ".usb.json")) as f:
+            rows = json.load(f)
+    except (OSError, ValueError):
+        return []
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        w = vmhw.usb_want(r)
+        if w:
+            out.append({**w, "name": str(r.get("name") or "")[:80]})
+    return out[:8]
+
+
+def usb_keep(name, rows):
+    path = os.path.join(VM_DIR, "disks", name + ".usb.json")
+    if not rows:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        return
+    with open(path, "w") as f:
+        json.dump(rows, f)
 
 
 def lan_iface():
@@ -910,7 +941,89 @@ class VmsMixin:
         return ("succeeded", 0) if self._vm_run(job, VIRSH + argv, who, timeout=timeout) == 0 else ("failed", 70)
 
     def _vm_start(self, job, spec, name, who):
+        # A USB device given by its numbers (two alike on the host) has new
+        # ones after a replug or a reboot (R116): its hostdev pointed at
+        # where it is now before the VM starts, by its serial or its port.
+        kept = usb_kept(name)
+        if kept and self._vm_exists(name, who):
+            xml = subprocess.run(VIRSH + ["dumpxml", name, "--inactive"], capture_output=True, text=True,
+                                 check=False, **who).stdout
+            fresh = vmhw.usb_refresh(xml, kept, vmhw.host_hw()["usb"])
+            if fresh:
+                path = os.path.join(VM_DIR, "disks", name + ".xml")
+                with open(path, "w") as f:
+                    f.write(fresh)
+                self._vm_run(job, VIRSH + ["define", path], who)
         return self._vm_simple(job, name, who, ["start", name])
+
+    def _vm_usb_give(self, job, spec, name, who):
+        return self._vm_usb(job, spec, name, who, give=True)
+
+    def _vm_usb_take(self, job, spec, name, who):
+        return self._vm_usb(job, spec, name, who, give=False)
+
+    def _vm_usb(self, job, spec, name, who, give):
+        """A USB device given to a VM, or taken back (R116 step 3): libvirt's
+        hostdev attached live to a running VM and written into its
+        definition (detached and struck out for a take), so it has it now
+        and at its next start. Refused for a device the host boots from,
+        serves storage on or has in a pool, and for one another VM here
+        holds."""
+        want = vmhw.usb_want(spec.get("usb"))
+        if not want:
+            job.say("refused: name the device by its vendor and product, with its serial or its port\n")
+            return "failed", 64
+        if not self._vm_exists(name, who):
+            job.say(f"{name} is not on this machine\n")
+            return "failed", 66
+        said = str((spec.get("usb") or {}).get("name") or "")[:80] or f"{want['vendor'][2:]}:{want['product'][2:]}"
+        host = vmhw.host_hw()
+        dev = vmhw.usb_find(host["usb"], want)
+        kept = usb_kept(name)
+        running = "running" in subprocess.run(VIRSH + ["domstate", name], capture_output=True, text=True,
+                                              check=False, **who).stdout
+        if give:
+            if not dev:
+                job.say(f"refused: {said} is not plugged into this machine now\n")
+                return "failed", 66
+            if dev["use"]:
+                job.say(f"refused: the host uses {said}: {'; '.join(dev['use'])}\n")
+                return "failed", 75
+            for other in [n for n in _run(VIRSH + ["list", "--all", "--name"], timeout=15).split() if DOMAIN_RE.fullmatch(n) and n != name]:
+                if any(vmhw.usb_same(k, dev) for k in usb_kept(other)):
+                    job.say(f"refused: {other} holds {said}; take it back from it first\n")
+                    return "failed", 75
+            alike = sum(1 for u in host["usb"] if u["vendor"] == dev["vendor"] and u["product"] == dev["product"]) > 1
+            xml = vmhw.usb_hostdev(dev, by_address=alike)
+            verb = "attach-device"
+        else:
+            had = next((k for k in kept if vmhw.usb_same(k, want)), None)
+            if not had and not dev:
+                job.say(f"refused: {name} does not hold {said}\n")
+                return "failed", 66
+            dev = dev or had
+            alike = bool(dev.get("bus")) and sum(1 for u in host["usb"] if u["vendor"] == dev["vendor"] and u["product"] == dev["product"]) > 1
+            xml = vmhw.usb_hostdev(dev, by_address=alike)
+            verb = "detach-device"
+        path = os.path.join(VM_DIR, "disks", name + ".hostdev.xml")
+        with open(path, "w") as f:
+            f.write(xml)
+        rc = self._vm_run(job, VIRSH + [verb, name, path, "--persistent"], who)
+        if rc != 0 and give:
+            return "failed", 70
+        if rc != 0:
+            job.say(f"{name} did not have {said} in its definition; struck off its list\n")
+        kept = [k for k in kept if not vmhw.usb_same(k, dev)]
+        if give:
+            kept.append({"vendor": dev["vendor"], "product": dev["product"], "serial": dev.get("serial") or "",
+                         "port": dev.get("port") or "", "name": dev.get("name") or said})
+        usb_keep(name, kept[:8])
+        if give:
+            job.say(f"{name} has {said} {'now, and keeps it at its next start' if running else 'from its next start'}"
+                    f"{' (by its numbers, since two alike are here; found again by its serial or its port when it starts)' if alike else ''}\n")
+        else:
+            job.say(f"{said} is the host's again{', taken out of ' + name + ' now' if running else ''}\n")
+        return "succeeded", 0
 
     def _vm_stop(self, job, spec, name, who):
         # Asked to shut down, as a power button; --force pulls the plug.

@@ -1236,7 +1236,12 @@ itself a VM has only when its host passes virtualization through (CPU mode
 host-passthrough, nested KVM on), and without it the row says so rather
 than offering a software-emulated VM. Its remove is refused while any VM is
 there. The firewall above is the second feature, a hosting-only node's
-alone.
+alone. The third is the **IOMMU** (R116): `intel_iommu=on` or `amd_iommu=on`
+with `iommu=pt` on the kernel's command line, written as one marked block
+by whichever of grubby, GRUB's defaults, extlinux or systemd-boot boots the
+machine (the marker names the way, so the remove undoes exactly that), read
+at the next boot, which the row asks the person for; the census says both
+whether BuilderBot wrote it and whether the running kernel has groups.
 
 **Which projects a container may go under.** The project pickers on Send,
 on a row's Project and Built from, and the project a Send, copy or move is

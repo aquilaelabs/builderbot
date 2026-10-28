@@ -587,6 +587,102 @@ function nodeRouterSection(n){
   return docSection("nodes", "router", title, status === "none" ? "" : status, body, {cls: ""});
 }
 
+// ---- USB (R116) ----
+// The machine's USB devices, each with what holds it (the host, a VM,
+// nothing), Give to a VM and Take back, and its USB controllers with what
+// hangs off each, given whole through the VM's Hardware dialog. Drawn only
+// on a node with VM host installed: without one there is nothing to give a
+// device to. The VMs on this node come from the VMs page's own read.
+let nodeUsbAsked = false;       // the VMs read asked for once by the USB section
+function usbHolder(u, vmsHere){
+  // The VM holding it, by the device's name as the node keeps it on the VM.
+  const same = (a, b) => a.vendor === b.vendor && a.product === b.product
+    && (a.serial && b.serial ? a.serial === b.serial : a.port && b.port ? a.port === b.port : true);
+  return vmsHere.find(v => (v.usb || []).some(k => same(k, u))) || null;
+}
+function usbWords(u){
+  const id = `${(u.vendor || "").slice(2)}:${(u.product || "").slice(2)}`;
+  const speed = u.speed ? `${+u.speed >= 1000 ? `${+u.speed / 1000} Gb/s` : `${u.speed} Mb/s`}` : "";
+  return [id, u.serial ? `serial ${u.serial}` : "", u.port ? `bus ${u.bus || u.port.split("-")[0]} port ${u.port}` : "", speed,
+          u.driver ? `held by ${u.driver}` : ""].filter(Boolean).join(" · ");
+}
+function nodeUsbSection(n){
+  const hw = n.reported?.vm_host;
+  if (!n.reported?.features?.vmhost?.installed || !hw) return "";
+  const title = ndTitle("usb");
+  // The VMs page's own read, and this page drawn again once it lands.
+  if (vmsData === null && !nodeUsbAsked){ nodeUsbAsked = true; loadVms().then(() => { nodesRev++; drawPanes(); }); }
+  const vmsHere = (vmsData?.vms || []).filter(v => v.node === n.id && !["making", "removing", "failed", "missing"].includes(v.state));
+  const admin = !!state?.can?.admin && nodeMay(n) === "write";
+  const why = !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const pick = (u, key) => vmsHere.length ? `<select data-usbvm="${key}">${vmsHere.map(v => `<option value="${esc(v.project)}/${esc(v.name)}">${esc(v.project)}/${esc(v.name)} (${esc(v.state)})</option>`).join("")}</select>
+      <button type="button" data-usbgive="${key}">Give to a VM</button>` : `<span class="sub dim">no VM on this node to give it to</span>`;
+  const rows = (hw.usb || []).map((u, i) => {
+    const key = String(i);
+    const held = usbHolder(u, vmsHere);
+    const pill = held ? `<span class="pill ok">${esc(held.project)}/${esc(held.name)}</span>`
+      : u.use?.length ? `<span class="pill">the host</span>` : `<span class="pill">free</span>`;
+    const uses = u.use?.length ? `<div class="sub dim">The host uses it: ${esc(u.use.join("; "))}.</div>` : "";
+    const heldLine = held ? `<div class="sub">${esc(held.project)}/${esc(held.name)} has it${held.state === "running" ? " now, and at its next start" : " from its next start"}.</div>` : "";
+    const acts = !admin || why ? "" : held
+      ? `<button type="button" data-usbtake="${key}" data-vm="${esc(held.project)}/${esc(held.name)}">Take back</button>`
+      : u.use?.length ? "" : pick(u, key);
+    return `<div class="row ndusb" data-usb="${esc(u.vendor)}:${esc(u.product)}"><div class="grow">
+        <div class="name">${esc(u.name || "USB device")} ${pill}</div>
+        <div class="sub">${esc(usbWords(u))}</div>${uses}${heldLine}</div>
+        <span class="acts">${acts}</span></div>`;
+  });
+  // Its USB controllers (step 4): the advanced way, a whole controller to a
+  // VM through VFIO, from the VM's Hardware dialog; what hangs off each,
+  // its IOMMU group, and what the host needs that shares the group.
+  const ctls = (hw.pci || []).filter(p => (p.class || "").startsWith("0x0c03"));
+  const ctlRows = ctls.map(p => {
+    const on = (hw.usb || []).filter(u => u.ctl === p.addr).map(u => u.name || `${u.vendor.slice(2)}:${u.product.slice(2)}`);
+    const mates = (hw.pci || []).filter(q => q.addr !== p.addr && p.group && q.group === p.group && q.host);
+    const holder = vmsHere.find(v => (v.hw?.devices || []).some(d => d.type === "pci" && d.addr === p.addr));
+    const cant = !hw.iommu ? "The IOMMU is off here: the Features section turns it on."
+      : mates.length ? `Shares IOMMU group ${esc(p.group)} with ${esc(mates.map(m => `${m.addr} (${m.host})`).join(", "))}, which the host needs, so it stays.`
+      : p.host ? `The host needs it: ${esc(p.host)}.` : "";
+    return `<div class="row ndusbctl" data-usbctl="${esc(p.addr)}"><div class="grow">
+        <div class="name">USB controller ${esc(p.addr)} ${holder ? `<span class="pill ok">${esc(holder.project)}/${esc(holder.name)}</span>` : ""}</div>
+        <div class="sub">${esc([p.driver || "no driver", p.group ? `IOMMU group ${p.group}` : "", on.length ? `carries ${on.join(", ")}` : "nothing on it"].filter(Boolean).join(" · "))}</div>
+        ${cant ? `<div class="sub dim">${cant}</div>` : `<div class="sub dim">Given whole to a stopped VM under Hardware… on the VMs page, with everything on it; the VM must be off.</div>`}</div></div>`;
+  });
+  const body = `<div class="field"><div class="sub">A device given to a running VM is attached now and kept in its definition; a stopped one has it from its next start.
+      It is found again by its serial after a replug or a reboot, by its port when two are alike. A device the host boots from, serves storage on or has in a pool stays the host's.</div></div>
+    ${why ? `<div class="sub dim">${why}</div>` : ""}
+    ${rows.length ? `<div class="rows">${rows.join("")}</div>` : `<div class="empty">No USB device on this machine${n.reported?.at ? "" : " that it has reported yet"}.</div>`}
+    ${ctlRows.length ? `<div class="field"><div class="hint">Controllers</div></div><div class="rows">${ctlRows.join("")}</div>` : ""}`;
+  const held = (hw.usb || []).filter(u => usbHolder(u, vmsHere)).length;
+  return docSection("nodes", "usb", title, hw.usb?.length ? `${hw.usb.length} device${hw.usb.length === 1 ? "" : "s"}${held ? `, ${held} in a VM` : ""}` : "", body);
+}
+function wireUsbSection(root, n){
+  const sect = root.querySelector('details[data-sect="nodes:usb"]');
+  if (!sect) return;
+  const usb = n.reported?.vm_host?.usb || [];
+  const named = u => ({vendor: u.vendor, product: u.product, serial: u.serial || "", port: u.port || ""});
+  sect.querySelectorAll("[data-usbgive]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const u = usb[+b.dataset.usbgive];
+    const [project, name] = (sect.querySelector(`[data-usbvm="${b.dataset.usbgive}"]`)?.value || "/").split("/");
+    if (!u || !project) return;
+    busy(b, "Giving");
+    const j = await (await postJSON("/api/vms", {action: "usb-give", project, name, usb: named(u)})).json();
+    if (j.error) notify(j.error, true);
+    else notify(`giving ${u.name || "the device"} to ${project}/${name}; the row says once the node reports back`);
+    setTimeout(loadVms, 4000);
+  }));
+  sect.querySelectorAll("[data-usbtake]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const u = usb[+b.dataset.usbtake];
+    const [project, name] = (b.dataset.vm || "/").split("/");
+    if (!u || !project) return;
+    busy(b, "Taking");
+    const j = await (await postJSON("/api/vms", {action: "usb-take", project, name, usb: named(u)})).json();
+    if (j.error) notify(j.error, true);
+    else notify(`${u.name || "the device"} is the host's again once the node reports back`);
+    setTimeout(loadVms, 4000);
+  }));
+}
+
 function wireRouterSection(root){
   const sect = root.querySelector('details[data-sect="nodes:router"]');
   if (!sect) return;
@@ -663,6 +759,16 @@ function nodeFeaturesSection(n){
   if (n.config?.host_only)
     rows.push(row("firewall", "Hosting firewall", !!fe?.firewall?.installed,
       "Takes in only 80 and 443, a port a container publishes included; port 22 as the SSH door leaves it.", ""));
+  // The IOMMU on the kernel's command line (R116 step 4): what passing a
+  // PCI device or a whole USB controller to a VM needs. Installed is the
+  // line written; on is what the running kernel says, after a restart.
+  const io = fe?.iommu || {};
+  if (vm.installed || io.installed)
+    rows.push(row("iommu", "IOMMU", !!io.installed,
+      `Lets a PCI device or a whole USB controller go to a VM (intel_iommu=on or amd_iommu=on with iommu=pt on the kernel's command line).${
+        io.installed ? (io.on ? " On now." : " Not on yet: restart the machine; if it stays off after that, turn VT-d or AMD-Vi on in its firmware.")
+          : io.on || n.reported?.vm_host?.iommu ? " On already, set outside BuilderBot." : ""}`,
+      ""));
   // The features installed elsewhere on the page (R91 step 1): each said as
   // the machine reports it, with the press that installs or removes it where
   // it already lives, since those take a license to accept (Google's, NVIDIA's)
@@ -694,7 +800,7 @@ function nodeFeaturesSection(n){
   const runs = ((r.services || {}).runners || []).length;
   others.push(elsewhere("runner", "CI runner", runs > 0, runs ? `${runs} runner${runs === 1 ? "" : "s"} registered here.` : "A forge's runner, registered with a token from the forge on the CI runner page.", ""));
   rows.push(...others);
-  const have = fe ? [fe.vmhost?.installed, n.config?.host_only && fe.firewall?.installed].filter(Boolean).length
+  const have = fe ? [fe.vmhost?.installed, n.config?.host_only && fe.firewall?.installed, fe.iommu?.installed].filter(Boolean).length
     + others.filter(h => / ok">installed/.test(h)).length : 0;
   return docSection("nodes", "features", ndTitle("features"), fe ? (have ? `${have} installed` : "none installed") : "",
     `${why ? `<div class="sub dim ndfeatwhy">${why}</div>` : ""}${rows.join("")}`);
@@ -1621,7 +1727,7 @@ function nodeCharts(n){
 // template written beside the page fell behind it), so a change to either
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
-const ND_SECTS = [["health", "Health"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"],
+const ND_SECTS = [["health", "Health"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"], ["usb", "USB"],
                   ["router", "Model router"], ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
@@ -1671,7 +1777,7 @@ function renderNodesInto(i){
     d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
         <div class="name">${skv(7)}</div>${ndFacts(null)}
         <div class="actbar ndagent"><span class="lead dim"></span>${ndAgentButtons(true)}</div></div>
-      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu").map(([k, t], j) =>
+      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu" && k !== "usb").map(([k, t], j) =>
         docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
     sectJump(d.list.closest(".doctab") || d.el);
     loadNodes();
@@ -1823,6 +1929,7 @@ function renderNodesInto(i){
         ${n.kind === "agent" && !pending ? nodeProjectsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeUsbSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeRouterSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeFeaturesSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
@@ -2494,6 +2601,8 @@ function wireNodesTab(root){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         if (!await askYes(b.dataset.feature === "vmhost"
               ? `Uninstall VM host from ${name}?\n\nThe packages BuilderBot added for it come off; what the machine had before stays. It is refused while any VM is still there.`
+              : b.dataset.feature === "iommu"
+              ? `Take the IOMMU off ${name}'s kernel command line?\n\nAfter its next restart no PCI device or USB controller can go to a VM there.`
               : `Turn the hosting firewall off on ${name}?\n\nEvery port this box and its containers publish is reachable from the internet again.`)) return;
       }
       if (act === "cache-clear"
@@ -2666,6 +2775,7 @@ function wireNodesTab(root){
       if (el) el.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft[key] = el.checked; sessWake(); };
     }
     wireRouterSection(box);
+    wireUsbSection(box, nodesList.find(x => x.id === id) || {});
     // The GPU section's two switches (R102): drafts until its Apply.
     const ge = box.querySelector('[data-k="gpuemu"]');
     if (ge) ge.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuEmu = ge.checked; };

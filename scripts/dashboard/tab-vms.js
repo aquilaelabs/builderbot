@@ -487,7 +487,12 @@ function vmHwLine(v){
   if (hw.mem_max_mb) bits.push(`memory up to ${+(hw.mem_max_mb / 1024).toFixed(1)} GB`);
   if (hw.net === "lan" && !v.node_id) bits.push("on the LAN");
   if (hw.share?.path) bits.push(`sees ${hw.share.path.replace(/^\/workspace\//, "")}${hw.share.ro ? " read-only" : ""} as "${hw.share.tag}"`);
-  if ((hw.devices || []).length) bits.push(`${hw.devices.length} device${hw.devices.length > 1 ? "s" : ""} passed through`);
+  // The USB devices it was given from its node's page, by name (R116);
+  // the rest of what is passed through, counted.
+  const usb = v.usb || [];
+  if (usb.length) bits.push(`USB: ${usb.map(u => u.name || `${u.vendor.slice(2)}:${u.product.slice(2)}`).join(", ")}`);
+  const rest = (hw.devices || []).filter(d => d.type !== "usb" || !usb.some(u => u.vendor === d.vendor && u.product === d.product));
+  if (rest.length) bits.push(`${rest.length} device${rest.length > 1 ? "s" : ""} passed through`);
   return bits.length ? `<div class="sub dmorigin">${esc(bits.join(" · "))}</div>` : "";
 }
 function vmHwFields(host, hw, admin){

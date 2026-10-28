@@ -4455,7 +4455,9 @@ vms.configure(state=STATE, write_json=write_json, node=nodes.node, node_list=nod
               node_retire=lambda by, nid: nodes.node_state(by, nid, "retired"),
               node_mark=nodes.node_vm_of, node_discard=nodes.node_discard, job_tail=nodes.job_tail)
 nodes.on_done("vm", vms.vm_done)
-phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, req, True)
+# ...run as an administrator's, since the asks go to the administrators
+# alone and Allow is theirs (R116): a device passed through lands.
+phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, dict(req, _admin=True), True)
 
 
 def _with_vmnets(nid, own):
@@ -7134,10 +7136,10 @@ class Handler(BaseHTTPRequestHandler):
         # A feature this install switched off (R81) answers its sentence.
         if why := featuresoff.refused("GET", path):
             return self._json({"error": why, "off": True}, 403)
-        for how, route, name in GET_ROUTES:
-            if (path == route) if how == "exact" else self.path.startswith(route):
         # An exact route is the path without its query (B409): /api/audit?n=50
         # and /api/router?node=N are the exact routes' own reads.
+        for how, route, name in GET_ROUTES:
+            if (path == route) if how == "exact" else self.path.startswith(route):
                 return getattr(self, name)()
         self._json({"error": "not found"}, 404)
 
@@ -7895,7 +7897,9 @@ class Handler(BaseHTTPRequestHandler):
             if mode == "deny":
                 return self._json({"error": f"{sess}'s settings say an agent may not make or change VMs "
                                             "(Make VMs is deny): a person changes that in the project's settings"}, 403)
-            if mode == "ask":
+            # A USB device to a VM is held for a person whatever the dial
+            # says (R116 step 6): a device can be a disk or a key.
+            if mode == "ask" or action in ("usb-give", "usb-take"):
                 r = phone.ask_vm(field(req, "why") or f"{action} {field(req, 'name')}", sess, req,
                                  asker_name=(me.get("name") or ""))
                 return self._result(r)

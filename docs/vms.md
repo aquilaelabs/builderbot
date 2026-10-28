@@ -162,8 +162,12 @@ says what it was given.
 - **Devices passed through**: a USB device by its vendor and product, or a
   PCI device (a GPU, its sound, a controller) by its address. These are an
   administrator's alone, and a PCI device needs the IOMMU on in the node's
-  firmware and kernel (`intel_iommu=on` or `amd_iommu=on`); the dialog says
-  when it is off. A card the node's own display runs on is refused.
+  firmware and kernel (`intel_iommu=on` or `amd_iommu=on`, which the node's
+  Features section turns on); the dialog says when it is off. A card the
+  node's own display runs on is refused, and so is a device that shares its
+  IOMMU group with something the host needs (its LAN interface, the
+  controller of a mounted disk), with what shares it. A USB device is
+  simpler given from the node's page, below, which needs no stop.
 - **Dump vBIOS**, beside a GPU: reads the card's ROM on the node as root
   and keeps it, so passing it through hands the VM a clean copy, which
   some cards need before a VM will start with them. A card that reads
@@ -174,6 +178,36 @@ says what it was given.
 
 **Starts with its host**, on the row and at New VM, starts the VM whenever
 its node boots; a VM made a node always does.
+
+## USB devices
+
+A node's page has a **USB** section once VM host is installed there: each
+USB device the machine reports (its name, vendor and product, serial, bus
+and port, speed and the driver holding it) with what holds it: **free**,
+**the host** (with why: it boots from it, a partition is mounted, it is in
+a pool) or the VM it was given to. **Give to a VM** picks one of that
+node's VMs and queues the node's `usb-give` job: libvirt's hostdev for the
+device, attached live to a running VM and written into its definition, so
+a running VM has it now and at its next start and a stopped one from its
+next start; **Take back** detaches it the same way. The device is named by
+its vendor, product and serial, so it is found again after a replug or a
+reboot wherever it is plugged in; two alike with no serial are told apart
+by their port, and a VM given one of those is pointed at the right one each
+time it starts. A device pulled out does not keep the VM from starting
+(the hostdev is optional). The VM's row on the VMs page names the devices
+it holds. Giving or taking is an administrator's, since a device can be a
+disk or a key; the section draws no press for anyone else.
+
+The section's **Controllers** list the machine's USB controllers with what
+hangs off each and its IOMMU group: a controller goes to a VM whole, with
+everything on it, through the VM's **Hardware…** dialog (VFIO, the VM
+stopped), for a device that misbehaves over USB passthrough. One sharing
+its group with something the host needs says so and stays. The IOMMU
+itself is a feature on the node's Features section: **Install** puts
+`intel_iommu=on` or `amd_iommu=on` with `iommu=pt` on the kernel's command
+line (through grubby, GRUB, extlinux or systemd-boot, whichever boots the
+machine) and the row asks for a restart; if the groups stay empty after
+one, VT-d or AMD-Vi is off in the firmware.
 
 ## From a session
 
@@ -187,10 +221,15 @@ bb vm revert db clean       and back
 bb vm stop db && bb vm grow db 60          a larger disk; the system inside grows its partition
 bb vm hardware db --pin 2,3 --mem-max 8G --share data --ro
 bb vm autostart db on       it starts when its node boots
+bb vm devices               the USB devices on the project's VM hosts, each with what holds it
+bb vm usb db give 0781:5583:4C53   a device to the VM, held for a person on the bell
+bb vm usb db take 0781:5583:4C53   and back
 bb vm rm db
 ```
 
 Each is under the same Make VMs setting as making one. A session's
 hardware stops at its own project: it may pin, give a memory ceiling and
 share a folder of the project, while putting a VM on the LAN and passing a
-device through are a person's, from the VMs page.
+device through are a person's, from the VMs page; a USB device asked for
+with `bb vm usb` is held for an administrator on the bell whatever Make VMs
+says, since a device can be a disk or a key.

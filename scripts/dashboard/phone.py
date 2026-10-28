@@ -1213,7 +1213,7 @@ def ask_vm(why, project, req, asker_name=""):
              if action == "new" else ["vm", action, name] + ([str(req.get("snapshot"))] if req.get("snapshot") else []))
     keep = {k: req.get(k) for k in ("action", "name", "os", "vcpus", "mem_mb", "disk_gb", "keys", "user", "node",
                                      "snapshot", "note", "force", "node_agent", "ctl", "hw", "autostart", "on",
-                                     "disks", "disk", "gb")
+                                     "disks", "disk", "gb", "usb")
             if req.get(k) not in (None, "")}
     if keep.get("node_agent"):
         shown.append("--node-agent")
@@ -1233,6 +1233,13 @@ def ask_vm(why, project, req, asker_name=""):
         shown += [str(keep["disk"])] * bool(keep.get("disk")) + [f"{keep['gb']}G"]
     if action == "autostart":
         shown.append("on" if keep.get("on") else "off")
+    # A USB device to a VM (R116), as bb vm usb names it.
+    if action in ("usb-give", "usb-take") and isinstance(keep.get("usb"), dict):
+        u = keep["usb"]
+        shown = ["vm", "usb", name, "give" if action == "usb-give" else "take",
+                 f"{str(u.get('vendor') or '')[2:]}:{str(u.get('product') or '')[2:]}" + (f":{u['serial']}" if u.get("serial") else "")]
+        if u.get("port") and not u.get("serial"):
+            shown += ["--port", str(u["port"])]
     if keep.get("autostart") is True and action == "new":
         shown.append("--autostart")
     return _queue("vm", why, [a for a in shown if a], str(req.get("node") or ""), str(req.get("node") or ""), project,

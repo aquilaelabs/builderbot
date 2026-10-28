@@ -655,6 +655,13 @@ bb vm hardware NAME [--pin 2,3|none] [--share-cpus] [--mem-max 8G|none] [--share
                    device passed through are a person's, on the VMs page
 bb vm autostart NAME on|off
                    whether it starts when its node boots
+bb vm devices [NODE]
+                   the USB devices on the project's VM hosts (R116), each
+                   with what holds it: the host, a VM, or nothing
+bb vm usb NAME give|take VENDOR:PRODUCT[:SERIAL] [--port 1-3]
+                   a USB device to a VM, or back: a running VM has it now,
+                   a stopped one from its next start; always held for a
+                   person on the bell, since a device can be a disk or a key
 bb vm ip NAME | ssh NAME [COMMAND...]
                    its address, and ssh in as its account
 bb container       what container asks are waiting on an administrator

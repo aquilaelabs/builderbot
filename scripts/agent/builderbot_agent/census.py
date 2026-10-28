@@ -4,6 +4,7 @@ import errno
 import hashlib
 import ipaddress
 import json
+import glob
 import os
 import platform
 import re
@@ -226,6 +227,11 @@ def features_now():
                    "virtiofs": bool(vmhw.virtiofsd()),
                    "libvirt": _run([virsh, "--version"], timeout=10) if virsh else ""},
         "firewall": {"installed": os.path.exists("/etc/builderbot/hosting-fw.nft")},
+        # The IOMMU on the kernel's command line (R116 step 4): put there by
+        # BuilderBot (its marker), and on in the running kernel (its groups),
+        # which a restart and the firmware's VT-d or AMD-Vi decide.
+        "iommu": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "iommu")),
+                  "on": bool(glob.glob("/sys/kernel/iommu_groups/*"))},
     }
 
 
