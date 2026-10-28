@@ -4,7 +4,6 @@ moved under a key the person holds opens only while unlocked, with a
 secret that is theirs; Lock lets go of everything, handouts included; the
 node's public halves are remembered while it is shut; the move puts a
 project's background token in the project's own keeping unless kept."""
-import os
 import shutil
 import sys
 import tempfile

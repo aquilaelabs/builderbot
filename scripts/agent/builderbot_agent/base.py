@@ -233,10 +233,14 @@ def harden():
     try:
         import ctypes
         import ctypes.util
+        import resource
         libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
         out["dumpable"] = libc.prctl(4, 0, 0, 0, 0) == 0
-        out["mlock"] = libc.mlockall(2 | 4) == 0 or libc.mlockall(2) == 0
-    except (OSError, AttributeError):
+        # Only with no memlock limit (the unit lifts it): under one,
+        # MCL_FUTURE makes every allocation past the limit fail.
+        if resource.getrlimit(resource.RLIMIT_MEMLOCK)[0] == resource.RLIM_INFINITY:
+            out["mlock"] = libc.mlockall(2 | 4) == 0 or libc.mlockall(2) == 0
+    except (OSError, AttributeError, ImportError, ValueError):
         pass
     missed = [k for k, v in out.items() if not v]
     if missed:

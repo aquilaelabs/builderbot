@@ -58,14 +58,18 @@ def apply(mlock=True, status_file=STATUS_FILE):
         else:
             out["why"] = (out["why"] + "; " if out["why"] else "") + f"prctl: errno {ctypes.get_errno()}"
         if mlock:
-            if libc.mlockall(MCL_FUTURE | MCL_ONFAULT) == 0 or libc.mlockall(MCL_FUTURE) == 0:
+            # Only with no memlock limit: under one, MCL_FUTURE makes every
+            # allocation past the limit fail, and the process would die of
+            # the hardening rather than be kept from swap.
+            soft, _hard = resource.getrlimit(resource.RLIMIT_MEMLOCK)
+            if soft != resource.RLIM_INFINITY:
+                out["why"] = (out["why"] + "; " if out["why"] else "") + (
+                    "memory not locked: the memlock limit is set, and locking under one would stop the process growing "
+                    "(docker-compose.yml lifts it with ulimits memlock -1; an Unraid template with --ulimit memlock=-1:-1)")
+            elif libc.mlockall(MCL_FUTURE | MCL_ONFAULT) == 0 or libc.mlockall(MCL_FUTURE) == 0:
                 out["mlock"] = True
             else:
-                err = ctypes.get_errno()
-                out["why"] = (out["why"] + "; " if out["why"] else "") + (
-                    "mlockall refused: the memlock limit is too low for this process (docker-compose.yml raises it "
-                    "with ulimits memlock -1; an Unraid template with --ulimit memlock=-1:-1)" if err in (1, 12)
-                    else f"mlockall: errno {err}")
+                out["why"] = (out["why"] + "; " if out["why"] else "") + f"mlockall: errno {ctypes.get_errno()}"
     else:
         out["why"] = (out["why"] + "; " if out["why"] else "") + "not linux, or no libc"
     if status_file:

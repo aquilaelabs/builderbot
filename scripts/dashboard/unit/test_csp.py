@@ -25,8 +25,11 @@ class Header(unittest.TestCase):
         want_s = "'sha256-" + base64.b64encode(hashlib.sha256(b"let x = 1;").digest()).decode() + "'"
         want_c = "'sha256-" + base64.b64encode(hashlib.sha256(b"body{color:red}").digest()).decode() + "'"
         self.assertIn(f"script-src 'self' {want_s};", h)
-        self.assertIn(f"style-src 'self' {want_c};", h)
-        self.assertNotIn("unsafe-inline", h)
+        # Styles stay inline for the libraries that make them at run time;
+        # a script never is.
+        self.assertIn("style-src 'self' 'unsafe-inline';", h)
+        self.assertNotIn(want_c, h)
+        self.assertNotIn("script-src 'self' 'unsafe-inline'", h)
         self.assertNotIn("unsafe-eval", h)
         self.assertIn("object-src 'none'", h)
         self.assertIn("report-uri /api/csp-report", h)
@@ -35,7 +38,7 @@ class Header(unittest.TestCase):
         raw = pathlib.Path(HERE, "index.html").read_bytes()
         scripts, styles = csp.hashes(raw)
         self.assertGreaterEqual(len(scripts), 1, "the page's head script and its wiring are inline")
-        self.assertGreaterEqual(len(styles), 1, "the page's stylesheet is inline")
+        self.assertGreaterEqual(len(styles), 1, "the page's stylesheet is inline (read, though styles are not held to a hash)")
         # Nothing in the page runs by an inline handler or sets a style
         # attribute, which the policy would refuse.
         import re

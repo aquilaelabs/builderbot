@@ -46,7 +46,8 @@ const get = (path, extra = {}) => new Promise((resolve, reject) => {
 // cannot be answered from a copy made before it.
 {
   const g0 = await get('/');
-  const v = g0.text.match(/<script data-cfasync="false" src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)">/);
+  // ...and names its integrity after the version (R158 step 4).
+  const v = g0.text.match(/<script data-cfasync="false" src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)" integrity="sha384-[A-Za-z0-9+/=]+">/);
   ok(!!v && !/<script[^>]* src="(tab|nb)-[a-z-]+\.js">/.test(g0.text),
      `every tab and notebook script is named with its version (${v ? v[1] : 'unversioned'})`);
   // ...and every script runs as written: Cloudflare's Rocket Loader leaves

@@ -420,15 +420,17 @@ def _lfs(root):
 
 # ---- the verbs --------------------------------------------------------------
 
-def run(project, cwd, verb, args, scan=True, uid=""):
+def run(project, cwd, verb, args, scan=True, uid="", token_why=""):
     """{code, out, err, apply?} for one relayed verb, or {error} when it
     was refused before any git ran. A push is read for secrets first
     (pushscan, R219): `scan` True holds one with findings ({held: [...]},
     no push), "only" answers {held: [...]} and pushes nothing, and False
     pushes what a person has read and approved. `uid`: whose work it is,
-    whose own token is asked first (R154)."""
+    whose own token is asked first (R154). `token_why`: what keeps the
+    person's token from being used now (gitcreds.usable), refused after the
+    address's own refusals where the remote would need one (https)."""
     try:
-        return _run(project, cwd, verb, [str(a) for a in args], scan=scan, uid=uid)
+        return _run(project, cwd, verb, [str(a) for a in args], scan=scan, uid=uid, token_why=token_why)
     except Refused as e:
         return {"error": str(e)}
 
@@ -568,7 +570,7 @@ def _scan(d, project, name, pos, head_ref, branch, tree_refs):
     return pushscan.fresh(project, uniq)
 
 
-def _run(project, cwd, verb, args, scan=True, uid=""):
+def _run(project, cwd, verb, args, scan=True, uid="", token_why=""):
     if verb not in VERBS:
         raise Refused(f"bb git takes {', '.join(VERBS)} or policy; plain git does everything else")
     why = bad_args(args)
@@ -595,6 +597,11 @@ def _run(project, cwd, verb, args, scan=True, uid=""):
     if verb == "push" and _lfs(WORKSPACE / project):
         raise Refused("this repository stores files with Git LFS, whose uploads run as a hook the "
                       "relay does not run: push it from the Git view")
+    # A remote that takes a token, and none usable now (R159: the person
+    # signed out everywhere, their store locked, nobody's token given): said
+    # here, after the address's own refusals, before git asks and fails worse.
+    if token_why and kind == "net" and str(where).lower().startswith(("http://", "https://")):
+        raise Refused(token_why)
     merge_ref = ""
     if verb == "pull":
         if len(pos) > 2:

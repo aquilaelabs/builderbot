@@ -1,11 +1,15 @@
 """The page's Content-Security-Policy (R158 step 4): the page's own scripts
-and styles alone. A script or a style written inline into one of the HTML
-files the server serves (the dashboard's head script and its wiring, its
-stylesheet, the login card's) is allowed by its hash, computed from the file
-as it is served, so nothing inline that was not shipped runs; an inline
-handler or a style attribute is not allowed at all (a template writes
-data-style, applied through the CSSOM). What the browser refuses it reports
-to /api/csp-report, kept here for the Doctor.
+alone. A script written inline into one of the HTML files the server serves
+(the dashboard's head script and its wiring, the login card's) is allowed by
+its hash, computed from the file as it is served, so nothing inline that
+was not shipped runs, and an inline handler is not allowed at all. Styles
+are the page's own files and inline: the terminal library and the editor
+make style elements and attributes at run time with no nonce to carry, so
+style-src keeps 'unsafe-inline' (a style is not a script: it cannot read a
+key or ask the server for anything), while the page's templates still write
+data-style, applied through the CSSOM, so what the page itself draws inline
+stays small. What the browser refuses it reports to /api/csp-report, kept
+here for the Doctor.
 """
 import base64
 import hashlib
@@ -50,10 +54,10 @@ def header(html):
     blocks it ships by hash, images and media it draws itself (data: for
     the icons the page writes), no plugins, no framing by another origin,
     and the browser's reports to /api/csp-report."""
-    scripts, styles = hashes(html)
+    scripts, _styles = hashes(html)
     return ("default-src 'self'; "
             f"script-src 'self'{(' ' + ' '.join(scripts)) if scripts else ''}; "
-            f"style-src 'self'{(' ' + ' '.join(styles)) if styles else ''}; "
+            "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; "
             "connect-src 'self'; frame-src 'self'; worker-src 'self' blob:; "
             "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; "

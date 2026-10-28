@@ -784,7 +784,7 @@ function nodeSessionsSection(n){
 // Save, which sends what changed and nothing else.
 function nodeSessSettings(n){
   const host = !!n.config?.host_only;
-  const rows = host ? nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n)
+  const rows = host ? nodeHostRootRow(n) + nodePortsLocalRow(n)
     : nodeSessNetRow(n) + nodePortsLocalRow(n) + nodeTurnsRow(n);
   const t = n.turns || {};
   // Sessions, said so: under the test workers' field it read as them (B394).
