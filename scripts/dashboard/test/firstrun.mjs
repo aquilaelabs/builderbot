@@ -216,6 +216,18 @@ await firstRun(false);
     sects: [...document.querySelectorAll('.machinetab .ndsections details.sect')].map(d => d.dataset.sect) }));
   ok(/Release/.test(mp.head) && /Wall/.test(mp.head) && mp.tag && mp.updates && mp.sects.includes('nodes:health') && mp.sects.includes('nodes:advanced'),
      `This machine draws the machine's head, the Updates section and the own node's row with its sections (${mp.sects.join(',')})`);
+  // A held start (R56 step 9): not held on this first boot, armed for the
+  // next by its press, and Start says there was nothing to lift.
+  const h0 = await page.evaluate(() => state?.held || null);
+  ok(h0 && h0.held === false && h0.armed === false && !!document, `a bare-metal install's first start is not held (${JSON.stringify(h0)})`);
+  const bmH = { Authorization: 'Basic ' + Buffer.from(`${OWNER.username}:${OWNER.password}`).toString('base64'), 'Content-Type': 'application/json' };
+  const bmApi = async (path, body) => (await fetch(bm.base + path, body === undefined ? { headers: bmH } : { method: 'POST', headers: bmH, body: JSON.stringify(body) })).json();
+  const armed = await bmApi('/api/v1/nodes', { action: 'hold-next', on: true });
+  const h1 = await bmApi('/api/status');
+  ok(armed.ok && armed.armed === true && h1.held?.armed === true, `Hold the next start arms the restart after this one (${JSON.stringify(armed)})`);
+  await bmApi('/api/v1/nodes', { action: 'hold-next', on: false });
+  const started = await bmApi('/api/v1/nodes', { action: 'start-held' });
+  ok(started.ok && /not held/.test(started.note || ''), `Start with nothing held says so (${JSON.stringify(started)})`);
   await page.evaluate(() => openNodesTab());
   await page.waitForFunction(() => document.querySelector('#ndPick'), null, { timeout: 15000 }).catch(() => {});
   const picks = await page.evaluate(() => [...document.querySelectorAll('#ndPick option')].map(o => o.textContent));

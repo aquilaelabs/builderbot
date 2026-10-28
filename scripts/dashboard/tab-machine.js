@@ -27,7 +27,12 @@ function machineHead(n){
   const img = state?.image || {};
   const mem = r.mem_mb ? `${Math.round(r.mem_mb / 1024)} GB` : "";
   const wall = r.session?.up ? "in force" : r.session?.why ? `down: ${r.session.why}` : n.live ? "not reported yet" : "";
-  return pageHead({title: n.name, pills: `<span class="tag ndown">this machine</span> ${nodeStatePill(n)}`, facts: [
+  // A held start (R56 step 9): Start lifts it; Hold the next start arms the
+  // restart after this one to come back held, for a look before anything runs.
+  const h = state?.held || {};
+  const actions = `${h.held ? `<button type="button" class="primary" data-heldstart title="${esc((h.why || []).join("; "))}">Start</button>` : ""}
+    <button type="button" data-holdnext="${h.armed ? "0" : "1"}" title="the restart after this one comes back with nothing running, for a look first">${h.armed ? "Next start held: let it run" : "Hold the next start"}</button>`;
+  return pageHead({title: n.name, pills: `<span class="tag ndown">this machine</span> ${nodeStatePill(n)}${h.held ? ` <span class="pill bad">held</span>` : ""}`, actions, facts: [
     ["System", [r.os, r.hostname && r.hostname !== n.name ? r.hostname : ""].filter(Boolean).join(" · ")],
     ["Cores and memory", [r.cpu ? `${r.cpu} cpu` : "", mem].filter(Boolean).join(" · ")],
     ["Release", `${img.version || "unstamped"}${img.rev ? ` (${img.rev.slice(0, 7)})` : ""}`],
@@ -62,5 +67,21 @@ function renderMachineInto(i){
   wireNodesTab(d.el);
   nodesReadOnly(d.el);
   wireUpdates(d.el);
+  wireHeld(d.el);
   void inflight;
+}
+
+function wireHeld(root){
+  root.querySelectorAll("[data-heldstart]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Starting");
+    const j = await (await postJSON("/api/v1/nodes", {action: "start-held"})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "started: sessions run again", !!j.error);
+    await refresh();
+  }));
+  root.querySelectorAll("[data-holdnext]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const on = b.dataset.holdnext === "1";
+    const j = await (await postJSON("/api/v1/nodes", {action: "hold-next", on})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || (on ? "the next start is held: nothing runs after the restart until Start is pressed here" : "the next start runs as usual"), !!j.error);
+    await refresh();
+  }));
 }

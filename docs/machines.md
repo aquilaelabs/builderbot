@@ -308,6 +308,17 @@ every project's node picker, so its sessions, builds and containers run
 there as on any node. The container edition has no machine of its own and
 does not draw the page (R90 step 8, R56 step 8).
 
+**A held start** (R56 step 9). Not by default: after a shutdown that was
+not clean (the service writes a marker on a clean stop and the next start
+misses it), or when **Hold the next start** on this page was pressed
+before a restart (that one boot), the install comes up with the dashboard,
+its agent and the network and nothing else: no agent session starts (a
+shell still opens), and the pools, shares, apps, VMs and containers the
+installed OS adds are held by their own modules until **Start** is pressed
+here. A band on every page says it is held and why. Safe mode at the boot
+menu and a disk the array names gone missing are the installed OS's own
+reasons to hold (R161, R162).
+
 ## Controller settings
 
 **Controller settings**, beside Home in the rail's Home group (`#/home/settings`),

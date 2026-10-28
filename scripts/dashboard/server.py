@@ -23,6 +23,7 @@ import os
 import sys
 import re
 import selectors
+import signal
 import shlex
 import socket
 import sqlite3
@@ -2848,6 +2849,10 @@ MAINT_BAND = ('<div class="banner maint" id="maintband" role="status" hidden>Mai
               'only you can use BuilderBot. It is switched off under '
               '<a href="#/controller/settings" data-maintgo>Controller settings, Maintenance</a>.</div>')
 MAINTENANCE_SAID = "BuilderBot is down for maintenance: only its owner can sign in until it is over."
+# A held start's band (R56 step 9): sent hidden on every page of a bare-metal
+# install and shown by the poll while the start is held.
+HELD_BAND = ('<div class="banner held" id="heldband" role="status" hidden>The start is held: nothing runs until '
+             '<a href="#/controller/machine" data-heldgo>Start on This machine</a>. <span data-heldwhy></span></div>')
 
 
 def kept_out(u):
@@ -3272,7 +3277,8 @@ def _versioned_page(raw, tag):
     # not only once the first status read lands (the operator, 26 Oct): with
     # it on, the owner is the one account the page is for.
     band = featuresoff.banner_html() + (MAINT_BAND.replace(' hidden>', '>', 1)
-                                        if settings.get("maintenance_mode") else MAINT_BAND)
+                                        if settings.get("maintenance_mode") else MAINT_BAND) \
+        + (HELD_BAND.replace(' hidden>', '>', 1) if held.is_held() else HELD_BAND)
     out = out.replace(b"<!--BANNER-->", band.encode())
     parts.append(hashlib.sha256(band.encode()).hexdigest()[:8])
     # Every script runs as written, in order: Cloudflare's Rocket Loader
@@ -5048,6 +5054,10 @@ import apps                                                      # noqa: E402
 # Controller settings, applied as the own node's system job.
 import releasecheck                                              # noqa: E402
 releasecheck.configure(version=lambda: image_stamp().get("version") or "", bare_metal=lambda: BARE_METAL)
+# A held start on a bare-metal install (R56 step 9, held.py): read at the
+# start, lifted by Start on This machine, armed for the next restart.
+import held                                                      # noqa: E402
+held.configure(state=STATE, bare_metal=lambda: BARE_METAL, write_json_fn=write_json)
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
                setting=settings.get, write_json=write_json, audit=db.audit)
 apps.unvetted_ok = channel.unvetted_ok      # the Windows companion and the VS Code extension are dev features
@@ -5354,6 +5364,8 @@ def _snapshot(who):
         # with its own node for the Update press; {} on a container install.
         "release": _timed("status:release", lambda: (dict(releasecheck.status(), node=_own_node_id())
                                                       if BARE_METAL else {})),
+        # ...and whether its start is held (R56 step 9), with why.
+        "held": held.status(),
         "projects": ps,
         # Every project this account sees (R138), one with no repository in
         # it too: the Projects page draws each as one card, from this.
@@ -6466,6 +6478,10 @@ class Handler(BaseHTTPRequestHandler):
         arg = _term_arg(rest)
         me = me or self._who()
         uid = users.uid_of(me)
+        # A held start (R56 step 9): no agent session runs until Start is
+        # pressed on This machine; a shell is a person's and still opens.
+        if held.is_held() and agents.of_arg(arg)[0]:
+            return held.said()
         # No author, no terminal: every project is a repository, a commit
         # with no name and email behind it is one git refuses halfway through
         # the work, and a shell is where git is typed. bb-tty asks the same
@@ -8610,6 +8626,14 @@ class Handler(BaseHTTPRequestHandler):
         # read again, for the Updates section's Check now.
         if act == "release-check":
             return self._json({"ok": True, **releasecheck.check()})
+        # A held start lifted, or the next one armed (R56 step 9).
+        if act == "start-held":
+            r = held.start(self._principal())
+            if r.get("ok") and not r.get("note"):
+                db.audit(self._principal(), "start-held", "", {})
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "hold-next":
+            return self._json(held.arm_next(req.get("on") is not False))
         got = nodes.verb(self._principal(), req)
         # A node that left is a node the Doctor's cached verdict may still
         # name, for up to its half hour: the next run starts now, on its own
@@ -12035,6 +12059,18 @@ def main():
         # ...and the ACME renewals (R150), thirty days before a pair ends.
         threading.Thread(target=nginxproxy.renew_loop, args=(containers, devactions, devapp),
                          name="nginx-acme", daemon=True).start()
+    # A bare-metal install's start held or not (R56 step 9), read now, and
+    # the clean-shutdown marker written when the service stops it cleanly.
+    if BARE_METAL:
+        h = held.boot()
+        if h.get("held"):
+            print(f"dashboard: the start is held: {'; '.join(h.get('why') or [])}", flush=True)
+
+        def _on_term(signum, frame):
+            del signum, frame
+            held.shutdown_clean()
+            raise SystemExit(0)
+        signal.signal(signal.SIGTERM, _on_term)
     Server(("0.0.0.0", PORT), Handler).serve_forever()
 
 

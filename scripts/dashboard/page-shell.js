@@ -378,6 +378,22 @@ function drawMaintBand(){
   if (go && !go.onclick) go.onclick = e => { e.preventDefault(); SPLIT.settings = {pick: "maint", open: true}; openSettingsTab(); };
 }
 
+// ---- a held start's band (R56 step 9) ------------------------------------------
+// Drawn under the header on a bare-metal install while its start is held:
+// the server sends it hidden on every page, and the poll shows it with why.
+function drawHeldBand(){
+  const b = document.getElementById("heldband");
+  if (!b) return;
+  const h = state?.held || {};
+  const off = !h.held;
+  if (b.hidden !== off) b.hidden = off;
+  const why = b.querySelector("[data-heldwhy]");
+  const said = (h.why || []).length ? `Held because ${h.why.join("; ")}.` : "";
+  if (why && why.textContent !== said) why.textContent = said;
+  const go = b.querySelector("[data-heldgo]");
+  if (go && !go.onclick) go.onclick = e => { e.preventDefault(); openMachineTab(); };
+}
+
 // ---- search: jump to a page, a project, a container or a node ---------------
 
 // Rows: [label, where, go]. Pages by name, projects by the name they are

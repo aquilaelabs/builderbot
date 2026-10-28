@@ -1,61 +1,68 @@
-"""The way back from an outage (R251): a node's agent reports the sessions
-its gates held, the controller keeps them whitelisted, and the bell lists
-each for its own account or an administrator."""
+"""A held start (R56 step 9, held.py): held after an unclean shutdown or
+when the next start was armed, not on a first boot or after a clean stop,
+lifted by Start, and nothing of it on a container install."""
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
-from unittest import mock
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(HERE, ".."))
-import agentpkg  # noqa: E402
-import nodes  # noqa: E402
-
-agent = agentpkg.load("builderbot_agent_held")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import held  # noqa: E402
 
 
-class AgentReads(unittest.TestCase):
-    def test_marks_under_the_session_home_are_reported(self):
-        home = tempfile.mkdtemp()
-        for base, uid, proj, sess in [(home, "u_1", "alpha", "claude-alpha"),
-                                      (os.path.join(home, "users", "u_2"), "u_2", "beta", "u_2~claude-beta")]:
-            d = os.path.join(base, ".cache", "builderbot", "u", uid, "project", proj)
-            os.makedirs(d)
-            with open(os.path.join(d, "held"), "w") as f:
-                json.dump({"session": sess, "since": 99}, f)
-        agent.SESSION["home"] = home
-        got = sorted(agent.SessionsMixin.held_now(None), key=lambda h: h["project"])
-        self.assertEqual(got, [{"project": "alpha", "uid": "u_1", "session": "claude-alpha", "since": 99},
-                               {"project": "beta", "uid": "u_2", "session": "u_2~claude-beta", "since": 99}])
+def write_json(path, obj, mode=0o644):
+    with open(path, "w") as f:
+        json.dump(obj, f)
 
 
-class ControllerKeeps(unittest.TestCase):
+class Held(unittest.TestCase):
     def setUp(self):
-        nodes.configure(state=tempfile.mkdtemp())
-        mint = nodes.enroll_mint("user:test", "box")
-        nodes.enroll(nodes.authenticate(mint["token"]), {"cpu": 2, "mem_mb": 4096, "arch": "x86_64",
-                                                         "system": "linux", "session": {"up": True, "user": "b"}},
-                     "10.0.0.5", user="bb")
-        self.nid = mint["id"]
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        held.configure(state=self.tmp, bare_metal=lambda: True, write_json_fn=write_json)
 
-    def test_held_sessions_are_rows_for_their_account(self):
-        r0 = nodes._rev[0]
-        # The mark names the account, as bb-tty's hook writes it (B773).
-        nodes.heartbeat(self.nid, {"held": [{"project": "alpha", "uid": "u_1", "session": "u_1", "since": 50},
-                                             {"project": "../x", "uid": "u 2", "session": "s;rm", "since": "x"},
-                                             "junk"]}, "10.0.0.5")
-        self.assertNotEqual(nodes._rev[0], r0, "a hold is news for the bell")
-        with mock.patch.object(nodes, "node_list", lambda: [dict(nodes.node(self.nid), live=True)]):
-            mine = nodes.held_attention("u_1", False)
-            theirs = nodes.held_attention("u_9", False)
-            admin = nodes.held_attention("u_9", True)
-        self.assertEqual([(r["session"], r["uid"], r["key"]) for r in mine], [("u_1", "u_1", f"held:{self.nid}|u_1@50")])
-        self.assertEqual(theirs, [], "another account's session is not offered")
-        self.assertEqual(len(admin), 2, "an administrator sees every hold")
-        self.assertEqual(admin[1]["session"], "srm", "what a node says is whitelisted")
+    def test_a_first_boot_and_a_clean_stop_are_not_held(self):
+        self.assertFalse(held.boot()["held"], "a first boot has no history to hold on")
+        held.shutdown_clean()
+        self.assertTrue(os.path.exists(os.path.join(self.tmp, "clean-shutdown")))
+        self.assertFalse(held.boot()["held"], "a clean stop, then a start: nothing held")
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "clean-shutdown")), "the marker is read once")
+
+    def test_an_unclean_stop_holds_the_next_start_until_start(self):
+        held.boot()                      # booted once, no clean marker written: the power was pulled
+        got = held.boot()
+        self.assertTrue(got["held"])
+        self.assertIn("not clean", got["why"][0])
+        self.assertTrue(held.is_held())
+        self.assertIn("press Start on This machine", held.said())
+        r = held.start("user:test")
+        self.assertEqual((r["ok"], r["held"]), (True, False))
+        self.assertFalse(held.is_held())
+        self.assertEqual(held.start("user:test").get("note"), "the start was not held")
+
+    def test_the_next_start_armed_holds_that_one_boot(self):
+        held.boot()
+        held.shutdown_clean()
+        self.assertEqual(held.arm_next(True), {"ok": True, "armed": True})
+        self.assertTrue(held.status()["armed"])
+        got = held.boot()
+        self.assertTrue(got["held"])
+        self.assertIn("Hold the next start", got["why"][0])
+        self.assertFalse(held.status()["armed"], "armed for one boot, then not")
+        held.start()
+        held.shutdown_clean()
+        self.assertFalse(held.boot()["held"])
+        held.arm_next(True)
+        self.assertEqual(held.arm_next(False)["armed"], False)
+
+    def test_a_container_install_holds_nothing(self):
+        held.configure(state=self.tmp, bare_metal=lambda: False, write_json_fn=write_json)
+        self.assertEqual(held.boot(), {"held": False, "why": [], "since": 0, "armed": False})
+        self.assertFalse(held.is_held())
+        self.assertIn("container", held.start().get("error", ""))
+        self.assertIn("bare-metal", held.arm_next().get("error", ""))
 
 
 if __name__ == "__main__":
