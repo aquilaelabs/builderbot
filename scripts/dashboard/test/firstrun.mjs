@@ -199,6 +199,28 @@ await firstRun(false);
      `...and the step is done with Finish open (${JSON.stringify(after)})`);
   const fin2 = await bm.finish();
   ok(!fin2.error, `a bare-metal first run finishes with only its own node (${fin2.error || 'ok'})`);
+  // This machine (R90 step 8): the rail's Controller group opens on it, its
+  // page draws the own node's row with the machine's head and the Updates
+  // section, the Nodes page's picker leaves it out, and a project's node
+  // picker names it This machine.
+  await page.evaluate(async () => { await refresh(); await loadNodes(); });
+  await page.waitForFunction(() => !!state?.own_node, null, { timeout: 15000 }).catch(() => {});
+  const rail = await page.evaluate(() => (railGroups().find(g => g.key === 'controller')?.tools || []).filter(([k]) => railAllows(k)).map(([k]) => k));
+  ok(rail[0] === 'machine', `the rail's Controller group offers This machine first on a bare-metal install (${rail.join(',')})`);
+  await page.evaluate(() => openMachineTab());
+  await page.waitForSelector('.machinetab .ndrow[data-node]', { timeout: 15000 });
+  const mp = await page.evaluate(() => ({
+    head: document.querySelector('.machinetab .pghead')?.textContent.replace(/\s+/g, ' ') || '',
+    tag: !!document.querySelector('.machinetab .ndrow .tag.ndown'),
+    updates: !!document.querySelector('.machinetab details[data-sect="nodes:updates"]'),
+    sects: [...document.querySelectorAll('.machinetab .ndsections details.sect')].map(d => d.dataset.sect) }));
+  ok(/Release/.test(mp.head) && /Wall/.test(mp.head) && mp.tag && mp.updates && mp.sects.includes('nodes:health') && mp.sects.includes('nodes:advanced'),
+     `This machine draws the machine's head, the Updates section and the own node's row with its sections (${mp.sects.join(',')})`);
+  await page.evaluate(() => openNodesTab());
+  await page.waitForFunction(() => document.querySelector('#ndPick'), null, { timeout: 15000 }).catch(() => {});
+  const picks = await page.evaluate(() => [...document.querySelectorAll('#ndPick option')].map(o => o.textContent));
+  ok(!picks.some(t => /thismachine/.test(t)) && picks.some(t => /otherbox/.test(t)),
+     `...and the Nodes page's picker offers the other node and not this machine (${picks.join(' | ')})`);
   await page.close();
   bm.stop();
 }

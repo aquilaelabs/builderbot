@@ -290,6 +290,24 @@ with every project this account may not see folded into one line. The
 numbers are the agent's hourly walk, said with their age; **Measure now**
 asks for a fresh one, which the node's next report brings.
 
+## This machine
+
+On a controller installed bare metal ([install.md](install.md#bare-metal)),
+**This machine**, first in the rail's Controller group (`#/controller/machine`),
+is the computer the controller runs on: its head says what it is (its name,
+system, cores and memory, the release this install runs and how long it
+has been up, its agent and whether the wall between its sessions and the
+controller is in force), then the **Updates** section (the release running
+against the newest, **Check now**, **Update**: [Controller settings](#controller-settings)),
+then the machine as a node, drawn exactly as a node's page draws any node:
+its health, the projects on it, its sessions, GPU, USB, model router,
+features, storage, network and the advanced verbs, reboot and power off
+among them. The machine is not a row on the Nodes page and not in its
+picker; a project still picks it as its node, shown as **This machine** in
+every project's node picker, so its sessions, builds and containers run
+there as on any node. The container edition has no machine of its own and
+does not draw the page (R90 step 8, R56 step 8).
+
 ## Controller settings
 
 **Controller settings**, beside Home in the rail's Home group (`#/home/settings`),

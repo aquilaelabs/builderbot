@@ -43,6 +43,8 @@ const nodesUpdating = {};
 // operator, 4 Oct).
 let nodesReveal = null;
 function openNodesTab(nid, what){
+  // The controller's own machine has its own page (R90 step 8).
+  if (nid && state?.bare_metal && (nodesList || []).find(n => n.id === nid)?.config?.own){ openMachineTab(what); return; }
   if (nid){
     nodesPick = nid;
     nodesFocus = null;
@@ -1759,53 +1761,10 @@ function ndAgentButtons(dead){
           <button type="button"${dead ? "" : ` data-nd="reenroll"`} title="a new enroll script for this node, to run again on the same machine"${off}>Enroll script</button>`;
 }
 
-// The node's page: a header band: name, state, where it is, its agent and
-// the one control that is about the agent, then the sections.
-function renderNodesInto(i){
-  const d = docSurface(i, "nodes");
-  if (!d) return;
-  if (nodesList === null){
-    // Its template (R218 step 16): the bar, the sections' names and the jump
-    // bar over them are the page's own; the node and what it says are on
-    // their way. A section somebody shut is drawn shut, as it will land.
-    // Drawn by the page's own builders given nothing (the operator, 18
-    // Oct: a template written beside the page fell behind it): the bar, the
-    // head card with its facts' labels and its two buttons, the sections a
-    // node usually has under their own titles, and the jump bar sectJump
-    // puts over them, as the page does.
-    d.setBar(ndBar(null));
-    d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
-        <div class="name">${skv(7)}</div>${ndFacts(null)}
-        <div class="actbar ndagent"><span class="lead dim"></span>${ndAgentButtons(true)}</div></div>
-      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu" && k !== "usb").map(([k, t], j) =>
-        docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
-    sectJump(d.list.closest(".doctab") || d.el);
-    loadNodes();
-    return;
-  }
-  if (nodesErr){
-    d.list.innerHTML = `<div class="hint bad">${esc(nodesErr)}</div>`;
-    return;
-  }
-  // One node at a time, picked at the top. Every node's whole configuration
-  // on one page was a wall: mounts, four stores, network, the runner, the
-  // actions, per row, for every machine, and the fold that hid it only
-  // moved the problem: the settings you came for were two taps down and the
-  // ones you did not care about were still in the way. So the tab is a
-  // picker and one machine, in sections, like the Docker manager and the
-  // Tools tab already are (docs/nodes.md §13: one tab, re-rendered per pick).
-  // Enrolled machines only. The controller has a node record of its own;
-  // that is how a share it mounts is recognized as the same store a node
-  // mounts, and how install arbitration works across the pair, but it is
-  // not a machine anybody configures from here: it runs no work (roadmap
-  // #16), takes no toolchains (#26), and every section on this tab is about
-  // something it does not have. So it is registry plumbing, not a row.
-  const live = nodesList.filter(n => n.state !== "retired" && n.kind !== "local");
-  if (!live.some(n => n.id === nodesPick)) nodesPick = live[0]?.id || "";
-  const n = live.find(x => x.id === nodesPick);
-  // Picked as every node-scoped page picks one (nodePick, R218 step 26).
-  d.setBar(ndBar(live));
-  const rows = (n ? [n] : []).map(n => {
+// One node's row: its name, facts and agent bar, then its sections (R218
+// step 26). Its own function so This machine (tab-machine.js, R90 step 8)
+// draws the controller's own machine with it.
+function ndRowHtml(n){
     const labels = Object.entries(n.labels || {})
       .map(([k, v]) => `<span class="pill">${esc(k)}=${esc(v)}</span>`).join(" ");
     const seen = n.agent?.last_seen
@@ -1936,7 +1895,57 @@ function renderNodesInto(i){
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
       </div>
     </div>`;
-  }).join("");
+}
+
+// The node's page: a header band: name, state, where it is, its agent and
+// the one control that is about the agent, then the sections.
+function renderNodesInto(i){
+  const d = docSurface(i, "nodes");
+  if (!d) return;
+  if (nodesList === null){
+    // Its template (R218 step 16): the bar, the sections' names and the jump
+    // bar over them are the page's own; the node and what it says are on
+    // their way. A section somebody shut is drawn shut, as it will land.
+    // Drawn by the page's own builders given nothing (the operator, 18
+    // Oct: a template written beside the page fell behind it): the bar, the
+    // head card with its facts' labels and its two buttons, the sections a
+    // node usually has under their own titles, and the jump bar sectJump
+    // puts over them, as the page does.
+    d.setBar(ndBar(null));
+    d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
+        <div class="name">${skv(7)}</div>${ndFacts(null)}
+        <div class="actbar ndagent"><span class="lead dim"></span>${ndAgentButtons(true)}</div></div>
+      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu" && k !== "usb").map(([k, t], j) =>
+        docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
+    sectJump(d.list.closest(".doctab") || d.el);
+    loadNodes();
+    return;
+  }
+  if (nodesErr){
+    d.list.innerHTML = `<div class="hint bad">${esc(nodesErr)}</div>`;
+    return;
+  }
+  // One node at a time, picked at the top. Every node's whole configuration
+  // on one page was a wall: mounts, four stores, network, the runner, the
+  // actions, per row, for every machine, and the fold that hid it only
+  // moved the problem: the settings you came for were two taps down and the
+  // ones you did not care about were still in the way. So the tab is a
+  // picker and one machine, in sections, like the Docker manager and the
+  // Tools tab already are (docs/nodes.md §13: one tab, re-rendered per pick).
+  // Enrolled machines only. The controller has a node record of its own;
+  // that is how a share it mounts is recognized as the same store a node
+  // mounts, and how install arbitration works across the pair, but it is
+  // not a machine anybody configures from here: it runs no work (roadmap
+  // #16), takes no toolchains (#26), and every section on this tab is about
+  // something it does not have. So it is registry plumbing, not a row.
+  // ...and on a bare-metal install the controller's own machine is This
+  // machine's page in the Controller group (R90 step 8), not a row here.
+  const live = nodesList.filter(n => n.state !== "retired" && n.kind !== "local" && !(state?.bare_metal && n.config?.own));
+  if (!live.some(n => n.id === nodesPick)) nodesPick = live[0]?.id || "";
+  const n = live.find(x => x.id === nodesPick);
+  // Picked as every node-scoped page picks one (nodePick, R218 step 26).
+  d.setBar(ndBar(live));
+  const rows = n ? ndRowHtml(n) : "";
   // Nothing enrolled. Said where the rows would be, rather than an empty
   // picker over an empty page: the Enroll button above is the whole of what
   // there is to do here.

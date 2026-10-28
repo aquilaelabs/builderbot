@@ -81,7 +81,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'openStorageTab', 'loadStorage', 'storageHeld', 'storageRow', 'andList', 'storageDisks', 'storageProjects', 'storageBody', 'storagePick', 'renderStorageInto', 'wireStorageTab',
   'maintAsk', 'openKeysTab', 'postKeys', 'loadKeys', 'keysNotices', 'keysInstallBody', 'keysKeptBody', 'renderKeysInto', 'keysGo', 'keysChange', 'wireKeys',
   'loadKeyMine', 'keyMineSection', 'keyStorePurge', 'wireKeyMine', 'keyStoreHeld', 'keyStoreSecret', 'keyStoreUnlock', 'keyStoreOwn', 'keyStoreNewKey',
-  'openAuditTab', 'loadAudit', 'auditRows', 'renderAuditInto', 'wireAudit',
+  'openAuditTab', 'loadAudit', 'openMachineTab', 'ownMachine', 'machineHead', 'renderMachineInto', 'ndRowHtml', 'auditRows', 'renderAuditInto', 'wireAudit',
   'connectionIntro', 'connectionStatus', 'updatesSection', 'wireUpdates', 'nginxAcmeLines',
   'loadRouter', 'routerAct', 'nodeRouterSection', 'wireRouterSection',
   'usbHolder', 'usbWords', 'nodeUsbSection', 'wireUsbSection',

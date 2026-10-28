@@ -5490,6 +5490,9 @@ def _snapshot(who):
         # A controller installed bare metal (R90): its own machine is the
         # first node, which the setup page shows being set up.
         "bare_metal": BARE_METAL,
+        # ...and its own machine's node when it has one (R90 step 8), which
+        # the rail's This machine is drawn for.
+        "own_node": _own_node_id() if BARE_METAL else "",
         # Whether this account's commits would carry an author: the Claude
         # button ghosts on this, naming the Profile, before bb-tty refuses.
         "git_ready": users.git_ready(who) if users.uid_of(who) else True,

@@ -142,6 +142,12 @@ const DRIVERS = {
   },
   // The Audit page (R158 step 8): the trail's section, with rows or the
   // empty band, drawn for an account that reads the controller's area.
+  // This machine (R90 step 8): on the harness's container controller it
+  // says it has none, which is the page's own empty.
+  machine: {
+    open: () => page.evaluate(() => openMachineTab()),
+    readyWhen: '.machinetab .ndrow, .machinetab .empty',
+  },
   audit: {
     open: () => page.evaluate(() => openAuditTab()),
     readyWhen: '.audittab .auditrow, .audittab .empty',

@@ -1,0 +1,66 @@
+"use strict";
+// This machine (R90 step 8, R56 step 8): the controller's own machine on a
+// bare-metal install, a page of its own in the Controller rail group and
+// not a row among Machines' nodes. Its head says what the machine is (its
+// name, system, cores and memory, the release this install runs and how
+// long it has been up, its agent, the wall); under it the Updates section
+// (Controller settings' own, R90 step 5) and the own node's row as the
+// Nodes page draws any node's (tab-nodes.js ndRowHtml): its health, the
+// projects on it, its sessions, GPU, USB, router, features, storage,
+// network and the advanced verbs (reboot and power off among them). The
+// container edition has no own machine and says so if the page is opened.
+// Chrome from docSurface(); the hard rules are uniform.mjs's.
+
+function openMachineTab(what){
+  if (what) sectOpen["nodes:" + what] = true;
+  openTab({kind: "machine", arg: "__machine", label: "This machine"});
+  loadNodes();
+}
+
+// The own machine's row, or null before the node list lands.
+function ownMachine(){
+  return (nodesList || []).find(n => n.config?.own && n.state !== "retired") || null;
+}
+
+function machineHead(n){
+  const r = n.reported || {};
+  const img = state?.image || {};
+  const mem = r.mem_mb ? `${Math.round(r.mem_mb / 1024)} GB` : "";
+  const wall = r.session?.up ? "in force" : r.session?.why ? `down: ${r.session.why}` : n.live ? "not reported yet" : "";
+  return pageHead({title: n.name, pills: `<span class="tag ndown">this machine</span> ${nodeStatePill(n)}`, facts: [
+    ["System", [r.os, r.hostname && r.hostname !== n.name ? r.hostname : ""].filter(Boolean).join(" · ")],
+    ["Cores and memory", [r.cpu ? `${r.cpu} cpu` : "", mem].filter(Boolean).join(" · ")],
+    ["Release", `${img.version || "unstamped"}${img.rev ? ` (${img.rev.slice(0, 7)})` : ""}`],
+    ["Up", shortUptime(state?.uptime || 0)],
+    ["Agent", n.agent?.version || ""],
+    ["Wall", wall]]});
+}
+
+function renderMachineInto(i){
+  const d = docSurface(i, "machine");
+  if (!d) return;
+  d.setBar("");
+  if (!state?.bare_metal){
+    d.list.innerHTML = `<div class="empty">This machine is a bare-metal install's page: the machine the controller runs on, its system, its updates and what it runs as a node. This BuilderBot runs in a container, which has no machine of its own here; its nodes are on the Nodes page.</div>`;
+    return;
+  }
+  if (nodesList === null){
+    d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow"><div class="name">${skv(7)}</div>${ndFacts(null)}</div>
+      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu" && k !== "usb").map(([k, t], j) => docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
+    loadNodes();
+    return;
+  }
+  const n = ownMachine();
+  if (!n){
+    d.list.innerHTML = `<div class="empty">This install's own machine is not enrolled as a node yet: the setup page shows it being set up, and the installer's --install does it (install-controller.sh --no-node leaves it out, and then there is nothing here).</div>`;
+    return;
+  }
+  const inflight = t => (n.jobs || []).some(j => j.type === t || j.apply === t);
+  d.list.innerHTML = machineHead(n)
+    + (state?.release?.running !== undefined ? docSection("nodes", "updates", "Updates", state.release.newer ? `${state.release.newer} is out` : state.release.latest ? "up to date" : "", updatesSection()) : "")
+    + ndRowHtml(n);
+  wireNodesTab(d.el);
+  nodesReadOnly(d.el);
+  wireUpdates(d.el);
+  void inflight;
+}

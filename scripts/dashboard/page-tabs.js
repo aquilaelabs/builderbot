@@ -198,6 +198,8 @@ const TOOL_ICONS = {
     <path d="M5.5 14h5"/><path d="M8 11.5V14"/></svg>`,
   // A ledger's lines, for the Audit page (R158 step 8).
   audit: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h10v11H3z"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg>`,
+  // A box with its one light, for This machine (R90 step 8).
+  machine: `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="9" rx="1"/><path d="M5 12.5v1.5M11 12.5v1.5M5 6.5h3"/><circle cx="11" cy="6.5" r=".8"/></svg>`,
   // A clock, for the Schedules page (R117).
   keys: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="8" r="2.5"/><path d="M7.5 8H14M11.5 8v2.5M13.5 8v2"/></svg>`,
   debug: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 5.5a2.5 2.5 0 0 1 5 0v4a2.5 2.5 0 0 1-5 0z"/><path d="M8 7v5M3 6.5h2.5M10.5 6.5H13M3 10h2.5M10.5 10H13M6 3.5 5 2M10 3.5 11 2"/></svg>`,
@@ -335,6 +337,10 @@ const TABKINDS = {
               icon: TOOL_ICONS.audit,
               render: (i) => renderAuditInto(i), live: () => auditRev,
               open: () => loadAudit() },
+  machine:  { multi: false, label: () => "This machine",
+              icon: TOOL_ICONS.machine,
+              render: (i) => renderMachineInto(i), live: () => nodesRev,
+              open: () => loadNodes() },
   settings: { multi: false, label: () => "Controller settings",
               render: (i) => renderSettingsInto(i), live: settingsLive,
               open: () => loadApps() },
