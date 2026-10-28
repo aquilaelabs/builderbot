@@ -12,7 +12,7 @@ from . import AGENT_VERSION
 from .coverage import _COV_OUT, _cov_write
 from .base import BEAT_S, RUNNER_DIAG_KEEP, cap_file, log, log_once, own_digest, own_path, prune_dir
 from .controller import Controller
-from .stores import save_state, use_scope
+from .stores import load_state, save_state, use_scope
 from .toolchains import share_images
 from .sessnet import SessionNet
 from .runners import RunnersMixin, runner_dirs
@@ -38,6 +38,41 @@ from .extmounts import ExtMountsMixin
 from .backups import BackupsMixin
 from .vms import VmsMixin
 from . import storage
+
+
+def follow(state, url="", expect=""):
+    """The knock (R90 step 12, R175 step 3): `state["move"]` names where and
+    what to expect, or `url` and `expect` do (the follow verb, run by hand
+    on a node that outlived the old controller). The new address is asked,
+    with the node's own token, for the answer only a holder of the move
+    key gives; right, the state takes the controller there (its address
+    and TLS pin) and is written. (True, "") or (False, why); an empty why
+    is nothing to knock on."""
+    mv = dict(state.get("move") or {})
+    if url and expect:
+        mv = {"url": str(url), "expect": str(expect)}
+    to = str(url or mv.get("url") or "").rstrip("/")
+    if not to or not mv.get("expect"):
+        return False, ""
+    try:
+        ctl = Controller(to, state["token"], "")
+        st, r = ctl.call("moved", {"node": state.get("node_id", "")}, timeout=20)
+    except Exception as e:                                   # noqa: BLE001 (a knock that fails is tried again)
+        return False, f"the move's new address {to} did not answer: {e}"
+    if st != 200 or not isinstance(r, dict):
+        return False, f"the move's new address {to} answered {st}: not the controller yet"
+    # The proof: the challenge the old controller told this node to
+    # expect, which only a holder of the move key (the controller once
+    # restored there) can say back.
+    got = str(r.get("answer") or "")
+    if not got or not hmac.compare_digest(got, str(mv.get("expect") or "")):
+        return False, f"{to} answered the knock with the wrong answer: not the controller that moved"
+    state["controller"] = str(r.get("url") or to).rstrip("/") or to
+    if r.get("pin"):
+        state["pin"] = str(r.get("pin"))
+    state.pop("move", None)
+    save_state(state)
+    return True, ""
 
 
 class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, ExtMountsMixin, BackupsMixin, AccountsMixin,
@@ -459,37 +494,49 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             log(f"logs: kept to size: {', '.join(os.path.basename(f) for f in cut) or 'nothing'} cut, "
                 f"{trimmed} old runner diagnostics removed")
 
+    def reread_state(self):
+        """node.json read again while the controller stays quiet: a follow
+        run by hand wrote the new address and pin there, which this process
+        holds a copy from before. True when it took a new controller."""
+        try:
+            fresh = load_state()
+        except SystemExit:
+            return False
+        if not isinstance(fresh, dict) or not fresh.get("controller") or fresh.get("controller") == self.state.get("controller"):
+            return False
+        self.state["controller"] = fresh["controller"]
+        if fresh.get("pin"):
+            self.state["pin"] = fresh["pin"]
+        self.state.pop("move", None)
+        self.ctl = Controller(self.state["controller"], self.state["token"], self.state.get("pin", ""))
+        self.quiet = 0
+        self.hello_at = 0
+        log(f"node.json names another controller: this node follows it to {self.state['controller']}")
+        return True
+
+    def move_hint(self, mv):
+        """A move the controller names in its "moved" answer (R175 step 2):
+        kept in node.json when this node holds none, so a node that was
+        off while the move was armed knocks like the others. True when it
+        was taken."""
+        if not isinstance(mv, dict) or not mv.get("url") or not mv.get("expect") or self.state.get("move"):
+            return False
+        self.state["move"] = {"url": str(mv["url"]), "expect": str(mv["expect"])}
+        save_state(self.state)
+        log(f"the controller moved to {mv['url']} and handed this node its challenge: knocking there")
+        return True
+
     def knock(self, url=""):
         """Knock on the controller a move named (R90 step 12): the new
         address asked, with this node's own token, for the answer only a
         holder of the move key gives; right, this node re-adopts the
         controller there (its address and TLS pin taken, node.json written)
         and goes on as before; wrong or silent, it tries again next time."""
-        mv = self.state.get("move") or {}
-        to = str(url or mv.get("url") or "").rstrip("/")
-        if not to or not mv.get("expect"):
+        ok, why = follow(self.state, url)
+        if not ok:
+            if why:
+                log_once("knock", why)
             return False
-        try:
-            ctl = Controller(to, self.state["token"], "")
-            st, r = ctl.call("moved", {"node": self.state.get("node_id", "")}, timeout=20)
-        except Exception as e:                                   # noqa: BLE001 (a knock that fails is tried again)
-            log_once("knock", f"the move's new address {to} did not answer: {e}")
-            return False
-        if st != 200 or not isinstance(r, dict):
-            log_once("knock", f"the move's new address {to} answered {st}: not the controller yet")
-            return False
-        # The proof: the challenge the old controller told this node to
-        # expect, which only a holder of the move key (the controller once
-        # restored there) can say back.
-        got = str(r.get("answer") or "")
-        if not got or not hmac.compare_digest(got, str(mv.get("expect") or "")):
-            log_once("knock", f"{to} answered the knock with the wrong answer: not the controller that moved")
-            return False
-        self.state["controller"] = str(r.get("url") or to).rstrip("/") or to
-        if r.get("pin"):
-            self.state["pin"] = str(r.get("pin"))
-        self.state.pop("move", None)
-        save_state(self.state)
         self.ctl = Controller(self.state["controller"], self.state["token"], self.state.get("pin", ""))
         self.quiet = 0
         self.hello_at = 0
@@ -628,13 +675,21 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 # heartbeat meanwhile, and the next turn of the loop asks again.
                 st, r = said if said is not None else (200, {})
                 if st == 410 and isinstance(r, dict) and r.get("moved"):
-                    # The controller moved (R90 step 12): knocked on at once.
+                    # The controller moved (R90 step 12): knocked on at once,
+                    # with the challenge its answer carries when this node
+                    # never heard the move while it was armed (R175 step 2).
+                    self.move_hint(r.get("move"))
                     self.knock(r.get("to") or "")
                     continue
                 if st != 200 and st != 401:
                     self.quiet += 1
                     if self.quiet >= 3 and self.state.get("move"):
                         self.knock()
+                    elif self.quiet >= 3:
+                        # No move known and the controller quiet: node.json
+                        # may have been pointed elsewhere by hand (the
+                        # follow verb, R175 step 3), so it is read again.
+                        self.reread_state()
                 else:
                     self.quiet = 0
                 if st == 401:

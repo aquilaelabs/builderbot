@@ -125,10 +125,32 @@ def cmd_status():
         sys.exit(1)
 
 
+def cmd_follow(args):
+    """follow URL EXPECT (R175 step 3): the line the new controller's Nodes
+    page gives for a node that outlived the old controller, so it was never
+    told the move. Knocks there at once with this node's own token, checks
+    the answer against EXPECT, and on the right answer writes the new
+    address and pin into node.json; the running agent re-reads node.json
+    once the controller it had has stayed quiet for three hellos, or at
+    once when its service is restarted. Nothing is enrolled again: the
+    node keeps its id, its token, its containers and its synced copies."""
+    if len(args) != 2 or not args[0].startswith(("http://", "https://")):
+        raise SystemExit("follow takes the new controller's address and this node's challenge, as its Nodes page shows them")
+    state = load_state()
+    from .agent import follow
+    ok, why = follow(state, args[0], args[1])
+    if not ok:
+        raise SystemExit(why or "nothing to knock on")
+    print(f"this node follows the controller to {state['controller']}: the running agent takes it once the old "
+          "address has stayed quiet for three hellos, or now if its service is restarted")
+
+
 def main(argv):
     cmd = argv[0] if argv else ""
     if cmd == "enroll":
         cmd_enroll(argv[1:])
+    elif cmd == "follow":
+        cmd_follow(argv[1:])
     elif cmd == "run":
         cmd_run()
     elif cmd == "status":

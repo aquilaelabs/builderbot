@@ -55,6 +55,35 @@ class Knock(unittest.TestCase):
         self.a.state.pop("move")
         self.assertFalse(self.a.knock(), "nothing to knock on")
 
+    def test_a_late_node_takes_the_challenge_the_moved_answer_carries(self):
+        # R175 step 2: a node that never heard the move while it was armed
+        # hears it in the old controller's "moved" answer, and knocks.
+        self.a.state.pop("move")
+        self.assertFalse(self.a.move_hint({"url": "https://new.example"}), "no challenge, nothing taken")
+        self.assertTrue(self.a.move_hint({"url": "https://new.example", "expect": "e" * 64}))
+        self.assertEqual(self.a.state["move"], {"url": "https://new.example", "expect": "e" * 64})
+        self.assertFalse(self.a.move_hint({"url": "https://other.example", "expect": "f" * 64}), "one held is kept")
+        self.fake(200, "e" * 64, url="https://new.example/")
+        self.assertTrue(self.a.knock())
+        self.assertEqual(self.a.state["controller"], "https://new.example")
+
+    def test_follow_by_hand_and_the_state_read_again(self):
+        # R175 step 3: the follow verb's knock with a line's url and
+        # challenge, and the running agent re-reading node.json while its
+        # controller stays quiet.
+        self.a.state.pop("move")
+        calls = self.fake(200, "g" * 64, url="https://new.example/", pin="CC:DD")
+        ok, why = self.mod.follow(self.a.state, "https://new.example", "g" * 64)
+        self.assertTrue(ok, why)
+        self.assertEqual(calls[1], ("moved", {"node": "n_1"}))
+        self.assertEqual((self.a.state["controller"], self.a.state["pin"]), ("https://new.example", "CC:DD"))
+        self.assertFalse(self.mod.follow({"token": "t"}, "", "")[0], "nothing to knock on")
+        self.a.state = {"controller": "https://old.example", "token": "tok", "pin": "", "node_id": "n_1"}
+        self.mod.load_state = lambda: {"controller": "https://new.example", "token": "tok", "pin": "EE:FF"}
+        self.assertTrue(self.a.reread_state())
+        self.assertEqual((self.a.state["controller"], self.a.state["pin"], self.a.hello_at), ("https://new.example", "EE:FF", 0))
+        self.assertFalse(self.a.reread_state(), "the same controller: nothing to take")
+
 
 if __name__ == "__main__":
     unittest.main()
