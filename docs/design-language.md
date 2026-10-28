@@ -1759,3 +1759,24 @@ This page's own rules:
 Applies to: scripts/dashboard/tab-scanners.js, scripts/dashboard/scanners.py; scanners
 
 The Scanners page lists every node as a section rather than picking one in the bar: its question is coverage across nodes. A node's state is a word in its section's head, never a colored word alone; Deploy is the one action on a node without scanners, and Remove is last on one with them.
+
+### This machine (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of This machine on a desktop frame (12 columns by 10 rows: the frame shows 8 of them, and the page scrolls), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Content (the main reading or working area): the head, in the facts voice: name, this machine tag, state; System, Cores and memory, Release, Up, Agent, Wall, across the top, rows 1 to 2 of 10
+  2. Card (a box holding one thing): Updates: the release running against the newest, when checked, Check now, Update to X (dead until newer), across the middle, row 3 of 10
+  3. List (rows of like things): the own node's row as the Nodes page draws any: name, facts, agent bar, then its sections (health to advanced), across the bottom, rows 4 to 10 of 10
+  4. Card (a box holding one thing): Advanced, last: rename, the path mapping, reboot and power off, drain and the rest a node's row carries, in the middle, columns 2 to 11 of 12, rows 9 to 10 of 10
+Notes:
+  First in the rail's Controller group on a controller installed bare metal (R90 step 8, R56 step 8; the operator, 27 Oct), and not drawn in the container edition, which has no machine of its own: the page opened there says so in one empty note. The machine is not a row on the Nodes page and not in its picker; a project still picks it as its node, named This machine in every project's node picker. One page for the machine and the node it is: the head says what the machine is, the Updates section is Controller settings' own drawn here too, and the rest is the node's row exactly as the Nodes page draws one (tab-nodes.js ndRowHtml), so nothing about a node is said two ways. What the installed OS adds (R160, R162: disks with SMART and temperatures, the image version and its slot, hostname and time zone as settings) lands on this page as each module reports it.
+This page's own rules:
+  machine/one-node-one-way: scripts/dashboard/tab-machine.js, scripts/dashboard/tab-nodes.js; this machine, own node (`bb design show machine/one-node-one-way` reads it)
+
+#### Rules of This machine's own
+
+##### machine/one-node-one-way
+
+Applies to: scripts/dashboard/tab-machine.js, scripts/dashboard/tab-nodes.js; this machine, own node
+
+This machine draws the own node with the Nodes page's own row builder and adds only what the machine is (its head) and its updates; a section about a node is written once, in tab-nodes.js, and never a second time for this page.
