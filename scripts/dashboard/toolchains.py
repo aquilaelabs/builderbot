@@ -1465,6 +1465,8 @@ def payload_for_node(nid):
             # What on the store no node runs from any more (R196).
             "cleanable": cleanable(nid),
             "items": items, "job": job or {"running": False},
+            # The node's platform (R170 step 9): what the Library judges a card's platforms against.
+            "platform": plat,
             # A job that ended and succeeded while the store still reads as
             # before it: the node's census lands a moment after the job's end,
             # and the tab read the store once and stopped, so the rows stayed

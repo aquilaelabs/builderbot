@@ -349,8 +349,10 @@ function renderLibraryInto(i){
     paint(d.list, `<div class="field"><div class="notice bad">${esc("could not read the library: " + lib.error)}</div></div>`);
     return;
   }
-  const rows = (lib.rows || []).filter(r => libMatch(r, libQ) && (!libKind || r.kind === libKind) && (!libTier || r.tier === libTier));
-  const all = lib.rows || [];
+  // A card not for this node is not drawn (R170 step 9): counted in the head.
+  const all = (lib.rows || []).filter(r => !r.wrong_platform);
+  const notHere = (lib.rows || []).length - all.length;
+  const rows = all.filter(r => libMatch(r, libQ) && (!libKind || r.kind === libKind) && (!libTier || r.tier === libTier));
   const inst = all.filter(r => r.installed).length, due = all.filter(r => r.update).length;
   const free = lib.store?.free_mb ? `${(lib.store.free_mb / 1024).toFixed(1)} GB free` : "";
   const head = pageHead({title: lib.name || "", facts: [
@@ -358,6 +360,7 @@ function renderLibraryInto(i){
     ["Updates due", due ? String(due) : ""],
     ["Store", lib.store?.root ? `${lib.store.root}${free ? ", " + free : ""}` : ""],
     ["Versions checked", lib.store?.checked ? ago(lib.store.checked) : ""],
+    ["Not for this node", notHere ? String(notHere) : ""],
     ["Remove takes", clean.length ? clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ") : "", {html: true}],
   ]});
   // What the Toolchains page said over its rows (step 5): a node that has
