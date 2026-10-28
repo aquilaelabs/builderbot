@@ -15,7 +15,6 @@ come up before, so a missing clean-shutdown means an unclean stop rather
 than a first boot), hold-next (the next start is to hold).
 """
 import json
-import os
 import threading
 import time
 from pathlib import Path
