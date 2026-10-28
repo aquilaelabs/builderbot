@@ -320,6 +320,31 @@ class Workflow(unittest.TestCase):
             self.assertEqual(sh(f"bash {tool} fell-back", env).stdout.strip(), "yes")
             self.assertEqual(sh(f"bash {tool} fell-back", env).stdout.strip(), "no", "read once, then cleared")
 
+    def test_the_boots_own_settings_reach_the_controller_from_the_esp_and_the_command_line(self):
+        # R161 step 6: builderbot.env on the ESP and builderbot.debug=1 on
+        # the command line land in /run/builderbot-os/env, a short list of
+        # names only, which the controller's unit reads if it is there.
+        tool = os.path.join(EXTRA, "usr", "lib", "builderbot-os", "env")
+        with tempfile.TemporaryDirectory() as d:
+            esp = os.path.join(d, "esp"); os.makedirs(esp)
+            open(os.path.join(esp, "builderbot.env"), "w").write("# the stick's own\r\nDEBUG_MODE=1\r\nTZ=Europe/Paris\nPATH=/evil\nBB_RELEASE_LINE=0.9\n")
+            c = os.path.join(d, "cmdline"); open(c, "w").write("bbslot=a quiet\n")
+            run = os.path.join(d, "run")
+            r = sh(f"bash {tool}", {"BB_ESP": esp, "BB_OS_RUN": run, "BB_CMDLINE": c})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(open(os.path.join(run, "env")).read().splitlines(), ["DEBUG_MODE=1", "TZ=Europe/Paris", "BB_RELEASE_LINE=0.9"])
+            os.unlink(os.path.join(esp, "builderbot.env"))
+            open(c, "w").write("bbslot=a builderbot.debug=1\n")
+            sh(f"bash {tool}", {"BB_ESP": esp, "BB_OS_RUN": run, "BB_CMDLINE": c})
+            self.assertEqual(open(os.path.join(run, "env")).read().splitlines(), ["DEBUG_MODE=1"])
+            open(c, "w").write("bbslot=a\n")
+            sh(f"bash {tool}", {"BB_ESP": esp, "BB_OS_RUN": run, "BB_CMDLINE": c})
+            self.assertEqual(open(os.path.join(run, "env")).read(), "", "off at a start that did not ask")
+        unit = read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service")
+        self.assertIn("Before=builderbot-controller.service", unit)
+        self.assertIn("builderbot-os-env.service", read(IMG, "mkosi.postinst"))
+        self.assertIn("EnvironmentFile=-/run/builderbot-os/env", read(ROOT, "nodes", "install-controller.sh"))
+
     def test_build_sh_says_how_without_root(self):
         r = sh("bash image/build.sh --help")
         self.assertEqual(r.returncode, 0, r.stderr)
