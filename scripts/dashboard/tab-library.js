@@ -339,7 +339,6 @@ function renderLibraryInto(i){
     if (!libSeq) loadLibrary();
     return;
   }
-  const pnodes = (nodesList || []).filter(x => x.kind === "agent" && x.state !== "retired").map(x => ({id: x.id, name: x.name, live: x.live}));
   if (lib.nonode){
     d.setBar("");
     d.list.innerHTML = noNodeYet("toolchains and coding agents install on a node", "libnone");
@@ -347,7 +346,9 @@ function renderLibraryInto(i){
   }
   const may = lib.may || {};
   const job = lib.job || {}, busy = !!job.running;
-  const node = pnodes.find(x => x.id === libNode) || {};
+  // The node's whole record: whether its agent is behind and its store
+  // read-only are read off it.
+  const node = (nodesList || []).find(x => x.id === libNode) || {};
   const stale = nodeStale(node), pro = node.reported?.store_ro === true;
   const clean = may.install && !pro ? (lib.cleanable || []) : [];
   // The node is the Build group's header's (R178).
