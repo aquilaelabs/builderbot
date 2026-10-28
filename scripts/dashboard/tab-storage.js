@@ -198,8 +198,9 @@ function storageShares(n){
   const why = !n.smb && !n.nfs ? `No Samba or NFS on this machine yet: Shares on its ${pageLink("machine", "Features section")} installs them.`
     : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
   const shares = n.shares || [];
+  const lockedMounts = (n.pools || []).filter(p => p.locked && p.mount).map(p => p.mount);
   const rows = shares.map(s => `<div class="row stack2 stshare" data-share="${esc(s.name)}"><div class="grow">
-      <div class="name">${esc(s.name)} <code>${esc(s.path)}</code></div>
+      <div class="name">${esc(s.name)} <code>${esc(s.path)}</code>${lockedMounts.some(m => s.path === m || s.path.startsWith(m + "/")) ? ` <span class="pill warn">its pool is locked: unlock it under Pools</span>` : ""}</div>
       ${s.smb?.on ? `<div class="sub">SMB${s.smb.ro ? ", read-only" : ""}${s.smb.tm ? ", a Time Machine target" : ""}: ${s.smb.guest ? "everybody, as a guest" : (s.accounts || s.smb.users || []).map(esc).join(", ") || "nobody yet"} · \\\\${esc(n.name)}\\${esc(s.name)}</div>` : ""}
       ${s.nfs?.on ? `<div class="sub">NFS${s.nfs.ro ? ", read-only" : ""}: ${(s.nfs.clients || []).map(esc).join(", ")} · ${esc(n.name)}:${esc(s.path)}</div>` : ""}
       </div>${admin && !why ? `<span class="acts"><button type="button" class="danger" data-stshare="remove" data-name="${esc(s.name)}">Remove</button></span>` : ""}</div>`).join("");
@@ -266,11 +267,16 @@ function storagePools(n){
     const pct = p.size_mb ? (p.alloc_mb || 0) / p.size_mb * 100 : 0;
     const bad = !["online", ""].includes(p.health);
     return `<div class="row stack2 stpool${bad ? " bad" : ""}" data-pool="${esc(p.name)}"><div class="grow">
-      <div class="name">${esc(p.name)} <span class="pill${bad ? " bad" : " ok"}">${esc(p.health || "unknown")}</span>${p.mount ? ` <span class="pill">${esc(p.mount)}</span>` : ""}</div>
+      <div class="name">${esc(p.name)} <span class="pill${bad ? " bad" : " ok"}">${esc(p.health || "unknown")}</span>${p.mount ? ` <span class="pill">${esc(p.mount)}</span>` : ""}${
+        p.locked ? ` <span class="pill warn">locked</span>` : p.encrypted ? ` <span class="pill">encrypted, ${(n.key_modes || {})[p.name] === "kept" ? "key kept here" : "key asked after each boot"}</span>` : ""}</div>
+      ${p.locked && admin && !why ? `<div class="field"><label class="pick"><span class="pickw">Passphrase</span><input type="password" data-stunlock="${esc(p.name)}" autocomplete="off"></label>
+        <span class="acts"><button type="button" data-stkey="unlock" data-name="${esc(p.name)}">Unlock</button></span><div class="hint">Its shares wait until it is unlocked; the passphrase goes to the machine once and is not kept.</div></div>` : ""}
       <div class="ndmeters">${meter("used", pct, `${sgb(p.alloc_mb)} / ${sgb(p.size_mb)}`, `${sgb(p.free_mb)} free`)}</div>
       ${(p.vdevs || []).map(v => `<div class="sub">${esc(v.type === "single" ? "disk" : v.type)}: ${v.disks.map(d => `<code>${esc(d.id.replace(/^\/dev\/disk\/by-id\//, ""))}</code>${d.state && d.state !== "online" ? ` <span class="pill bad">${esc(d.state)}</span>` : ""}`).join(", ")}</div>`).join("")}
       ${p.scrub ? `<div class="sub dim">${esc(p.scrub)}</div>` : ""}${p.errors && !/no known data errors/i.test(p.errors) ? `<div class="sub bad">${esc(p.errors)}</div>` : ""}
       </div>${admin && !why ? `<span class="acts"><button type="button" data-stpool="scrub" data-name="${esc(p.name)}">Scrub</button>${actMore([
+        p.encrypted && (n.key_modes || {})[p.name] === "kept" ? `<button type="button" data-stkey="forget" data-name="${esc(p.name)}" title="asked for on this page after every boot from now on">Stop keeping its key here</button>` : "",
+        p.encrypted && (n.key_modes || {})[p.name] !== "kept" ? `<button type="button" data-stkey="keep" data-name="${esc(p.name)}" title="kept sealed on this machine, so the pool unlocks at boot">Keep its key here</button>` : "",
         `<button type="button" data-stpool="export" data-name="${esc(p.name)}" title="unmount its datasets and let the disks go, to import elsewhere">Export</button>`,
         `<button type="button" class="danger" data-stpool="destroy" data-name="${esc(p.name)}" title="everything on it is gone">Destroy</button>`])}</span>` : ""}</div>`;
   }).join("");
@@ -283,12 +289,36 @@ function storagePools(n){
         <option value="single">single: one disk, nothing protects it</option></select></label></div>
       <div class="field"><div class="lbox" id="stPoolDisks">${[...free, ...used].map(d => `<label class="ndcap"><input type="checkbox" data-stdiskpick="${esc(d.name)}"${used.includes(d) ? ' data-held="1"' : ""}> ${diskLine(d)}${used.includes(d) ? ` <span class="pill warn">holds ${esc((d.parts || []).find(p => p.holds && p.holds !== "nothing")?.holds || d.holds)}</span>` : ""}</label>`).join("") || `<div class="empty">No disk to make a pool from.</div>`}</div></div>
       <div class="field"><label class="ndcap"><input type="checkbox" id="stPoolWipe"> wipe disks that hold something (what is on them is gone)</label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stPoolEncrypt"> encrypt it (ZFS native encryption, a passphrase)</label>
+        <div id="stPoolKeyF" hidden>
+          <label class="pick"><span class="pickw">Passphrase</span><input type="password" id="stPoolPass" autocomplete="new-password"></label>
+          <label class="pick"><span class="pickw">Again</span><input type="password" id="stPoolPass2" autocomplete="new-password"></label>
+          <label class="ndcap"><input type="checkbox" id="stPoolKeepKey" checked> keep the key on this machine, sealed under its install key, so the pool unlocks at every boot</label>
+          <div class="hint">Kept here, the disks are unreadable pulled from this machine, but the machine as a whole opens them. Not kept, the passphrase is asked for on this page after every boot and the pool and its shares wait until then; that also protects against the whole machine taken. Write the passphrase down: nothing here can recover a pool without it.</div>
+        </div></div>
       <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stpool="create">Make the pool</button></div></div>`;
   const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No pool yet${n.zfs ? ": the form below makes one" : ""}.</div>`}${form}`;
   const sick = pools.filter(p => !["online", ""].includes(p.health)).length;
   return docSection("storage", "pools", "Pools", pools.length ? `${pools.length}${sick ? `, ${sick} not online` : ""}` : "", body, {cls: sick ? "bad" : ""});
 }
 function wireStoragePools(root, n){
+  const enc = $("stPoolEncrypt"), keyF = $("stPoolKeyF");
+  if (enc && keyF) enc.onchange = () => { keyF.hidden = !enc.checked; };
+  root.querySelectorAll("[data-stkey]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stkey, body = {action: "storage-key", id: n.node, key: act, pool: b.dataset.name};
+    if (act === "unlock"){
+      body.passphrase = root.querySelector(`[data-stunlock="${b.dataset.name}"]`)?.value || "";
+      if (body.passphrase.length < 8){ notify("type the pool's passphrase", true); return; }
+    } else if (act === "keep"){
+      const typed = await askText(`Keep ${b.dataset.name}'s key on this machine?\n\nType its passphrase: it is kept sealed under the install key, and the pool unlocks at every boot from now on.`, {verb: "Keep", label: "The pool's passphrase"});
+      if (typed === null || typed === undefined) return;
+      body.passphrase = String(typed);
+    } else if (!await askYes(`Stop keeping ${b.dataset.name}'s key here? It is asked for on this page after every boot from now on, and the pool and its shares wait until then.`, {title: "Forget the key here?", verb: "Forget", danger: true})) return;
+    busy(b, act === "unlock" ? "Unlocking" : "Saving");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || {unlock: "the passphrase goes to the machine at its next check-in; the pool opens within a minute", keep: "kept: the pool unlocks at boot from now on", forget: "forgotten here: asked after every boot from now on"}[act], !!j.error);
+    await refresh();
+  }));
   root.querySelectorAll("[data-stpool]").forEach(b => b.onclick = () => pressing(b, async () => {
     const act = b.dataset.stpool, body = {action: "storage-pool", id: n.node, pool: act, name: b.dataset.name || ""};
     if (act === "create"){
@@ -299,8 +329,14 @@ function wireStoragePools(root, n){
       if (!body.name || !body.disks.length){ notify("a pool takes a name and at least one disk", true); return; }
       const held = [...root.querySelectorAll("[data-stdiskpick]:checked[data-held]")].length;
       if (held && !body.wipe){ notify(`${held} of the disks picked hold something: tick wipe to take them`, true); return; }
+      if ($("stPoolEncrypt")?.checked){
+        const p1 = $("stPoolPass")?.value || "", p2 = $("stPoolPass2")?.value || "";
+        if (p1.length < 8){ notify("an encrypted pool takes a passphrase of 8 characters at least", true); return; }
+        if (p1 !== p2){ notify("the passphrase and its repeat differ", true); return; }
+        body.encrypt = true; body.passphrase = p1; body.keep_key = !!$("stPoolKeepKey")?.checked;
+      }
       const names = body.disks.map(d => { const x = (n.disks || []).find(y => y.name === d); return x ? `${d} (${x.model || "unnamed"}, ${humanBytes((x.size_mb || 0) * 1048576)}, serial ${x.serial || "none"})` : d; });
-      if (!await askYes(`Make the pool ${body.name} as a ${body.layout} of:\n\n${names.join("\n")}\n\nEverything on these disks is gone.`, {title: "Make the pool?", verb: "Make it", danger: true})) return;
+      if (!await askYes(`Make the pool ${body.name} as a ${body.layout} of:\n\n${names.join("\n")}\n\nEverything on these disks is gone.${body.encrypt ? `\n\nEncrypted, its key ${body.keep_key ? "kept on this machine" : "asked for after every boot"}; nothing recovers it without the passphrase.` : ""}`, {title: "Make the pool?", verb: "Make it", danger: true})) return;
     } else if (act === "destroy"){
       if (!await askYes(`Destroy the pool ${body.name}?\n\nEverything on it is gone; its disks hold nothing after.`, {title: "Destroy the pool?", verb: "Destroy it", danger: true})) return;
       body.confirm = body.name;

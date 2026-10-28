@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import time
 
+from .base import log
 from .disks import disks_now
 
 POOL_RE = re.compile(r"[a-z][a-z0-9_-]{0,30}")
@@ -73,9 +74,15 @@ def pools_now():
             continue
         row = {"name": f[0], "size_mb": int(f[1]) // 1048576 if f[1].isdigit() else 0,
                "alloc_mb": int(f[2]) // 1048576 if f[2].isdigit() else 0, "free_mb": int(f[3]) // 1048576 if f[3].isdigit() else 0,
-               "health": f[4][:16].lower(), "mount": "", "vdevs": [], "scrub": "", "errors": ""}
-        mp = _out([shutil.which("zfs") or "zfs", "get", "-H", "-o", "value", "mountpoint", f[0]]).strip()
+               "health": f[4][:16].lower(), "mount": "", "vdevs": [], "scrub": "", "errors": "", "encrypted": False, "locked": False}
+        props = _out([shutil.which("zfs") or "zfs", "get", "-H", "-o", "value", "mountpoint,encryption,keystatus", f[0]]).split("\n")
+        mp = (props[0] if props else "").strip()
         row["mount"] = mp[:120] if mp.startswith("/") else ""
+        # Native encryption (R162 step 3): whether the root dataset is
+        # encrypted, and whether its key is loaded; locked means nothing
+        # under it is mounted until a key comes.
+        row["encrypted"] = len(props) > 1 and props[1].strip() not in ("", "off", "-")
+        row["locked"] = row["encrypted"] and len(props) > 2 and props[2].strip() == "unavailable"
         st = _out([zpool, "status", f[0]])
         m = re.search(r"^\s*scan:\s*(.+)$", st, re.M)
         if m:
@@ -148,8 +155,46 @@ def snapshots_now():
     return out
 
 
+def safe_mode():
+    """Safe mode on BuilderBot OS (R161 step 2): bbsafe=1 on the kernel's
+    command line; every encrypted pool stays locked in it."""
+    try:
+        with open(os.environ.get("BB_CMDLINE") or "/proc/cmdline", encoding="utf-8", errors="replace") as f:
+            return "bbsafe=1" in f.read().split()
+    except OSError:
+        return False
+
+
 class PoolsMixin:
     """Agent's pool jobs: one of the parts class Agent (agent.py) is made of."""
+    _pool_keys = ()
+
+    def pool_keys_want(self, rows):
+        """The passphrases the hello hands over (R162 step 3): kept in this
+        process's memory only (never node.json, never a file), and every
+        locked pool among them unlocked and mounted now; nothing in Safe
+        mode. A pool made later finds its passphrase here (create)."""
+        keys = [{"pool": str(r.get("pool") or ""), "passphrase": str(r.get("passphrase") or "")} for r in rows
+                if isinstance(r, dict) and POOL_RE.fullmatch(str(r.get("pool") or "")) and r.get("passphrase")]
+        self._pool_keys = keys                              # on the object, never in node.json
+        if not keys or os.geteuid() != 0 or safe_mode():
+            return
+        zfs = shutil.which("zfs")
+        if not zfs:
+            return
+        for p in pools_now():
+            if not p.get("locked"):
+                continue
+            key = next((k["passphrase"] for k in keys if k["pool"] == p["name"]), "")
+            if not key:
+                continue
+            r = subprocess.run([zfs, "load-key", "-L", "prompt", p["name"]], input=key + "\n", capture_output=True, text=True, timeout=60, check=False)
+            if r.returncode != 0:
+                log(f"pools: {p['name']} did not unlock: {(r.stderr or r.stdout or '').strip()[:160]}")
+                continue
+            subprocess.run([zfs, "mount", "-a"], capture_output=True, timeout=120, check=False)
+            log(f"pools: {p['name']} unlocked")
+            self.hello_again(f"the pool {p['name']} unlocked")
 
     def _apply_storage_snapshot(self, job, cfg):
         say = job.say
@@ -266,7 +311,21 @@ class PoolsMixin:
             else:
                 argv = [zpool, "add"] + (["-f"] if wipe else []) + [name] + vdev
             say(f"pool {action} {name}: {layout} of {', '.join(want)} ({', '.join(ids)})\n")
-            rc = self._sh(job, argv, timeout=600)
+            if action == "create" and cfg.get("encrypt") is True:
+                # Native encryption (R162 step 3): the passphrase never rides
+                # the job; it came with the hello (pool_keys_want) and goes to
+                # zpool on its stdin, nowhere else.
+                key = next((k["passphrase"] for k in getattr(self, "_pool_keys", []) if k.get("pool") == name), "")
+                if not key:
+                    say("refused: no passphrase for the pool has reached this machine yet; the next hello brings it, press again\n")
+                    return "failed", 65
+                argv = argv[:2] + ["-O", "encryption=aes-256-gcm", "-O", "keyformat=passphrase", "-O", "keylocation=prompt"] + argv[2:]
+                say("$ " + " ".join(argv) + "  (encrypted; the passphrase on stdin)\n")
+                p = subprocess.run(argv, input=key + "\n" + key + "\n", capture_output=True, text=True, timeout=600, check=False)
+                say((p.stdout or "") + (p.stderr or ""))
+                rc = p.returncode
+            else:
+                rc = self._sh(job, argv, timeout=600)
         elif action == "scrub":
             if name not in have:
                 say(f"refused: no pool called {name} here\n")

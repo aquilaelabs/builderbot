@@ -344,6 +344,10 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # ...and the backups it copies (R162 step 5), the record the job names a row of.
             if isinstance(r.get("store_backups"), list):
                 self.backups_want(r["store_backups"])
+            # ...and the passphrases of its encrypted pools (R162 step 3),
+            # kept in memory and every locked pool among them unlocked.
+            if isinstance(r.get("pool_keys"), list):
+                self.pool_keys_want(r["pool_keys"])
             # The coding agents' sign-ins sealed (R126): the controller's
             # switch, and each account's public key here, kept in node.json.
             ts, pubs = bool(r.get("token_seal")), r.get("token_pubs") if isinstance(r.get("token_pubs"), dict) else {}

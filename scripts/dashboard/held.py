@@ -51,6 +51,11 @@ def _marker(name):
     return STATE / name
 
 
+def safe_mode():
+    """Whether this boot is Safe mode (the hello carries no pool key in it, R162 step 3)."""
+    return _safe_mode()
+
+
 def _safe_mode():
     """Safe mode on BuilderBot OS (R161 step 2): bbsafe=1 on the kernel's
     command line, which GRUB's Safe mode entry adds."""

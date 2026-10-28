@@ -4241,6 +4241,7 @@ import nodes                                                     # noqa: E402
 import history                                                   # noqa: E402
 import extmounts                                                 # noqa: E402
 import storebackups                                              # noqa: E402
+import poolkeys                                                  # noqa: E402
 import termws                                                    # noqa: E402
 termws.configure(agent_dir=nodes.AGENT_DIR)
 import tokenkeys                                                 # noqa: E402
@@ -4279,6 +4280,15 @@ try:
     storebackups.configure(state=STATE, write_json=write_json)
     nodes.store_backups = storebackups.wanted
     nodes.backup_summary = lambda rows: storebackups.summary(rows, schedules.scheduled_backups(_own_node_id() or ""))
+    # ...and its encrypted pools' passphrases (R162 step 3), none in Safe mode.
+    poolkeys.configure(state=STATE, write_json=write_json, seal=signing.seal, unseal=signing.unseal,
+                       sealing=lambda: signing.MASTER is not None)
+    nodes.pool_keys = lambda unlocked: poolkeys.wanted(unlocked, safe_mode=held.safe_mode())
+    nodes.pool_keys_set = poolkeys.set_key
+    nodes.pool_keys_offer = poolkeys.offer
+    nodes.pool_keys_forget = poolkeys.forget
+    if (_sealed := poolkeys.seal_all()):
+        print(f"dashboard: sealed {_sealed} pool passphrase(s) under the install's key", flush=True)
     if (_sealed := extmounts.seal_all()):
         print(f"dashboard: sealed {_sealed} share password(s) under the install's key", flush=True)
     # ...and the digest of the bb bundle, so a node can tell from hello alone
@@ -11288,6 +11298,7 @@ class Handler(BaseHTTPRequestHandler):
                 if users.is_admin(who):
                     row["extmounts"] = extmounts.rows()
                     row["backups"] = storebackups.rows()
+                    row["key_modes"] = poolkeys.modes()
                     row["accounts"] = sorted(names.values(), key=str.lower)
                     row["roles"] = sorted({r for u in users.all_users() for r in u.get("roles") or [] if not r.startswith("Owner of ")})
         return self._json(payload, status)
