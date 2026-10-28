@@ -3406,7 +3406,9 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
     const bar = await page.evaluate(() => {
       const b = document.querySelector('.pane .doc.on .docbarrow.dmpick');
       const top = e => Math.round(e.getBoundingClientRect().top);
-      const tops = [b.querySelector('input[type=search]'), b.querySelector('.pseg'), ...b.querySelectorAll('.actbar > button')]
+      // The search has a line of its own under 440px (the stylesheet's .dmpick
+      // rule); the views and the buttons share theirs.
+      const tops = [b.querySelector('.pseg'), ...b.querySelectorAll('.actbar > button')]
         .filter(e => e && e.offsetHeight).map(top);
       const tile = [...document.querySelectorAll('.pane .doc.on .tiles .tile .ts')][0];
       return { tops, right: Math.max(...[...b.querySelectorAll('button, select, input')].map(e => e.getBoundingClientRect().right)),
@@ -3414,7 +3416,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
                  return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; })() : 1 };
     });
     ok(new Set(bar.tops).size === 1 && bar.right <= w && bar.tileLines <= 1,
-       `at ${w}px the Containers bar keeps its search, views, Check and New on one line, and the tile on one line (${JSON.stringify(bar)})`);
+       `at ${w}px the Containers bar keeps its views, Check and New on one line, the search on its own, and the tile on one line (${JSON.stringify(bar)})`);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
