@@ -2421,7 +2421,9 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
 
     // bb run and bb build, from a session's shell
     const port = new globalThis.URL(URL).port;
-    const env = { ...process.env, DASHBOARD_AUTH: 'test:test', DASHBOARD_PORT: port,
+    // The harness may itself run inside a session, whose BB_TOKEN bb would
+    // take over the test account's password (B412).
+    const env = { ...process.env, DASHBOARD_AUTH: 'test:test', DASHBOARD_PORT: port, BB_TOKEN: '',
                   DASHBOARD_STATE: `${DIR}/state`, BB_PROJECT: 'alpha', CLAUDECODE: '1' };
     const out = execFileSync('bash', [`${REPO}/scripts/bb`, 'run', '--node', 'agentbox', '--', 'sh', '-c', 'echo hi from bb run'],
       { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();

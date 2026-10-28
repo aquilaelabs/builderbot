@@ -408,12 +408,12 @@ function drawMovedBand(){
   if (a && to && a.textContent !== to){ a.textContent = to; a.href = to; }
 }
 
-// shown under, nodes from the list once it has landed, containers from what
-// every node last answered (dmJumpRows).
-function jumpItems(q){
 // ---- search: jump to a page, a project, a container or a node ---------------
 
 // Rows: [label, where, go]. Pages by name, projects by the name they are
+// shown under, nodes from the list once it has landed, containers from what
+// every node last answered (dmJumpRows).
+function jumpItems(q){
   const needle = (q || "").trim().toLowerCase();
   if (!needle) return [];
   const rows = [];

@@ -25,16 +25,16 @@ ok(await page.evaluate(() => location.hash) === '#/containers/scanners' && await
 // A node that holds a project: the fixture's stub node, given one here,
 // since the page lists only the nodes projects are bound to.
 const stub = ((await api('/api/v1/nodes')).nodes || []).find(n => n.kind === 'agent' && n.state === 'online' && !n.host_only);
-if (stub) await api('/api/prefs', { project: 'beta', nodes: [stub.id], node: stub.id });
+const bound = stub ? await api('/api/prefs', { project: 'beta', nodes: [stub.id], node: stub.id }) : { error: 'no agent node online' };
 const first = await api('/api/scanners');
 const node = (first.nodes || []).find(n => !n.host_only && (n.projects || []).length);
-ok(!!node && !node.deployed, `a node holds projects and has no scanners yet (${node ? node.name + ': ' + node.projects.join(', ') : 'none'})`);
+ok(!!node && !node.deployed, `a node holds projects and has no scanners yet (${node ? node.name + ': ' + node.projects.join(', ') + (node.deployed ? ', deployed already' : '') : 'none: ' + (bound.error || JSON.stringify((first.nodes || []).map(n => [n.name, n.projects])))})`);
 ok((first.uncovered || []).some(u => u.project === (node?.projects || [])[0] && /no scanners on/.test(u.why)),
    'its projects are listed as not covered, with why');
 
 // Deploy on it: a compose job the stub takes; the section says deployed with its versions.
-await page.click(`.scannerstab [data-scandeploy="${node.id}"]`);
-const dep = await until(async () => { const v = await api('/api/scanners'); const n = v.nodes.find(x => x.node === node.id); return n.deployed ? n : null; });
+await page.click(`.scannerstab [data-scandeploy="${node.node}"]`);
+const dep = await until(async () => { const v = await api('/api/scanners'); const n = v.nodes.find(x => x.node === node.node); return n.deployed ? n : null; });
 ok(!!dep && dep.versions.semgrep && dep.deploy_job, `Deploy pins the versions and queues the pull (${dep?.deploy_job}: ${dep ? Object.values(dep.versions).join(', ') : ''})`);
 const pulled = await until(async () => { const j = await api(`/api/v1/jobs?id=${dep.deploy_job}`); return j.state === 'succeeded' ? j : null; }, 60000);
 ok(!!pulled && /compose\.yml/.test(pulled.log || ''), `the stub agent took the compose job and wrote the file (${pulled?.state})`);
@@ -47,17 +47,17 @@ await page.waitForFunction(() => /Sundays at 4:00/.test(document.querySelector('
 ok(true, 'the schedule section says so in its head');
 
 // Run now: a scan job the stub takes, a SARIF per scanner sent up.
-const run = await api('/api/scanners', { action: 'run', node: node.id });
-const job = run.nodes?.[node.id]?.job;
+const run = await api('/api/scanners', { action: 'run', node: node.node });
+const job = run.nodes?.[node.node]?.job;
 ok(!!job, `Run now queues a scan job on the node (${job || run.error || JSON.stringify(run)})`);
 const fin = await until(async () => { const j = await api(`/api/v1/jobs?id=${job}`); return ['succeeded', 'failed'].includes(j.state) ? j : null; }, 60000);
 ok(fin?.state === 'succeeded' && /semgrep sent up/.test(fin.log || ''), `the stub scanned and sent its reports up (${fin?.state}: ${(fin?.log || '').trim().split('\n').pop()})`);
-const after = await until(async () => { const v = await api('/api/scanners'); const n = v.nodes.find(x => x.node === node.id); return Object.keys(n.reports || {}).length >= 3 ? n : null; });
+const after = await until(async () => { const v = await api('/api/scanners'); const n = v.nodes.find(x => x.node === node.node); return Object.keys(n.reports || {}).length >= 3 ? n : null; });
 ok(!!after && after.last.state === 'succeeded', `the node's section has its three reports and the run as done (${after ? Object.keys(after.reports).join(', ') : ''})`);
 const found = await until(async () => { const f = await api('/api/findings'); return f.available && (f.reports || []).some(r => r.findings.some(x => x.project === node.projects[0])) ? f : null; });
 ok(!!found, `the Analysis page reads what was sent up, by project (${found ? found.reports.map(r => r.tool).join(', ') : 'nothing'})`);
 await page.evaluate(() => loadScanners());
-await page.waitForFunction(id => /done|succeeded/.test(document.querySelector(`.scannerstab details[data-sect="scanners:node-${id}"]`)?.textContent || ''), node.id, { timeout: patience(15000) });
+await page.waitForFunction(id => /done|succeeded/.test(document.querySelector(`.scannerstab details[data-sect="scanners:node-${id}"]`)?.textContent || ''), node.node, { timeout: patience(15000) });
 ok(true, 'the node\'s section says its last run');
 
 // Not covered: nothing of that node's now; a project with no node still is.
@@ -65,8 +65,8 @@ const un = (await api('/api/scanners')).uncovered || [];
 ok(!un.some(u => u.project === node.projects[0]), 'its projects are covered now');
 
 // Remove takes it off, with its reports.
-const rm = await api('/api/scanners', { action: 'remove', node: node.id });
-ok(rm.ok === true && !(await api('/api/scanners')).nodes.find(x => x.node === node.id).deployed, 'Remove takes the scanners off the node');
+const rm = await api('/api/scanners', { action: 'remove', node: node.node });
+ok(rm.ok === true && !(await api('/api/scanners')).nodes.find(x => x.node === node.node).deployed, 'Remove takes the scanners off the node');
 
 // A session is refused, reading or writing.
 const tok = (await page.evaluate(async () => (await (await fetch('/api/status')).json()).repos?.[0]?.token)) || '';

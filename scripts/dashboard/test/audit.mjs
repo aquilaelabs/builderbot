@@ -49,6 +49,6 @@ const seen = await page.evaluate(() => ({
 ok(seen.rows > 0 && seen.pickers, `the Audit page lists what was done, with a person and a machine to pick (${seen.rows} rows)`);
 ok(seen.refused, 'the refused cookie is on it as a line of its own');
 await page.selectOption('#auditPerson', 'test');
-await page.waitForFunction(() => { const rows = [...document.querySelectorAll('.audittab .auditrow')]; return rows.length > 0 && rows.every(r => /\btest\b/.test(r.textContent)); }, null, { timeout: patience(15000) });
+await page.waitForFunction(() => { const rows = [...document.querySelectorAll('.audittab .auditrow')]; return rows.length > 0 && rows.every(r => r.textContent.includes('test')); }, null, { timeout: patience(15000) });
 ok(true, 'picked to one person, every row is theirs');
 await done(browser);

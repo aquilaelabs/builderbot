@@ -288,7 +288,10 @@ for (const p of [page, phone]){
   const untoured = await p.evaluate(ks => ks.map(([k]) => k).filter(k => !TOUR_STEPS[k] && k !== 'debug'), kinds);
   ok(!untoured.length, `every page on the rail has a tour ${where}${untoured.length ? `: none for ${untoured.join(', ')}` : ''}`);
   const lost = [];
-  for (const [k, g] of kinds){
+  // A page this install does not offer (This machine on a container
+  // install) lands on its group's first page, which is not it.
+  const offered = await p.evaluate(ks => ks.filter(([k]) => k === 'notebook' || railAllows(k)), kinds);
+  for (const [k, g] of offered){
     if (k === 'notebook') await p.evaluate(() => openNotebook('alpha', 'overview'));
     else await p.evaluate(([g, k]) => { location.hash = g === k ? `#/${g}` : `#/${g}/${k}`; }, [g, k]);
     await p.waitForFunction(k => tabOf(panes[0])?.kind === k && !tourLoading(), k, { timeout: 15000 }).catch(() => {});

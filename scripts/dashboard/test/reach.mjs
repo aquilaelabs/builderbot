@@ -51,12 +51,16 @@ ok(true, 'the row says it was sent');
 // The secret address is kept sealed and listed on the Keys page by name only.
 const kept = await page.evaluate(async () => (await (await postJSON('/api/keys', { action: 'status' })).json()).kept || []);
 const mine = kept.find(k => k.kind === 'reach');
-ok(!!mine && /the harness/.test(mine.name) && mine.sealed === true, `the Keys page lists the destination's address as sealed (${mine ? mine.name : 'none'})`);
+const sealing = !!(await page.evaluate(async () => (await (await postJSON('/api/keys', { action: 'status' })).json()).sealing));
+ok(!!mine && /the harness/.test(mine.name) && (mine.sealed === true || !sealing),
+   `the Keys page lists the destination's address${sealing ? ' as sealed' : ' (no install key here, so nothing is sealed)'} (${mine ? mine.name : 'none'})`);
 
-// Remove.
-await page.click('[data-reachrm]');
-await page.waitForSelector('.modal:not([hidden]) button.danger', { timeout: patience(10000) });
-await page.click('.modal:not([hidden]) button.danger');
+// Remove: the row was just drawn again with its sent pill, so the press
+// goes to the button that is there now.
+await settled(page);
+await page.evaluate(() => document.querySelector('.pfreach .row[data-reach] [data-reachrm]').click());
+await page.waitForSelector('.modal.askdlg:not([hidden]) button.danger', { timeout: patience(10000) });
+await page.evaluate(() => document.querySelector('.modal.askdlg:not([hidden]) button.danger').click());
 await page.waitForFunction(() => !document.querySelector('.pfreach .row[data-reach]'), null, { timeout: patience(15000) });
 ok(true, 'Remove takes it away');
 hook.close();
