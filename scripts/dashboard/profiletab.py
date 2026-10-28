@@ -18,6 +18,7 @@ plugins_of = None        # (uid, {node id: name}) -> its plugins, as the nodes l
 node_names = None        # () -> {node id: name}
 logs_of = None           # me -> the account's conversations with Claude (transcripts.mine)
 devices = None           # devices.py: the account's signed-in devices (R272), listed and signed out
+logins = None            # logins.py: the account's browser sign-ins (R158 step 8), listed and ended
 mfa = None               # mfa.py: the account's second factors (R127)
 audit = None             # db.audit
 two_factor_required = None   # account -> whether a role of it requires a second factor
@@ -63,6 +64,9 @@ def view(me):
             # The apps signed in as this account on its own machines
             # (R272), newest call first: what Disconnect acts on.
             "devices": devices.listed(acct) if devices else [],
+            # The browsers signed in as this account (R158 step 8), each
+            # bound to the browser it was made in, this one first.
+            "signins": logins.rows(uid, me.get("lid") or "") if logins else [],
             # Its second factors (R127), never a secret, and whether a role
             # of it requires one.
             "two_factor": mfa.summary(uid) if mfa else {"on": False},
@@ -163,6 +167,14 @@ def verb(me, act, req, origin=""):
         got = two_factor(me, act, req, origin)
         if got:
             return got[0], got[1], None
+    if act == "signin-out":
+        # A browser's sign-in ended from here (R158 step 8): its cookie
+        # answers nothing from its next request.
+        lid = field(req, "id")
+        if not logins or not any(r["id"] == lid for r in logins.rows(me.get("uid") or "")):
+            return {"error": "no such sign-in"}, 404, None
+        logins.drop(me.get("uid") or "", lid)
+        return {"ok": True, "this": lid == (me.get("lid") or "")}, 200, None
     if act == "device-signout":
         r = devices.revoke(users.get(me["name"]) or {}, field(req, "device")) if devices else {"error": "no devices here"}
         return r, (400 if r.get("error") else 200), None

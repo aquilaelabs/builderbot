@@ -61,13 +61,24 @@ const PROFILE_SAYS = {
   twofactor: "an authenticator app, passkeys and recovery codes",
   mykey: "your key, the tokens you gave repositories, and Purge",
   terminal: "the size, cursor and colors of your terminals",
-  devices: "your apps, to disconnect",
+  devices: "your browsers and apps, to sign out",
 };
 // The apps signed in as this account on its own machines (R272 step 1), the
 // last of Profile's sections (the operator, 19 Oct): a table, a line a device (its name,
 // what it is, when it last called) with Disconnect at its end, which signs
 // that one out.
 const PF_DEVICE_COLS = [{label: "Device"}, {label: "Kind", w: "6rem"}, {label: "Last call", w: "minmax(0,.6fr)"}, {act: true, w: "8rem"}];
+// ...and the browsers signed in as the account (R158 step 8), each bound
+// to the browser it was made in, this one first; Sign out ends one, and a
+// cookie copied elsewhere already opens nothing.
+const PF_SIGNIN_COLS = [{label: "Browser"}, {label: "From", w: "minmax(0,.7fr)"}, {label: "Last used", w: "minmax(0,.6fr)"}, {act: true, w: "8rem"}];
+
+function profileSignins(rows){
+  if (!rows.length) return "";
+  return tblWrap(PF_SIGNIN_COLS, rows.map(r => `<div class="row" data-signin="${esc(r.id)}">${tblLine(PF_SIGNIN_COLS, [
+    esc(r.agent) + (r.mine ? ` <span class="dim">(this one)</span>` : ""), esc(r.ip || ""), esc(r.last ? ago(r.last) : "never"),
+    `<button type="button"${r.mine ? "" : ' class="danger"'} data-pfsignout="${esc(r.id)}">Sign out</button>`])}</div>`).join(""), "pfsignins");
+}
 const PF_DEVICE_KIND = {pc: "PC", phone: "Phone", editor: "Editor"};
 // `of` names the account when an administrator reads it on the Users page
 // (R272 step 8), whose Disconnect asks for that account.
@@ -159,7 +170,7 @@ function renderProfileInto(i){
     ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
     ${keyMineSection()}
     ${sec("terminal", "Your terminal", profileTerminal())}
-    ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
+    ${docSection("profile", "devices", "Signed in as you", "", profileSignins(profile.signins || []) + profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   wireProfile(d.el);
@@ -247,6 +258,17 @@ function wireTerminalLook(root){
 // refused on its next call and says to sign in again. One of another
 // account's, on the Users page, is an administrator's to cut off for them.
 function wireDeviceOut(root){
+  root.querySelectorAll("[data-pfsignout]").forEach(b => b.onclick = async () => {
+    const r = (profile?.signins || []).find(x => x.id === b.dataset.pfsignout);
+    if (!await askYes(r?.mine ? "Sign out this browser?" : `Sign out ${r ? r.agent : "that browser"}? Its next request finds it signed out.`)) return;
+    busy(b, "Signing out");
+    try{
+      const j = await (await postJSON("/api/profile", {action: "signin-out", id: b.dataset.pfsignout})).json();
+      if (j.error) notify(j.error, true);
+      else if (j.this){ location.href = "/login"; return; }
+    }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
+    await loadProfile();
+  });
   root.querySelectorAll("[data-pfdevout]").forEach(b => b.onclick = async () => {
     const of = b.dataset.devof || "";
     const d = [...(profile?.devices || []), ...(usersList || []).flatMap(u => u.devices || [])].find(x => x.id === b.dataset.pfdevout);

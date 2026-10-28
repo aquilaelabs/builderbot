@@ -91,6 +91,12 @@ once; people stay signed in until the next restart. The page also lists
 everything kept under the key, each with what uses it and where it is
 changed.
 
+**Controller, Audit** (for an account that reads the controller's area) is
+who did what to this install: every change since the first day, newest
+first, a page at a time, each line when, who, what and on what (a machine
+by its name where the change was to one); the bar's two pickers narrow it to
+one person or one machine. Nothing on it changes anything.
+
 Each account has a key of its own, kept by the controller under the install
 key, for its coding agents' sign-ins sealed on the nodes; changing the
 install key leaves those as they are. A person changes their own on
@@ -817,7 +823,7 @@ once.
 | Where | What |
 |---|---|
 | Build, Apps | each offered app with its version, **Download**, and how to connect it |
-| Settings, Profile | the devices signed in as you, with **Disconnect** |
+| Settings, Profile | the browsers signed in as you, each with **Sign out**, and the devices, each with **Disconnect** |
 | `GET /apps/NAME/FILE` | one file the controller holds (`android`), for anybody signed in |
 | `GET /api/apps` | what is offered and held: each app's files, their sha256 and size, the release, when it last looked |
 | `POST /api/v1/device/apps` | the same for a device's app (its own token), to update itself from; `GET /api/v1/device/app-file?app=NAME&file=FILE` fetches one |

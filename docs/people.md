@@ -231,9 +231,13 @@ account's own page, in sections. **Who you are** holds the account name,
 their name and email, and the name and email their commits carry (blank means
 the ones above); **What you may do** is what their roles add up to;
 **Password** is a change that asks for the current one first;
-**Two-factor sign-in** is described below; and **Signed in as you**, last, is the devices signed in as this account (a
-line a device, with when it last called and **Disconnect**, which signs that
-one out). The plugins and MCP servers a person added to each coding agent
+**Two-factor sign-in** is described below; and **Signed in as you**, last, is
+the browsers signed in as this account (a line a browser, named with its
+system and the address it came from, this one first, each with **Sign out**,
+which ends that one's sign-in) and the devices (a line a device, with when it
+last called and **Disconnect**, which signs that one out). A browser's
+sign-in is bound to the browser it was made in: its cookie presented from
+another is refused, so one copied off a device opens nothing elsewhere. The plugins and MCP servers a person added to each coding agent
 are on the Agents page, per agent on each node.
 
 ### Two-factor sign-in

@@ -140,6 +140,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => openKeysTab()),
     readyWhen: '.keystab details[data-sect="keys:kept"]',
   },
+  // The Audit page (R158 step 8): the trail's section, with rows or the
+  // empty band, drawn for an account that reads the controller's area.
+  audit: {
+    open: () => page.evaluate(() => openAuditTab()),
+    readyWhen: '.audittab .auditrow, .audittab .empty',
+  },
   storage: {
     // A section per node, or the empty band on a box with none (R169).
     open: () => page.evaluate(() => openStorageTab()),

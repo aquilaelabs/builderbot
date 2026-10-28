@@ -4835,7 +4835,7 @@ import devices                                                   # noqa: E402
 devices.configure(users=users.load, access=lambda acct, p: ftp.access_for(acct, p, "editor"),
                   projects=lambda acct: project_names(acct),
                   flags=lambda acct, p: projects.app_flags(p, users.uid_of(acct)))
-profiletab.configure(devices=devices, mfa=mfa, audit=db.audit,
+profiletab.configure(devices=devices, logins=logins, mfa=mfa, audit=db.audit,
                      two_factor_required=lambda u: roles.two_factor_required(u))
 
 # The apps a person installs, fetched from this controller's release and
@@ -5312,6 +5312,7 @@ def _snapshot(who):
 GET_ROUTES = (
     ("prefix", "/api/revs", "_get_revs"),
     ("exact", "/api/live", "_get_live"),
+    ("exact", "/api/audit", "_get_audit"),
     ("prefix", "/api/trace", "_get_trace"),
     ("prefix", "/api/status", "_get_status"),
     ("exact", "/api/reset", "_get_reset"),
@@ -5496,11 +5497,34 @@ class Handler(BaseHTTPRequestHandler):
         # a session was started for; and their sign-in, seen.
         gitcreds.ACTING.set(users.uid_of(u) if u else "")
         if u and u.get("lid"):
-            logins.seen(users.uid_of(u), u["lid"])
+            # Bound to the browser it was made in (R158 step 8): from
+            # another, or once ended from Profile, the cookie is nobody's.
+            if not logins.seen(users.uid_of(u), u["lid"], self.headers.get("User-Agent", ""), self._client_ip()):
+                db.audit(f"user:{u.get('name')}", "sign-in refused", "another browser, or a sign-in ended",
+                         {"agent": logins.browser_words(self.headers.get("User-Agent", ""))})
+                _writing.who = None
+                gitcreds.ACTING.set("")
+                return None
         elif u and not u.get("session") and self.headers.get("Authorization", "").startswith("Basic "):
             # The password proved on this request is a sign-in for a while.
             logins.basic(users.uid_of(u))
         return u
+
+    def _client_ip(self):
+        """The address this request came from, as the proxy in front says
+        where there is one (the tunnel, nginx), else the socket's."""
+        fwd = self.headers.get("X-Forwarded-For", "")
+        if fwd:
+            return fwd.split(",")[0].strip()[:45]
+        try:
+            return str(self.client_address[0])[:45]
+        except (AttributeError, IndexError, TypeError):
+            return ""
+
+    def _mint_lid(self, u):
+        """A sign-in row for this browser (logins.mint): what the cookie
+        names, bound to the browser's User-Agent."""
+        return logins.mint(u.get("uid") or "", "", self.headers.get("User-Agent", ""), self._client_ip())
 
     def _who_raw(self):
         """The account making this request, or None.
@@ -5738,7 +5762,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(303)
         self.send_header("Location", "/")
         self.send_header("Set-Cookie",
-                         f"bb_session={make_token(users.get(name))}; Path=/; "
+                         f"bb_session={make_token(users.get(name), self._mint_lid(users.get(name)))}; Path=/; "
                          f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Strict"
                          + ("; Secure" if tls.over_tls(self.connection) else ""))
         self.send_header("Content-Length", "0")
@@ -5793,7 +5817,7 @@ class Handler(BaseHTTPRequestHandler):
         fetch."""
         users.touch(u["name"])
         sec = "; Secure" if tls.over_tls(self.connection) else ""
-        cookies = [f"bb_session={make_token(u)}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Strict{sec}",
+        cookies = [f"bb_session={make_token(u, self._mint_lid(u))}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Strict{sec}",
                    "bb_mfa=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"]
         if remember:
             ua = re.sub(r"[^\w ./();,:-]", "", self.headers.get("User-Agent", ""))[:80]
@@ -7069,6 +7093,29 @@ class Handler(BaseHTTPRequestHandler):
         if field(req, "action") != "issue":
             return self._json({"error": "unknown action"}, 400)
         return self._json(_tls_issue())
+
+    def _get_audit(self):
+        """GET /api/audit: who did what to this install (db.audit_page) for
+        the Audit page (R158 step 8), newest first, a page at a time
+        (before=TIME), by one person (person=NAME) or one machine
+        (machine=NODE_ID); with the people and the machines to pick from.
+        For an account that reads the controller's area."""
+        if self._refused("controller"):
+            return
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        person, machine = q.get("person", [""])[0][:120], q.get("machine", [""])[0][:40]
+        try:
+            before, n = int(q.get("before", ["0"])[0]), min(500, max(1, int(q.get("n", ["100"])[0])))
+        except ValueError:
+            before, n = 0, 100
+        names = {n_["id"]: n_.get("name") or n_["id"] for n_ in nodes.node_list(all=True)}
+        rows, total = db.audit_page(n, before, f"user:{person}" if person else "", machine)
+        out = [{"at": r["at"], "who": r["principal"][5:] if str(r["principal"]).startswith("user:") else r["principal"],
+                "action": r["action"], "target": r["target"], "machine": names.get(r["target"], ""),
+                "params": r["params"]} for r in rows]
+        return self._json({"rows": out, "total": total,
+                           "people": sorted(u["name"] for u in users.all_users()),
+                           "machines": [{"id": k, "name": v} for k, v in sorted(names.items(), key=lambda kv: kv[1])]})
 
     def _get_version(self):
         """GET /api/version."""

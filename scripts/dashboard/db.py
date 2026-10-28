@@ -222,6 +222,26 @@ def prune_audit():
         return 0
 
 
+def audit_page(n=100, before=0, principal="", target=""):
+    """A page of the audit for the Audit page (R158 step 8), newest first:
+    the rows before `before` (a unix time, 0 for now), by one principal
+    and one target where asked, with how many match in all."""
+    where, args = [], []
+    if before:
+        where.append("at < ?")
+        args.append(int(before))
+    if principal:
+        where.append("principal = ?")
+        args.append(str(principal))
+    if target:
+        where.append("target = ?")
+        args.append(str(target))
+    w = (" WHERE " + " AND ".join(where)) if where else ""
+    rows = _rows(f"SELECT * FROM audit{w} ORDER BY at DESC, id DESC LIMIT ?", (*args, int(n)))
+    total = _rows(f"SELECT COUNT(*) AS n FROM audit{w}", tuple(args))
+    return rows, int(total[0]["n"]) if total else 0
+
+
 def audit_tail(n=50):
     """The newest rows, for tests and a future view; not an endpoint yet."""
     return _rows("SELECT * FROM audit ORDER BY at DESC, id DESC LIMIT ?",

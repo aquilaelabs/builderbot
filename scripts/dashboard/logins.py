@@ -10,7 +10,17 @@ Kept in /config/logins.json, 0600, nothing secret in it: the cookie itself
 is stateless (server.make_token) and this only knows which of them were
 handed out and still answer. Lost, every browser is signed out once, as a
 cookie from before accounts was.
+
+A sign-in is bound to the browser it was made in (R158 step 8): the row
+keeps a digest of that browser's User-Agent, and a cookie presented from
+another is refused (seen answers False), so a cookie copied off one device
+opens nothing on another; the row also says what browser and from which
+address, which Profile lists, each with Sign out, so a person ends a
+sign-in they do not recognize. A cookie whose row is gone is signed out,
+which is what Sign out from Profile does to another browser.
 """
+import hashlib
+import re
 import secrets
 import threading
 import time
@@ -84,31 +94,83 @@ def basic(uid):
         _save(d)
 
 
-def mint(uid, where=""):
-    """A new sign-in for this account: its id, which the cookie carries."""
+def _ua_digest(ua):
+    return hashlib.sha256(str(ua or "").encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def browser_words(ua):
+    """A browser and its system in a person's words, from its User-Agent:
+    "Chrome on Windows", "Safari on iPhone", "Firefox on Linux"; what the
+    string does not say is left out."""
+    ua = str(ua or "")
+    sysname = next((w for pat, w in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"),
+                                     ("Windows", "Windows"), ("Mac OS X", "Mac"), ("CrOS", "ChromeOS"),
+                                     ("Linux", "Linux")) if pat in ua), "")
+    browser = next((w for pat, w in (("Edg/", "Edge"), ("OPR/", "Opera"), ("Firefox/", "Firefox"),
+                                     ("Chrome/", "Chrome"), ("CriOS/", "Chrome"), ("FxiOS/", "Firefox"),
+                                     ("Safari/", "Safari"), ("curl/", "curl")) if pat in ua), "")
+    if not browser and not sysname:
+        return re.sub(r"[^\w ./();,:-]", "", ua)[:40] or "a browser"
+    return f"{browser or 'a browser'}{' on ' + sysname if sysname else ''}"
+
+
+def mint(uid, where="", ua="", ip=""):
+    """A new sign-in for this account: its id, which the cookie carries,
+    bound to the browser (`ua`) it was made in."""
     lid, now = secrets.token_urlsafe(9), int(time.time())
     if not uid:
         return lid
     with _lock:
         d = _load()
         _prune(d, now)
-        d.setdefault(uid, {})[lid] = {"at": now, "last": now, "where": str(where or "")[:80]}
+        d.setdefault(uid, {})[lid] = {"at": now, "last": now, "where": str(where or "")[:80],
+                                      "ua": _ua_digest(ua), "agent": browser_words(ua), "ip": str(ip or "")[:45]}
         _save(d)
     return lid
 
 
-def seen(uid, lid):
-    """The sign-in used just now: written at most every few minutes."""
+def seen(uid, lid, ua=None, ip=""):
+    """The sign-in used just now, from browser `ua`: True while it is the
+    browser the sign-in was made in and the row is still there; False for
+    a cookie presented from another browser (R158 step 8) or one whose
+    sign-in was ended from Profile. Written at most every few minutes."""
     if not (uid and lid):
-        return
+        return False
     now = int(time.time())
     with _lock:
         d = _load()
         r = (d.get(uid) or {}).get(lid)
-        if not isinstance(r, dict) or now - int(r.get("last") or 0) < TOUCH_EVERY:
-            return
+        if not isinstance(r, dict):
+            return False
+        if ua is not None:
+            if r.get("ua") and r["ua"] != _ua_digest(ua):
+                return False
+            if not r.get("ua"):
+                # A row from before binding: bound to the first browser seen.
+                r["ua"], r["agent"] = _ua_digest(ua), browser_words(ua)
+                r["last"], r["ip"] = now, str(ip or "")[:45]
+                _save(d)
+                return True
+        if now - int(r.get("last") or 0) < TOUCH_EVERY:
+            return True
         r["last"] = now
+        if ip:
+            r["ip"] = str(ip)[:45]
         _save(d)
+    return True
+
+
+def rows(uid, mine=""):
+    """The account's browser sign-ins for Profile, newest first: [{id,
+    agent, ip, where, at, last, mine}], the password-proved rows left out."""
+    now = int(time.time())
+    out = []
+    for lid, r in (_load().get(uid) or {}).items():
+        if not isinstance(r, dict) or r.get("kind") == "basic" or now - int(r.get("at") or 0) > _life(r):
+            continue
+        out.append({"id": lid, "agent": r.get("agent") or "a browser", "ip": r.get("ip") or "", "where": r.get("where") or "",
+                    "at": int(r.get("at") or 0), "last": int(r.get("last") or 0), "mine": lid == mine})
+    return sorted(out, key=lambda x: (-x["mine"], -x["last"]))
 
 
 def drop(uid, lid):

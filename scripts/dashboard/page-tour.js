@@ -99,6 +99,9 @@ const TOUR_STEPS = {
     {say: "Keys: the install key, which seals what this BuilderBot keeps, and everything kept under it. Save a copy of the key apart from /config; Change makes another and seals everything again."},
     {at: TOUR_FIRST, say: "Each person keeps a key store of their own on their Profile, for their agents' sign-ins and the forge tokens they link."},
   ],
+  audit: [
+    {say: "Audit: who did what to this BuilderBot, every change since the first day, newest first. Pick a person or a machine in the bar to read theirs alone."},
+  ],
   nodes: [
     {say: "Nodes are the machines your builds, tests, containers, VMs and sessions run on. The controller itself runs none of them."},
     {at: TOUR_BAR, say: "Pick a node here. Enroll node makes the script that adds a machine."},

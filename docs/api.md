@@ -12,6 +12,7 @@ The companion app's own contract is `android/api-surface.json`.
 |---|---|---|---|---|---|
 | GET | `/api/revs` | prefix | `_get_revs` | GET /api/revs. |  |
 | GET | `/api/live` | exact | `_get_live` | GET /api/live: who has a Claude session on each project this account sees, which of them are working and which asking, the maps the status payload also carries (projsessions.maps), alone and cheap. |  |
+| GET | `/api/audit` | exact | `_get_audit` | GET /api/audit: who did what to this install (db.audit_page) for the Audit page (R158 step 8), newest first, a page at a time (before=TIME), by one person (person=NAME) or one machine (machine=NODE_ID); with the people a | refused: controller |
 | GET | `/api/trace` | prefix | `_get_trace` | GET /api/trace?since=T: what this server was asked since T, grouped by endpoint (R75 step 4). |  |
 | GET | `/api/status` | prefix | `_get_status` | GET /api/status. |  |
 | GET | `/api/reset` | exact | `_get_reset` | GET /api/reset: how a Reset that un-enrolls its nodes first is getting on: each node, done or why not, and the error that stopped it. | refused: controller-read |
@@ -24,6 +25,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/project-sessions` | prefix | `_get_project_sessions` | GET /api/project-sessions?project=NAME: every account's sessions on the project, for its settings dialog. | refused: settings |
 | GET | `/api/changelog` | prefix | `_get_changelog` | GET /api/changelog: changelog.reading, for a project this account sees. |  |
 | GET | `/api/version` | prefix | `_get_version` | GET /api/version. |  |
+| GET | `/api/tls` | prefix | `_get_tls` | GET /api/tls: what the dashboard is served over (tls.status), for an account that reads the controller; with download=1 the certificate itself, for a phone or the companion to pin. | refused: controller-read |
 | GET | `/api/artifacts` | prefix | `_get_artifacts` | GET /api/artifacts: artifacts.tab_view, for a project this account sees. |  |
 | GET | `/api/artifact?` | prefix | `_get_artifact` | GET /api/artifact: one file of a project's, as a download (artifacts.download). |  |
 | GET | `/api/signing-backup?` | prefix | `_get_signing_backup` | GET /api/signing-backup: a project's keystore for an administrator's own copy (signing.backup), which marks it backed up. |  |
@@ -138,6 +140,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/devapp` | prefix | `_devapp` | The dev-instance controls: the Containers page's buttons, and `bb devapp` from a session. | refused: docker-write, refused: node |
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |
+| POST | `/api/tls` | prefix | `_tls` | POST /api/tls {action: issue}: a Let's Encrypt certificate for the Connection section's hostname asked for now, by DNS-01 through the Cloudflare API token (nginxproxy's hooks), for an account that changes the controller' | refused: controller |
 | POST | `/api/signing` | exact | `_signing` | A project's Android signing keys (signing.verb, R106). | refused: signing |
 | POST | `/api/keys` | exact | `_keys` | POST /api/keys (R154): the install key and everything kept under it for an administrator (status, show, saved, change), and the account's own key for its sign-ins on the nodes (mine, change-mine). | refused: controller |
 | POST | `/api/members` | exact | `_members` | A project's owner, whether it is invite only, its people and its invitations, and an invitee's answer (membership.verb). |  |

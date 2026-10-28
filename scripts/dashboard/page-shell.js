@@ -41,7 +41,7 @@ const RAIL = [
   // BuilderBot behaves, with room for the pages a bare-metal install and
   // the USB edition add beside Settings (R90, R56). After Containers, so a
   // phone's bar keeps its four.
-  {key: "controller", label: "Controller", icon: "controller", tools: [["settings", "Settings"], ["keys", "Keys"], ["debug", "Debug"]]},
+  {key: "controller", label: "Controller", icon: "controller", tools: [["settings", "Settings"], ["keys", "Keys"], ["audit", "Audit"], ["debug", "Debug"]]},
   {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"], ["schedules", "Schedules"]]},
@@ -72,7 +72,7 @@ function railAllows(kind){
   if (kind === "debug") return !!state?.settings?.debug_available && state?.can?.debug !== false;
   if (!a) return true;
   switch (kind){
-    case "settings": case "keys": return !!a.controller;
+    case "settings": case "keys": case "audit": return !!a.controller;
     case "users": case "roles": return !!a.accounts;
     // The Emulator's images are the toolchain store's, so the same area.
     case "toolchains": case "emulator": return !!a.toolchains;
