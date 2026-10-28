@@ -113,6 +113,17 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
   await page.evaluate(() => { window.__pulls = 0; });
   await finger(page, 200, top, 200, top + 30);
   ok(await page.evaluate(() => window.__pulls) === 0, '...and a short one does not');
+  // ...nor one that starts on a terminal's output (B411): the finger is
+  // scrolling the terminal, which has its own scroll back, and the page
+  // leaves it alone. Stood in for by a terminal's own box over the list.
+  await page.evaluate(() => { window.__pulls = 0;
+    const d = document.createElement('div'); d.className = 'slot ownterm'; d.id = 'pullterm';
+    d.innerHTML = '<div class="xhost"><div class="xterm" style="height:160px;background:#222"></div></div>';
+    document.querySelector('.doctab.nodestab .doclist')?.prepend(d); });
+  const ty = await page.evaluate(() => Math.round(document.querySelector('#pullterm .xterm').getBoundingClientRect().top + 30));
+  await finger(page, 200, ty, 200, ty + 140);
+  ok(await page.evaluate(() => window.__pulls) === 0, 'a drag down that starts on a terminal scrolls the terminal, not the page');
+  await page.evaluate(() => document.getElementById('pullterm')?.remove());
 }
 
 // A dock tab held and dragged takes a new place on the line (the strip's
