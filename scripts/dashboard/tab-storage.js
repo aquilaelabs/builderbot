@@ -161,6 +161,32 @@ function storageDisks(n){
   return chips + out.join("");
 }
 
+// The controller's own machine's disks (R162 step 1), as its census lists
+// them: each by name, model, size, serial, kind and what it holds, with
+// SMART's health, temperature and hours where the machine has smartctl;
+// the system disk marked. Read before anything is written to one; the
+// pools and the shares come next on this page.
+function storageMachineDisks(n){
+  if (!n.own) return "";
+  const disks = n.disks || [];
+  const body = !disks.length ? `<div class="empty">No disk reported yet${n.live ? ": the next check-in brings them" : ": its agent is not dialing in"}.</div>`
+    : (() => {
+      const cols = [{label: "Disk"}, {label: "Model"}, {label: "Size", w: "6.5rem"}, {label: "Serial"}, {label: "Health", w: "9rem"}, {label: "Holds"}];
+      return tblWrap(cols, disks.map(d => {
+        const sm = d.smart || {};
+        const health = [sm.health === "failing" ? `<span class="pill bad">failing</span>` : sm.health === "ok" ? `<span class="pill ok">ok</span>` : "",
+                        sm.temp_c !== undefined ? `${sm.temp_c} °C` : "", sm.hours !== undefined ? `${Math.round(sm.hours / 24)} d on` : ""].filter(Boolean).join(" · ") || "<span class=\"dim\">no SMART</span>";
+        const holds = d.parts?.length ? d.parts.map(p => `${esc(p.name)}: ${esc(p.holds)}`).join("<br>") : esc(d.holds || "nothing");
+        return `<div class="row${sm.health === "failing" ? " bad" : ""}" data-disk="${esc(d.name)}">${tblLine(cols, [
+          `<span class="name">${esc(d.name)}</span>${d.system ? ` <span class="tag ndown">system</span>` : ""}${d.removable ? ` <span class="pill">removable</span>` : ""}`,
+          esc(d.model || "unnamed"), esc(humanBytes((d.size_mb || 0) * 1048576)), `<code>${esc(d.serial || "none")}</code>`,
+          health, `${holds}<div class="sub dim">${esc([d.ssd ? "solid state" : "spinning", d.tran].filter(Boolean).join(" · "))}</div>`])}</div>`;
+      }).join(""), "stdisks");
+    })();
+  const failing = disks.filter(d => d.smart?.health === "failing").length;
+  return docSection("storage", "disks", "Disks", disks.length ? `${disks.length}${failing ? `, ${failing} failing` : ""}` : "", body, {cls: failing ? "bad" : ""});
+}
+
 function storageProjects(n, where){
   const rows = [...(n.projects || [])];
   if (n.other) rows.push({name: "other projects", other: true, ...n.other});
@@ -238,6 +264,7 @@ function storageBody(n, where){
     ["Its work's memory", fence], ...setOn]});
   return `<div data-stnode="${esc(n.node)}">
     ${head}
+    ${storageMachineDisks(n)}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
     ${(n.phones || []).length ? docSection("storage", "phones", "Phones", `${n.phones.length}, ${sgb(n.phones.reduce((a, p) => a + (p.mb || 0), 0))}`, storagePhones(n)) : ""}

@@ -32,6 +32,10 @@ def node_view(n, may_see):
     hidden = {**other, "total": sum(other.values())} if any(other.values()) else None
     out = {"node": n["id"], "name": n.get("name") or n["id"], "live": n.get("live"),
             "host_only": bool((n.get("config") or {}).get("host_only")),
+            # The controller's own machine (R90) and its disks as the census
+            # lists them (R162 step 1): the Storage page's Disks section.
+            "own": bool((n.get("config") or {}).get("own")),
+            "disks": (n.get("reported") or {}).get("disks") or [],
             "measured": bool(st.get("at")), "at": int(st.get("at") or 0), "took_s": int(st.get("took_s") or 0),
             "age_s": max(0, int(time.time()) - int(st.get("at") or 0)) if st.get("at") else None,
             "filesystems": st.get("filesystems") or [], "stores": st.get("stores") or {},

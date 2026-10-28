@@ -1423,6 +1423,26 @@ def _census(c):
                        # put there by BuilderBot, and on now, which a restart
                        # and the firmware decide.
                        "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True}}
+    # The machine's disks (R162 step 1), each to its shape: a name, a model,
+    # a serial, a size, what each partition holds, SMART's three facts.
+    if isinstance(c.get("disks"), list):
+        word = lambda v, n: re.sub(r"[^\w .,:/()+-]", "", str(v or ""))[:n]  # noqa: E731
+        out["disks"] = []
+        for dsk in c["disks"][:32]:
+            if not isinstance(dsk, dict) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,32}", str(dsk.get("name") or "")):
+                continue
+            sm = dsk.get("smart") if isinstance(dsk.get("smart"), dict) else {}
+            out["disks"].append({"name": dsk["name"], "model": word(dsk.get("model"), 64), "serial": word(dsk.get("serial"), 64),
+                                 "size_mb": int(dsk["size_mb"]) if isinstance(dsk.get("size_mb"), int) else 0,
+                                 "ssd": dsk.get("ssd") is True, "tran": word(dsk.get("tran"), 16), "removable": dsk.get("removable") is True,
+                                 "system": dsk.get("system") is True, "holds": word(dsk.get("holds"), 80),
+                                 "parts": [{"name": word(p.get("name"), 32), "size_mb": int(p["size_mb"]) if isinstance(p.get("size_mb"), int) else 0,
+                                            "holds": word(p.get("holds"), 80)}
+                                           for p in (dsk.get("parts") or [])[:16] if isinstance(p, dict)],
+                                 "smart": {k: v for k, v in (("health", sm.get("health") if sm.get("health") in ("ok", "failing") else None),
+                                                             ("temp_c", int(sm["temp_c"]) if isinstance(sm.get("temp_c"), int) else None),
+                                                             ("hours", int(sm["hours"]) if isinstance(sm.get("hours"), int) else None))
+                                           if v is not None}})
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]

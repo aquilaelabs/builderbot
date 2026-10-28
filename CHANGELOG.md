@@ -29,6 +29,7 @@
 - BuilderBot OS on a stick runs from memory: with the switch set in GRUB's environment the slot is copied into memory at boot, exactly its bytes, and the system runs from the copy while the stick keeps the configuration apart from both slots; the slot tool reads and sets the switch (31d0cee)
 - A BuilderBot OS update boots on trial: the slot an update wrote boots as a trial, the health check marks it good once the dashboard answers and the agent runs, and a second boot without that word goes back to the slot before by itself, said on This machine; the boot menu names each slot's version and offers Safe mode, which brings up the dashboard and the shares and starts nothing else (the start is held); the controller's configuration is copied before an update, kept beside the old slot (bb086ed)
 - This machine sets the machine's name and time zone: a Name and time section on the controller's own machine, each set on the machine by its root agent, the zones offered as a list to type into; the first-run page's This machine card says the name, the address and the clock's zone, and where to change them (bb086ed)
+- The Storage page lists the controller's own machine's disks: each by name, model, size, serial, spinning or solid state and what each partition holds, with SMART's health, temperature and hours where the machine has smartctl, the system disk marked; read before anything is written to one (bb086ed)
 
 ### Changed
 

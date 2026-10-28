@@ -312,6 +312,7 @@ scripts/
     keyops.py                    the controller's signing key work on this node: a keystore checked, a key made or wrapped, a rotation's proof, a release's APK signed (R106)
     configplane.py               the configuration plane: the node's system, storage and network, as root
     osimage.py                   BuilderBot OS on the machine (R160 step 4): the image, its slot and the next boot's for the census, and the os-update job that writes the other slot
+    disks.py                     the machine's disks for the census (R162 step 1): lsblk's JSON and smartctl's, each whole disk with what its partitions hold
     agent.py                     Agent: hello, the loop and self-update, made of the parts above
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only

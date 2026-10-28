@@ -44,6 +44,7 @@ from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
 from . import storage
 from . import vmhw
+from .disks import disks_now
 from .osimage import os_release
 from .vms import isos_now, vm_memory, vm_pool, vms_now, vms_other
 
@@ -349,6 +350,9 @@ def census(state):
         "administers": os.geteuid() == 0 and os.access(SANDBOX_BIN, os.X_OK),
         # BuilderBot OS on this machine (R160 step 4): the image, its slot and the next boot's; {} elsewhere.
         "os_image": os_release(),
+        # The machine's disks (R162 step 1): what the Storage page lists
+        # for the controller's own machine before anything is written.
+        "disks": disks_now(),
         # Whether a session here sees only its own project (R35).
         "isolation": isolation_now(),
         # ...and reaches only its own project's containers (R79), as the
