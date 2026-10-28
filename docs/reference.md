@@ -76,7 +76,7 @@ mounted read-write, and beside the state in `/config/.install-key` when
 there is none. Kept beside the state, a copy of `/config` carries the key,
 so the Keys page and `bb doctor` say so; mount a secrets folder the
 controller may write to and the next start moves the key into it. On
-Unraid that is the container's **Edit**, **Secrets directory** set to a
+a NAS host that is the container's **Edit**, **Secrets directory** set to a
 folder such as `/mnt/user/appdata/BuilderBot/secrets` with access
 **Read/Write**, then **Apply**: an install from a template before 0.8.0
 keeps the read-only mount it was made with until it is changed there.

@@ -2390,16 +2390,16 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     body.querySelector("#ndTokDone").onclick = shut;
   };
   // ---- a machine to enroll, before there is one -------------------------
-  // The XML Unraid needs for a sandbox VM, rendered per VM rather than
+  // The XML the hypervisor needs for a sandbox VM (nodes/unraid-vm.xml), rendered per VM rather than
   // copied: the uuid, the nvram file named after it and the MAC belong to
   // one machine, and a second VM wearing them answers to the first one's
   // address and writes over its firmware variables. The generator is
   // vmtemplate.py, over the same nodes/unraid-vm.xml the repository keeps.
   //
-  // The two identities are fields rather than surprises. Unraid mints its own
+  // The two identities are fields rather than surprises. The hypervisor mints its own
   // pair when the VM is made in Form view: the nvram file on disk is named
   // after its uuid, and any DHCP reservation was made against its MAC, so a
-  // minted pair is right for a machine that does not exist yet and Unraid's
+  // minted pair is right for a machine that does not exist yet and the hypervisor's
   // is right the moment it does. Blank mints one.
   const vmDraft = {hv: "unraid", name: "bb-sandbox", cores: 6, memory_gb: 16,
                    disk_gb: 200, iso: "ubuntu-26.04-live-server-amd64.iso",
@@ -2429,7 +2429,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           ${f("cores", "Cores", "", ' type="number" min="1" max="64"')}
           ${f("memory_gb", "Memory GiB", "", ' type="number" min="1" max="512"')}
           ${f("disk_gb", "Disk GiB", kind.id === "unraid"
-              ? "set in Unraid's own form: the XML only names the file" : "",
+              ? "set in the hypervisor's own form: the XML only names the file" : "",
               ' type="number" min="8" max="8192"')}
           ${takes("vmid") ? f("vmid", "VM id", "Proxmox numbers its machines, 100 and up",
               ' type="number" min="100"') : ""}

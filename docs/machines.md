@@ -131,7 +131,7 @@ the page says so; the verbs behind those controls are an administrator's on
 the server as well.
 
 **Create sandbox VM** is the step before all of this when there is no
-machine yet. **Pick what runs it**: Unraid, Proxmox VE, libvirt/KVM, QEMU on
+machine yet. **Pick what runs it**: the VM manager whose XML the form writes (nodes/unraid-vm.xml), Proxmox VE, libvirt/KVM, QEMU on
 its own, VMware, Hyper-V or VirtualBox, and it writes that machine: the same
 cores, memory, disk and installer everywhere, in whatever that manager reads
 (a domain XML, a `qm create`, a `virt-install`, a `.vmx`, a PowerShell

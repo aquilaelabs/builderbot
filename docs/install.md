@@ -71,7 +71,7 @@ just see them.
 **Docker template (recommended)**: get
 [`platforms/unraid/builderbot.xml`](../platforms/unraid/builderbot.xml) into
 `/boot/config/plugins/dockerMan/templates-user/`, then **Docker → Add
-Container →** pick *builderbot*. From the Unraid terminal that is one
+Container →** pick *builderbot*. From the host's terminal that is one
 `curl` of the raw file, in [docs/unraid.md](unraid.md#install).
 
 **Compose Manager**: copy `docker-compose.yml` + `.env.example`→`.env` into

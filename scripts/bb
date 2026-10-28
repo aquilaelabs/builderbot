@@ -4676,6 +4676,11 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
 
     # The official packs under packs/ against the tables they are written
     # from (R169 step 1): tools/packs-export.py --write rewrites them.
+    # The word Unraid only where its XML files are the subject (the operator, 28 Oct).
+    if grep -qF '"unraid": unraid' "$BB_LIB/lint-checks.py"; then
+        echo "== unraid: the word only where its XML files are the subject"
+        python3 "$BB_LIB/lint-checks.py" unraid || rc=1
+    fi
     if [ -f tools/packs-export.py ] && grep -qF '"packs": packs' "$BB_LIB/lint-checks.py"; then
         section "packs (packs/ vs config/toolchains.json and agents.py)"
         python3 "$BB_LIB/lint-checks.py" packs || rc=1

@@ -214,7 +214,7 @@ account, so do this before anyone else can reach it. Then:
    or upload an archive), and press **Start agent**. A node where you are not
    signed in yet offers its sign-in in Start agent's menu.
 
-The full checklist, with every option and the Unraid way, is
+The full checklist, with every option and the NAS walkthrough, is
 **[docs/install.md](docs/install.md)**. Once it is running, the people you
 give accounts to start with **[Start here](docs/start-here.md)**, the
 getting started guide, which is also the About screen's guide in the

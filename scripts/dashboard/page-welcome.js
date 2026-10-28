@@ -231,7 +231,7 @@ function closeAbout(){
 // ---- the build this container runs --------------------------------------
 
 // Which build of the image this container is running, beside how long it has
-// been running it. The pair is the point: an Unraid container keeps serving
+// been running it. The pair is the point: a NAS's container keeps serving
 // whatever it last pulled, so "how long has this been up" and "what is this"
 // are different questions, and only one of them used to be answerable. The
 // stamp is what /opt is serving; bb drift is what a checkout has changed since.

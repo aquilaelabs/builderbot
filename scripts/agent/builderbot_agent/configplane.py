@@ -1210,7 +1210,7 @@ class ConfigPlaneMixin:
         if gaps:
             job.say("refused: the host's NFS exports admit this node's current address and not "
                     "the new one, so the shares would not mount after the move. Change the rule "
-                    "on the host first (Unraid: Shares -> the share -> NFS Security Settings), "
+                    "on the host first (on a NAS host: Shares -> the share -> NFS Security Settings), "
                     "then apply again:\n  " + "\n  ".join(gaps) + "\n")
             return "failed", 77
         desired = backend.render(iface, mode, addr, gw, dns, routes)

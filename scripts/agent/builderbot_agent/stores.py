@@ -197,7 +197,7 @@ def store_id(path):
     controller reads for its own (nodes.store_id).
 
     Two machines mounting one share cannot recognize each other by path: the
-    controller reaches the toolchain store through Unraid's FUSE layer while this
+    controller reaches the toolchain store through the host's user-share layer while this
     node reaches the same bytes over NFS, and neither mount string can be
     derived from the other. The file answers exactly, whatever the transport.
     Read-only here: the controller creates it, so a node with a read-only

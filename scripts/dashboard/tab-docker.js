@@ -1186,7 +1186,7 @@ async function dmAction(project, instance, act, btn){
 // runs on the sandbox VM: a different machine, which is the entire point of
 // the arrangement, and a container publishing 8989 publishes it there. Using
 // the page's own host pointed every port label and every Open link at the
-// Unraid box, where either nothing answers or, worse, something else does.
+// NAS box, where either nothing answers or, worse, something else does.
 //
 // Taken from the address the manager is already told about, with the scheme,
 // the account and any port stripped: ssh://bb@10.0.0.9 is the machine 10.0.0.9.

@@ -33,7 +33,7 @@ crash with extra steps.
 **BuilderBot itself is NOT excluded**, and the reason is worth a line: its
 dev instance is a second container from the same compose file, on another
 machine, so building or bouncing it never touches the container this dashboard
-is running in, whose lifecycle belongs to Unraid. The first cut excluded it on
+is running in, whose lifecycle belongs to the host. The first cut excluded it on
 a stale argument (replacing the running container kills the builder
 mid-flight, which is true and not what this does). Expect `up` to refuse while
 the real instance holds the same host ports; that refusal is compose saying
@@ -2262,8 +2262,8 @@ def _compose(project, instance, *args):
 # see: a bind mount's SOURCE is resolved by whoever runs the container, and
 # that is the host. `/workspace/alpha` and `/devdata/alpha` mean
 # something here and nothing over there, and docker does not error on a
-# missing bind source, it creates an empty directory and mounts that. On Unraid the
-# root filesystem is RAM, so the failure is an app that starts with no data
+# missing bind source, it creates an empty directory and mounts that. On a host whose
+# root filesystem is RAM the failure is an app that starts with no data
 # and loses it again at reboot, which reads as a bug in the app.
 #
 # So the operator states the mapping once, and it is checked rather than
@@ -3918,7 +3918,7 @@ def make_dirs(project, instance=MAIN):
     """Create the bind directories this container can reach. (made, failed).
 
     Owned by whoever BuilderBot runs as, which is the same ownership the
-    per-instance dev-data directory gets and what the Unraid convention
+    per-instance dev-data directory gets and what a NAS host's convention
     expects. `mkdir -p` throughout, so one that already exists is left alone
     and pressing this twice is the same as pressing it once.
 
@@ -4207,7 +4207,7 @@ def taken_ports(project, instance, ports):
 def wiring(cfg):
     """What this compose publishes and what it mounts.
 
-    Shaped the way Unraid's own Containers page shows it, because that is where the
+    Shaped the way a NAS's own Containers page shows it, because that is where the
     operator reads the same facts about every other container on the box: the
     container's side on the left, the host's on the right, and an arrow that
     says which way it goes: one way into the container for a read-only mount,

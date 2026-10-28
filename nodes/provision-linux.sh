@@ -148,7 +148,7 @@ it, which is a paste rather than a questionnaire.
                        data on.
   --nfs HOST:EXPORT:PATH[:ro]   the same thing over NFS, when a share
                        cannot be passed directly. Repeatable, same `:ro`. EXPORT is the exported
-                       share path (on Unraid /mnt/user/<share>/...) and not
+                       share path (on a NAS host /mnt/user/<share>/...) and not
                        a pool path like /mnt/cache/...: that spelling is for
                        bind mounts and is not what the server offers, so the
                        mount fails, quietly, because of nofail.
@@ -931,14 +931,14 @@ pkg_refresh
 # shellcheck disable=SC2046  # the names are meant to split
 pkg $(pkg_names base)
 command -v curl >/dev/null 2>&1 || pkg curl >/dev/null 2>&1 || warn "curl did not install, so every download below will fail"
-# ...and the guest agent only where there is a host to talk to, so Unraid can
+# ...and the guest agent only where there is a host to talk to, so the host can
 # shut the machine down cleanly rather than pulling the plug. Nothing here is
 # otherwise particular to a VM: this runs on bare metal just as well, and an
 # emulator is happier there, with /dev/kvm native instead of nested.
 if is_vm; then
     # shellcheck disable=SC2046
     pkg $(pkg_names guest) 2>/dev/null && svc_enable "$(pkg_names guestsvc)" >/dev/null 2>&1 \
-        || warn "the qemu guest agent did not install, so Unraid will pull the plug instead of shutting this VM down"
+        || warn "the qemu guest agent did not install, so the host will pull the plug instead of shutting this VM down"
 fi
 
 # --- the tunnel to the controller (R161) ------------------------------------
@@ -1642,7 +1642,7 @@ mount_one() {
     held="$(stores_under "$path")"
     [ -n "$held" ] && printf '   %s sits inside it, so that store is on the root disk until it mounts.\n' \
         "$(printf '%s' "$held" | tr '\n' ' ')"
-    printf '   On Unraid an export is a SHARE (/mnt/user/<share>), never a\n'
+    printf '   On a NAS host an export is a SHARE (/mnt/user/<share>), never a\n'
     printf '   pool path like /mnt/cache/<share>, which is right for a bind\n'
     printf '   mount and is not exported. Check it allows this host:\n'
     printf '     showmount -e <server>\n'
@@ -2888,7 +2888,7 @@ feature_vmhost() {
             # No /dev/kvm is a machine that cannot run a VM at speed: a VM
             # whose host does not pass virtualization through, or a box with
             # it off in the firmware. Said, not emulated (tens of times slower).
-            [ -e /dev/kvm ] || die "no /dev/kvm here, so VMs would run in software, tens of times slower. On a VM, its host must pass virtualization through: CPU mode host-passthrough (Unraid: CPU Mode Host Passthrough; Proxmox: CPU type host) and nested KVM on in the host's kvm_intel or kvm_amd. On a machine of its own, turn VT-x or AMD-V on in its firmware"
+            [ -e /dev/kvm ] || die "no /dev/kvm here, so VMs would run in software, tens of times slower. On a VM, its host must pass virtualization through: CPU mode host-passthrough (a NAS host: CPU Mode Host Passthrough; Proxmox: CPU type host) and nested KVM on in the host's kvm_intel or kvm_amd. On a machine of its own, turn VT-x or AMD-V on in its firmware"
             [ -n "$fam" ] || die "VM host is installed on the Debian, RHEL, Arch, openSUSE and Alpine families; this machine is none of them"
             pkgs="$(vmhost_pkgs "$fam")"
             [ -n "$pkgs" ] || die "no VM host packages for $(uname -m) on this family"

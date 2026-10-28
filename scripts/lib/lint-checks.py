@@ -312,6 +312,36 @@ def shipped():
     sys.exit(1 if bad else 0)
 
 
+def unraid():
+    """The word Unraid stays where its XML files are the subject (the
+    operator, 28 Oct): the app template and its icon script, the VM XML and
+    the module that writes it, the walkthrough of installing from the
+    template, and any line that names one of those; everywhere else public
+    a feature is said as what it is, never by comparison."""
+    allowed = ("platforms/unraid/", "docs/unraid.md", "nodes/unraid-vm.xml", "scripts/dashboard/vmtemplate.py",
+               "scripts/startup.d/05-unraid-icon.root.sh", "scripts/lib/lint-checks.py", "docs/design-language.md",
+               "docs/sandbox-vm.md")      # the VM XML's walkthrough, host settings and all
+    names = ("template", "unraid-vm.xml", "unraid.md", "builderbot.xml", "unraid_", "unraid-", "\"unraid\"", "'unraid'", "net.unraid.", "walkthrough")
+    import subprocess
+    files = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=False).stdout.split("\n")
+    bad = []
+    for f in files:
+        if not f or f.startswith(allowed) or not f.endswith((".md", ".js", ".py", ".sh", ".html", ".yml", ".yaml", ".txt", ".json", ".toml", ".env", ".example")):
+            continue
+        try:
+            lines = pathlib.Path(f).read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for i, ln in enumerate(lines, 1):
+            if "unraid" in ln.lower() and not any(n in ln.lower() for n in names):
+                bad.append(f"{f}:{i}: {ln.strip()[:100]}")
+    for b in bad:
+        print(f"  [FAIL] {b}")
+    if not bad:
+        print("  [ok]   Unraid is named only where its XML files are the subject")
+    sys.exit(1 if bad else 0)
+
+
 def packs():
     """The official packs under packs/ are the shipped tables in bbtool.json's
     format (R169 step 1): tools/packs-export.py --check holds them to it."""
@@ -321,4 +351,4 @@ def packs():
 
 
 {"runner": runner, "xml": xml_, "settings": settings, "layout": layout, "hosted": hosted,
- "channels": channels, "shipped": shipped, "packs": packs}[verb]()
+ "channels": channels, "shipped": shipped, "packs": packs, "unraid": unraid}[verb]()

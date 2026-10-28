@@ -1,5 +1,5 @@
-"""Scheduled scripts (R117): an administrator's own cron in BuilderBot, as
-Unraid's User Scripts are. Each schedule is a script, a timetable in cron's
+"""Scheduled scripts (R117): an administrator's own cron in BuilderBot. Each
+schedule is a script, a timetable in cron's
 five fields (said in words: "Sundays at 4:00"), the node it runs on, and
 whether it runs there as the node's jobs account or as root (a sandbox node
 alone, as `bb root run` is). Every run is a job, its log on the Jobs page.
