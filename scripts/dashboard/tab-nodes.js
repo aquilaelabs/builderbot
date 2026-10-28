@@ -1964,7 +1964,7 @@ function renderNodesInto(i){
     d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
         <div class="name">${skv(7)}</div>${ndFacts(null)}
         <div class="actbar ndagent"><span class="lead dim"></span>${ndAgentButtons(true)}</div></div>
-      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu" && k !== "usb").map(([k, t], j) =>
+      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu" && k !== "usb" && k !== "machine").map(([k, t], j) =>
         docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
     sectJump(d.list.closest(".doctab") || d.el);
     loadNodes();

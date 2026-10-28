@@ -154,8 +154,10 @@ await firstRun(false);
     const enroll = async (name, own) => {
       const tok = execFileSync('python3', [`${LIB}/nodes-verbs.py`, 'enroll-token', `${DASH}/nodes.py`, name, '--user', 'bb',
                                            ...(own ? ['--own'] : [])], { encoding: 'utf8', env }).trim();
+      // The own machine's agent is root on a managed machine (the installer
+      // provisions it so), which its name and time zone job asks of it.
       return { tok, go: () => post('/api/v1/agent/enroll', { user: 'bb', version: '1', digest: 'sha256:' + '1'.repeat(64),
-        census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' } },
+        census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', ...(own ? { administers: true, sandbox: true } : {}) } },
         { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }) };
     };
     const finish = () => post('/api/settings', { set: { setup_done: true } });
