@@ -77,8 +77,17 @@ class ExtMountsMixin:
         if changed:
             self.state["ext_mounts"] = [{k: r.get(k) for k in ("id", "kind", "name", "source", "host", "path", "user", "ro", "on")} for r in want]
             self.state["ext_mounts_sig"] = sig
-            self._ext_creds(want)
             save_state(self.state)
+        # Root's alone from here: an agent that is not root (a node whose
+        # agent is the jobs account) keeps the record and mounts nothing,
+        # and never raises inside the hello (B421).
+        if os.geteuid() != 0:
+            return
+        if changed:
+            try:
+                self._ext_creds(want)
+            except OSError as e:
+                log(f"other mounts: could not write the credentials: {e}")
         self.ext_mounts_pass(force=changed)
 
     def _ext_creds(self, want):
