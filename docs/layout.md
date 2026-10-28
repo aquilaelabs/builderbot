@@ -379,6 +379,7 @@ docs/containers.md               the Containers page and nginx: dev instances, h
 docs/scanners.md                 the Scanners page: BuilderBot's own scanners on each node, their schedule, and the reports
 docs/versions.md                 versions and release lines: bb version line, forward, backport, a patch line's rules
 docs/vms.md                      the VMs page and bb vm: VM host, the OS catalog, the dial, the limits, the network, snapshots, a VM made a node
+docs/nas.md                      the installed edition's storage design (R56): Python the management plane and never the data path, the two storage profiles, what is not built
 docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node
 docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile
 docs/bb-command.md               the bb verbs with more behind them: the test harness, the code map, capture, sound and documents

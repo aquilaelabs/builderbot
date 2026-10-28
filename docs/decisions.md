@@ -655,3 +655,21 @@ it went. With the catalog (R169) the layout spans two repositories:
 builderbot keeps everything a release ships, builderbot-catalog what
 changes between releases (the index, its signing, the community packs and
 their vetting).
+
+## A NAS without a storage engine
+
+**The installed edition stores data the way the kernel and its daemons
+already do, and BuilderBot manages them from Python without ever being the
+data path (the operator, 18 to 27 Oct 2026, R56 steps 4 to 6, R115 and
+R162).** Two storage profiles are offered, each said for what it gives up:
+ZFS pools (mirrors or RAIDZ2, the default for matched disks) and an
+Unraid-style array (a filesystem per disk under mergerfs with SnapRAID's
+periodic parity) for disks of mixed sizes; pools are by purpose, an SSD pool
+for BuilderBot's hot data and the array for shares, with no cache tier and
+nothing moved behind a person's back. Not built: a storage engine, real-time
+parity, tiering on bcachefs while its kernel standing is unsettled, and any
+path that puts the dashboard between a client and its bytes; every change
+to a disk, pool, share or account is a job from the root agent's fixed
+table, audited under the person's name. The data services serve with the
+dashboard stopped, which a test proves. [nas.md](nas.md) is the design
+whole.

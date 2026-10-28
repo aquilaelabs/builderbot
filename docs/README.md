@@ -45,6 +45,7 @@ dashboard's rail.
 - [tool-packs.md](tool-packs.md): toolchains you add yourself from a repository, the commands they give a session, and how to write one
 - [containers.md](containers.md): the Containers page and nginx: dev instances, how one is reached, their networks and image updates
 - [vms.md](vms.md): the VMs page and `bb vm`: VM host on a node, the OS catalog, Make VMs, the network, snapshots, a VM made a node
+- [nas.md](nas.md): the installed edition as a NAS, its design: Python the management plane and never the data path, the two storage profiles, and what BuilderBot does not build
 
 ## Machines, people and devices
 
