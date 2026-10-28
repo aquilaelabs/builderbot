@@ -771,6 +771,75 @@ def distro_now():
     return d
 
 
+
+def _net_bytes():
+    """[bytes in, bytes out] over every interface but lo, cumulative since
+    boot (/proc/net/dev); [0, 0] where it cannot be read."""
+    rx = tx = 0
+    try:
+        with open("/proc/net/dev", encoding="utf-8") as f:
+            for line in f.read().splitlines()[2:]:
+                name, _, rest = line.partition(":")
+                if name.strip() == "lo" or name.strip().startswith(("veth", "docker", "br-", "virbr")):
+                    continue
+                cols = rest.split()
+                rx += int(cols[0]); tx += int(cols[8])
+    except (OSError, ValueError, IndexError):
+        return [0, 0]
+    return [rx, tx]
+
+
+def _io_bytes():
+    """[bytes read, bytes written] over the whole disks, cumulative since
+    boot (/proc/diskstats, sectors of 512 bytes); [0, 0] where unreadable."""
+    rd = wr = 0
+    try:
+        with open("/proc/diskstats", encoding="utf-8") as f:
+            for line in f:
+                cols = line.split()
+                if len(cols) < 10 or not re.fullmatch(r"(sd[a-z]+|vd[a-z]+|nvme\d+n\d+|mmcblk\d+)", cols[2]):
+                    continue
+                rd += int(cols[5]) * 512; wr += int(cols[9]) * 512
+    except (OSError, ValueError):
+        return [0, 0]
+    return [rd, wr]
+
+
+def _cpu_temp():
+    """The CPU's temperature in whole degrees from hwmon (coretemp, k10temp
+    and the like) or the thermal zones, the hottest reading; None without."""
+    best = None
+    try:
+        for hw in glob.glob("/sys/class/hwmon/hwmon*"):
+            try:
+                with open(os.path.join(hw, "name"), encoding="utf-8") as f:
+                    name = f.read().strip()
+            except OSError:
+                continue
+            if name not in ("coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz", "soc_thermal"):
+                continue
+            for t in glob.glob(os.path.join(hw, "temp*_input")):
+                try:
+                    with open(t, encoding="utf-8") as f:
+                        v = int(f.read().strip()) // 1000
+                except (OSError, ValueError):
+                    continue
+                if 0 < v < 150 and (best is None or v > best):
+                    best = v
+        if best is None:
+            for t in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
+                try:
+                    with open(t, encoding="utf-8") as f:
+                        v = int(f.read().strip()) // 1000
+                except (OSError, ValueError):
+                    continue
+                if 0 < v < 150 and (best is None or v > best):
+                    best = v
+    except OSError:
+        return None
+    return best
+
+
 class Sampler:
     """CPU as a percentage over the interval since the last sample, which
     is the poll interval, so the number on the row is 'the last 25 seconds'
@@ -842,6 +911,9 @@ class Sampler:
             load1 = 0.0
         return {"cpu_pct": round(100.0 * (dt - di) / dt, 1) if dt > 0 else 0.0,
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
+                # The counters the controller's reporting takes rates from
+                # (R164 step 4), and the CPU's temperature.
+                "net": _net_bytes(), "io": _io_bytes(), "temp_c": _cpu_temp(),
                 "stores": _stores(state.get("stores")), "disks": self._disks(), "fence": self._fence(), "running": running,
                 **({"vm_mem": vm_memory()} if shutil.which("virsh") else {}),
                 "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),

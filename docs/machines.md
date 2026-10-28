@@ -420,6 +420,17 @@ disks but the system's after the idle time picked (`hdparm -S`, five
 minutes to two hours, or never); a solid-state disk is left alone, and the
 agent sets it again after every boot, since the timer is the drive's own.
 
+**Reporting** (R164): a Reporting section on the controller's own
+machine's row keeps what every heartbeat samples (CPU, memory, the
+network's bytes in and out, the disks' bytes read and written, the CPU's
+temperature and the hottest disk's) for weeks at falling resolution:
+five-minute means for two days and hourly means for two months, one small
+file per node under the state (`history.py`), drawn over six hours, a day,
+a week or a month as the hour's charts are drawn, one measure each. The
+rates come from the agent's cumulative counters, so an agent restart is one
+skipped point, never a spike. The hour's charts above it are the samples
+themselves and are unchanged.
+
 **Power** (R164): with the UPS feature installed (NUT, for a USB UPS;
 the Features section installs it on the controller's own machine), a
 Power section shows the UPS as NUT reads it: on line or on battery, the

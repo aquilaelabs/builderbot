@@ -13,6 +13,7 @@
 "use strict";
 
 let nodesList = null;            // last answer, or null before the first
+let ndHistory = {};              // the own machine's reporting per node: {span, data} (R164 step 4)
 // ...and stale when the nodes token moved while no page that draws the list
 // was on show (index.html's watch): the next page to read it loads a fresh
 // one, and meanwhile draws the last, so a picker drawn in the same tick as
@@ -680,6 +681,49 @@ function nodeMachineSection(n){
       <div class="hint">Spinning disks but the system's stop after that long idle (hdparm); a solid-state disk is left alone. A spun-down disk takes a few seconds to answer the next read.</div></div>
     ${admin && !why ? `<div class="actbar"><span class="sp"></span><button type="button" class="primary" data-nd="machine-apply" disabled>Apply</button></div>` : ""}`;
   return docSection("nodes", "machine", ndTitle("machine"), [r.hostname || "", r.timezone || "", r.spindown ? `disks spin down after ${r.spindown} min` : ""].filter(Boolean).join(" · "), body);
+}
+// Reporting (R164 step 4): the controller's own machine's CPU, memory,
+// network, disk I/O and temperatures over six hours, a day, a week or a
+// month, kept on the controller at falling resolution (history.py) and
+// drawn as the hour's charts are, one measure each, side by side; the
+// span is a row of buttons, the day first.
+const ND_SPANS = [["6h", "6 hours"], ["day", "a day"], ["week", "a week"], ["month", "a month"]];
+const ND_REPORT = [["cpu", "CPU", v => `${Math.round(v)}%`, 100], ["mem", "Memory", v => `${Math.round(v)}%`, 100],
+                   ["rx", "Network in", v => `${humanBytes(v)}/s`, 1], ["tx", "Network out", v => `${humanBytes(v)}/s`, 1],
+                   ["read", "Disk read", v => `${humanBytes(v)}/s`, 1], ["write", "Disk write", v => `${humanBytes(v)}/s`, 1],
+                   ["temp", "CPU temperature", v => `${Math.round(v)} °C`, 100], ["disk_temp", "Disk temperature", v => `${Math.round(v)} °C`, 100]];
+function nodeReportSection(n){
+  if (!n.config?.own) return "";
+  const h = ndHistory[n.id] || {span: "day", data: null};
+  const picker = `<div class="pseg" role="group" aria-label="span">${ND_SPANS.map(([k, w]) => `<button type="button" data-ndspan="${k}"${h.span === k ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>${esc(w)}</button>`).join("")}</div>`;
+  let body;
+  if (!h.data) body = `${picker}${skRows(2)}`;
+  else if (h.data.error) body = `${picker}<div class="hint bad">${esc(h.data.error)}</div>`;
+  else {
+    const f = h.data.fields || [], pts = h.data.points || [];
+    const series = key => { const i = f.indexOf(key); return i < 0 ? [] : pts.map(p => [p[0], p[1 + i]]).filter(x => typeof x[1] === "number"); };
+    const drawn = ND_REPORT.map(([key, title, fmt, max]) => { const s = series(key); return s.length ? hourChart(`rep:${key}:${n.id}`, title, s, fmt, max, h.span) : ""; }).filter(Boolean);
+    body = `${picker}${drawn.length ? `<div class="charts ndcharts">${drawn.join("")}</div>` : `<div class="empty">Nothing kept yet: the first point lands five minutes after the agent's first sample.</div>`}
+      <div class="hint">Five-minute means for two days, hourly means for two months; the hour's charts above are the samples themselves.</div>`;
+  }
+  return docSection("nodes", "report", ndTitle("report"), ND_SPANS.find(x => x[0] === h.span)?.[1] || "", body);
+}
+async function loadHistory(nid, span){
+  ndHistory[nid] = {span, data: null};
+  try{ ndHistory[nid] = {span, data: await (await fetch(`/api/history?node=${encodeURIComponent(nid)}&span=${encodeURIComponent(span)}`)).json()}; }
+  catch(e){ ndHistory[nid] = {span, data: {error: "history: " + failWords(e)}}; }
+  nodesRev++; drawPanes();
+}
+function wireReportSection(root, n){
+  const sect = root.querySelector('details[data-sect="nodes:report"]');
+  if (!sect || !n.id) return;
+  sect.querySelectorAll("[data-ndspan]").forEach(b => b.onclick = () => loadHistory(n.id, b.dataset.ndspan));
+  // Read when the section is opened, and again when its span is picked;
+  // nothing polls: the next open reads again.
+  if (!ndHistory[n.id] && sect.open) loadHistory(n.id, "day");
+  sect.addEventListener("toggle", () => { if (sect.open && !ndHistory[n.id]) loadHistory(n.id, "day"); });
+  const fmtOf = id => (ND_REPORT.find(([k]) => id.startsWith(`rep:${k}:`)) || [, , v => `${Math.round(v)}%`])[2];
+  wireCharts(sect, fmtOf);
 }
 // The controller's own machine's power (R164 step 3): its UPS as NUT
 // reads it, drawn only where the UPS feature is installed: the status in
@@ -1802,7 +1846,7 @@ function nodeCharts(n){
 // template written beside the page fell behind it), so a change to either
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
-const ND_SECTS = [["health", "Health"], ["machine", "Name and time"], ["power", "Power"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"], ["usb", "USB"],
+const ND_SECTS = [["health", "Health"], ["report", "Reporting"], ["machine", "Name and time"], ["power", "Power"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"], ["usb", "USB"],
                   ["router", "Model router"], ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
@@ -1961,6 +2005,7 @@ function ndRowHtml(n){
         ${n.kind === "agent" && !pending ? nodeProjectsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeReportSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeMachineSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodePowerSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeUsbSection(n) : ""}
@@ -1990,7 +2035,7 @@ function renderNodesInto(i){
     d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
         <div class="name">${skv(7)}</div>${ndFacts(null)}
         <div class="actbar ndagent"><span class="lead dim"></span>${ndAgentButtons(true)}</div></div>
-      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu" && k !== "usb" && k !== "machine" && k !== "power").map(([k, t], j) =>
+      <div class="ndsections">${ND_SECTS.filter(([k]) => !["gpu", "usb", "machine", "power", "report"].includes(k)).map(([k, t], j) =>
         docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
     sectJump(d.list.closest(".doctab") || d.el);
     loadNodes();
@@ -2861,6 +2906,7 @@ function wireNodesTab(root){
     wireRouterSection(box);
     wireUsbSection(box, nodesList.find(x => x.id === id) || {});
     wireMachineSection(box, nodesList.find(x => x.id === id) || {});
+    wireReportSection(box, nodesList.find(x => x.id === id) || {});
     // The GPU section's two switches (R102): drafts until its Apply.
     const ge = box.querySelector('[data-k="gpuemu"]');
     if (ge) ge.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuEmu = ge.checked; };

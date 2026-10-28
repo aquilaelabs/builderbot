@@ -4236,6 +4236,7 @@ import tunnel                                                    # noqa: E402
 import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
+import history                                                   # noqa: E402
 import termws                                                    # noqa: E402
 termws.configure(agent_dir=nodes.AGENT_DIR)
 import tokenkeys                                                 # noqa: E402
@@ -4263,6 +4264,9 @@ try:
     # The accounts' SMB passwords and a share's names (R164 step 1).
     nodes.smb_users = users.smb_users
     nodes.smb_resolve = users.smb_resolve
+    # ...and the weeks-long record of the own machine's samples (R164 step 4).
+    history.configure(state=STATE)
+    nodes.history_add = history.add
     # ...and the digest of the bb bundle, so a node can tell from hello alone
     # whether the bb its sessions run is the one this controller ships.
     nodes.bundle_digest = lambda: workspace.bundle()["digest"]
@@ -5691,6 +5695,7 @@ GET_ROUTES = (
     ("exact", "/api/router", "_get_router"),
     ("exact", "/api/router-key", "_get_router_key"),
     ("prefix", "/api/storage", "_get_storage"),
+    ("prefix", "/api/history", "_get_history"),
     ("exact", "/api/schedules", "_get_schedules"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
@@ -11210,6 +11215,25 @@ class Handler(BaseHTTPRequestHandler):
                     row["accounts"] = sorted(names.values(), key=str.lower)
                     row["roles"] = sorted({r for u in users.all_users() for r in u.get("roles") or [] if not r.startswith("Owner of ")})
         return self._json(payload, status)
+
+    def _get_history(self):
+        """GET /api/history?node=ID&span=6h|day|week|month (R164 step 4): the
+        controller's own machine's CPU, memory, network, disk I/O and
+        temperatures over the span, at the resolution kept for it (five
+        minutes for a day, an hour for a month). Read on the Nodes area;
+        never a session's."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a machine's history is a person's to read"}, 403)
+        why = users.may(who, "node")
+        if why:
+            return self._json({"error": why}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid, span = (q.get("node") or [""])[0], (q.get("span") or ["day"])[0]
+        n = nodes.node(nid) if nid else None
+        if not n or not nodes.own_machine(n):
+            return self._json({"error": "the reporting is the controller's own machine's: name its node"}, 400)
+        return self._json(history.points(nid, span))
 
     def _storage(self, req):
         """Measure now on the Storage page: a node's disks walked at once

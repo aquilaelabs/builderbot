@@ -2192,6 +2192,8 @@ token_pubs = None
 # 1): users.smb_users, and the resolver of a share's names (users.smb_resolve).
 smb_users = None
 smb_resolve = None
+# The reporting's intake (history.add), on the controller's own machine's samples (R164 step 4).
+history_add = None
 # ...and how many of a node's seals are under a key before today's.
 token_stale = None
 # ...and whether there is an install key to make any of it from.
@@ -4403,6 +4405,14 @@ def heartbeat(nid, sample, addr, running=0):
         clean["gpu_mem_kinds"] = {k: max(0, min(10**7, int(v))) for k, v in list(s["gpu_mem_kinds"].items())[:16]
                                   if (k in PROC_KINDS or k == "other") and isinstance(v, (int, float))}
     clean["running"] = int(running or 0)
+    # The counters and the temperature the reporting takes its points from
+    # (R164 step 4): two non-negative integers each, a whole degree.
+    for k in ("net", "io"):
+        v = s.get(k)
+        if isinstance(v, list) and len(v) == 2 and all(isinstance(x, int) and not isinstance(x, bool) and x >= 0 for x in v):
+            clean[k] = [min(x, 10**15) for x in v]
+    if isinstance(s.get("temp_c"), int) and not isinstance(s.get("temp_c"), bool) and 0 < s["temp_c"] < 150:
+        clean["temp_c"] = s["temp_c"]
     # How long the agent's last turn spent before its poll, by part (B841):
     # a job queued meanwhile waited for it.
     if isinstance(s.get("turn_ms"), dict):
@@ -4500,6 +4510,11 @@ def heartbeat(nid, sample, addr, running=0):
     ring = _samples.setdefault(nid, [])
     ring.append(clean)
     _trim(ring, clean["at"])
+    # ...and into the weeks-long record (history.py, R164 step 4), on the
+    # controller's own machine, with the hottest disk's reading beside it.
+    if history_add and own_machine(n):
+        temps = [d["smart"]["temp_c"] for d in rep.get("disks") or [] if isinstance(d.get("smart"), dict) and isinstance(d["smart"].get("temp_c"), int)]
+        history_add(nid, clean, max(temps) if temps else None)
     # Each running container's use, once a minute (R218 step 9): name to
     # [cpu %, memory %], whitelisted like everything a node says.
     if isinstance(s.get("ctr_stats"), dict):

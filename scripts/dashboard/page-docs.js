@@ -1192,13 +1192,19 @@ function sparkSvg(vals, max = 100, label = ""){
 // said, `max` the scale's top. Its id keeps the crosshair where it was
 // across the redraw a new sample brings.
 const CHART_SPAN = 3600;
-function hourChart(id, title, pts, fmt = v => `${Math.round(v)}%`, max = 100){
+// A longer span (R164 step 4, This machine's Reporting): the same chart
+// over six hours, a day, a week or a month, its axis and caption words
+// for the span, the hour's chart unchanged.
+const CHART_SPANS = {"6h": [6 * 3600, "the last six hours", ["6 h ago", "3 h", "now"]], day: [86400, "the last day", ["a day ago", "12 h", "now"]],
+                     week: [7 * 86400, "the last week", ["a week ago", "3.5 days", "now"]], month: [30 * 86400, "the last month", ["a month ago", "15 days", "now"]]};
+function hourChart(id, title, pts, fmt = v => `${Math.round(v)}%`, max = 100, span = ""){
   const p = (pts || []).filter(x => x && typeof x[1] === "number");
+  const sp = CHART_SPANS[span] || [CHART_SPAN, "the last hour", ["an hour ago", "30 min", "now"]];
   if (!p.length) return `<figure class="chart" data-chart="${esc(id)}"><figcaption><span class="ct">${esc(title)}</span></figcaption>
     <div class="hint">no samples yet: the node sends one each poll</div></figure>`;
-  const now = p.at(-1)[0], from = now - CHART_SPAN, vals = p.map(x => x[1]);
+  const now = p.at(-1)[0], from = now - sp[0], vals = p.map(x => x[1]);
   const top = Math.max(max, ...vals);
-  const X = at => Math.max(0, Math.min(1000, (at - from) / CHART_SPAN * 1000)), Y = v => 100 - v / top * 100;
+  const X = at => Math.max(0, Math.min(1000, (at - from) / sp[0] * 1000)), Y = v => 100 - v / top * 100;
   // Runs split where the samples stop: a node that went quiet is a gap, not
   // a slope. Measured against the slow end of its spacing, not the middle:
   // a busy node reports in bursts seconds apart and an idle one at the
@@ -1217,18 +1223,18 @@ function hourChart(id, title, pts, fmt = v => `${Math.round(v)}%`, max = 100){
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length, last = p.at(-1);
   return `<figure class="chart" data-chart="${esc(id)}">
     <figcaption><span class="ct">${esc(title)}</span><span class="cv">${esc(fmt(last[1]))}</span>
-      <span class="cs">the last hour: low ${esc(fmt(Math.min(...vals)))}, average ${esc(fmt(avg))}, high ${esc(fmt(Math.max(...vals)))}</span></figcaption>
+      <span class="cs">${esc(sp[1])}: low ${esc(fmt(Math.min(...vals)))}, average ${esc(fmt(avg))}, high ${esc(fmt(Math.max(...vals)))}</span></figcaption>
     <div class="cplot">
       <div class="cy" aria-hidden="true"><span>${esc(fmt(top))}</span><span>${esc(fmt(top / 2))}</span><span>${esc(fmt(0))}</span></div>
-      <div class="carea" tabindex="0" role="img" aria-label="${esc(`${title} over the last hour, now ${fmt(last[1])}`)}"
-        data-pts="${esc(JSON.stringify(p.map(x => [x[0], x[1]])))}" data-from="${from}">
+      <div class="carea" tabindex="0" role="img" aria-label="${esc(`${title} over ${sp[1]}, now ${fmt(last[1])}`)}"
+        data-pts="${esc(JSON.stringify(p.map(x => [x[0], x[1]])))}" data-from="${from}" data-span="${sp[0]}">
         <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
           <line class="cgrid" x1="0" x2="1000" y1="0" y2="0"/><line class="cgrid" x1="0" x2="1000" y1="50" y2="50"/>
           <line class="cgrid" x1="0" x2="1000" y1="100" y2="100"/>
           <path class="cfill" d="${fill}"/><path class="cline" d="${line}"/></svg>
         <span class="cdot" data-style="left:${(X(last[0]) / 10).toFixed(2)}%;top:${Y(last[1]).toFixed(2)}%"></span>
         <span class="chair" hidden></span><span class="ctip" hidden></span>
-        <div class="cx" aria-hidden="true"><span>an hour ago</span><span>30 min</span><span>now</span></div>
+        <div class="cx" aria-hidden="true"><span>${esc(sp[2][0])}</span><span>${esc(sp[2][1])}</span><span>${esc(sp[2][2])}</span></div>
       </div>
     </div></figure>`;
 }
@@ -1243,20 +1249,21 @@ function wireCharts(root, fmtOf = () => v => `${Math.round(v)}%`){
     let pts;
     try{ pts = JSON.parse(a.dataset.pts || "[]"); }catch(e){ pts = []; }
     if (!pts.length) return;
-    const from = Number(a.dataset.from), hair = a.querySelector(".chair"), tip = a.querySelector(".ctip");
+    const from = Number(a.dataset.from), span = Number(a.dataset.span) || CHART_SPAN, hair = a.querySelector(".chair"), tip = a.querySelector(".ctip");
     const show = i => {
       if (i < 0){ hair.hidden = tip.hidden = true; return; }
-      const x = Math.max(0, Math.min(100, (pts[i][0] - from) / CHART_SPAN * 100));
+      const x = Math.max(0, Math.min(100, (pts[i][0] - from) / span * 100));
       hair.style.left = tip.style.left = `${x}%`;
       tip.classList.toggle("flip", x > 70);
       tip.textContent = "";
       const b = document.createElement("b"); b.textContent = fmt(pts[i][1]);
-      tip.append(b, " ", new Date(pts[i][0] * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
+      tip.append(b, " ", span > 86400 ? new Date(pts[i][0] * 1000).toLocaleString([], {weekday: "short", hour: "2-digit", minute: "2-digit"})
+                       : new Date(pts[i][0] * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
       hair.hidden = tip.hidden = false;
       chartHover = {id, i};
     };
     const near = ev => {
-      const r = a.getBoundingClientRect(), at = from + (ev.clientX - r.left) / r.width * CHART_SPAN;
+      const r = a.getBoundingClientRect(), at = from + (ev.clientX - r.left) / r.width * span;
       let best = 0;
       pts.forEach((p, i) => { if (Math.abs(p[0] - at) < Math.abs(pts[best][0] - at)) best = i; });
       return best;

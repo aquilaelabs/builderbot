@@ -154,6 +154,7 @@ scripts/
     prefs.py                     which model and effort a project's sessions run on, per agent
     settings.py                  controller settings, the things that used to be environment variables; switches, a text and two secrets never shown back
     storage.py                   the Storage page's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
+    history.py                   reporting for the controller's own machine (R164 step 4): the heartbeat's samples kept for weeks at falling resolution, one file per node under the state, read by /api/history
     schedules.py                 the Schedules page's scripts (R117): an administrator's cron in the state, its timetable in words, its timer and the built-in scan
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
