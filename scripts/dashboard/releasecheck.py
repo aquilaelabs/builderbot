@@ -27,10 +27,45 @@ _lock = threading.Lock()
 _latest = {"version": "", "tag": "", "at": 0, "error": "", "checking": False, "url": ""}
 _version = lambda: ""       # noqa: E731 (configured)
 _bare = lambda: False       # noqa: E731
+_window = lambda: ("", 4)   # noqa: E731 (the update window: day, hour)
+_apply = lambda v: None     # noqa: E731 (queue the update to version v)
+_applied = {"version": ""}  # the version the window last queued, so one window queues once
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
-def configure(*, version, bare_metal):
-    globals().update(_version=version, _bare=bare_metal)
+def configure(*, version, bare_metal, window=None, apply=None):
+    globals().update(_version=version, _bare=bare_metal, _window=window or _window, _apply=apply or _apply)
+
+
+def in_window(now=None):
+    """Whether this hour is the update window the person set (R160 step 4):
+    daily or one weekday, at the hour named; "" is no window, the default,
+    and nothing is applied by itself then."""
+    day, hour = _window()
+    if not day:
+        return False
+    t = time.localtime(now if now is not None else time.time())
+    if day != "daily" and DAYS[t.tm_wday] != day:
+        return False
+    return t.tm_hour == int(hour)
+
+
+def window_pass(now=None):
+    """One look, every few minutes from the loop: in the window with a
+    newer release not yet queued, the update is queued once (the own node's
+    job: the image on BuilderBot OS, the installer elsewhere), and said
+    where the job's log and the bell say the rest. Returns what it queued."""
+    v = newer() if _bare() else ""
+    if not v or not in_window(now) or _applied["version"] == v:
+        return ""
+    _applied["version"] = v
+    try:
+        _apply(v)
+    except Exception as e:                                          # noqa: BLE001 (said, and the next window tries again)
+        print(f"[dashboard] update window: {type(e).__name__}: {e}", flush=True)
+        _applied["version"] = ""
+        return ""
+    return v
 
 
 def parse(v):
@@ -102,13 +137,18 @@ def attention(own_node_id):
 
 
 def start():
-    """The daily check on a thread, a while after the start."""
+    """The daily check on a thread, a while after the start, and the window
+    looked at every ten minutes between checks."""
     def loop():
         time.sleep(BOOT_DELAY)
+        last = 0
         while True:
             try:
-                check()
+                if time.time() - last >= EVERY:
+                    check()
+                    last = time.time()
+                window_pass()
             except Exception as e:                                  # noqa: BLE001 (the loop outlives one bad pass)
                 print(f"[dashboard] release check: {type(e).__name__}: {e}", flush=True)
-            time.sleep(EVERY)
+            time.sleep(600)
     threading.Thread(target=loop, name="release-check", daemon=True).start()

@@ -1423,6 +1423,15 @@ def _census(c):
                        # put there by BuilderBot, and on now, which a restart
                        # and the firmware decide.
                        "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True}}
+    # BuilderBot OS on the machine (R160 step 4): the image's version and
+    # snapshot, the slot this boot came from and the one GRUB boots next.
+    if isinstance(c.get("os_image"), dict) and c["os_image"].get("version"):
+        o = c["os_image"]
+        out["os_image"] = {"version": re.sub(r"[^A-Za-z0-9.+-]", "", str(o.get("version") or ""))[:40],
+                     "snapshot": re.sub(r"[^0-9TZ]", "", str(o.get("snapshot") or ""))[:20],
+                     "built": re.sub(r"[^0-9TZ:-]", "", str(o.get("built") or ""))[:24],
+                     "slot": o.get("slot") if o.get("slot") in ("a", "b") else "",
+                     "next": o.get("next") if o.get("next") in ("a", "b") else ""}
     # The domains its libvirt has that BuilderBot did not make (R165 step 1):
     # a name, a state and a size, read-only on the VMs page.
     if isinstance(c.get("vms_other"), list):
@@ -2993,6 +3002,44 @@ def node_feature(principal, node_id, fid, op):
                 {"apply": "feature", "config": {"id": fid, "op": op}, "timeout": 1800})
     if r.get("ok"):
         audit(principal, "node-feature", node_id, {"job": r["job"], "id": fid, "op": op})
+    return r
+
+
+def node_os_update(principal, node_id, release="", from_dir=""):
+    """Update BuilderBot OS on the controller's own machine (R160 step 4): a
+    system job on its node, whose root agent fetches the release's image
+    files (or takes them from a folder on the machine), checks each against
+    its sha256 and the slot against its build attestation, writes the slot
+    not in use and names it for the next boot; the restart is the person's.
+    Refused anywhere but a machine whose census says it runs the image."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    rep = n.get("reported") or {}
+    if not own_machine(n) or not (rep.get("os_image") or {}).get("version"):
+        return {"error": "updating the image is for a machine that runs BuilderBot OS, on its own node; "
+                         "a bare-metal install on another system updates its controller, a container install pulls its image"}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot write a slot"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    tag = str(release or "").strip()
+    src = str(from_dir or "").strip()
+    if tag and not re.fullmatch(r"v?\d+\.\d+\.\d+", tag):
+        return {"error": "a release is named as its tag, vX.Y.Z"}
+    if src and (not src.startswith("/") or ".." in src.split("/") or len(src) > 300):
+        return {"error": "the folder is a path on the machine, from /"}
+    if not tag and not src:
+        return {"error": "name the release (vX.Y.Z), or a folder on the machine holding its files"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "os-update", "config": ({"release": tag} if tag else {"from": src}), "timeout": 3600})
+    if r.get("ok"):
+        audit(principal, "os-update", node_id, {"job": r["job"], "release": tag, "from": src})
     return r
 
 
@@ -6002,6 +6049,7 @@ def verb(principal, req):
              "lockdown": lambda: node_lockdown(principal, nid),
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
              "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
+             "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,

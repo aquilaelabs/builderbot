@@ -127,9 +127,32 @@ to look at; `--from-tree DIR` assembles a disk from a tree built before.
 Moving the pin is editing `image/SNAPSHOT` to a newer timestamp; the weekly
 security rebuild (R160 step 6) will do that on its own.
 
+## Updating
+
+A newer release is found the way a bare-metal install's is (checked daily
+and on **Check now** under Controller settings, Updates, and said on the
+bell). On BuilderBot OS **Update** does not run the installer: the own
+node's root agent fetches the release's image files (the root, the kernel,
+the initrd, the stamp), checks each against the sha256 the release carries
+and the root against its build attestation (where `gh` is on the machine),
+writes the slot not in use, puts the kernel beside it on the ESP, and names
+that slot for the next boot. Nothing running changes until you restart
+from This machine, and the slot running now stays to fall back to: at the
+GRUB menu, or with `slot next a`. The Updates section says which slot runs
+and which boots next.
+
+An offline machine takes the same files from a folder on it (a stick, a
+share): **Update from the folder** under Updates, the folder holding the
+release's four files with their `.sha256` beside them.
+
+**Update window.** By default nothing is applied by itself. Under
+Controller settings, *Update window* names a day (daily, or one weekday)
+and an hour; in that hour a newer release is applied the way Update does
+it, once per release, and the restart still waits for you.
+
 ## What is not here yet
 
-The installable ISO (R160 step 2), the VM disk formats (step 3), the update
-that writes the other slot from the page (step 4), the boot of each image in
-CI before it ships (step 5), the weekly rebuild (step 6), and the USB edition
-with its boot counting and Safe mode (R161) each build on this image.
+The installable ISO (R160 step 2), the boot of each image in CI before it
+ships (step 5), the weekly rebuild (step 6), and the USB edition with its
+boot counting, Safe mode and the slot kept only once it says it is healthy
+(R161) each build on this image.

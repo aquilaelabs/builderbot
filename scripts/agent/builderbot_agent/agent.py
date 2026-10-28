@@ -29,11 +29,12 @@ from .workspace import WorkspaceMixin
 from .work import WorkMixin
 from .scan import ScanMixin
 from .configplane import ConfigPlaneMixin
+from .osimage import OsImageMixin
 from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, AccountsMixin,
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, AccountsMixin,
             TokensMixin, ScanMixin):
     def __init__(self, state):
         self.state = state

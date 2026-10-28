@@ -113,6 +113,11 @@ KEYS = {
     # from the page, a phone or a session; every other account is told why
     # and stays signed in for after. Nodes are not accounts and keep running.
     "maintenance_mode": {"default": False, "kind": "bool", "applied": "now"},
+    # The update window (R160 step 4): when a newer release is applied by
+    # itself, never by default; the day (daily, or one weekday) and the hour.
+    "update_window": {"default": "", "kind": "choice", "applied": "now",
+                      "choices": ["", "daily", "mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
+    "update_hour": {"default": 4, "kind": "number", "min": 0, "max": 23, "applied": "now"},
     # The room a node keeps for itself (R110): the disk left free under
     # which the bell warns and a build, a test or a container's rebuild is
     # refused (a tenth of a disk smaller than ten times this), the memory
@@ -193,6 +198,11 @@ def _parse(key, raw):
             return None
         v = str(raw).strip().lower()[:253]
         return v if v == "" or HOST_RE.match(v) else None
+    if kind == "choice":
+        if isinstance(raw, bool) or raw is None:
+            return None
+        v = str(raw).strip().lower()[:40]
+        return v if v in spec["choices"] else None
     if kind == "secret":
         if isinstance(raw, bool) or raw is None:
             return None
@@ -308,6 +318,7 @@ def set_many(changes):
             return {"error": f"{key} takes true or false" if kind == "bool"
                     else f"{key} is a hostname like bb.example.com" if kind == "text"
                     else f"{key} is a whole number from {KEYS[key]['min']} to {KEYS[key]['max']}" if kind == "number"
+                    else f"{key} is one of {', '.join(x or 'off' for x in KEYS[key]['choices'])}" if kind == "choice"
                     else f"{key} is one line"}
         parsed[key] = _sealed(v) if KEYS[key]["kind"] == "secret" else v
     with _lock:

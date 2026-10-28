@@ -44,6 +44,7 @@ from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
 from . import storage
 from . import vmhw
+from .osimage import os_release
 from .vms import isos_now, vm_memory, vm_pool, vms_now, vms_other
 
 
@@ -325,6 +326,8 @@ def census(state):
         # stamp alone said yes for an agent that could not, and the
         # controller queued system packages it was bound to refuse.
         "administers": os.geteuid() == 0 and os.access(SANDBOX_BIN, os.X_OK),
+        # BuilderBot OS on this machine (R160 step 4): the image, its slot and the next boot's; {} elsewhere.
+        "os_image": os_release(),
         # Whether a session here sees only its own project (R35).
         "isolation": isolation_now(),
         # ...and reaches only its own project's containers (R79), as the
