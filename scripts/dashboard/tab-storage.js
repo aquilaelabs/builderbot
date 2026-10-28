@@ -203,10 +203,17 @@ function storageShares(n){
       ${s.smb?.on ? `<div class="sub">SMB${s.smb.ro ? ", read-only" : ""}${s.smb.tm ? ", a Time Machine target" : ""}: ${s.smb.guest ? "everybody, as a guest" : (s.accounts || s.smb.users || []).map(esc).join(", ") || "nobody yet"} · \\\\${esc(n.name)}\\${esc(s.name)}</div>` : ""}
       ${s.nfs?.on ? `<div class="sub">NFS${s.nfs.ro ? ", read-only" : ""}: ${(s.nfs.clients || []).map(esc).join(", ")} · ${esc(n.name)}:${esc(s.path)}</div>` : ""}
       </div>${admin && !why ? `<span class="acts"><button type="button" class="danger" data-stshare="remove" data-name="${esc(s.name)}">Remove</button></span>` : ""}</div>`).join("");
-  const mounts = (n.pools || []).map(p => p.mount).filter(Boolean);
-  const form = !admin || why ? "" : `<div class="field stnewshare"><div class="hint">New share: a name, a folder on a pool${mounts.length ? ` (${mounts.map(esc).join(", ")})` : ""}, and who reaches it over SMB, NFS or both. A person reaches an SMB share with their account's name and the SMB password they set on Profile; a role names everybody holding it now.</div>
+  // A share names the one pool it lives on, chosen when it is made (R162
+  // step 6, the operator, 27 Oct): the pools and the array are the places,
+  // and the share's folder sits under the one picked, nothing moved behind
+  // a person's back.
+  const places = [...(n.pools || []).filter(p => p.mount).map(p => [p.mount, `the pool ${p.name} (${p.mount})`]),
+                  ...(n.array?.mounted ? [[n.array.mount || "/mnt/array", `the array (${n.array.mount || "/mnt/array"})`]] : [])];
+  const form = !admin || why ? "" : `<div class="field stnewshare"><div class="hint">New share: a name, the pool or the array it lives on and its folder there, and who reaches it over SMB, NFS or both. A person reaches an SMB share with their account's name and the SMB password they set on Profile; a role names everybody holding it now.</div>
       <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" id="stShareName" placeholder="media" maxlength="63" autocomplete="off" spellcheck="false"></label></div>
-      <div class="field"><label class="pick"><span class="pickw">Folder</span><input type="text" id="stSharePath" placeholder="${esc(mounts[0] ? mounts[0] + "/media" : "/mnt/tank/media")}" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field">${places.length ? `<label class="pick"><span class="pickw">On</span><select id="stSharePool">${optionList(places, places[0][0])}</select></label>` : `<div class="hint">No pool or array here yet: a share is a folder on one.</div>`}
+        <label class="pick"><span class="pickw">Folder</span><input type="text" id="stSharePath" placeholder="${esc(places[0] ? "media, or " + places[0][0] + "/media" : "/mnt/tank/media")}" autocomplete="off" spellcheck="false"></label>
+        <div class="hint">A name is a folder under the place picked (made there when it is missing); a whole path is taken as it is.</div></div>
       <div class="field"><label class="ndcap"><input type="checkbox" id="stShareSmb" checked> SMB (Windows, a Mac, a phone)</label>
         <label class="ndcap"><input type="checkbox" id="stShareGuest"> everybody as a guest, no password</label>
         ${(n.accounts || []).length || (n.roles || []).length ? `<div class="lbox" id="stShareWho">${(n.roles || []).map(r => `<label class="ndcap"><input type="checkbox" data-stsharewho="role:${esc(r)}"> everybody with the role ${esc(r)}</label>`).join("")}${(n.accounts || []).map(a => `<label class="ndcap"><input type="checkbox" data-stsharewho="${esc(a)}"> ${esc(a)}</label>`).join("")}</div>` : ""}
@@ -224,7 +231,9 @@ function wireStorageShares(root, n){
     const act = b.dataset.stshare, body = {action: "storage-share", id: n.node, share: act, name: b.dataset.name || ""};
     if (act === "set"){
       body.name = ($("stShareName")?.value || "").trim();
-      body.path = ($("stSharePath")?.value || "").trim();
+      body.path = ($("stSharePath")?.value || "").trim() || body.name;
+      // A folder name is under the place picked; a whole path stands as typed.
+      if (body.path && !body.path.startsWith("/")) body.path = `${$("stSharePool")?.value || ""}/${body.path}`;
       const ro = !!$("stShareRo")?.checked;
       const who = [...root.querySelectorAll("[data-stsharewho]:checked")].map(i => i.dataset.stsharewho);
       body.smb = {on: !!$("stShareSmb")?.checked, guest: !!$("stShareGuest")?.checked, ro, tm: !!$("stShareTm")?.checked,
@@ -603,7 +612,14 @@ function storageBackups(n){
         sch ? `<button type="button" data-stsnapsched="${esc(sch.id)}">Remove the schedule</button>` : "",
         `<button type="button" class="danger" data-stbackup="remove" data-id="${esc(r.id)}" title="forgotten here; the runs already copied stay where they are">Remove</button>`], true)}</span>` : ""}</div>`;
   }).join("");
-  const form = !admin || why ? "" : `<div class="field stnewbackup"><div class="hint">A new backup: a folder here, where its runs go (another pool, the array, a disk or a share under Other disks and shares), and how many runs to keep. Each run is whole and shares what did not change with the run before.</div>
+  // A pool of one disk has no redundancy (R162 step 6: an SSD pool holding
+  // the hot data): where the array stands, one press makes its nightly
+  // backup there, and a dead disk is restored from last night's.
+  const lone = (n.pools || []).filter(p => p.mount && (p.vdevs || []).length === 1 && (p.vdevs[0].disks || []).length === 1 && p.vdevs[0].type !== "mirror"
+                                        && !recs.some(r => r.source === p.mount));
+  const presets = !admin || why || !n.array?.mounted || !lone.length ? "" : `<div class="field"><div class="hint">A pool of one disk has nothing to fall back on: nightly to the array, and a dead disk is restored from last night's run.</div>
+      <div class="actbar"><span class="sp"></span>${lone.map(p => `<button type="button" data-stbackup="nightly" data-pool="${esc(p.name)}" data-mount="${esc(p.mount)}">Back up ${esc(p.name)} to the array nightly</button>`).join("")}</div></div>`;
+  const form = !admin || why ? "" : `${presets}<div class="field stnewbackup"><div class="hint">A new backup: a folder here, where its runs go (another pool, the array, a disk or a share under Other disks and shares), and how many runs to keep. Each run is whole and shares what did not change with the run before.</div>
       <div class="prefrow ctlrow">
         <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Name</span><input type="text" id="stBackupName" placeholder="media" maxlength="31" autocomplete="off" spellcheck="false"></label></div>
         <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Keep</span><input type="number" id="stBackupKeep" min="1" max="365" value="7"></label></div>
@@ -631,6 +647,18 @@ function wireStorageBackups(root, n){
       if (!await askYes("Forget this backup? The runs already copied stay where they are.", {title: "Remove the backup?", verb: "Remove", danger: true})) return;
       const j = await (await postJSON("/api/storebackups", {action: "remove", id: b.dataset.id})).json().catch(() => ({error: "no answer"}));
       notify(j.error || "forgotten", !!j.error); await refresh(); return;
+    }
+    if (act === "nightly"){
+      // The record and its schedule in one press: the pool to the array's
+      // backups folder, seven nights kept, daily at 4:00.
+      const name = `pool-${b.dataset.pool}`;
+      busy(b, "Adding");
+      const j = await (await postJSON("/api/storebackups", {action: "set", name, source: b.dataset.mount, dest: `${n.array.mount || "/mnt/array"}/backups`, keep: 7})).json().catch(() => ({error: "no answer"}));
+      if (j.error){ notify(j.error, true); await refresh(); return; }
+      const k = await (await postJSON("/api/schedules", {action: "save", name: `Backup ${name}`, cron: "0 4 * * *", node: n.node, on: true,
+                                                        system: {apply: "storage-backup", config: {name}}})).json().catch(() => ({error: "no answer"}));
+      notify(k.error || `${b.dataset.pool} is backed up to the array nightly at 4:00; Run now takes the first copy`, !!k.error);
+      await refresh(); return;
     }
     if (act === "daily" || act === "weekly"){
       const was = (n.snapshot_schedules || []).find(x => x.backup === b.dataset.name);
