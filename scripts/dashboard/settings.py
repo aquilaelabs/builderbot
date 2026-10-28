@@ -123,6 +123,11 @@ KEYS = {
     "backup_password": {"default": "", "kind": "secret", "applied": "now"},
     "update_window": {"default": "", "kind": "choice", "applied": "now",
                       "choices": ["", "daily", "mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
+    # The release channel (R179): normal is the releases as published; dev
+    # takes the pre-releases CI publishes from a dev build too, and may be
+    # picked only on a controller started in debug mode with the dev switch
+    # on. Reset to normal at a start without debug mode, as the switches are.
+    "release_channel": {"default": "normal", "kind": "choice", "applied": "now", "choices": ["normal", "dev"]},
     "update_hour": {"default": 4, "kind": "number", "min": 0, "max": 23, "applied": "now"},
     # The room a node keeps for itself (R110): the disk left free under
     # which the bell warns and a build, a test or a container's rebuild is
@@ -143,10 +148,18 @@ KEYS = {
 # project's Debug grants) is put back off, so setting it to 1 again starts
 # from nothing granted.
 DEBUG_KEYS = ("debug_mode", "offer_unvetted")
+# ...and what only those allow, put back at a start without them.
+DEBUG_ONLY = ("release_channel",)
 
 
 def debug_available():
     return os.environ.get("DEBUG_MODE", "").strip() == "1"
+
+
+def dev_channel_ok():
+    """Whether the dev release channel may be picked here (R179): debug mode
+    on and the dev switch on."""
+    return debug_available() and _parse("offer_unvetted", load().get("offer_unvetted")) is True
 
 
 def reset_debug():
@@ -154,8 +167,8 @@ def reset_debug():
     DEBUG_MODE=1. Whether anything was on."""
     with _lock:
         d = load()
-        on = [k for k in DEBUG_KEYS if d.get(k) is True]
-        for k in DEBUG_KEYS:
+        on = [k for k in DEBUG_KEYS if d.get(k) is True] + [k for k in DEBUG_ONLY if d.get(k) not in (None, KEYS[k]["default"])]
+        for k in DEBUG_KEYS + DEBUG_ONLY:
             d.pop(k, None)
         if on:
             write_json(FILE, d)
@@ -318,6 +331,8 @@ def set_many(changes):
             return {"error": "the debug and dev options are not available on this controller"}
         if key == "debug_mode":
             return {"error": "debug mode is on while the controller is started with DEBUG_MODE=1, and off otherwise"}
+        if key == "release_channel" and _parse(key, raw) == "dev" and not dev_channel_ok():
+            return {"error": "the dev channel is offered only on a controller in debug mode with the dev switch on"}
         v = _parse(key, raw)
         if v is None:
             kind = KEYS[key]["kind"]

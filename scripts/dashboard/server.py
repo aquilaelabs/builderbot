@@ -5152,7 +5152,9 @@ import apps                                                      # noqa: E402
 import releasecheck                                              # noqa: E402
 releasecheck.configure(version=lambda: image_stamp().get("version") or "", bare_metal=lambda: BARE_METAL,
                        window=lambda: (str(settings.get("update_window") or ""), int(settings.get("update_hour") or 4)),
-                       apply=lambda v: _update_in_window(v))
+                       apply=lambda v: _update_in_window(v),
+                       # The release channel (R179): dev only in debug mode with the dev switch on.
+                       channel=lambda: str(settings.get("release_channel") or "normal"), dev_ok=settings.dev_channel_ok)
 
 
 def _own_os():
