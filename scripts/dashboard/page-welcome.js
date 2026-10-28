@@ -66,9 +66,12 @@ function abShow(which){
   if (which === "log" && !abLogLoaded) abLoadLog();
 }
 // ---- Credits: what BuilderBot is built on --------------------------------
-// The open-source work this install carries or runs, each with what it does
-// here and its license; kept beside the Dockerfile and the provisioner that
-// put them there, which a change to either updates.
+// The open-source work BuilderBot itself ships and runs, each with what it
+// does here and its license: what the controller's image (the Dockerfile),
+// the node provisioner, the OS image (image/mkosi.conf), the Android app
+// and the official catalog packs put there, which a change to any of those
+// updates. Nothing a person adds through the Library (a third-party pack, a
+// sideloaded app) is credited here (the operator, 28 Oct).
 const AB_CREDITS = [
   ["In the controller's image", [
     ["xterm.js", "every terminal in the dock", "MIT", "https://github.com/xtermjs/xterm.js"],
