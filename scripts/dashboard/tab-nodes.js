@@ -1779,7 +1779,7 @@ function ndNotHereHtml(){
 }
 // The bar: nothing of its own since R177, the node switcher, Create sandbox
 // VM and Enroll node being the Machines group's header (page-shell.js
-// machinesHeader); kept as the page's bar builder so its callers stand.
+// groupHeader); kept as the page's bar builder so its callers stand.
 function ndBar(live){
   return "";
 }
@@ -2530,7 +2530,7 @@ function wireNodesTab(root){
   root.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   // Create sandbox VM and Enroll node are the group's header's (R177, wired
-  // by page-shell.js wireMachinesHeader); the dialogs stay the page's.
+  // by page-shell.js wireGroupHeader); the dialogs stay the page's.
   const {modal, body, shut, mintForm, vmForm} = ndDialogs();
   wireSections(root);
   root.querySelectorAll(".ndrow").forEach(box => {

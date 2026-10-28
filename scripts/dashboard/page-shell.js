@@ -425,7 +425,6 @@ function groupPick(g, nid){
   const on = tabOf(panes[0])?.kind;
   if (on && GROUP_LOAD[on]) GROUP_LOAD[on]();
 }
-function machinesPick(nid){ groupPick(groupOf("nodes"), nid); }
 // Why a page's feature is not on this node, or "" (nothing known counts as
 // there: a list not read yet marks nothing).
 function toolOff(kind, nid){
@@ -473,7 +472,6 @@ function groupHeader(t, g){
   const pick = live.length ? nodePick("ndPick", live.map(x => ({id: x.id, name: x.name, live: x.live})), cur) : `<span class="pname">No node yet</span>`;
   return `<span class="phead mchead">${pick}${facts ? `<span class="pfacts">${esc(facts)}</span>` : ""}<span class="sp"></span></span>`;
 }
-function machinesHeader(t){ return groupHeader(t, groupOf("nodes")); }
 // The Machines group's actions, on the sub-nav's line: dead with the enroll
 // feature off (the reason is on the Nodes page) and until the node list lands.
 function machinesActions(){
@@ -492,7 +490,6 @@ function wireGroupHeader(bar){
     if (en) en.onclick = d.openEnroll;
   }
 }
-function wireMachinesHeader(bar){ wireGroupHeader(bar); }
 
 // ---- maintenance mode's band ---------------------------------------------------
 // Drawn under the header for the owner while maintenance mode is on: the
