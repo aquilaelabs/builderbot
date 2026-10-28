@@ -80,7 +80,13 @@ def parse(index_bytes):
         if not re.fullmatch(r"[a-z][a-z0-9-]{1,39}", name) or not re.fullmatch(r"[0-9a-f]{40}", str(p.get("commit") or "")) \
                 or not re.fullmatch(r"[0-9a-f]{64}", str(p.get("sha256") or "")) or not str(p.get("url") or "").startswith("https://"):
             continue
-        out.append({"name": name, "url": str(p["url"])[:300], "commit": str(p["commit"]), "sha256": str(p["sha256"]),
+        # A pack kept in a folder of one repository (R170 step 6: the shipped
+        # packs live in the catalog's own): its path, held to a plain
+        # relative folder; the sha256 is then of the archive of that folder.
+        path = str(p.get("path") or "")
+        if path and (not re.fullmatch(r"[a-z0-9][\w./-]{0,120}", path) or ".." in path.split("/")):
+            continue
+        out.append({"name": name, "url": str(p["url"])[:300], "commit": str(p["commit"]), "sha256": str(p["sha256"]), "path": path,
                     "tier": "official" if p.get("tier") == "official" else "vetted", "withdrawn": p.get("withdrawn") is True,
                     "about": str(p.get("about") or "")[:400],
                     "platforms": [str(x)[:20] for x in (p.get("platforms") or []) if isinstance(x, str)][:8]})
@@ -163,5 +169,5 @@ def withdrawn(installed_names):
 def attention(installed_names):
     """The bell's rows (kind pack) for a withdrawn pack this install holds."""
     return [{"kind": "pack", "name": n, "key": f"pack:withdrawn:{n}",
-             "said": f"the catalog withdrew the pack {n}: remove it from the Toolchains page, and from every node that holds it"}
+             "said": f"the catalog withdrew the pack {n}: remove it from the Library, and from every node that holds it"}
             for n in withdrawn(installed_names)]

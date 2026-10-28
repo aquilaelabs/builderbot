@@ -569,7 +569,7 @@ async function tpLook(){
   f.busy = "look"; f.error = ""; tpDraw();
   let body;
   if (pack && !pack.here) body = {action: "preview", url: pack.url};
-  else if (!pack && f.catalog) body = {action: "preview", url: f.catalog.url, commit: f.catalog.commit, sha256: f.catalog.sha256};
+  else if (!pack && f.catalog) body = {action: "preview", url: f.catalog.url, commit: f.catalog.commit, sha256: f.catalog.sha256, path: f.catalog.path || ""};
   else if (!pack && f.from === "repo") body = {action: "preview", url: f.url.trim()};
   else if (f.file){
     // The archive goes up on its own first, as New project's does, and the
@@ -687,7 +687,7 @@ function tpDraw(first){
     }
     const j = await post(tpForm.seen?.staged ? {action: "add", staged: tpForm.seen.staged}
                                              : {action: "add", url: packUrl(), commit: tpForm.seen?.commit || "",
-                                                ...(tpForm.catalog ? {sha256: tpForm.catalog.sha256} : {})});
+                                                ...(tpForm.catalog ? {sha256: tpForm.catalog.sha256, path: tpForm.catalog.path || ""} : {})});
     if (j.error){ tpForm.busy = ""; tpForm.error = j.error; tpDraw(); return; }
     notify(j.unchanged ? `${j.pack.name}: nothing changed, so it is kept as it was`
          : j.replaced ? `${j.pack.name} updated: where it is installed, uninstall it and install it again to take the new version`

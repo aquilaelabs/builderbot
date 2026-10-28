@@ -277,7 +277,10 @@ def _git(args, cwd=None, timeout=FETCH_TIMEOUT):
                           timeout=timeout, env=env, check=False)
 
 
-def fetch(url, commit="", shipped=(), sha256=""):
+PATH_IN = re.compile(r"[a-z0-9][\w./-]{0,120}")
+
+
+def fetch(url, commit="", shipped=(), sha256="", path=""):
     """The repository at `commit` (its default branch's head when none):
     {commit, manifest, guidance} with the manifest validated, or {error}.
     Fetched into a scratch directory that is gone when this returns. With
@@ -292,6 +295,12 @@ def fetch(url, commit="", shipped=(), sha256=""):
         return {"error": "a pack is a git repository's address: https://host/owner/repo"}
     if commit and not re.fullmatch(r"[0-9a-f]{40}", commit):
         return {"error": "a commit is its full 40-character hash"}
+    # A pack in a folder of the repository (R170 step 6): the archive and
+    # the manifest are that folder's.
+    path = str(path or "").strip("/")
+    if path and (not PATH_IN.fullmatch(path) or ".." in path.split("/")):
+        return {"error": "a pack's folder is a plain relative path inside the repository"}
+    at = f"{path}/" if path else ""
     tmp = tempfile.mkdtemp(prefix="toolpack-")
     try:
         for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", "--depth", "1", url, commit or "HEAD"]):
@@ -309,20 +318,20 @@ def fetch(url, commit="", shipped=(), sha256=""):
             if not re.fullmatch(r"[0-9a-f]{64}", sha256):
                 return {"error": "the catalog's sha256 is 64 hex digits"}
             import hashlib  # noqa: PLC0415
-            r = subprocess.run(["git", "-C", tmp, "archive", "--format=tar", "FETCH_HEAD"], capture_output=True, timeout=120, check=False)
+            r = subprocess.run(["git", "-C", tmp, "archive", "--format=tar", "FETCH_HEAD", *([path] if path else [])], capture_output=True, timeout=120, check=False)
             if r.returncode != 0 or hashlib.sha256(r.stdout).hexdigest() != sha256:
                 return {"error": f"{url} at {got[:12]} is not what the catalog vetted: its archive's sha256 differs, so it is refused"}
 
         def read(rel, cap):
-            r = subprocess.run(["git", "-C", tmp, "show", f"FETCH_HEAD:{rel}"], capture_output=True,
+            r = subprocess.run(["git", "-C", tmp, "show", f"FETCH_HEAD:{at}{rel}"], capture_output=True,
                                timeout=30, check=False)
             if r.returncode != 0:
                 return None
             return r.stdout[:cap + 1]
-        got_m = _examine(read, shipped, f"{url} has no {MANIFEST} at its root")
+        got_m = _examine(read, shipped, f"{url} has no {MANIFEST} at {('its ' + path) if path else 'its root'}")
         if got_m.get("error"):
             return {**got_m, "commit": got} if got_m.get("errors") else got_m
-        return {"commit": got, **got_m, "plain": url.startswith("http://")}
+        return {"commit": got, **got_m, "plain": url.startswith("http://"), "path": path}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -514,15 +523,20 @@ def packs():
         return _load()["packs"]
 
 
-def add(url, commit, by, shipped=(), sha256="", tier="url"):
+def add(url, commit, by, shipped=(), sha256="", tier="url", path=""):
     """Keep a pack pinned to `commit`, which the person approving it saw:
     the repository is fetched again at exactly that commit, so what is kept
     is what was shown. A pack of the same name is replaced (an update).
     From the vetted catalog (R169 step 4) it carries the index's sha256,
-    checked on the way in, and its tier."""
-    got = fetch(url, commit, shipped, sha256)
+    checked on the way in, and its tier. A pack in a folder of the
+    repository (`path`, R170 step 6) is kept as a pack made here: that
+    folder's files at that commit, committed to its repository on this
+    controller, so a node fetches the folder and nothing else."""
+    got = fetch(url, commit, shipped, sha256, path)
     if got.get("error"):
         return got
+    if path:
+        return _add_folder(url, got["commit"], path, by, shipped, sha256, tier)
     m = got["manifest"]
     with _lock:
         d = _load()
@@ -537,12 +551,54 @@ def add(url, commit, by, shipped=(), sha256="", tier="url"):
     return {"ok": True, "pack": rec, "replaced": bool(was)}
 
 
+def _add_folder(url, commit, path, by, shipped, sha256, tier):
+    """A folder of a repository at a commit, staged as a pack made here and
+    kept, its record naming where it came from (R170 step 6)."""
+    _staging().mkdir(parents=True, exist_ok=True)
+    tok = secrets.token_hex(8)
+    d = _staging() / tok
+    d.mkdir()
+    tmp = tempfile.mkdtemp(prefix="toolpack-")
+    try:
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", "--depth", "1", url, commit]):
+            r = _git(args)
+            if r.returncode != 0:
+                return {"error": f"could not fetch {url}: {(r.stderr or r.stdout).strip().splitlines()[-1:] or 'git failed'}"}
+        arc = subprocess.run(["git", "-C", tmp, "archive", "--format=tar", f"FETCH_HEAD:{path}"], capture_output=True, timeout=120, check=False)
+        if arc.returncode != 0:
+            return {"error": f"{url} at {commit[:12]} has no folder {path}"}
+        import io  # noqa: PLC0415
+        import tarfile  # noqa: PLC0415
+        with tarfile.open(fileobj=io.BytesIO(arc.stdout), mode="r:") as tar:
+            for ti in tar.getmembers():
+                if not (ti.isfile() or ti.isdir()) or ti.name.startswith(("/", "..")) or ".." in ti.name.split("/"):
+                    return {"error": f"{path} holds something a pack cannot: {ti.name}"}
+            tar.extractall(d, filter="data")
+    except (subprocess.TimeoutExpired, OSError, tarfile.TarError) as e:
+        return {"error": f"could not take {path} from {url}: {e}"}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    out = add_staged(tok, by, shipped)
+    shutil.rmtree(d, ignore_errors=True)
+    if out.get("error"):
+        return out
+    with _lock:
+        data = _load()
+        rec = data["packs"].get(out["pack"]["name"])
+        if rec:
+            rec.update({"url": url, "commit": commit, "path": path, "sha256": sha256 or "",
+                        "tier": "vetted" if tier == "vetted" and sha256 else "url"})
+            write_json(FILE, data)
+            out["pack"] = rec
+    return out
+
+
 def where_said(name, where):
     """The refusal for removing a pack still installed (B84): its files
     would stay in those stores with no row left to uninstall them from, and
     a pack added back would read as installed with no install run."""
     return {"error": f"{name} is installed on {', '.join(where)}: uninstall it there first "
-                     f"(pick that node on the Toolchains page and press the uninstall on its row), "
+                     f"(pick that node in the Library and press Remove on its card), "
                      f"then remove the pack", "installed": list(where)}
 
 
@@ -592,7 +648,7 @@ def recipe(rec):
     row = {"name": m["name"], "label": m["label"], "probe": m["name"], "about": m["about"] or m["label"],
            "platforms": m["platforms"], "layout": m["layout"], "source": src, "terms": m["terms"],
            "verbs": m["verbs"],
-           "pack": {"url": rec["url"], "commit": rec["commit"], "by": rec.get("by", ""), "at": rec.get("at", 0),
+           "pack": {"url": rec["url"], "commit": rec["commit"], "path": rec.get("path", ""), "by": rec.get("by", ""), "at": rec.get("at", 0),
                     "tier": rec.get("tier") or ("here" if rec.get("hosted") else "url"),
                     "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted"))}}
     if m.get("system"):
