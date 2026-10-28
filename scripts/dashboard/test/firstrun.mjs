@@ -257,13 +257,17 @@ await firstRun(false);
   await page.close();
   bm.stop();
 
-  // Moving a controller (R90 step 12): a source with a node prepares a move
-  // (the bundle sealed, the token shown once, the node told from its next
-  // hello), a destination nobody owns takes the bundle and the token on its
-  // first page and restarts on the state, where the node's knock is
-  // answered with the challenge it holds; the source marked moved is
-  // read-only and tells the node it moved.
+  // Moving a controller (R90 step 12, and its second pass R175): a source
+  // with a node arms a move (the token shown once, the node told from its
+  // next hello, the bundle packed fresh per download), a destination nobody
+  // owns pulls the bundle from the source with the token on its first page
+  // and restarts on the state, where the node's knock is answered with the
+  // challenge it holds; the source learns the landing by asking and marks
+  // itself moved, read-only, and a node that never heard the move hears it
+  // with its challenge in the moved answer; the destination's Nodes page
+  // lists the node not yet here with its follow line until it says hello.
   {
+    const dst = await controller('dst', { noOwner: true });
     const src = await controller('src');
     const sH = { Authorization: 'Basic ' + Buffer.from(`${OWNER.username}:${OWNER.password}`).toString('base64'), 'Content-Type': 'application/json' };
     const sApi = async (path, body) => (await fetch(src.base + path, body === undefined ? { headers: sH } : { method: 'POST', headers: sH, body: JSON.stringify(body) })).json();
@@ -271,24 +275,37 @@ await firstRun(false);
     const en = await mover.go();
     ok(en.ok && en.token, `the source has a node (${en.error || 'enrolled'})`);
     const nH = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
-    const prep = await sApi('/api/move', { action: 'prepare', to: 'http://127.0.0.1:1', repos: false });
-    ok(prep.ok && prep.token && prep.bundle && prep.counts?.state >= 2, `Prepare to move writes a sealed bundle and shows a token once (${prep.error || prep.bundle})`);
-    const told = await (await fetch(src.base + '/api/v1/agent/hello', { method: 'POST', headers: nH,
-      body: JSON.stringify({ census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' }, version: '1', digest: 'sha256:' + '1'.repeat(64) }) })).json();
-    ok(told.move?.url === 'http://127.0.0.1:1' && /^[0-9a-f]{64}$/.test(told.move?.expect || ''), `the node hears where it goes and a challenge of its own (${JSON.stringify(told.move)})`);
+    const late = await src.enroll('late', false);
+    const lateEn = await late.go();
+    const lH = { Authorization: 'Bearer ' + lateEn.token, 'Content-Type': 'application/json' };
+    const pieces = (await sApi('/api/move?pieces=1')).pieces || [];
+    ok(pieces.some(p => p.key === 'state' && p.fixed && p.size > 0) && pieces.some(p => p.key === 'repos' && !p.on) && pieces.some(p => p.key === 'install_key'),
+       `what a bundle may carry is listed with sizes, the state fixed and the repositories off (${pieces.map(p => p.key).join(',')})`);
+    const prep = await sApi('/api/move', { action: 'prepare', to: dst.base, repos: false, stores: [] });
+    ok(prep.ok && prep.token && prep.bundle && prep.counts?.state >= 2, `Prepare to move arms the move, packs a bundle and shows a token once (${prep.error || prep.bundle})`);
+    const st0 = await sApi('/api/move');
+    ok(st0.prepared && st0.heard === 0 && st0.nodes === 2 && !st0.left, `...armed with no life, none of the two nodes having heard it yet (${JSON.stringify({heard: st0.heard, nodes: st0.nodes, left: st0.left})})`);
+    const hello = (h, cen = { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' }) => fetch(src.base + '/api/v1/agent/hello', { method: 'POST', headers: h,
+      body: JSON.stringify({ census: cen, version: '1', digest: 'sha256:' + '1'.repeat(64) }) });
+    const told = await (await hello(nH)).json();
+    ok(told.move?.url === dst.base && /^[0-9a-f]{64}$/.test(told.move?.expect || ''), `the node hears where it goes and a challenge of its own (${JSON.stringify(told.move)})`);
+    ok((await sApi('/api/move')).heard === 1, '...and the source counts it among the nodes that heard');
     const bundle = Buffer.from(await (await fetch(src.base + '/api/move-bundle', { headers: sH })).arrayBuffer());
-    ok(bundle.length > 500 && bundle.subarray(0, 8).toString() === 'BBMOVE1\n', `the bundle downloads, sealed (${bundle.length} bytes)`);
-    const dst = await controller('dst', { noOwner: true });
+    ok(bundle.length > 500 && bundle.subarray(0, 8).toString() === 'BBMOVE1\n', `the bundle downloads, sealed and packed fresh (${bundle.length} bytes)`);
+    const st1 = await sApi('/api/move');
+    ok(st1.bundle && st1.bundle !== prep.bundle && st1.packed_at >= st1.made_at, `...under a new name, the record saying when (${st1.bundle})`);
     const form = new FormData();
-    form.append('bundle', new Blob([bundle]), prep.bundle);
+    form.append('bundle', new Blob([bundle]), st1.bundle);
     form.append('token', 'not-the-token');
     const bad = await fetch(dst.base + '/setup/move', { method: 'POST', body: form });
     const badText = await bad.text();
     ok(bad.status === 200 && /not this bundle.{0,8}s move token/.test(badText), `another token is refused on the first page (${bad.status}: ${(badText.match(/<p class="err">([^<]*)/) || [])[1] || badText.slice(0, 120).replace(/\s+/g, ' ')})`);
-    form.set('token', prep.token);
-    const r = await fetch(dst.base + '/setup/move', { method: 'POST', body: form });
+    const pull = new FormData();
+    pull.append('token', prep.token);
+    pull.append('from', src.base);
+    const r = await fetch(dst.base + '/setup/move', { method: 'POST', body: pull });
     const html = await r.text();
-    ok(r.status === 200 && /The controller is here now/.test(html), `the destination takes the bundle and the token on its first page (${r.status})`);
+    ok(r.status === 200 && /The controller is here now/.test(html), `the destination pulls the bundle from the source with the token on its first page (${r.status}: ${(html.match(/<p class="err">([^<]*)/) || [])[1] || 'landed'})`);
     // Restarted on the state: the process before it still answered from
     // its own memory for a moment, so the node list is what says it is the
     // new one.
@@ -296,17 +313,44 @@ await firstRun(false);
       try { const ns = ((await (await fetch(dst.base + '/api/v1/nodes', { headers: sH })).json()).nodes || []).map(n => n.name);
         if (ns.includes('mover')) return ns; } catch { /* restarting */ }
       await sleep(1000); } return []; })();
-    ok(nodesThere.includes('mover'), `restarted on the state, the destination knows the source's accounts and nodes (${nodesThere.join(',')})`);
+    ok(nodesThere.includes('mover') && nodesThere.includes('late'), `restarted on the state, the destination knows the source's accounts and nodes (${nodesThere.join(',')})`);
     const knock = await (await fetch(dst.base + '/api/v1/agent/moved', { method: 'POST', headers: nH, body: JSON.stringify({ node: en.node_id }) })).json();
     ok(knock.answer === told.move.expect, `the node's knock is answered with the challenge it holds (${(knock.answer || '').slice(0, 12)})`);
-    const moved = await sApi('/api/move', { action: 'moved', to: dst.base });
-    ok(moved.ok, 'the source is marked moved');
+    const nh = (await (await fetch(dst.base + '/api/v1/nodes', { headers: sH })).json()).move || {};
+    ok((nh.not_here || []).map(x => x.name).sort().join(',') === 'late,mover' && (nh.not_here || []).every(x => new RegExp(`^builderbot-agent follow \\S+ [0-9a-f]{64}$`).test(x.line)),
+       `the destination's Nodes page lists both as not yet here, each with its follow line (${JSON.stringify((nh.not_here || []).map(x => x.name))})`);
+    // The source learns the landing by asking (the destination has no page
+    // address to tell it at), marks itself moved, and the late node, which
+    // never heard the move, hears it with its challenge in the moved answer.
+    const asked = await sApi('/api/move', { action: 'ask' });
+    ok(asked.moved === true && asked.how === 'asked' && asked.to === dst.base, `the source asks the destination and marks itself moved on its answer (${JSON.stringify({moved: asked.moved, how: asked.how, err: asked.asked_error})})`);
     const ro = await sApi('/api/prefs', { project: 'alpha', gpu: 'off' });
-    const gone = await fetch(src.base + '/api/v1/agent/hello', { method: 'POST', headers: nH, body: JSON.stringify({ census: {}, version: '1', digest: 'x' }) });
-    ok(/read-only/.test(ro.error || '') && gone.status === 410 && (await gone.json()).to === dst.base,
-       `...read-only after, and it tells the node it moved and where (${ro.error} / ${gone.status})`);
+    const gone = await hello(lH);
+    const goneJ = await gone.json();
+    ok(/read-only/.test(ro.error || '') && gone.status === 410 && goneJ.to === dst.base && goneJ.move?.url === dst.base && /^[0-9a-f]{64}$/.test(goneJ.move?.expect || ''),
+       `...read-only after, telling a late node it moved, where, and its own challenge (${ro.error} / ${gone.status} / ${JSON.stringify(goneJ.move)})`);
+    const lateKnock = await (await fetch(dst.base + '/api/v1/agent/moved', { method: 'POST', headers: lH, body: JSON.stringify({ node: lateEn.node_id }) })).json();
+    ok(lateKnock.answer === goneJ.move.expect, 'and the late node\'s knock is answered with that challenge');
+    ok(/no move is prepared|not withdrawn/.test((await sApi('/api/move', { action: 'forget' })).error || ''), 'Forget it is refused once the move landed');
+    await fetch(dst.base + '/api/v1/agent/hello', { method: 'POST', headers: lH, body: JSON.stringify({ census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' }, version: '1', digest: 'sha256:' + '1'.repeat(64) }) });
+    const nh2 = (await (await fetch(dst.base + '/api/v1/nodes', { headers: sH })).json()).move || {};
+    ok((nh2.not_here || []).map(x => x.name).join(',') === 'mover', `a node that said hello to the destination is off the not-yet-here list (${JSON.stringify((nh2.not_here || []).map(x => x.name))})`);
     src.stop();
     dst.stop();
+  }
+  // Forget it withdraws an armed move: the key gone, the nodes told nothing more.
+  {
+    const src = await controller('src2');
+    const sH = { Authorization: 'Basic ' + Buffer.from(`${OWNER.username}:${OWNER.password}`).toString('base64'), 'Content-Type': 'application/json' };
+    const sApi = async (path, body) => (await fetch(src.base + path, body === undefined ? { headers: sH } : { method: 'POST', headers: sH, body: JSON.stringify(body) })).json();
+    const en = await (await src.enroll('n1', false)).go();
+    const nH = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+    const prep = await sApi('/api/move', { action: 'prepare', to: 'http://127.0.0.1:1' });
+    const hello = () => fetch(src.base + '/api/v1/agent/hello', { method: 'POST', headers: nH, body: JSON.stringify({ census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' }, version: '1', digest: 'sha256:' + '1'.repeat(64) }) });
+    ok(prep.ok && (await (await hello()).json()).move?.expect, 'armed, the node hears the move');
+    ok((await sApi('/api/move', { action: 'forget' })).ok && !(await (await hello()).json()).move?.url && !(await sApi('/api/move')).prepared,
+       'Forget it withdraws it: the next hello carries no move, and nothing is armed');
+    src.stop();
   }
 }
 await done(browser);

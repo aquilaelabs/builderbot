@@ -340,37 +340,60 @@ docker compose build && docker compose up -d
 
 ## Moving a controller
 
-A controller moves to another home without losing its nodes (R90 step 12):
-from a container to another container on another host, from a container to
-a machine of its own, and back.
+A controller moves to another home without losing its nodes (R90 step 12,
+R175): from a container to another container on another host, from a
+container to a machine of its own, and back.
 
 1. On the old controller, Controller settings, **Move this controller**:
-   name the new home's address (where its page will be reached), tick the
-   repositories when the two homes do not mount the same share, tick the
-   install key when the new home should not ask for it, and press
-   **Prepare to move**. It writes one sealed bundle (the state: accounts,
-   nodes, project settings, the notebooks, the database, what is sealed
-   under the install key; the stores Storage may have moved; the deploy
-   key; the repositories if ticked) and shows the **move token** once:
-   write it down. The token is good for one move and 72 hours.
-2. **Download the bundle**, or copy it from the state's `move/` folder.
-3. From its next hello every node hears the new address and a challenge of
-   its own, which it keeps.
-4. Install the new home (the image, or bare metal) and open its page: on
-   the first-run card press **Moving a controller here?**, give the bundle
-   and the token, and press **Move it here**. The bundle is held to the
-   version gate (a move never lands on a build older than the state it
-   carries: update the new home first), its state put in place of the fresh
-   one (which is moved aside, not deleted), and the dashboard restarts on
-   it. Sign in with an account it had.
-5. On the old controller press **Mark as moved** (or just stop it): from
-   then on it tells its nodes it moved and is read-only, saying where. Each
-   node whose controller goes quiet, or is told so, knocks on the new
+   name the new home's address (where its page will be reached), tick what
+   the bundle carries beyond the state and the deploy key (each store kept
+   outside the state, with its size; the repositories, when the two homes
+   do not mount the same share; the install key, when the new home should
+   not ask for it), and press **Prepare to move**. That arms the move: it
+   shows the **move token** once (write it down) and from its next hello
+   every node hears the new address and a challenge of its own, which it
+   keeps. The move stays armed until it lands or you press **Forget it**,
+   so a controller can be prepared days ahead, and the section says how
+   many nodes have heard it.
+2. Install the new home (the image, or bare metal) and open its page: on
+   the first-run card press **Moving a controller here?** and give the
+   token with the old controller's address, while it still runs: the new
+   home pulls the bundle from it, packed at that moment, under a proof
+   derived from the token. An old home that is already off is moved from
+   a bundle instead: **Download the bundle** on the old controller (packed
+   fresh each time it is pressed, with what was ticked) and give the file
+   with the token. Either way the bundle is held to the version gate (a
+   move never lands on a build older than the state it carries: update the
+   new home first), its state put in place of the fresh one (which is moved
+   aside, not deleted), and the dashboard restarts on it. Sign in with an
+   account it had.
+3. The landing is told both ways, each under the move key and never the
+   token: the new controller tells the old one, and the old one asks the
+   new address while it waits, so whichever is up learns it. The old
+   controller then marks itself moved (or press **Mark as moved**, or just
+   stop it): from then on it is read-only, saying where it went, and tells
+   each node that comes to it that it moved, with that node's challenge in
+   the same answer, so a node that was off while the move was armed hears
+   it then.
+4. Each node whose controller goes quiet, or is told so, knocks on the new
    address with its own credential, checks the answer against the challenge
-   it holds (only a holder of the move key gives it), takes the new
-   address and TLS pin, and goes on; its containers kept running and its
-   synced copies kept meanwhile. The Nodes page shows each one back.
-6. A bare-metal source's own machine is not a node of the new home (its
+   it holds (only a holder of the move key gives it), takes the new address
+   and TLS pin, and goes on; its containers kept running and its synced
+   copies kept meanwhile. The new controller's Nodes page lists the nodes
+   not yet here since the move, each with one line to run on it as root
+   (`builderbot-agent follow ADDRESS CHALLENGE`) for a node that outlived
+   the old controller and so was never told: it knocks there at once, and
+   nothing is enrolled again (the node keeps its id, its token, its
+   containers and its synced copies). The list empties as each says hello.
+5. A bare-metal source's own machine is not a node of the new home (its
    row is retired there); a bare-metal destination enrolls its own machine
-   afresh with the installer. A node that missed the move (off for longer
-   than the token lived) is enrolled again by hand.
+   afresh with the installer. A same-address move (the new home takes over
+   the old hostname) needs no knock: the certificate travels in the
+   bundle's secrets, so the pin holds.
+
+What the two controllers say to each other travels over TLS that neither
+verifies (neither knows the other's certificate): each message is an HMAC
+under the move key over what it is for, which a listener can neither forge
+nor reuse for anything else, and the bundle is sealed under the key the
+token derives.
+

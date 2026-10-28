@@ -24,6 +24,7 @@ const NODE_READERS = ["nodes", "toolchains", "agents", "library", "installed", "
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
+let nodesMove = null;            // after a move landed here (R175): {arrived, not_here: [{id, name, line}]}
 let nodesDefault = "";           // the node work nobody bound to one lands on
 let nodesSystems = [];           // what Enroll node's System pulldown offers (R204)
 let nodesPick = "";              // which node the tab is showing, "" until the first draw
@@ -76,6 +77,7 @@ async function loadNodesOnce(seq){
     nodesErr = j.error || "";
     nodesList = j.nodes || [];
     nodesAgent = j.agent || null;
+    nodesMove = j.move || null;
     nodesDefault = j.default || "";
     nodesSystems = Array.isArray(j.systems) ? j.systems : [];
   }catch(e){
@@ -1760,6 +1762,21 @@ function ndOffLine(){
   const why = featureOff("enroll");
   return why ? `<div class="field">${deadWhy(why)}</div>` : "";
 }
+// After a move landed here (R175 step 3): the nodes the bundle named that
+// have not said hello since, each with the one line to run on it. A node
+// that heard the move knocks and follows by itself; one that was off the
+// whole time, and finds the old address silent, is told by hand, and keeps
+// its id, its containers and its synced copies.
+function ndNotHereHtml(){
+  const rows = nodesMove?.not_here || [];
+  if (!rows.length) return "";
+  const ar = nodesMove.arrived || {};
+  return `<div class="row stack2 ndnothere" data-group="Not yet here"><div class="grow">
+      <div class="name">Not yet here since the move <span class="pill warn">${rows.length}</span></div>
+      <div class="sub">This controller's state arrived by a move${ar.from ? ` from ${esc(ar.from)}` : ""} ${ar.restored_at ? esc(ago(ar.restored_at)) : ""}, and these nodes have not checked in since. One that heard the move follows by itself when the old address goes quiet; one that was off the whole time is told on its own console, as root, with its line, and nothing is enrolled again.</div>
+      ${rows.map(r => `<div class="sub" data-nothere="${esc(r.id)}"><b>${esc(r.name)}</b> <code>${esc(r.line)}</code> <button type="button" class="link" data-ndcopyline="${esc(r.id)}">Copy</button></div>`).join("")}
+    </div></div>`;
+}
 // The bar: the node switcher, Create sandbox VM, and Enroll node.
 function ndBar(live){
   // Enrolling switched off on this install (R81): both dead, the reason on
@@ -1979,8 +1996,18 @@ function renderNodesInto(i){
   // Enrolling is a dialog now (#ndmodal), not two panels appended here; see
   // the markup's comment. Which means a poll landing while it is open cannot
   // take the name being typed with it, because this list is not where it is.
-  d.list.innerHTML = ndOffLine() + rows + none
+  d.list.innerHTML = ndOffLine() + ndNotHereHtml() + rows + none
     + (!nodesList.length ? `<div class="empty">The node list could not be read.</div>` : "");
+  d.el.querySelectorAll("[data-ndcopyline]").forEach(b => b.onclick = async () => {
+    const code = b.parentElement.querySelector("code");
+    try{ await navigator.clipboard.writeText(code.textContent); }
+    catch(e){
+      const r = document.createRange(); r.selectNodeContents(code);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      document.execCommand("copy");
+    }
+    notify("the line is on the clipboard");
+  });
   wireNodesTab(d.el);
   nodesReadOnly(d.el);
   // What openNodesTab was asked to show, once it is drawn.

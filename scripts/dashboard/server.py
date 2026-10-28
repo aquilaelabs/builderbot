@@ -233,14 +233,18 @@ RESTORE_FIELDS = """  <p class="note">A controller with a backup password keeps 
   <button type="submit">Restore it</button>
   <p class="note"><a href="/">Not restoring one: make the first account instead</a>.</p>"""
 
-MOVE_FIELDS = """  <p class="note">A controller prepared to move writes a bundle and shows a move token once.
-    Give both here and this install becomes that controller: its accounts, nodes, projects
-    and settings, with each node checking back in on its own. Nothing else is set up first.</p>
+MOVE_FIELDS = """  <p class="note">A controller prepared to move shows a move token once.
+    Give the token here with its bundle, or with the old controller's address while it still
+    runs (the bundle is pulled from it, packed at that moment), and this install becomes that
+    controller: its accounts, nodes, projects and settings, with each node checking back in on
+    its own. Nothing else is set up first.</p>
   <!--ERR-->
-  <label for="b">The bundle (builderbot-move-DATE.bbmove)</label>
-  <input id="b" name="bundle" type="file" required>
   <label for="t">The move token</label>
   <input id="t" name="token" type="password" autocomplete="off" required>
+  <label for="f">The old controller's address, to pull the bundle from it</label>
+  <input id="f" name="from" type="url" placeholder="https://builderbot.old.example" autocomplete="off" spellcheck="false">
+  <label for="b">...or its bundle, downloaded there (builderbot-move-DATE.bbmove)</label>
+  <input id="b" name="bundle" type="file">
   <button type="submit">Move it here</button>
   <p class="note"><a href="/">Not moving one: make the first account instead</a>.</p>"""
 
@@ -5191,7 +5195,21 @@ move.configure(state=STATE, workspace=WORKSPACE, secrets_dir=os.environ.get("BB_
                build_version_fn=lambda: image_stamp().get("version") or "",
                install_key_fn=lambda: signing.MASTER or b"", store_paths_fn=lambda: {k: str(paths.of(k)) for k in paths.KINDS},
                page_url_fn=_page_url, node_ids_fn=lambda: [n["id"] for n in nodes.node_list() if n.get("kind") == "agent" and n.get("state") != "retired"],
-               bare_metal_fn=lambda: BARE_METAL)
+               bare_metal_fn=lambda: BARE_METAL,
+               node_name_fn=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
+               audit_fn=lambda who, what, detail: db.audit(who, what, "", detail))
+
+
+def _move_loop():
+    """The minute loop (R175 step 4): an old controller armed for a move
+    asks the new address whether its bundle landed, and a controller a
+    move landed on tells the old one, each until answered."""
+    while True:
+        time.sleep(move.TICK_S)
+        try:
+            move.tick()
+        except Exception as e:                                  # noqa: BLE001 (the loop outlives one bad pass)
+            print(f"[dashboard] move: {type(e).__name__}: {e}", flush=True)
 
 
 def _own_pool_mounts():
@@ -5210,6 +5228,7 @@ backup.configure(state=STATE, pack_fn=move.pack, seal_fn=signing.seal, restore_f
                  version_fn=lambda: image_stamp().get("version") or "", state_version_fn=stateversion.current, write_json_fn=write_json,
                  host_fn=lambda: socket.gethostname())
 nodes.move_for_node = move.for_node
+nodes.move_here = move.node_here
 channel.moved_answer = lambda nid: {"answer": move.answer_for(nid), "url": _page_url(), "pin": tls._loaded or ""}
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
                setting=settings.get, write_json=write_json, audit=db.audit)
@@ -7289,6 +7308,10 @@ class Handler(BaseHTTPRequestHandler):
         # download met the first-run card.
         if path.startswith("/api/v1/agent/"):
             return self._agent()
+        if path.startswith("/api/v1/move/"):
+            # The other controller's door (R175): a proof under the move
+            # key, never a credential of either side.
+            return self._move_peer()
         if not users.all_users() and path not in ("/favicon.ico", "/favicon.svg"):
             return self._login_page(setup=True)
         if path == "/login":
@@ -7908,8 +7931,13 @@ class Handler(BaseHTTPRequestHandler):
         # ones its own projects build on and no others, because the list
         # is otherwise a way to learn what machines exist and what they
         # are called (roadmap #27). An administrator sees the registry.
-        return self._json(nodes.tab_view(self._nodes_for(nodes.node_list()),
-                                         users.may(self._who(), "admin") == ""))
+        admin = users.may(self._who(), "admin") == ""
+        v = nodes.tab_view(self._nodes_for(nodes.node_list()), admin)
+        if admin:
+            # After a move landed here (R175 step 3): the nodes the bundle
+            # named that have not said hello since, each with its line.
+            v["move"] = {"arrived": move.restored(), "not_here": move.not_yet_here()}
+        return self._json(v)
 
     def _get_home(self):
         """GET /api/home: home.read, the overview's numbers (R218 step 5).
@@ -8480,6 +8508,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._setup_move_post()
         if self.path.split("?")[0] == "/setup/restore":
             return self._setup_restore_post()
+        if self.path.split("?")[0].startswith("/api/v1/move/"):
+            return self._move_peer()
         # Moved (R90 step 12): read-only from here on, the move's own verbs aside.
         if move.moved_to() and self.path.split("?")[0].startswith("/api/") and not self.path.split("?")[0].startswith("/api/v1/agent/") \
                 and self.path.split("?")[0] not in ("/api/move", "/api/profile"):
@@ -9073,11 +9103,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
         verb = self.path.split("?")[0][len("/api/v1/agent/"):]
-        # Moved (R90 step 12): every node is told where, and knocks there.
-        if move.moved_to():
-            return self._json({"error": "this controller moved", "moved": True, "to": move.moved_to()}, 410)
         hdr = self.headers.get("Authorization", "")
         bearer = hdr[7:] if hdr.startswith("Bearer ") else ""
+        # Moved (R90 step 12): every node is told where, and knocks there;
+        # a node that never heard the move while it was armed is handed its
+        # own challenge here (R175 step 2), so it knocks too.
+        if move.moved_to():
+            late = nodes.authenticate(bearer) if bearer else {}
+            mv = move.for_node(late["node"]) if late.get("node") else {}
+            return self._json({"error": "this controller moved", "moved": True, "to": move.moved_to(), **({"move": mv} if mv else {})}, 410)
         auth = nodes.authenticate(bearer) if bearer else {"error": "no token"}
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         # A hosting-only node (nodes.host_only) is held to what running the
@@ -12225,40 +12259,94 @@ class Handler(BaseHTTPRequestHandler):
         return self._result(end_session(session, str(req.get("node") or "")))
 
     def _get_move(self):
-        """GET /api/move (R90 step 12): a move prepared here, or this
-        controller moved, or this state arrived by a move; an administrator's."""
+        """GET /api/move (R90 step 12): a move armed here (and, asked with
+        ?pieces=1, what a bundle may carry with each piece's size), or this
+        controller moved, or this state arrived by a move with the nodes
+        not yet here; an administrator's. An armed move asks the new
+        address whether it landed on the way, once a minute at most."""
         me = self._who() or {}
         if not users.is_admin(me) or me.get("session"):
             return self._json({"error": "moving the controller is an administrator's"}, 403)
-        return self._json({**move.status(), "arrived": move.restored(), "here": _page_url()})
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        with contextlib.suppress(Exception):                     # noqa: BLE001 (the ask never holds the read)
+            move.ask_new()
+        out = {**move.status(), "arrived": move.restored(), "here": _page_url(), "not_here": move.not_yet_here()}
+        if q.get("pieces", [""])[0] == "1":
+            out["pieces"] = move.pieces()
+        return self._json(out)
 
     def _move(self, req):
-        """POST /api/move (R90 step 12): prepare (the bundle written, the
-        token answered once), forget (withdrawn), moved (this controller
-        marked moved to the new one, read-only from here on). The owner's."""
+        """POST /api/move (R90 step 12): prepare (the move armed, the token
+        answered once, a bundle packed), forget (withdrawn), moved (this
+        controller marked moved to the new one, read-only from here on),
+        ask (the new address asked now whether the bundle landed, R175).
+        The owner's."""
         me = self._who() or {}
         if (users.account_of(me) or {}).get("role") != "owner" or me.get("session"):
             return self._json({"error": "moving the controller is its owner's"}, 403)
         act = field(req, "action")
         if act == "prepare":
-            r = move.prepare(self._principal(), field(req, "to"), repos=req.get("repos") is True, carry_key=req.get("carry_key") is True)
+            stores = req.get("stores")
+            r = move.prepare(self._principal(), field(req, "to"), repos=req.get("repos") is True, carry_key=req.get("carry_key") is True,
+                             stores=[str(k) for k in stores if isinstance(k, str)] if isinstance(stores, list) else None)
             if r.get("ok"):
                 db.audit(self._principal(), "move-prepare", "", {"to": r.get("to", ""), "repos": req.get("repos") is True})
             return self._json(r, 400 if r.get("error") else 200)
         if act == "forget":
             r = move.forget(self._principal())
+            if r.get("ok"):
+                db.audit(self._principal(), "move-forget", "", {})
             return self._json(r, 400 if r.get("error") else 200)
         if act == "moved":
             r = move.mark_moved(field(req, "to") or move.status().get("to", ""))
             db.audit(self._principal(), "moved", "", {"to": r.get("to", "")})
             return self._json(r)
-        return self._json({"error": "action is prepare, forget or moved"}, 400)
+        if act == "ask":
+            learned = move.ask_new(force=True)
+            return self._json({"ok": True, "moved": learned, **move.status()})
+        return self._json({"error": "action is prepare, forget, moved or ask"}, 400)
+
+    def _move_peer(self):
+        """/api/v1/move/* (R175): what the two controllers say to each
+        other, each a proof under the move key. GET landed: the old
+        controller asking the new whether its bundle landed. POST landed:
+        the new controller telling the old it did. GET bundle: the new
+        install pulling the bundle, packed fresh. No credential of either
+        side travels, and nothing here opens the bundle."""
+        path = self.path.split("?")[0]
+        q = {k: v[0] for k, v in urllib.parse.parse_qs(self.path.partition("?")[2]).items()}
+        if path == "/api/v1/move/landed" and self.command == "GET":
+            return self._json(*move.answer_asked(q))
+        if path == "/api/v1/move/landed" and self.command == "POST":
+            req = self._read_json()
+            if req is None:
+                return None
+            return self._json(*move.take_landing(req))
+        if path == "/api/v1/move/bundle" and self.command == "GET":
+            p, why, st = move.serve_fetch(q)
+            if why:
+                return self._json({"error": why}, st)
+            return self._send_bundle(Path(p))
+        return self._json({"error": "no such verb"}, 404)
+
+    def _send_bundle(self, p):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Disposition", f'attachment; filename="{p.name}"')
+        self.send_header("Content-Length", str(p.stat().st_size))
+        self.end_headers()
+        with open(p, "rb") as f:
+            shutil.copyfileobj(f, self.wfile)
 
     def _get_move_bundle(self):
-        """GET /api/move-bundle: the prepared bundle as a download, the owner's."""
+        """GET /api/move-bundle: the bundle as a download, packed fresh under
+        the armed move's key at this moment (R175 step 1); the owner's."""
         me = self._who() or {}
         if (users.account_of(me) or {}).get("role") != "owner" or me.get("session"):
             return self._json({"error": "the move bundle is its owner's"}, 403)
+        r = move.pack_bundle()
+        if r.get("error"):
+            return self._json({"error": r["error"]}, 404)
         p = move.bundle_path()
         if not p:
             return self._json({"error": "no move is prepared"}, 404)
@@ -12450,17 +12538,26 @@ class Handler(BaseHTTPRequestHandler):
             import email.parser
             with open(spool, "rb") as f:
                 msg = email.parser.BytesParser().parsebytes(b"Content-Type: " + self.headers.get("Content-Type", "").encode() + b"\r\n\r\n" + f.read())
-            token, bundle = "", None
+            token, bundle, frm = "", None, ""
             for part in msg.walk():
                 name = part.get_param("name", header="content-disposition")
                 if name == "token":
                     token = (part.get_payload(decode=True) or b"").decode("utf-8", "replace").strip()
+                elif name == "from":
+                    frm = (part.get_payload(decode=True) or b"").decode("utf-8", "replace").strip()
                 elif name == "bundle":
                     bundle = part.get_payload(decode=True)
-            if not bundle or not token:
-                return self._move_page("the bundle file and its token are both needed")
-            with open(spool, "wb") as f:
-                f.write(bundle)
+            if not token or not (bundle or frm):
+                return self._move_page("the move token is needed, with the bundle file or the old controller's address")
+            if bundle:
+                with open(spool, "wb") as f:
+                    f.write(bundle)
+            else:
+                # The pull (R175 step 5): the bundle fetched from the old
+                # controller under a proof the token derives.
+                why = move.fetch_bundle(frm, token, str(spool))
+                if why:
+                    return self._move_page(why)
             r = move.restore(str(spool), token)
         except (OSError, ValueError) as e:
             return self._move_page(f"the move did not land: {e}")
@@ -12751,6 +12848,7 @@ def main():
         threading.Thread(target=_room_loop, name="room", daemon=True).start()
         threading.Thread(target=_schedules_loop, name="schedules", daemon=True).start()
         threading.Thread(target=_reach_loop, name="reach", daemon=True).start()
+    threading.Thread(target=_move_loop, name="move", daemon=True).start()
     ciwatch.start()           # a project's CI, once a day (R117)
     releasesign.start()       # a release's unsigned APK, signed on its node (R106)
     if "tunnel" not in featuresoff.off():
