@@ -1441,9 +1441,51 @@ function cUnderPicked(){
   $("cGo").disabled = false;
 }
 
+// Apps a NAS runs (R164 step 2): the catalog the dialog offers, read once,
+// and the pick that fills the name, the compose file and the environment.
+let cApps = null;
+async function loadNasApps(){
+  if (cApps) return cApps;
+  try{ cApps = (await (await fetch("/api/nasapps")).json()).apps || []; }
+  catch(e){ cApps = []; }
+  return cApps;
+}
+async function cAppPicked(){
+  const id = $("cApp").value, a = (cApps || []).find(x => x.id === id);
+  $("cAppFields").hidden = !a;
+  $("cAppWhat").textContent = a ? a.what : "";
+  if (!a) return;
+  $("cAppMediaField").hidden = !a.media;
+  $("cAppPort").value = a.port;
+  if (!$("cAppTz").value) $("cAppTz").value = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  if (!$("cName").value) $("cName").value = id;
+}
+async function cAppFill(){
+  const id = $("cApp").value, a = (cApps || []).find(x => x.id === id);
+  if (!a) return;
+  const b = $("cAppFill");
+  busy(b, "Filling in");
+  try{
+    const j = await (await postJSON("/api/nasapps", {app: id, data: $("cAppData").value.trim(), media: $("cAppMedia").value.trim(), ids: $("cAppIds").value.trim(),
+                                                      tz: $("cAppTz").value.trim(), port: parseInt($("cAppPort").value, 10)})).json();
+    if (j.error){ $("cErr").textContent = j.error; $("cErrWrap").hidden = false; return; }
+    $("cErrWrap").hidden = true;
+    $("cYml").value = j.compose; $("cEnv").value = j.env; cYmlTouched = true;
+    if (!$("cName").value) $("cName").value = id;
+    $("cEnvHint").hidden = false;
+    $("cEnvHint").textContent = `${a.name}'s choices: the folders, the user, the time zone and the port${a.secrets?.length ? `, and ${a.secrets.join(" and ")} made for it` : ""}. Saved with the container when you press Create.`;
+    cSeg("yml");
+  }catch(e){ $("cErr").textContent = "the catalog: " + failWords(e); $("cErrWrap").hidden = false; }
+  finally{ unbusy(b, "Fill the definition in"); }
+}
 function openNewContainer(){
   cLock(false);
   cEditing = null;
+  $("cApp").value = ""; $("cAppFields").hidden = true; $("cAppWhat").textContent = "";
+  for (const id of ["cAppData", "cAppMedia", "cAppTz", "cAppPort"]) $(id).value = "";
+  loadNasApps().then(apps => { if (!$("cmodal").hidden) $("cApp").innerHTML = `<option value="">none: an image, or a compose file of your own</option>` + apps.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join(""); });
+  $("cApp").onchange = cAppPicked;
+  $("cAppFill").onclick = cAppFill;
   $("cTabForm").hidden = false;
   $("cEnvHint").hidden = true;
   $("cName").disabled = false;

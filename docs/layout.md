@@ -158,6 +158,7 @@ scripts/
     extmounts.py                 the other disks and shares the controller's own machine mounts (R162 step 4): the record, a share's password sealed, what the hello hands the agent
     storebackups.py              the backups the controller's own machine copies (R162 step 5): the record, what the hello hands the agent, the summary Home and the bell read
     poolkeys.py                  the passphrases of the own machine's encrypted pools (R162 step 3): kept sealed, or asked after every boot and offered once; what the hello hands the agent, nothing in Safe mode
+    nasapps.py                   the catalog of ready apps New container offers (R164 step 2): each a compose file pinned to a tag with its blanks in the environment, filled by render
     schedules.py                 the Schedules page's scripts (R117): an administrator's cron in the state, its timetable in words, its timer and the built-in scan
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one

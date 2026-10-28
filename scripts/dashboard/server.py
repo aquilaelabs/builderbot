@@ -4231,6 +4231,7 @@ devapp.label_of = registry.label
 import devactions                                                # noqa: E402
 import home                                                      # noqa: E402
 import containers                                                # noqa: E402
+import nasapps                                                   # noqa: E402
 import nginxproxy                                                # noqa: E402
 import imagecheck                                                # noqa: E402
 import relocate                                                  # noqa: E402
@@ -5723,6 +5724,7 @@ GET_ROUTES = (
     ("prefix", "/api/history", "_get_history"),
     ("exact", "/api/schedules", "_get_schedules"),
     ("exact", "/api/extmounts", "_get_extmounts"),
+    ("exact", "/api/nasapps", "_get_nasapps"),
     ("exact", "/api/storebackups", "_get_storebackups"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
@@ -5802,6 +5804,7 @@ POST_ROUTES = (
     ("exact", "/api/storage", "_storage"),
     ("exact", "/api/schedules", "_schedules"),
     ("exact", "/api/extmounts", "_extmounts"),
+    ("exact", "/api/nasapps", "_nasapps"),
     ("exact", "/api/storebackups", "_storebackups"),
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
@@ -11242,6 +11245,33 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "action is set or remove"}, 400)
         if not r.get("error"):
             db.audit(by, "storebackup-" + act, field(req, "id") or (r.get("backup") or {}).get("id", ""), {"name": (r.get("backup") or {}).get("name", "")})
+        return self._json(r, 400 if r.get("error") else 200)
+
+    def _get_nasapps(self):
+        """GET /api/nasapps (R164 step 2): the catalog of ready apps the New
+        container dialog offers, each with what it is and the blanks it
+        takes. For whoever may make a container; never a session's."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "the app catalog is a person's"}, 403)
+        why = users.may(who, "docker-write")
+        if why:
+            return self._json({"error": why}, 403)
+        return self._json({"apps": nasapps.catalog()})
+
+    def _nasapps(self, req):
+        """POST /api/nasapps (R164 step 2): one app's compose and environment
+        with its blanks filled (its data folder, its media folder, the user
+        it runs as, the time zone, its port), for the dialog to show before
+        Create makes it as any container."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "the app catalog is a person's"}, 403)
+        why = users.may(who, "docker-write")
+        if why:
+            return self._json({"error": why}, 403)
+        r = nasapps.render(field(req, "app"), field(req, "data"), field(req, "media"), field(req, "ids") or "1000:1000",
+                           field(req, "tz") or "UTC", req.get("port"), req.get("secrets") if isinstance(req.get("secrets"), dict) else None)
         return self._json(r, 400 if r.get("error") else 200)
 
     def _get_extmounts(self):

@@ -145,6 +145,21 @@ CLI waiting on a pull leaves the download running if only the CLI is asked to
 stop. The row then says how the job ended rather than silently reverting to
 whatever state it was in.
 
+**From the catalog** (R164): New container opens on a pick of ready apps
+(Jellyfin, Plex, the arr stack, qBittorrent, Immich, Nextcloud, Home
+Assistant, Syncthing), each a compose file pinned to a tag with its blanks
+in the environment: where its data goes and which share's folder it serves
+or syncs (folders under a pool, the array or a share), the user it runs as
+(the one that owns those folders), the time zone and its port, with a
+database password or an admin password made for the apps that need one.
+Fill the definition in puts the compose file and the environment in the
+dialog's own tabs, to read and change before Create makes it as any
+container; the registry update check says when an image's tag moves. The
+app answers on its port on the node; a hostname and a certificate for it
+are that node's nginx page. On the controller's own machine these run
+where the Containers page runs them, under R165's arrangement of the own
+node as a docker host.
+
 **New container** on that page runs something with no project behind it, and
 takes the **project** it belongs to (Send to Docker manager takes the same,
 with the project it is built from picked by default): a
