@@ -3072,6 +3072,23 @@ def page_scripts():
     return _page_scripts["names"]
 
 
+_sri = {}
+
+
+def _integrity_of(name, version):
+    """csp.integrity of a page script, kept by its version."""
+    key = (name, version)
+    if key not in _sri:
+        try:
+            _sri[key] = csp.integrity((HERE / name).read_bytes())
+        except OSError:
+            return ""
+        if len(_sri) > 512:
+            _sri.clear()
+            _sri[key] = csp.integrity((HERE / name).read_bytes())
+    return _sri[key]
+
+
 def _versioned_page(raw, tag):
     parts = [tag]
 
@@ -3082,7 +3099,10 @@ def _versioned_page(raw, tag):
             return m.group(0)
         v = f"{st.st_size:x}-{st.st_mtime_ns:x}"
         parts.append(v)
-        return b'<script src="' + m.group(1) + b"?v=" + v.encode() + b'">'
+        # Subresource Integrity (R158 step 4): the file's own digest, so a
+        # script that arrives changed is not run.
+        return (b'<script src="' + m.group(1) + b"?v=" + v.encode() + b'" integrity="'
+                + _integrity_of(m.group(1).decode(), v).encode() + b'">')
     out = _SCRIPT_TAG.sub(named, raw)
     # The install's banner (R88), at its place under the header; part of the
     # page's tag, so a banner changed at a restart is not served from a copy.
@@ -3735,6 +3755,10 @@ gitcreds.configure(state=STATE, seal_fn=signing.seal, unseal_fn=signing.unseal,
 import tls                                                       # noqa: E402
 tls.configure(state=STATE, seal_fn=signing.seal, unseal_fn=signing.unseal,
               sealing_fn=lambda: signing.MASTER is not None)
+# The page's Content-Security-Policy and what the browser reports against
+# it (R158 step 4, csp.py).
+import csp                                                       # noqa: E402
+csp.configure(state=STATE)
 try:
     if (_sealed := gitcreds.seal_all()):
         print(f"dashboard: sealed {_sealed} git token(s) under the install's key", flush=True)
@@ -5663,6 +5687,8 @@ class Handler(BaseHTTPRequestHandler):
                 .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Security-Policy", csp.header(body))
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -5710,7 +5736,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Location", "/")
         self.send_header("Set-Cookie",
                          f"bb_session={make_token(users.get(name))}; Path=/; "
-                         f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax"
+                         f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Strict"
                          + ("; Secure" if tls.over_tls(self.connection) else ""))
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -5764,13 +5790,13 @@ class Handler(BaseHTTPRequestHandler):
         fetch."""
         users.touch(u["name"])
         sec = "; Secure" if tls.over_tls(self.connection) else ""
-        cookies = [f"bb_session={make_token(u)}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax{sec}",
-                   "bb_mfa=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"]
+        cookies = [f"bb_session={make_token(u)}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Strict{sec}",
+                   "bb_mfa=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"]
         if remember:
             ua = re.sub(r"[^\w ./();,:-]", "", self.headers.get("User-Agent", ""))[:80]
             tid, _ = mfa.trust_add(u["uid"], ua or "a browser")
             cookies.append(f"bb_trust={purpose_token(u, 'trust', mfa.TRUST_DAYS * 86400, tid)}; Path=/; "
-                           f"Max-Age={mfa.TRUST_DAYS * 86400}; HttpOnly; SameSite=Lax{sec}")
+                           f"Max-Age={mfa.TRUST_DAYS * 86400}; HttpOnly; SameSite=Strict{sec}")
         body = json.dumps({"ok": True, "next": nxt}).encode() if json_answer else b""
         self.send_response(200 if json_answer else 303)
         if not json_answer:
@@ -5800,7 +5826,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Set-Cookie", f"bb_mfa={purpose_token(u, 'mfa', 600)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax")
+        self.send_header("Set-Cookie", f"bb_mfa={purpose_token(u, 'mfa', 600)}; Path=/; Max-Age=600; HttpOnly; SameSite=Strict")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -5843,6 +5869,8 @@ class Handler(BaseHTTPRequestHandler):
                 .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Security-Policy", csp.header(body))
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -5946,7 +5974,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(302)
         self.send_header("Location", "/login")
         self.send_header("Set-Cookie",
-                         "bb_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+                         "bb_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -6666,6 +6694,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.end_headers()
         self.send_response(200)
         self.send_header("Content-Type", ctype)
+        if ctype.startswith("text/html"):
+            # The page's policy (R158 step 4): its own scripts and styles,
+            # the inline blocks it ships by their hash.
+            self.send_header("Content-Security-Policy", csp.header(raw))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "same-origin")
         if zipped:
             self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
@@ -6700,7 +6734,7 @@ class Handler(BaseHTTPRequestHandler):
         # was signed over, such as an account renaming itself.
         if cookie:
             self.send_header("Set-Cookie", f"bb_session={cookie}; Path=/; "
-                             f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax"
+                             f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Strict"
                              + ("; Secure" if tls.over_tls(self.connection) else ""))
         # A session token's renewal, when _who decided one was due: bb and
         # the hooks read this header and write the token where bb looks.
@@ -7003,6 +7037,24 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(pem)
             return None
         return self._json(tls.status(settings.get))
+
+    def _csp_report(self):
+        """POST /api/csp-report: what a browser refused under the page's
+        policy (R158 step 4), kept for the Doctor (csp.report). The browser
+        sends it on its own, from the login page too, so it is taken before
+        the credential check, from anyone, and kept small."""
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            n = -1
+        if not 0 <= n <= 8192:
+            return self._json({"error": "body too large"}, 413)
+        body = self.rfile.read(n)
+        who = self._who() or {}
+        csp.report(body, who.get("name") or "")
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _tls(self, req):
         """POST /api/tls {action: issue}: a Let's Encrypt certificate for the
@@ -7965,6 +8017,8 @@ class Handler(BaseHTTPRequestHandler):
             # token never opens the dashboard, and the dashboard's credential
             # is not what an app carries (R272).
             return self._device()
+        if self.path.split("?")[0] == "/api/csp-report":
+            return self._csp_report()
         if not self._authed():
             return self._deny()
         if self._two_factor_gate(self.path.split("?")[0]):

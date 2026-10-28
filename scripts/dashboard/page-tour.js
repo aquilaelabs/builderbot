@@ -297,7 +297,7 @@ function tourFlip(want){
 }
 
 function tourSampleCard(){
-  return `<section class="dmcard"><div class="field dmgroup" style="--gc:var(--accent)"><b>example</b></div>
+  return `<section class="dmcard"><div class="field dmgroup" data-style="--gc:var(--accent)"><b>example</b></div>
     <div class="row stack2"><div class="grow"><div class="dmhead"><div class="dmid">
       <div class="name">web<span class="pill stat dmpill ok live">running</span></div>
       <div class="sub dmorigin">nginx:1.31-alpine<span class="sep"></span>your-node</div>

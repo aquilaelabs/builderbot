@@ -302,7 +302,7 @@ function nbGitView({$, nb, project}){
     // ago() takes seconds, which is what the server sends. Times a thousand
     // put every commit and branch in the future, and the future is "just now".
     const ago_ = t => t ? ago(t) : "";
-    const graph = commits.length ? `<div class="gitgraph" style="--glanes:${lanesN}">
+    const graph = commits.length ? `<div class="gitgraph" data-style="--glanes:${lanesN}">
       <svg class="glines" width="${lanesN * W}" height="${commits.length * H}" aria-hidden="true">${
         lanes.edges.map(e => {
           const x1 = e.from.lane * W + W / 2, y1 = e.from.row * H + H / 2;
@@ -311,7 +311,7 @@ function nbGitView({$, nb, project}){
         }).join("")}${
         commits.map((c, i) => `<circle cx="${c.lane * W + W / 2}" cy="${i * H + H / 2}" r="4" class="gn gl${c.lane % 5}${c.sha === gitPick ? " on" : ""}"/>`).join("")}
       </svg>
-      <div class="grows">${commits.map(c => `<div class="grow${c.sha === gitPick ? " on" : ""}" data-sha="${esc(c.sha)}" style="height:${H}px">
+      <div class="grows">${commits.map(c => `<div class="grow${c.sha === gitPick ? " on" : ""}" data-sha="${esc(c.sha)}" data-style="height:${H}px">
           <span class="gsub">${c.refs.map(r => `<span class="pill${r.startsWith("HEAD") ? " ok" : ""}">${esc(r.replace(/^HEAD -> /, ""))}</span>`).join("")} ${esc(c.subject)}</span>
           <span class="gmeta">${esc(c.author)} · ${esc(ago_(c.when))} · <code>${esc(c.short)}</code></span>
         </div>`).join("")}</div>
@@ -357,7 +357,7 @@ function nbGitView({$, nb, project}){
     // Behind and ahead as GitHub draws them: the two counts either side of
     // a line, each over a bar as long as its share of the longest here.
     const most = Math.max(1, ...local.map(b => Math.max(b.main_ahead || 0, b.main_behind || 0)));
-    const bar = n => `<i style="width:${n ? Math.max(6, Math.round(Math.sqrt(n / most) * 100)) : 0}%"></i>`;
+    const bar = n => `<i data-style="width:${n ? Math.max(6, Math.round(Math.sqrt(n / most) * 100)) : 0}%"></i>`;
     const gab = b => b.remote ? `<span class="gbstate">${esc(vsRemote(b))}</span>`
       : b.name === main ? "" : `<span class="gab" role="img" aria-label="${esc(vsMain(b))}"><span class="l"><b>${b.main_behind || 0}</b>${bar(b.main_behind)}</span><span class="r"><b>${
           b.main_ahead || 0}</b>${bar(b.main_ahead)}</span></span>`;

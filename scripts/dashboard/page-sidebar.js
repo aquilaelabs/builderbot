@@ -324,7 +324,7 @@ function pickProjectColor(btn){
   pop.setAttribute("role", "radiogroup");
   pop.setAttribute("aria-label", `your color for ${projectName(key)}`);
   pop.innerHTML = PROJECT_COLORS.map(([n, tone]) => `<button type="button" role="radio" data-color="${n}" aria-checked="${n === cur}"
-      aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
+      aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` data-style="--pc:${tone}"` : ""}></button>`).join("");
   // On a card's back the swatches take the repositories' place, its height
   // held while they are open (askInline's way).
   const back = line.closest(".pcback");

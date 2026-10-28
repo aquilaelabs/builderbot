@@ -5662,6 +5662,25 @@ PY
             self) printf '  [ok]   the dashboard is served over https with the install'"'"'s own certificate (pinned by its fingerprint on the Connection section)\n' ;;
             acme) printf '  [ok]   the dashboard is served over https with a Let'"'"'s Encrypt certificate\n' ;;
         esac
+        # What a browser refused under the page's policy (R158 step 4):
+        # nothing the page ships trips it, so a report is something that
+        # was not shipped, or a browser extension writing into the page.
+        local csp_n
+        csp_n=$(DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - <<'PY' 2>/dev/null
+import json, os, time
+try:
+    rows = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "csp-reports.json")))
+except Exception:
+    rows = []
+week = time.time() - 7 * 86400
+rows = [r for r in rows if isinstance(r, dict) and r.get("at", 0) > week]
+print(len(rows), (rows[0].get("directive") or "").split()[0] if rows else "", (rows[0].get("blocked") or "")[:60] if rows else "")
+PY
+)
+        case "${csp_n%% *}" in
+            ""|0) printf '  [ok]   no browser refused anything under the page'"'"'s content security policy this week\n' ;;
+            *) printf '  [warn] a browser refused %s thing(s) under the page'"'"'s content security policy this week, the last %s (the last fifty are in csp-reports.json beside the state): a script or style the page did not ship, or an extension writing into it\n' "${csp_n%% *}" "${csp_n#* }" ;;
+        esac
     fi
     # Claude Code is a node's, so a controller has nothing to check for: a
     # failed check nobody can fix is worse than no check (R47).

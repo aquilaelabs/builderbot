@@ -49,7 +49,7 @@ const colorTone = name => (PROJECT_COLORS.find(([n]) => n === name) || [])[1] ||
 // nothing for a project with none.
 const colorAttrs = name => {
   const tone = colorTone(name);
-  return tone ? {cls: " pc", style: ` style="--pc:${tone}"`} : {cls: "", style: ""};
+  return tone ? {cls: " pc", style: ` data-style="--pc:${tone}"`} : {cls: "", style: ""};
 };
 // This account's color for a project (the operator, 18 Oct: a person's own,
 // set from its card), or "", by its project's key or any of its repositories.

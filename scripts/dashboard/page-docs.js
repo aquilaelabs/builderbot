@@ -56,7 +56,7 @@ function nodePick(id, nodes, cur, why = () => ""){
 const SKW = [62, 48, 71, 55, 66, 43, 58, 51];
 function skel(shape = "rows", n = 0, said = "loading…"){
   if (SKTPLS[shape]) return SKTPLS[shape]();
-  const b = (cls, w) => `<i class="sk-b${cls ? " " + cls : ""}"${w ? ` style="width:${w}%"` : ""}></i>`;
+  const b = (cls, w) => `<i class="sk-b${cls ? " " + cls : ""}"${w ? ` data-style="width:${w}%"` : ""}></i>`;
   const times = (k, f) => Array.from({length: k}, (_, j) => f(j)).join("");
   const rows = k => times(k, j => `<div class="sk-row">${b("", SKW[j % 8])}${b("sub", SKW[(j + 3) % 8] / 2)}</div>`);
   const tiles = k => `<div class="sk-tiles">${times(k, j => `<div class="sk-tile">${b("big", 30 + SKW[j % 8] / 4)}${b("sub", SKW[(j + 2) % 8])}</div>`)}</div>`;
@@ -81,7 +81,7 @@ function skel(shape = "rows", n = 0, said = "loading…"){
 // screen reader; skv() is one value inline, as wide as a typical one in em
 // ("ctl" for a field's control, the height of one);
 // skRows() rows inside a real section or card.
-function skv(em = 5, cls = ""){ return `<i class="skv${cls ? " " + esc(cls) : ""}" style="width:${Number(em) || 5}em"></i>`; }
+function skv(em = 5, cls = ""){ return `<i class="skv${cls ? " " + esc(cls) : ""}" data-style="width:${Number(em) || 5}em"></i>`; }
 // A question asked in a box under a row (consistency pass J3: a bug's
 // close or delete, a roadmap item's drop): the question and what follows
 // from it, a line for why, Cancel and the verb; Enter is the verb and
@@ -124,7 +124,7 @@ function skField(label, em = 16, cls = ""){
   return `<div class="${cls ? esc(cls) + " " : ""}setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
 }
 function skRows(n = 4){
-  return Array.from({length: n}, (_, j) => `<div class="sk-row"><i class="sk-b" style="width:${SKW[j % 8]}%"></i><i class="sk-b sub" style="width:${SKW[(j + 3) % 8] / 2}%"></i></div>`).join("");
+  return Array.from({length: n}, (_, j) => `<div class="sk-row"><i class="sk-b" data-style="width:${SKW[j % 8]}%"></i><i class="sk-b sub" data-style="width:${SKW[(j + 3) % 8] / 2}%"></i></div>`).join("");
 }
 // Inert unless its caller wired what it drew (`live`): a form drawn before
 // its wiring would take typing the real one, landing, throws away.
@@ -1153,7 +1153,7 @@ function viewSeg(attr, cur, cardsSay, listSay, dead = ""){
     b("cards", "Cards", cardsSay, VIEW_ICON_CARDS)}${b("list", "List", listSay, VIEW_ICON_LIST)}</div>`;
 }
 function tblWrap(cols, rows, cls = ""){
-  return `<div class="tbl${cls ? " " + esc(cls) : ""}" style="--tcols:${tblTracks(cols)}">
+  return `<div class="tbl${cls ? " " + esc(cls) : ""}" data-style="--tcols:${tblTracks(cols)}">
     <div class="thead">${cols.map(c => `<span class="th${c.num ? " num" : ""}${c.act ? " act" : ""}">${
       c.act ? "" : esc(c.label || "")}</span>`).join("")}</div>${rows}</div>`;
 }
@@ -1226,7 +1226,7 @@ function hourChart(id, title, pts, fmt = v => `${Math.round(v)}%`, max = 100){
           <line class="cgrid" x1="0" x2="1000" y1="0" y2="0"/><line class="cgrid" x1="0" x2="1000" y1="50" y2="50"/>
           <line class="cgrid" x1="0" x2="1000" y1="100" y2="100"/>
           <path class="cfill" d="${fill}"/><path class="cline" d="${line}"/></svg>
-        <span class="cdot" style="left:${(X(last[0]) / 10).toFixed(2)}%;top:${Y(last[1]).toFixed(2)}%"></span>
+        <span class="cdot" data-style="left:${(X(last[0]) / 10).toFixed(2)}%;top:${Y(last[1]).toFixed(2)}%"></span>
         <span class="chair" hidden></span><span class="ctip" hidden></span>
         <div class="cx" aria-hidden="true"><span>an hour ago</span><span>30 min</span><span>now</span></div>
       </div>

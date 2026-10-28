@@ -318,7 +318,7 @@ function dmStatStrip(d){
       sparkSvg(cpuS, 100, "CPU over the last half hour")}</div>
     <div class="tile"><span class="tl">Memory</span><span class="tv">${esc(kb(sum("mem")))}${
       lim ? `<span class="tu">/ ${esc(kb(lim))}</span>` : ""}</span>${
-      lim ? `<span class="dmbar" role="img" aria-label="${Math.round(pct)}% of its limit"><i style="width:${pct.toFixed(1)}%"></i></span>` : ""}</div>
+      lim ? `<span class="dmbar" role="img" aria-label="${Math.round(pct)}% of its limit"><i data-style="width:${pct.toFixed(1)}%"></i></span>` : ""}</div>
     <div class="tile"><span class="tl">Network</span><span class="tv">↓ ${esc(kb(sum("rx")))}</span><span class="ts">↑ ${esc(kb(sum("tx")))}</span></div>
     <div class="tile"><span class="tl">Process${sum("pids") === 1 ? "" : "es"}</span><span class="tv">${esc(String(sum("pids")))}</span></div>
   </div>`;
@@ -2395,7 +2395,7 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   // A project's heading wears its own color when it has one; `null` is
   // the No project heading, which wears none.
   const head = (t, sub, tone) => `<div class="field dmgroup${tone === null ? " none" : ""}"${
-    tone ? ` style="--gc:${tone}"` : ""}><b>${esc(t)}</b>${
+    tone ? ` data-style="--gc:${tone}"` : ""}><b>${esc(t)}</b>${
     sub ? `<span class="dim">${esc(sub)}</span>` : ""}</div>`;
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
   // A deleted project's containers keep its name until it is restored from

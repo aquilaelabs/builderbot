@@ -26,6 +26,7 @@
 
 - Every seal is on vetted cryptography: what the controller keeps sealed (the accounts' keys and key stores, the signing keys, the settings' secrets, two-factor secrets) is ChaCha20-Poly1305 under a key HKDF derives from the install key or the account's, and a node seals the coding agents' sign-ins with X25519 and ChaCha20-Poly1305, all from the cryptography library in the image and on every node; what was sealed the way before is sealed again at the next start, and on a node the next time its person opens a terminal there, and the old format is still read this release (1493a5c)
 - The dashboard is served over https where it can be had: Controller settings' Connection section picks http, the install's own certificate (made at the switch, its fingerprint shown for the phone and the companion to pin, its private key sealed under the install key and listed on the Keys page) or a Let's Encrypt certificate for the controller's hostname by a DNS-01 record through the Cloudflare API token; one port serves both, so a node keeps dialing http while a browser gets https; a fresh install starts on http, and the Doctor and the section say so until https is on (ccb1e29)
+- The page runs only what it ships: a Content-Security-Policy allows the page's own scripts and styles and nothing inline that is not in the file by its hash, each script tag names its file's integrity, cookies are SameSite=Strict, and what a browser refuses under the policy is kept and said by bb doctor (e6d74b8)
 
 ## 0.8.2: 2026-10-27
 

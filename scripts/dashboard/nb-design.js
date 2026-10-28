@@ -373,7 +373,7 @@ function nbDesignView({$, nb, project, root}){
       <div class="dscolors">${(t.colors || []).map((c, j) => `
         <div class="dsrow" data-dstc="${j}">
           ${ctl(`dst-${i}-name-${j}`, "Name", "", `<input id="dst-${i}-name-${j}" data-dsm="name" maxlength="40" autocomplete="off" value="${esc(c.name)}">`)}
-          ${ctl(`dst-${i}-hex-${j}`, "Hex", "", `<div class="dsc"><span class="dschip" style="background:${esc(c.hex)}"></span><input id="dst-${i}-hex-${j}" data-dsm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c.hex)}"></div>`)}
+          ${ctl(`dst-${i}-hex-${j}`, "Hex", "", `<div class="dsc"><span class="dschip" data-style="background:${esc(c.hex)}"></span><input id="dst-${i}-hex-${j}" data-dsm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c.hex)}"></div>`)}
           ${ctl(`dst-${i}-for-${j}`, "For", "", `<textarea id="dst-${i}-for-${j}" class="proseline" rows="1" maxlength="120" data-dsm="means">${esc(c.means)}</textarea>`, true)}
           <button type="button" class="danger" data-dstcrm="${j}" title="take this color out">Remove</button>
         </div>`).join("")}</div></div>
@@ -398,7 +398,7 @@ function nbDesignView({$, nb, project, root}){
       <div class="dscolors">${t.light.map((c, j) => `
         <div class="dsrow" data-dstl="${j}">
           ${ctl(`dstl-${i}-name-${j}`, "Name", "", `<input id="dstl-${i}-name-${j}" data-dslm="name" maxlength="40" autocomplete="off" value="${esc(c.name)}">`)}
-          ${ctl(`dstl-${i}-hex-${j}`, "Hex", "", `<div class="dsc"><span class="dschip" style="background:${esc(c.hex)}"></span><input id="dstl-${i}-hex-${j}" data-dslm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c.hex)}"></div>`)}
+          ${ctl(`dstl-${i}-hex-${j}`, "Hex", "", `<div class="dsc"><span class="dschip" data-style="background:${esc(c.hex)}"></span><input id="dstl-${i}-hex-${j}" data-dslm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c.hex)}"></div>`)}
         </div>`).join("")}</div></div>
       <div class="field"><div class="actbar"><span class="state">${t.light.length} of ${(t.colors || []).length} tokens</span>
         <button type="button" class="danger" data-dstlrm title="take the ${other} half out">Remove the ${other} half</button></div></div>`;
@@ -514,13 +514,13 @@ function nbDesignView({$, nb, project, root}){
     // board are the way to one another covers (the operator, 29 Sep).
     const inner = p.blocks.length
       ? p.blocks.map((b, i) => `<div class="dsblock${nb.dsSel[key] === i ? " on" : ""}" tabindex="0" role="button"
-            data-i="${i}" style="${blockStyle(b)}" aria-label="${esc(kindLabel(b.kind))}${b.label ? ": " + esc(b.label) : ""}">
+            data-i="${i}" data-style="${blockStyle(b)}" aria-label="${esc(kindLabel(b.kind))}${b.label ? ": " + esc(b.label) : ""}">
             <b>${esc(kindLabel(b.kind))}</b>${b.label ? `<span>${esc(b.label)}</span>` : ""}<i class="dsgrip" aria-hidden="true"></i></div>`).join("")
       : `<div class="dsempty">nothing on this ${esc(p.frame)} yet</div>`;
     // A page of many screens is looked at through a window of its own,
     // so the fields under the board stay in reach.
     return `<div class="dsboardrow"><div class="dsboardwrap"><div class="dsboard" data-frame="${esc(p.frame)}" role="group" aria-label="the layout of ${esc(p.name || "this page")}"
-      style="${tall}grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div></div>${layersHtml(p)}</div>`;
+      data-style="${tall}grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div></div>${layersHtml(p)}</div>`;
   }
   // Whether block j lies inside block i, however many parents up.
   function descends(p, j, i){
@@ -537,7 +537,7 @@ function nbDesignView({$, nb, project, root}){
   function layersHtml(p){
     const key = keyOf(p), sel = nb.dsSel[key], n = p.blocks.length;
     const rows = p.blocks.map((b, i) => [b, i]).reverse().map(([b, i]) => `<div class="dslayer${sel === i ? " on" : ""}" data-dsl="${i}" role="button" tabindex="0"
-        style="padding-left:${10 + depthOf(p, i) * 12}px" title="select this block${b.in ? `; inside block ${b.in}` : ""}">
+        data-style="padding-left:${10 + depthOf(p, i) * 12}px" title="select this block${b.in ? `; inside block ${b.in}` : ""}">
         <span class="t"><b>${esc(kindLabel(b.kind))}</b>${b.label ? ` <span>${esc(b.label)}</span>` : ""}</span>
         <button type="button" class="ic" data-dslup="${i}" aria-label="a layer up"${i === n - 1 ? " disabled" : ""} title="a layer up: over the one above it">▲</button>
         <button type="button" class="ic" data-dsldown="${i}" aria-label="a layer down"${i === 0 ? " disabled" : ""} title="a layer down: under the one below it">▼</button></div>`).join("");

@@ -496,7 +496,7 @@ function renderGuarded(spec, i, t){
   }
   catch(e){
     const el = $("doc" + i);
-    if (el) el.innerHTML = `<div class="hint bad" style="padding:var(--row-y) var(--row-x)">
+    if (el) el.innerHTML = `<div class="hint bad" data-style="padding:var(--row-y) var(--row-x)">
       this tab's renderer failed: the rest of the page is fine.
       ${esc(String(e && e.message || e))}</div>`;
     setTimeout(() => { throw e; });

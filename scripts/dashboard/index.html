@@ -70,6 +70,16 @@
     if (localStorage.getItem("bb.motion") === "reduce") document.documentElement.dataset.motion = "reduce";
   }catch(e){ /* private mode: the default scheme is a fine answer */ }
 
+  // Inline style attributes are not drawn under the page's Content-Security-Policy
+  // (R158 step 4): a template writes data-style instead, and this applies each
+  // one through the CSSOM as it lands, which the policy allows.
+  new MutationObserver(ms => {
+    for (const m of ms) for (const n of m.addedNodes){
+      if (n.nodeType !== 1) continue;
+      if (n.hasAttribute("data-style")) n.style.cssText = n.getAttribute("data-style");
+      for (const el of n.querySelectorAll("[data-style]")) el.style.cssText = el.getAttribute("data-style");
+    }
+  }).observe(document.documentElement, {childList: true, subtree: true});
 </script>
 <!-- Inline so the browser never asks the server for /favicon.ico: the only
      404 this page would otherwise produce. -->
@@ -5949,7 +5959,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="hint"></div>
     </div>
     <div class="foot"><span class="sp"></span>
-      <button type="button" onclick="$('devEnvModal').hidden = true">Cancel</button>
+      <button type="button" id="devEnvCancel">Cancel</button>
       <button type="button" class="primary">Save</button>
     </div>
   </div>
@@ -7022,7 +7032,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
   <!-- Report a bug in BuilderBot about no project in particular (the
        operator, 2 Oct); a project's own is on its row. The same dialog,
        page-report.js, with no project. -->
-  <button id="bReport" onclick="openReport('')" aria-label="report a bug"
+  <button id="bReport" aria-label="report a bug"
           title="report a bug in BuilderBot: it goes to the diagnostics">
     <svg class="out" viewBox="0 0 16 16" aria-hidden="true">
       <ellipse cx="8" cy="9.4" rx="3.3" ry="4"/><path d="M6.3 5.7a1.7 1.7 0 0 1 3.4 0"/>
@@ -8057,6 +8067,9 @@ refresh();
 // timer calls through the binding, not the function: the harness holds the
 // poll by replacing `refresh` (lib.mjs holdPoll), and a timer that captured
 // the original kept polling under a planted row (B265).
+  // Two presses that were inline handlers (R158 step 4: no inline script).
+  $("bReport").onclick = () => openReport("");
+  $("devEnvCancel").onclick = () => { $("devEnvModal").hidden = true; };
 </script>
 </body>
 </html>

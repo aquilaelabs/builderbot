@@ -255,7 +255,7 @@ function cardBack(c){
   const fb = (attr, val, label, icon, extra = "") => `<button type="button" class="ic" ${attr}="${esc(val)}" aria-label="${esc(label)}" title="${esc(label)}"${extra}>${icon}</button>`;
   const tone = colorTone(c.color);
   const foot = [
-    fb("data-pcolor", c.key, c.color ? `Color: ${c.color}` : "Color", SWATCH, tone ? ` data-sw style="--sw:${tone}"` : ""),
+    fb("data-pcolor", c.key, c.color ? `Color: ${c.color}` : "Color", SWATCH, tone ? ` data-sw data-style="--sw:${tone}"` : ""),
     c.archived ? "" : fb("data-pgroup", c.key, c.group ? `Group: ${c.group}` : "Group", TAG),
     c.may_lock ? fb("data-lock", c.key, lockLabel(c), c.locked ? LOCK : LOCK_OPEN, ` data-on="${c.locked ? "0" : "1"}" aria-pressed="${!!c.locked}"`) : "",
     first && first.mine !== false ? fb("data-bug", first.name, "Report bug", BUG) : "",

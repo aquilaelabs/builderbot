@@ -1450,7 +1450,7 @@ function meter(label, pct, right, title){
   const cls = p >= 92 ? "bad" : p >= 80 ? "warn" : "";
   return `<div class="ndmeter${cls ? " " + cls : ""}"${title ? ` title="${esc(title)}"` : ""}>
     <span class="lbl">${esc(label)}</span>
-    <span class="track"><span class="fill" style="width:${p}%"></span></span>
+    <span class="track"><span class="fill" data-style="width:${p}%"></span></span>
     <span class="val">${esc(right)}</span></div>`;
 }
 

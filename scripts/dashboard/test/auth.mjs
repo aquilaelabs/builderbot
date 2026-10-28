@@ -1948,8 +1948,9 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
 }
 
 // A terminal's socket opens from this dashboard's own page and no other
-// (B312): the sign-in cookie is SameSite=Lax, which a browser still sends
-// with a websocket from another hostname of the same site. A socket from
+// (B312): the sign-in cookie was SameSite=Lax, which a browser still sent
+// with a websocket from another hostname of the same site (Strict since
+// R158 step 4, and the Origin check stands either way). A socket from
 // another origin is refused before anything is relayed; one from this
 // origin, or from a tool that sends no Origin, gets past that check.
 {

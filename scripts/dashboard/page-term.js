@@ -112,19 +112,19 @@ function termPalette(scheme, mine){
 // color as a block, a selection and the cursor in its shape.
 function termPreview(theme, look = {}){
   const c = k => esc(theme[k] || "");
-  const sp = (k, t) => `<span style="color:${c(k)}">${esc(t)}</span>`;
-  const blocks = keys => keys.map(k => `<span class="tpblock" style="background:${c(k)}" title="${esc(k)}"></span>`).join("");
+  const sp = (k, t) => `<span data-style="color:${c(k)}">${esc(t)}</span>`;
+  const blocks = keys => keys.map(k => `<span class="tpblock" data-style="background:${c(k)}" title="${esc(k)}"></span>`).join("");
   const cur = look.cursor || "block";
-  const cursor = cur === "bar" ? `<span class="tpcur bar" style="border-color:${c("cursor")}"></span>`
-    : cur === "underline" ? `<span class="tpcur under" style="border-color:${c("cursor")}">&nbsp;</span>`
-    : `<span class="tpcur" style="background:${c("cursor")}">&nbsp;</span>`;
+  const cursor = cur === "bar" ? `<span class="tpcur bar" data-style="border-color:${c("cursor")}"></span>`
+    : cur === "underline" ? `<span class="tpcur under" data-style="border-color:${c("cursor")}">&nbsp;</span>`
+    : `<span class="tpcur" data-style="background:${c("cursor")}">&nbsp;</span>`;
   return `<div class="termprev" role="img" aria-label="how a terminal looks in these colors"
-      style="background:${c("background")};color:${c("foreground")};font-size:${Number(look.size) || 13}px">
+      data-style="background:${c("background")};color:${c("foreground")};font-size:${Number(look.size) || 13}px">
     <div>${sp("green", "you@node")}:${sp("blue", "~/alpha")}$ ls</div>
     <div>${sp("blue", "src")}  ${sp("green", "build.sh")}  ${sp("cyan", "docs")}  ${sp("red", "core")}  ${sp("yellow", "notes.md")}  ${sp("magenta", "logo.png")}</div>
     <div>${blocks(["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"])}</div>
     <div>${blocks(["brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite"])}</div>
-    <div><span style="background:${c("selectionBackground")}">a selection</span> and the cursor ${cursor}</div>
+    <div><span data-style="background:${c("selectionBackground")}">a selection</span> and the cursor ${cursor}</div>
   </div>`;
 }
 

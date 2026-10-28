@@ -162,7 +162,7 @@ function vmGroupsHtml(rows){
     const html = rows.filter(v => v.project === o).sort((a, b) => byName(a.name, b.name)).map(vmRow).join("");
     return vmView === "list" ? tblWrap(VM_COLS, html, "dmtbl") : html;
   };
-  return owners.map(o => `<section class="dmcard"><div class="field dmgroup" style="--gc:${colorTone(projectColor(o)) || "var(--accent)"}"><b>${
+  return owners.map(o => `<section class="dmcard"><div class="field dmgroup" data-style="--gc:${colorTone(projectColor(o)) || "var(--accent)"}"><b>${
       esc(vmOwner(o))}</b></div>${group(o)}</section>`).join("");
 }
 

@@ -98,8 +98,8 @@ function nbAnalysisView({$, nb, project}){
       status = `${nfmt(d.files)} file${d.files === 1 ? "" : "s"} · ${nfmt(d.lines)} line${d.lines === 1 ? "" : "s"}`;
       const bar = code.length
         ? `<div class="cbbar" role="img" aria-label="${esc(code.map(l => `${l.name} ${l.pct}%`).join(", "))}">${
-            code.map(l => `<span style="width:${l.pct}%;background:${langColor(l.name)}" title="${esc(l.name)} ${l.pct}%"></span>`).join("")}</div>
-           <div class="cblegend">${code.map(l => `<span><span class="dot" style="background:${langColor(l.name)}"></span>${esc(l.name)} <b>${l.pct}%</b><span class="n">${nfmt(l.lines)} lines in ${nfmt(l.files)}</span></span>`).join("")}</div>`
+            code.map(l => `<span data-style="width:${l.pct}%;background:${langColor(l.name)}" title="${esc(l.name)} ${l.pct}%"></span>`).join("")}</div>
+           <div class="cblegend">${code.map(l => `<span><span class="dot" data-style="background:${langColor(l.name)}"></span>${esc(l.name)} <b>${l.pct}%</b><span class="n">${nfmt(l.lines)} lines in ${nfmt(l.files)}</span></span>`).join("")}</div>`
         : "";
       const sk = d.skipped || {};
       const skipped = [sk.binary ? `${sk.binary} binar${sk.binary === 1 ? "y" : "ies"}` : "",

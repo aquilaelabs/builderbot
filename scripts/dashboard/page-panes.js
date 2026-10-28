@@ -41,7 +41,7 @@ function paintBar(pane, t, i){
   // name and its close button everywhere else, and a third thing in it was a
   // shape one tab had and no other.
   const reload = TABKINDS[t.kind]?.reload
-    ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
+    ? `<button class="ic" data-reload="${esc(t.kind)}" data-style="margin-left:8px">reload</button>` : "";
   // A page (R218 step 2) wears its group's sub-nav, or its name, and no
   // close: the rail is how you leave it. A project (step 3) wears its
   // header: the name, the facts, the session's state and its actions.
