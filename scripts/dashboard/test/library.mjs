@@ -31,8 +31,14 @@ const shape = await page.evaluate(() => lib.rows.map(r => [r.kind, r.tier, typeo
 ok(shape.length > 0 && shape.every(([k, t, l, a, i, v]) => ['agent', 'toolchain', 'pack', 'service', 'app', 'companion'].includes(k)
    && ['official', 'vetted', 'sideloaded'].includes(t) && l === 'string' && a === 'string' && i === 'boolean' && v === 'string'),
    `every row is one shape: kind, tier, label, about, installed, verb (${shape.length} rows)`);
-ok(await page.evaluate(() => lib.rows.some(r => r.kind === 'toolchain') && document.querySelectorAll('.doc .librarytab .lcard').length === lib.rows.length),
-   'the toolchain catalog is among the rows, and every row is drawn');
+ok(await page.evaluate(() => lib.rows.some(r => r.kind === 'toolchain') && document.querySelectorAll('.doc .librarytab .lcard').length === lib.rows.filter(r => !r.wrong_platform).length),
+   'the toolchain catalog is among the rows, and every row for this node is drawn');
+ok(await page.evaluate(() => {
+  const off = lib.rows.filter(r => r.wrong_platform);
+  const head = document.querySelector('.doc .librarytab .pghead')?.textContent || '';
+  return off.length > 0 && off.every(r => !document.querySelector(`.doc .librarytab .lcard[data-lrow="${r.kind}:${r.name}"]`))
+    && new RegExp(`Not for this node\\s*${off.length}\\b`).test(head);
+}), 'a card not for this node is not drawn, and the head counts them (R170 step 9)');
 ok(await page.$$eval('.doc .librarytab .lcard .lcmeta .pill', ps => ps.some(p => /^(official|vetted|sideloaded)$/.test(p.textContent.trim()))),
    'the tier reads on a card as a pill');
 ok(await page.evaluate(() => {
@@ -50,7 +56,7 @@ ok(await page.evaluate(() => document.querySelectorAll('.doc .librarytab .lcard'
    'the search narrows the rows as it is typed and keeps the caret');
 await page.fill('.doc .librarytab #libFind', '');
 await page.waitForFunction(() => libQ === '');
-ok(await page.evaluate(() => document.querySelectorAll('.doc .librarytab .lcard').length === lib.rows.length), '...and emptied puts every row back');
+ok(await page.evaluate(() => document.querySelectorAll('.doc .librarytab .lcard').length === lib.rows.filter(r => !r.wrong_platform).length), '...and emptied puts every row back');
 if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
   await page.click('.doc .librarytab [data-libkind="toolchain"]');
   await page.waitForFunction(() => libKind === 'toolchain');

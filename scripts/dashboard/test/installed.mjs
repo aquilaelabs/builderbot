@@ -17,7 +17,7 @@ ok(await page.evaluate(() => railGroups().some(g => g.key === 'machines' && g.to
 
 // ---- the page ----------------------------------------------------------
 await page.evaluate(() => openInstalledTab());
-await page.waitForSelector('.doc .installedtab #instNodeSel', { timeout: 20000 });
+await page.waitForSelector('.pane .bar #ndPick', { timeout: 20000 });
 await page.waitForFunction(() => inst && !inst.nonode && Array.isArray(inst.rows), null, { timeout: 20000 });
 ok(await page.waitForFunction(() => location.hash === '#/machines/installed/' + encodeURIComponent(instNode), null, { timeout: 10000 }).then(() => true, () => false),
    `the address names the page and its node (${await page.evaluate(() => location.hash)})`);
@@ -77,9 +77,9 @@ ok(await page.$$eval('.doc .installedtab [data-instact="install"]', bs => bs.eve
 // ---- no node ---------------------------------------------------------------
 await page.evaluate(() => { openInstalledTab(); nodesList = []; instNode = ''; inst = null; loadInstalled(); });
 await page.waitForSelector('.doc .installedtab .instnone', { timeout: 20000 });
-ok(await page.evaluate(() => !document.querySelector('.doc .installedtab .irow') && !document.querySelector('#instNodeSel')),
+ok(await page.evaluate(() => !document.querySelector('.doc .installedtab .irow') && !document.querySelector('.pane .bar #ndPick')),
    'with no node enrolled it says to enroll one');
 await page.evaluate(() => { nodesList = null; nodesStale = true; instNode = ''; inst = null; loadInstalled(); });
-await page.waitForSelector('.doc .installedtab #instNodeSel', { timeout: 20000 });
+await page.waitForSelector('.pane .bar #ndPick', { timeout: 20000 });
 
 await done(browser);

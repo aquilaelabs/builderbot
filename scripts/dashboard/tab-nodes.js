@@ -1777,14 +1777,11 @@ function ndNotHereHtml(){
       ${rows.map(r => `<div class="sub" data-nothere="${esc(r.id)}"><b>${esc(r.name)}</b> <code>${esc(r.line)}</code> <button type="button" class="link" data-ndcopyline="${esc(r.id)}">Copy</button></div>`).join("")}
     </div></div>`;
 }
-// The bar: the node switcher, Create sandbox VM, and Enroll node.
+// The bar: nothing of its own since R177, the node switcher, Create sandbox
+// VM and Enroll node being the Machines group's header (page-shell.js
+// machinesHeader); kept as the page's bar builder so its callers stand.
 function ndBar(live){
-  // Enrolling switched off on this install (R81): both dead, the reason on
-  // the page under the bar (ndOffLine).
-  const g = !live, dead = g || featureOff("enroll") ? " disabled" : "";
-  return nodeBar(nodePick("ndPick", g ? null : live.map(x => ({id: x.id, name: x.name, live: x.live})), nodesPick),
-    `<button type="button"${g ? "" : ` id="ndVm"`}${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
-      <button type="button" class="primary"${g ? "" : ` id="ndEnroll"`}${dead}>${barSaid("Enroll node", "Enroll")}</button>`);
+  return "";
 }
 // Its facts in the facts voice, its id among them (R218 step 26): the id is
 // the one in its enroll script's name.
@@ -2527,9 +2524,6 @@ function wireNodesTab(root){
   wireCharts(root);
   root.querySelectorAll("[data-ndopen]").forEach(b => b.onclick = () => openNotebook(b.dataset.ndopen));
   root.querySelectorAll("[data-ndproj]").forEach(b => b.onclick = () => openProjectSettings(b.dataset.ndproj, "runs"));
-  const pick = root.querySelector("#ndPick");
-  if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
-                                    nodesRev++; drawPanes(); };
   // The root asks answer through the phone's endpoint, which holds the one
   // list of asks; phFetch redraws this tab when the answer comes back.
   root.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {
@@ -2538,11 +2532,9 @@ function wireNodesTab(root){
   });
   root.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
-  const {modal, body, shut, mintForm, vmForm, openVm, openEnroll} = ndDialogs();
-  const vm = root.querySelector("#ndVm");
-  if (vm) vm.onclick = openVm;
-  const en = root.querySelector("#ndEnroll");
-  if (en) en.onclick = openEnroll;
+  // Create sandbox VM and Enroll node are the group's header's (R177, wired
+  // by page-shell.js wireMachinesHeader); the dialogs stay the page's.
+  const {modal, body, shut, mintForm, vmForm} = ndDialogs();
   wireSections(root);
   root.querySelectorAll(".ndrow").forEach(box => {
     const id = box.dataset.node;

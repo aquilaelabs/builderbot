@@ -33,11 +33,11 @@ print(json.dumps(${py}))
 // The tab shows ONE node, chosen in the bar. Picking is how a test reaches
 // a row now, and the option list is how it asserts the registry.
 const pickNode = async (page, id) => {
-  await page.selectOption('.nodestab #ndPick', id);
+  await page.selectOption('.pane .bar #ndPick', id);
   await page.waitForFunction(x => document.querySelector(
     `.nodestab .ndrow[data-node="${x}"]`) !== null, id, { timeout: 10000 });
 };
-const nodeOptions = page => page.$$eval('.nodestab #ndPick option', os => os.map(o => o.value));
+const nodeOptions = page => page.$$eval('.pane .bar #ndPick option', os => os.map(o => o.value));
 
 // The page kept whichever node list answered last, not the one it asked for
 // last, so a list the poll asked for before a change could land after the
@@ -278,8 +278,8 @@ print(json.dumps(out))
     nodesRev++; drawPanes();
     const out = { none: !!document.querySelector('.nodestab .ndnone'),
                   rows: document.querySelectorAll('.nodestab .ndrow').length,
-                  picker: !!document.querySelector('.nodestab #ndPick'),
-                  enroll: !!document.querySelector('.nodestab #ndEnroll') };
+                  picker: !!document.querySelector('.pane .bar #ndPick'),
+                  enroll: !!document.querySelector('.pane .bar #ndEnroll') };
     nodesList = was; nodesRev++; drawPanes();
     return out;
   });
@@ -703,7 +703,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(lst.agent?.digest && lst.agent.digest === shipped.digest,
      'the node list names the agent the controller ships');
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
-  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
   await pickNode(page, minted.id);
   const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
@@ -2281,7 +2281,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false }],
     stores: {}, network: { mode: 'dhcp' } } });
   await page.evaluate(() => openNodesTab());
-  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
   await pickNode(page, minted.id);
   // Read again while waiting: a list the poll asked for before the save can
   // land after this read and say the record's old changes (B606).
@@ -2457,7 +2457,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   // Update agent came back live the instant it answered.
   // Back to the Nodes tab: the block above left the Tools tab in front.
   await page.evaluate(() => openNodesTab());
-  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
   await pickNode(page, minted.id);
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
   await page.waitForFunction(sel => /Updating/.test(
@@ -2614,7 +2614,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   ok(set.ok && set.paths['/devdata'] === '/mnt/user/bb-dev',
      'the mapping is saved onto the node record as pairs');
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
-  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
   await pickNode(page, sb.id);
   await openSection(page, 'nodes:advanced', `.nodestab .ndrow[data-node="${sb.id}"]`);
   await page.waitForSelector(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, { timeout: 15000 });
@@ -2676,12 +2676,12 @@ ok(await page.evaluate(t => (state.doctor?.when || 0) > t, docBefore),
 // uuid points a second VM at the first one's OVMF nvram file, and a shared MAC
 // puts them both on the first one's address.
 await page.evaluate(() => openNodesTab());
-await page.waitForSelector('.nodestab #ndVm', { timeout: 20000 });
+await page.waitForSelector('.pane .bar #ndVm', { timeout: 20000 });
 // The enroll dialog asks for the account jobs run as, and the command it
 // prints carries it: the record follows whatever the agent reports at
 // enrollment, and this is what stops the row saying bb in the meantime and
 // somebody having to remember the flag.
-await page.click('.nodestab #ndEnroll');
+await page.click('.pane .bar #ndEnroll');
 await page.waitForSelector('#ndBody #ndEnUser', { timeout: 10000 });
 // The machine's system (R204): the vetted ones by name, nothing tagged dev
 // while Offer dev features is off, Ubuntu first as the default.
@@ -2762,7 +2762,7 @@ await page.evaluate(async () => {
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: on } }) });
     await refresh(); }, v);
   await devSet(false);
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   const offeredOff = await page.evaluate(() => ({ reach: [...$('ndEnReach').options].map(o => o.value),
     door: [...$('ndEnDoor').options].map(o => o.value) }));
@@ -2781,7 +2781,7 @@ await page.evaluate(async () => {
      `with dev features off, Enroll node offers the LAN, a public hostname and the cloudflared door, and the server refuses WireGuard and Tailscale (${JSON.stringify(offeredOff)}; ${refusedOff.error})`);
   await page.click('#ndBody #ndEnCancel');
   await devSet(true);
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   ok(await page.$eval('#ndBody #ndEnWgRow', r => r.hidden) && await page.$eval('#ndBody #ndEnCtl', i => i.value) === new globalThis.URL(URL).origin,
      'Enroll node asks how the machine reaches the controller, at this page\'s address, with no config to choose on the LAN');
@@ -2835,7 +2835,7 @@ await page.evaluate(async () => {
   // provisioner with --reach public; the home end is the tunnel's rule
   // (cloudflared's config as the example), and the controller answers that
   // hostname on the agent's API alone.
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   await fillHeld(page, '#ndBody #ndEnName', 'vpsbox');
   await page.selectOption('#ndBody #ndEnReach', 'public');
@@ -2918,7 +2918,7 @@ await page.evaluate(async () => {
   // the script carries the secret in a block and runs the provisioner with
   // the door's flags; the pending row knows the door; and once the node
   // reports it, the row's switch queues the system job.
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnDoor', { timeout: 10000 });
   await fillHeld(page, '#ndBody #ndEnName', 'doorbox');
   await page.selectOption('#ndBody #ndEnDoor', 'cloudflared');
@@ -2971,10 +2971,10 @@ await page.evaluate(async () => {
       ? new Promise(res => { window.__vmLand = () => res(window.__realNodeAct(b)); })
       : window.__realNodeAct(b);
   });
-  await page.click('.nodestab #ndVm');
+  await page.click('.pane .bar #ndVm');
   await page.waitForSelector('#ndBody #vmGo', { timeout: 10000 });
   await page.evaluate(() => { document.getElementById('ndmodal').hidden = true; });
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnName', { timeout: 10000 });
   await fillHeld(page, '#ndBody #ndEnName', 'racebox');
   await page.evaluate(async () => { window.__vmLand(); await new Promise(r => setTimeout(r, 300)); });
@@ -2984,7 +2984,7 @@ await page.evaluate(async () => {
   await page.evaluate(() => { nodeAct = window.__realNodeAct; document.getElementById('ndmodal').hidden = true;
     document.getElementById('ndBody').innerHTML = ''; });
 }
-await page.click('.nodestab #ndVm');
+await page.click('.pane .bar #ndVm');
 await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
    'Create sandbox VM opens on the machine\'s sizes, with nothing rendered yet');
@@ -3196,10 +3196,10 @@ ok(page.errors.length === 0,
     // The tab shows one node at a time, the picker's; laptop is picked
     // for the row, and the controller's own after it.
     await page.evaluate(() => openNodesTab());
-    await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+    await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
     await page.evaluate(() => loadNodes());
-    await page.waitForFunction(id => [...document.querySelectorAll('.nodestab #ndPick option')].some(o => o.value === id), plain.id, { timeout: 15000 });
-    await page.selectOption('.nodestab #ndPick', plain.id);
+    await page.waitForFunction(id => [...document.querySelectorAll('.pane .bar #ndPick option')].some(o => o.value === id), plain.id, { timeout: 15000 });
+    await page.selectOption('.pane .bar #ndPick', plain.id);
     await page.waitForSelector(`.ndrow[data-node="${plain.id}"]`, { timeout: 20000 });
     const drawn = await page.evaluate(id => {
       const box = document.querySelector(`.ndrow[data-node="${CSS.escape(id)}"]`);
@@ -3231,8 +3231,8 @@ ok(page.errors.length === 0,
     const gj = await napi(`/api/v1/jobs?id=${g.job}`);
     ok(gj.spec?.apply === 'gpu' && gj.node === shed.id, 'the job asks the agent for bb-sandbox gpu');
     await page.evaluate(() => loadNodes());
-    await page.waitForFunction(id => [...document.querySelectorAll('.nodestab #ndPick option')].some(o => o.value === id), shed.id, { timeout: 15000 });
-    await page.selectOption('.nodestab #ndPick', shed.id);
+    await page.waitForFunction(id => [...document.querySelectorAll('.pane .bar #ndPick option')].some(o => o.value === id), shed.id, { timeout: 15000 });
+    await page.selectOption('.pane .bar #ndPick', shed.id);
     await openSection(page, 'nodes:health', `.ndrow[data-node="${shed.id}"]`);
     await page.waitForSelector(`.ndrow[data-node="${shed.id}"] .ndgpu`, { timeout: 20000 });
     const line = await page.$eval(`.ndrow[data-node="${shed.id}"] .ndgpu`, e => e.textContent.replace(/\s+/g, ' ').trim());
@@ -3685,7 +3685,7 @@ ok(page.errors.length === 0,
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
      '...and the status payload says which node is behind');
   await page.evaluate(() => openNodesTab());
-  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
   await pickNode(page, en.id);
   const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
   await page.waitForFunction(sel => /Claude installed/.test(document.querySelector(sel + ' [data-sect="nodes:sessions"] .ndagents')?.textContent || ''), ROWC, { timeout: 15000 });

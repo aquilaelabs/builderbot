@@ -3390,8 +3390,8 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
     await page.evaluate(() => openNodesTab());
     // The tab shows one node, chosen in the bar, so pick this one before
     // looking for its row.
-    await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
-    await page.selectOption('.nodestab #ndPick', minted.id);
+    await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
+    await page.selectOption('.pane .bar #ndPick', minted.id);
     await page.waitForSelector(`.nodestab .ndrow[data-node="${minted.id}"] .ndlive`,
                                { timeout: 15000 });
     const row = await page.$eval(`.nodestab .ndrow[data-node="${minted.id}"]`,
@@ -3462,10 +3462,10 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
                                { timeout: 10000 });
     // One node at a time: the new pending one is in the picker, and its own
     // page says what it is waiting for.
-    const opt = await page.$$eval('.nodestab #ndPick option',
+    const opt = await page.$$eval('.pane .bar #ndPick option',
       os => os.filter(o => /second/.test(o.textContent)).map(o => o.value));
     ok(opt.length === 1, 'the newly minted node joins the picker');
-    await page.selectOption('.nodestab #ndPick', opt[0]);
+    await page.selectOption('.pane .bar #ndPick', opt[0]);
     await page.waitForFunction(id => /waiting for enrollment/.test(
       document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
       opt[0], { timeout: 10000 });

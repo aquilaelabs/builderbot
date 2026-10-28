@@ -54,6 +54,7 @@ function paintBar(pane, t, i){
     : `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}`, true);
   bar.classList.toggle("page", isToolKind(t.kind));
   bar.classList.toggle("proj", proj);
+  bar.classList.toggle("machines", isToolKind(t.kind) && groupOf(t.kind)?.key === "machines");
   if (fresh){
     wireShellBar(bar);
     if (proj) wireProjectHeader(bar);

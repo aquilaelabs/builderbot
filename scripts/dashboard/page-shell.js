@@ -370,8 +370,11 @@ function railMoreShow(on){
 function shellBar(t, i){
   const g = groupOf(t.kind);
   const tools = g ? g.tools.filter(([k]) => railAllows(k) || k === t.kind) : [[t.kind, tabLabel(t)]];
-  return `<span class="subnav pseg" role="tablist" aria-label="${esc(g ? g.label : tabLabel(t))}">${tools.map(([k, label]) =>
+  const nav = `<span class="subnav pseg" role="tablist" aria-label="${esc(g ? g.label : tabLabel(t))}">${tools.map(([k, label]) =>
       `<button type="button" role="tab" aria-selected="${k === t.kind}" class="${k === t.kind ? "on" : ""}"${g ? ` data-subnav="${esc(k)}"` : ""}>${esc(label)}</button>`).join("")}</span>`;
+  // The Machines group wears one header over its sub-nav (R177): the node
+  // picked once for Nodes, Storage and Installed.
+  return g?.key === "machines" ? machinesHeader(t) + nav : nav;
 }
 function wireShellBar(bar){
   // The line under the tab on show slides to the one pressed (slideMark),
@@ -382,6 +385,64 @@ function wireShellBar(bar){
     const g = groupOf(b.dataset.subnav);
     if (g) railGo(g.key, b.dataset.subnav);
   });
+  wireMachinesHeader(bar);
+}
+
+// ---- the Machines group's header (R177) ----------------------------------------
+// The operator, 28 Oct: a header like a project's for the Machines group,
+// the node pulldown there instead of on each of the three sub-tabs. One
+// band in the project header's shape: the node picker where the name is,
+// the node's facts beside it in the data face (seen, reached from, its
+// agent), and at the right the actions the group carries (Create sandbox
+// VM, Enroll node); the sub-nav strip under it. One pick drives all three
+// pages: each keeps its own node state for its openers, and the header
+// reads the page on show and sets all three on a press.
+function machinesLive(){
+  return (nodesList || []).filter(n => n.state !== "retired" && n.kind !== "local" && !(state?.bare_metal && n.config?.own));
+}
+function machinesNode(kind){
+  return NODE_PICKED[kind]?.() || "";
+}
+function machinesPick(nid){
+  nodesPick = nid; nodesFocus = null; nodesRev++;
+  if (nid !== storageNode){ storageNode = nid; storageRev++; }
+  if (nid !== instNode){ instNode = nid; inst = null; instRev++; }
+  try{ localStorage.setItem("bb.stnode", nid); localStorage.setItem("bb.instnode", nid); }catch(e){ /* private */ }
+  drawPanes();
+  if (tabOf(panes[0])?.kind === "installed") loadInstalled();
+}
+function machinesHeader(t){
+  if (nodesList === null){
+    loadNodes();
+    // The Storage page has its nodes before the list lands: drawn from
+    // them, so its picker is there with its rows.
+    const have = t.kind === "storage" ? (typeof storageList !== "undefined" && storageList || []).map(n => ({id: n.node, name: n.name, live: n.live})) : [];
+    if (!have.length) return `<span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>`;
+    return `<span class="phead mchead">${nodePick("ndPick", have, machinesNode(t.kind) || have[0].id)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>`;
+  }
+  const live = machinesLive();
+  const cur = machinesNode(t.kind) || live[0]?.id || "";
+  const n = live.find(x => x.id === cur);
+  const seen = n?.agent?.last_seen ? `seen ${ago(n.agent.last_seen)}` : n ? "never seen" : "";
+  const from = n?.agent?.addr ? `dials in from ${n.agent.addr}` : "";
+  const ag = n?.agent?.version ? `agent ${n.agent.version}` : "";
+  const facts = [seen, from, ag].filter(Boolean).join(" · ");
+  const dead = featureOff("enroll") ? " disabled" : "";
+  const pick = live.length ? nodePick("ndPick", live.map(x => ({id: x.id, name: x.name, live: x.live})), cur) : `<span class="pname">No node yet</span>`;
+  return `<span class="phead mchead">${pick}${facts ? `<span class="pfacts">${esc(facts)}</span>` : ""}<span class="sp"></span>
+    <button type="button" id="ndVm"${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
+    <button type="button" class="primary" id="ndEnroll"${dead}>${barSaid("Enroll node", "Enroll")}</button></span>`;
+}
+function wireMachinesHeader(bar){
+  const pick = bar.querySelector("#ndPick");
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (pick) pick.onchange = () => navPush(() => machinesPick(pick.value));
+  const vm = bar.querySelector("#ndVm"), en = bar.querySelector("#ndEnroll");
+  if (vm || en){
+    const d = ndDialogs();
+    if (vm) vm.onclick = d.openVm;
+    if (en) en.onclick = d.openEnroll;
+  }
 }
 
 // ---- maintenance mode's band ---------------------------------------------------

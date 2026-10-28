@@ -65,6 +65,7 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
     out = []
     pack_values = pack_values or {}
     tc = node_payload or {}
+    plat = str(tc.get("platform") or "")
     job = tc.get("job") or {}
     busy_on = job.get("current") if job.get("running") and job.get("action") != "check" else ""
     for r in agent_rows or []:
@@ -152,4 +153,18 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
                     "platforms": [], "installed": False, "version": c.get("version") or "", "latest": "", "update": False, "running": False,
                     "dev": bool(c.get("dev")), "download": first, "files": c.get("files") or [], "absent": c.get("absent") or "",
                     "verb": "download" if first else ""})
+    # A card not for this node (R170 step 9, the operator, 28 Oct: Xcode on
+    # a Linux node): judged here for every row with a platforms list, the
+    # toolchains' own verdict kept; the page leaves it out and counts it.
+    for r in out:
+        r.setdefault("wrong_platform", "")
+        if not r["wrong_platform"] and plat and r.get("platforms") and not _supports(r["platforms"], plat):
+            r["wrong_platform"] = f"not for this node ({plat}): {', '.join(r['platforms'])}"
     return out
+
+
+def _supports(platforms, plat):
+    """toolchains.supports' rule for a list that is there: the platform
+    itself, or its system with any machine (linux/*)."""
+    o, _, _a = plat.partition("/")
+    return any(x == plat or x == f"{o}/*" for x in platforms)

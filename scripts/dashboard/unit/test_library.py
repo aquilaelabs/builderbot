@@ -9,7 +9,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import library  # noqa: E402
 
-TC = {"name": "box", "live": True, "root": "/mnt/SDK", "free_mb": 2048,
+TC = {"name": "box", "live": True, "root": "/mnt/SDK", "free_mb": 2048, "platform": "linux/amd64",
       "job": {"running": True, "action": "install", "current": "jdk"},
       "items": [
           {"name": "jdk", "label": "JDK 21", "about": "Java", "installed": False, "state": "", "latest": "21.0.4", "platforms": ["linux/amd64"]},
@@ -110,6 +110,23 @@ class Rows(unittest.TestCase):
         self.assertEqual(library.rows(None, None, None, None, None), [])
         self.assertEqual(library.rows({"nonode": True}, [], [], {"packs": []}, {"apps": []}), [])
 
+
+
+    def test_a_card_not_for_the_node_is_marked(self):
+        xcode = {"name": "xcode", "label": "Xcode", "about": "Apple's", "installed": False, "state": "", "latest": "", "platforms": ["darwin/arm64"],
+                 "wrong_platform": "needs darwin/arm64"}
+        tc = {**TC, "items": TC["items"] + [xcode]}
+        index = {"packs": [{"name": "armonly", "url": "https://example.com/a", "commit": "c" * 40, "sha256": "d" * 64, "tier": "vetted", "about": "arm",
+                            "platforms": ["linux/arm64"]},
+                           {"name": "anylinux", "url": "https://example.com/b", "commit": "c" * 40, "sha256": "d" * 64, "tier": "vetted", "about": "any",
+                            "platforms": ["linux/*"]}]}
+        by = {r["name"]: r for r in library.rows(tc, [], [], index, None)}
+        self.assertEqual(by["xcode"]["wrong_platform"], "needs darwin/arm64", "the toolchain's own verdict stands")
+        self.assertIn("not for this node (linux/amd64)", by["armonly"]["wrong_platform"])
+        self.assertEqual((by["anylinux"]["wrong_platform"], by["jdk"]["wrong_platform"]), ("", ""))
+        by = {r["name"]: r for r in library.rows({**tc, "platform": ""}, [], [], index, None)}
+        self.assertEqual((by["armonly"]["wrong_platform"], by["xcode"]["wrong_platform"]), ("", "needs darwin/arm64"),
+                         "a node that has not said its platform is not judged")
 
 if __name__ == "__main__":
     unittest.main()

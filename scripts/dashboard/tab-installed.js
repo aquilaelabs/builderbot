@@ -224,7 +224,9 @@ function instConfigRead(form, r){
 function instServiceLines(r){
   const st = r.status || {};
   if (r.service !== "router") return "";
-  if (!r.installed) return `<span class="sub">LiteLLM holding the provider keys, offered to the projects you tick, each spending through a key of its own. Install deploys it as a written container once something is behind it.</span>`;
+  // What it is was said above the row (the catalog's line, B431): only what
+  // Install does is said here.
+  if (!r.installed) return `<span class="sub">Install deploys it as a written container once something is behind it: a provider key, an endpoint of your own, or Ollama.</span>`;
   const models = (st.models || []).filter(m => !m.wild);
   const pulled = (st.ollama?.models || []).map(m => `<div class="row"><span class="grow">${esc(m)}</span><button type="button" data-instsvc="ollama-remove" data-instmodel="${esc(m)}">Remove</button></div>`).join("");
   return `<span class="sub">LiteLLM answers at <code>${esc(st.url || "")}/v1</code> for the projects allowed, each with a key of its own.</span>
@@ -250,7 +252,7 @@ function renderInstalledInto(i){
   const d = docSurface(i, "installed");
   if (!d) return;
   if (inst === null){
-    d.setBar(skNodeBar());
+    d.setBar("");    // the node is the Machines header's (R177)
     d.list.innerHTML = skTpl(pageHead({title: GHOST, facts: [["Installed", GHOST], ["Updates due", GHOST]]})
       + INST_KINDS.map(([k, title]) => docSection("installed", k, title, "", skRows(2))).join(""));
     if (!instSeq) loadInstalled();
@@ -263,7 +265,7 @@ function renderInstalledInto(i){
     return;
   }
   const may = inst.may || {};
-  d.setBar(nodeBar(nodePick("instNodeSel", pnodes, instNode), ""));
+  d.setBar("");    // the node is picked in the Machines group's header (R177)
   if (inst.error){
     paint(d.list, `<div class="field"><div class="notice bad">${esc("could not read what is installed: " + inst.error)}</div></div>`);
     return;
@@ -293,12 +295,6 @@ function renderInstalledInto(i){
 function wireInstalled(root){
   wireSections(root);
   if (typeof wireSignin === "function") wireSignin(root);
-  const psel = root.querySelector("#instNodeSel");
-  if (psel) psel.onchange = () => navPush(() => {
-    instNode = psel.value; inst = null;
-    try{ localStorage.setItem("bb.instnode", instNode); }catch(e){ /* private */ }
-    instRev++; drawPanes(); loadInstalled();
-  });
   root.querySelectorAll("[data-instmore]").forEach(b => b.onclick = () => {
     const k = b.dataset.instmore;
     if (instOpen.has(k)) instOpen.delete(k); else instOpen.add(k);

@@ -19,7 +19,8 @@ let storageErr = "";
 let storageRev = 0;
 let storageMay = false;          // whether this account may measure now
 let storageNode = "";            // the node the tab shows
-let storageDisk = "";            // the disk its chips picked, "" for all (R122)
+let storageDisk = "";
+const storageAskedNodes = new Set();   // nodes read into the node list for the header (R177)            // the disk its chips picked, "" for all (R122)
 
 function openStorageTab(node){
   if (node) storageNode = node;
@@ -761,8 +762,9 @@ function storageMeasureBtn(n){
     n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>`;
 }
 // The bar: the node and Measure now; given nothing, the placeholder's.
+// Measure now alone: the node is picked in the Machines group's header (R177).
 function storageBar(pnodes, n){
-  return nodeBar(nodePick("stNodeSel", pnodes, storageNode), storageMeasureBtn(pnodes ? n : GHOST));
+  return nodeBar("", storageMeasureBtn(pnodes ? n : GHOST));
 }
 
 // What the tab says about one node: the state row, then its disks. Given
@@ -813,6 +815,11 @@ function renderStorageInto(i){
     loadStorage();
     return;
   }
+  // The Machines header picks from the node list (R177): a node this
+  // page knows that the list does not yet (one just enrolled) is read in.
+  const known = new Set((nodesList || []).map(n => n.id));
+  const missing = (storageList || []).filter(n => !known.has(n.node) && !storageAskedNodes.has(n.node));
+  if (missing.length){ missing.forEach(n => storageAskedNodes.add(n.node)); loadNodes(); }
   if (storageErr){
     d.list.innerHTML = `<div class="hint bad">${esc(storageErr)}</div>`;
     return;
@@ -838,11 +845,6 @@ function wireStorageTab(root){
   // Its sections fold as every page's do: one open at a time on a phone,
   // sliding, where they snapped and stood open together (B171).
   wireSections(root);
-  const psel = root.querySelector("#stNodeSel");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (psel) psel.onchange = () => navPush(() => { storageNode = psel.value;
-                                    try{ localStorage.setItem("bb.stnode", storageNode); }catch(e){ /* private */ }
-                                    storageRev++; drawPanes(); });
   root.querySelectorAll("[data-stdisk]").forEach(c => c.onclick = () => {
     storageDisk = c.dataset.stdisk; storageRev++; drawPanes();
   });

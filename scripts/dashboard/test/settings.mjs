@@ -187,8 +187,8 @@ ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Mail|Room on the nodes|
   // Enroll node fills the hostname in for a node reaching the controller
   // through it.
   await page.evaluate(() => openNodesTab());
-  await page.waitForSelector('.nodestab #ndEnroll', { timeout: 15000 });
-  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('.pane .bar #ndEnroll', { timeout: 15000 });
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   await page.selectOption('#ndBody #ndEnReach', 'public');
   ok(await page.$eval('#ndBody #ndEnCtl', e => e.value) === 'https://bb.example.com',
