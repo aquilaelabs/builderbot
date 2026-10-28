@@ -320,8 +320,10 @@ const TP_COLS = [{label: "Pack"}, {label: "From"}, {label: "Commit", w: "6.5rem"
 let tpEdit = null;             // the dialog's pack: "" for Add tool pack, else the name of the pack in Edit
 // `from` is where Add takes the pack (a repository, a pasted bbtool.json or
 // an uploaded archive of its files); a pack made here edits by the last two.
-let tpForm = {url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null, catalog: null};
-const TP_BLANK = () => ({url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null, catalog: null});
+let tpForm = {url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null, catalog: null, what: "pack", app: null};
+const TP_BLANK = () => ({url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null, catalog: null,
+                         // What is being added (R170 step 3): a tool pack, or an app of the person's own (its compose file).
+                         what: "pack", app: {id: "", name: "", what: "", port: "", compose: "", editing: ""}});
 // The vetted catalog (R169 step 4): its index as /api/catalog answers it,
 // read when the page opens and on Refresh, never polled.
 let tpCatalog = null;
@@ -364,6 +366,51 @@ function tpSeen(seen, was, offer = true){
   </div>`;
 }
 
+// An app of the person's own (R170 step 3, the Library's Add your own): a
+// compose file with the blanks New container fills, its id, name, what it
+// is and its port; Look checks it the way the shipped apps are held (every
+// image pinned, no blank but the known ones) and says what it would run;
+// Add keeps it at tier sideloaded, and it is offered as any app is.
+function tpAppHtml(f){
+  const a = f.app, ed = !!a.editing;
+  return `<div class="field setrow col ctlrow">${lbl("tpAppName", "Name", "what the card says")}
+      <input id="tpAppName" value="${esc(a.name)}" maxlength="60" autocomplete="off" placeholder="Notes"></div>
+    <div class="field setrow col ctlrow">${lbl("tpAppId", "Id", "its name as a container and in the address: lower-case letters, digits and dashes")}
+      <input id="tpAppId" value="${esc(a.id)}" maxlength="32" autocomplete="off" spellcheck="false" placeholder="notes"${ed ? " disabled" : ""}></div>
+    <div class="field setrow col ctlrow">${lbl("tpAppWhat", "What it is", "one line, as the card says it")}
+      <input id="tpAppWhat" value="${esc(a.what)}" maxlength="200" autocomplete="off" placeholder="a notebook with a web page"></div>
+    <div class="field setrow col ctlrow">${lbl("tpAppPort", "Port", "the port it answers on; New container offers it, and a person can pick another")}
+      <input id="tpAppPort" type="number" min="1" max="65535" value="${esc(String(a.port || ""))}" placeholder="8080"></div>
+    <div class="field">${lbl("tpAppCompose", "Its compose file", "images pinned to a tag, never latest; ${PORT}, ${DATA}, ${MEDIA}, ${PUID}, ${PGID} and ${TZ} are the blanks New container fills")}
+      <textarea id="tpAppCompose" class="mono" rows="12" spellcheck="false" autocomplete="off"
+        placeholder='services:\n  notes:\n    image: ghcr.io/owner/notes:1.2.3\n    ports:\n      - "\${PORT}:8080"\n    volumes:\n      - \${DATA}/notes:/data'>${esc(a.compose)}</textarea></div>`;
+}
+function tpAppSeen(seen){
+  return `<div class="tpseen">
+    <div class="sub">Runs ${seen.services.length === 1 ? "one container" : `${seen.services.length} containers`}, each from a pinned image${seen.media ? ", with a media folder beside its data" : ""}:</div>
+    ${seen.services.map(s => `<div class="sub"><b>${esc(s.name)}</b> from <code>${esc(s.image)}</code>${s.ports.length ? `, on ${s.ports.map(x => `<code>${esc(x)}</code>`).join(", ")}` : ""}${
+      s.volumes.length ? `, keeping ${s.volumes.map(x => `<code>${esc(x)}</code>`).join(", ")}` : ""}</div>`).join("")}
+    <div class="sub">Blanks New container fills: ${seen.blanks.map(b => `<code>${esc(b)}</code>`).join(", ")}.</div>
+  </div>`;
+}
+async function tpAppLook(){
+  const f = tpForm;
+  f.busy = "look"; f.error = ""; tpDraw();
+  const j = await (await postJSON("/api/nasapps", {action: "preview", compose: f.app.compose})).json().catch(() => ({error: "no answer"}));
+  if (tpEdit === null) return;
+  f.busy = ""; f.seen = j.error ? null : j; f.error = j.error || ""; tpDraw();
+}
+// Edit on a sideloaded app's card: its record as kept, to change in place.
+async function tpOpenApp(id){
+  tpEdit = ""; tpForm = TP_BLANK(); tpForm.what = "app"; tpForm.app.editing = id; tpForm.app.id = id;
+  tpDraw(true);
+  const j = await (await postJSON("/api/nasapps", {action: "source", app: id})).json().catch(() => ({error: "no answer"}));
+  if (tpEdit === null || tpForm.app.editing !== id) return;
+  if (j.error) tpForm.error = j.error;
+  else Object.assign(tpForm.app, {name: j.name, what: j.what, port: j.port, compose: j.compose});
+  tpDraw();
+}
+
 // The dialog Add tool pack and a row's Edit open (the operator, 19 Oct): the
 // repository, Look, what it would install and run, then Add. A pack already
 // here is looked at again as Edit opens, so its foot is Remove, Close and,
@@ -371,6 +418,16 @@ function tpSeen(seen, was, offer = true){
 // one row on a phone.
 // Where a new pack comes from, and a pack made here's own two: its
 // manifest as text, and an archive of its files.
+// What is being added: a tool pack (a toolchain of the person's choosing,
+// giving sessions bb tool verbs) or an app (a container the Containers page
+// runs). An agent pack is a tool pack with an agent block, so it is the first.
+function tpWhatHtml(f){
+  return `<div class="field"><label id="tpWhatLabel">What</label>
+    <div class="pseg" role="group" aria-labelledby="tpWhatLabel">${[["pack", "A tool pack"], ["app", "An app"]]
+      .map(([k, t]) => `<button type="button" data-tpwhat="${k}" class="${f.what === k ? "on" : ""}" aria-pressed="${f.what === k}">${t}</button>`).join("")}</div>
+    <div class="hint">${f.what === "app" ? "A compose file of your own, offered in New container and on the Library's Apps cards like the shipped ones, kept as sideloaded."
+      : "A tool pack installs on a node like any toolchain and gives a session bb tool verbs; a pack with an agent block is a coding agent. Help's Tool packs says how to write one."}</div></div>`;
+}
 function tpFromHtml(f, here){
   const seg = here ? "" : `<div class="field"><label id="tpFromLabel">From</label>
     <div class="pseg" role="group" aria-labelledby="tpFromLabel">${[["repo", "A repository"], ["paste", "Paste bbtool.json"], ["upload", "Upload files"]]
@@ -393,6 +450,19 @@ function tpFromHtml(f, here){
 function tpModalHtml(){
   const p = tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit && i.pack) : null;
   const f = tpForm, fresh = !p, seen = f.seen, here = !!p?.pack?.here;
+  // An app of the person's own: its own form, look and foot (R170 step 3).
+  if (fresh && f.what === "app"){
+    const ed = !!f.app.editing;
+    const look = `<button type="button" data-tplook${f.busy ? " disabled" : ""}${seen ? "" : ` class="primary"`}>${f.busy === "look" ? "Looking…" : seen ? "Look again" : "Look"}</button>`;
+    const add = seen ? `<button type="button" class="primary" data-tpadd${f.busy ? " disabled" : ""}>${f.busy === "add" ? (ed ? "Saving…" : "Adding…") : ed ? "Save" : "Add"}</button>` : "";
+    const rm = ed ? `<button type="button" class="danger" data-tprmapp="${esc(f.app.editing)}">Remove</button>` : "";
+    return `<div class="box wide"><h3>${ed ? `${esc(f.app.name || f.app.editing)}, an app you added` : "Add your own"}</h3>
+      ${ed ? "" : tpWhatHtml(f)}
+      ${tpAppHtml(f)}
+      ${seen ? `<div class="field">${tpAppSeen(seen)}</div>` : ""}
+      ${f.error ? `<div class="field"><div class="hint bad">${esc(f.error)}</div></div>` : ""}
+      ${dlgFoot(`<button type="button" data-tpcancel>Cancel</button>`, `${look}${add}`, rm)}</div>`;
+  }
   const newer = !!(seen && p && !here && seen.commit !== p.pack.commit);
   const offer = !!(seen && (fresh || newer || here));
   // Look is Add's first step, Edit's only after a look that failed, and a
@@ -402,9 +472,10 @@ function tpModalHtml(){
   const add = offer ? `<button type="button" class="primary" data-tpadd${f.busy ? " disabled" : ""}>${
     f.busy === "add" ? (fresh ? "Adding…" : "Updating…") : fresh ? "Add" : "Update"}</button>` : "";
   const rm = p ? `<button type="button" class="danger" data-tprm="${esc(p.name)}">Remove</button>` : "";
-  return `<div class="box wide"><h3>${fresh ? (f.catalog ? `Install ${esc(f.catalog.name)} from the catalog` : "Add tool pack") : `${esc(p.label)}, a tool pack`}</h3>
+  return `<div class="box wide"><h3>${fresh ? (f.catalog ? `Install ${esc(f.catalog.name)} from the catalog` : "Add your own") : `${esc(p.label)}, a tool pack`}</h3>
     ${p ? `<div class="field"><div class="sub">${here ? "Made here" : `From <code>${esc(p.pack.url)}</code>`} at ${esc(p.pack.commit.slice(0, 12))}, added by ${
           esc(p.pack.by || "an administrator")}${p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div></div>` : ""}
+    ${fresh && !f.catalog ? tpWhatHtml(f) : ""}
     ${fresh || here ? tpFromHtml(f, here) : ""}
     ${seen ? `<div class="field">${tpSeen(seen, p ? p.pack : null, offer)}</div>` : ""}
     ${f.error ? `<div class="field"><div class="hint bad">${esc(f.error)}</div></div>` : ""}
@@ -562,6 +633,27 @@ function tpDraw(first){
     url.onkeydown = e => { if (e.key === "Enter") m.querySelector("[data-tplook]")?.click(); };
     if (first) url.focus();
   }
+  m.querySelectorAll("[data-tpwhat]").forEach(b => b.onclick = () => {
+    if (tpForm.what === b.dataset.tpwhat) return;
+    Object.assign(tpForm, {what: b.dataset.tpwhat, seen: null, error: ""});
+    tpDraw();
+    m.querySelector("#tpAppName, #tpUrl, #tpText")?.focus();
+  });
+  for (const [id, key] of [["tpAppName", "name"], ["tpAppId", "id"], ["tpAppWhat", "what"], ["tpAppPort", "port"], ["tpAppCompose", "compose"]]){
+    const el = m.querySelector("#" + id);
+    if (!el) continue;
+    el.oninput = () => { tpForm.app[key] = el.value; if (key === "compose" && (tpForm.seen || tpForm.error)){ tpForm.seen = null; tpForm.error = ""; tpDraw(); m.querySelector("#tpAppCompose")?.focus(); } };
+    if (first && id === "tpAppName" && tpForm.what === "app" && !tpForm.app.editing) el.focus();
+  }
+  const rmApp = m.querySelector("[data-tprmapp]");
+  if (rmApp) rmApp.onclick = async () => {
+    const id = rmApp.dataset.tprmapp;
+    if (!await askYes(`Remove the app ${tpForm.app.name || id}? It leaves the catalog; a container made from it keeps its own compose file.`)) return;
+    const j = await (await postJSON("/api/nasapps", {action: "remove", app: id})).json().catch(() => ({error: "no answer"}));
+    if (j.error){ tpForm.error = j.error; tpDraw(); return; }
+    notify(`${tpForm.app.name || id} removed from the catalog`);
+    tpClose(); if (typeof loadLibrary === "function") loadLibrary();
+  };
   m.querySelectorAll("[data-tpfrom]").forEach(b => b.onclick = () => {
     if (tpForm.from === b.dataset.tpfrom) return;
     Object.assign(tpForm, {from: b.dataset.tpfrom, seen: null, error: ""});
@@ -581,10 +673,18 @@ function tpDraw(first){
   const post = async body => (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
   const packUrl = () => tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit)?.pack?.url || "" : tpForm.url.trim();
   const look = m.querySelector("[data-tplook]");
-  if (look) look.onclick = tpLook;
+  if (look) look.onclick = tpForm.what === "app" && !tpEdit ? tpAppLook : tpLook;
   const add = m.querySelector("[data-tpadd]");
   if (add) add.onclick = async () => {
     tpForm.busy = "add"; tpDraw();
+    if (tpForm.what === "app" && !tpEdit){
+      const a = tpForm.app;
+      const j = await (await postJSON("/api/nasapps", {action: "add", app: a.id, name: a.name, what: a.what, port: a.port, compose: a.compose, replace: !!a.editing})).json().catch(() => ({error: "no answer"}));
+      if (j.error){ tpForm.busy = ""; tpForm.error = j.error; tpDraw(); return; }
+      notify(a.editing ? `${a.name} saved` : `${a.name} added: Install on its card opens New container with it picked`);
+      tpClose(); if (typeof loadLibrary === "function") loadLibrary();
+      return;
+    }
     const j = await post(tpForm.seen?.staged ? {action: "add", staged: tpForm.seen.staged}
                                              : {action: "add", url: packUrl(), commit: tpForm.seen?.commit || "",
                                                 ...(tpForm.catalog ? {sha256: tpForm.catalog.sha256} : {})});
@@ -592,7 +692,7 @@ function tpDraw(first){
     notify(j.unchanged ? `${j.pack.name}: nothing changed, so it is kept as it was`
          : j.replaced ? `${j.pack.name} updated: where it is installed, uninstall it and install it again to take the new version`
          : `${j.pack.name} added: install it below like any toolchain`);
-    tpClose(); loadToolchains();
+    tpClose(); loadToolchains(); if (typeof loadLibrary === "function" && shown("library")) loadLibrary();
   };
   const rm = m.querySelector("[data-tprm]");
   if (rm) rm.onclick = async () => {

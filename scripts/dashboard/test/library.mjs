@@ -23,17 +23,17 @@ await page.waitForSelector('.doc .librarytab #libNodeSel', { timeout: 20000 });
 await page.waitForFunction(() => lib && !lib.nonode && Array.isArray(lib.rows), null, { timeout: 20000 });
 ok(await page.evaluate(() => location.hash === '#/build/library/' + encodeURIComponent(libNode)),
    `the address names the page and its node (${await page.evaluate(() => location.hash)})`);
-const sects = await page.$$eval('.doc .librarytab details.sect', ds => ds.map(d => d.dataset.sect));
-ok(['library:agent', 'library:toolchain', 'library:pack', 'library:app', 'library:companion'].every(k => sects.includes(k)),
-   `a section per kind, always drawn, in the page's order (${sects.join(', ')})`);
+const sects = await page.$$eval('.doc .librarytab .libgroup', ds => ds.map(d => d.dataset.libgroup));
+ok(['agent', 'toolchain', 'pack', 'app', 'companion'].every(k => sects.includes(k)),
+   `a group of cards per kind, always drawn, in the page's order (${sects.join(', ')})`);
 const shape = await page.evaluate(() => lib.rows.map(r => [r.kind, r.tier, typeof r.label, typeof r.about, typeof r.installed, typeof r.verb]));
 ok(shape.length > 0 && shape.every(([k, t, l, a, i, v]) => ['agent', 'toolchain', 'pack', 'app', 'companion'].includes(k)
    && ['official', 'vetted', 'sideloaded'].includes(t) && l === 'string' && a === 'string' && i === 'boolean' && v === 'string'),
    `every row is one shape: kind, tier, label, about, installed, verb (${shape.length} rows)`);
-ok(await page.evaluate(() => lib.rows.some(r => r.kind === 'toolchain') && document.querySelectorAll('.doc .librarytab .lrow').length === lib.rows.length),
+ok(await page.evaluate(() => lib.rows.some(r => r.kind === 'toolchain') && document.querySelectorAll('.doc .librarytab .lcard').length === lib.rows.length),
    'the toolchain catalog is among the rows, and every row is drawn');
-ok(await page.$$eval('.doc .librarytab .lrow .pill', ps => ps.some(p => /^(official|vetted|sideloaded)$/.test(p.textContent.trim()))),
-   'the tier reads on a row as a pill');
+ok(await page.$$eval('.doc .librarytab .lcard .lcmeta .pill', ps => ps.some(p => /^(official|vetted|sideloaded)$/.test(p.textContent.trim()))),
+   'the tier reads on a card as a pill');
 ok(await page.evaluate(() => {
   const head = document.querySelector('.doc .librarytab .pghead');
   return !!head && /Installed/.test(head.textContent);
@@ -43,46 +43,46 @@ ok(await page.evaluate(() => {
 const firstTc = await page.evaluate(() => lib.rows.find(r => r.kind === 'toolchain')?.label || '');
 await page.fill('.doc .librarytab #libFind', firstTc.slice(0, 4).toLowerCase());
 await page.waitForFunction(q => libQ === q, firstTc.slice(0, 4).toLowerCase());
-ok(await page.evaluate(() => document.querySelectorAll('.doc .librarytab .lrow').length < lib.rows.length
-   && document.querySelectorAll('.doc .librarytab .lrow').length > 0
+ok(await page.evaluate(() => document.querySelectorAll('.doc .librarytab .lcard').length < lib.rows.length
+   && document.querySelectorAll('.doc .librarytab .lcard').length > 0
    && document.activeElement?.id === 'libFind'),
    'the search narrows the rows as it is typed and keeps the caret');
 await page.fill('.doc .librarytab #libFind', '');
 await page.waitForFunction(() => libQ === '');
-ok(await page.evaluate(() => document.querySelectorAll('.doc .librarytab .lrow').length === lib.rows.length), '...and emptied puts every row back');
+ok(await page.evaluate(() => document.querySelectorAll('.doc .librarytab .lcard').length === lib.rows.length), '...and emptied puts every row back');
 if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
   await page.click('.doc .librarytab [data-libkind="toolchain"]');
   await page.waitForFunction(() => libKind === 'toolchain');
-  ok(await page.evaluate(() => [...document.querySelectorAll('.doc .librarytab details.sect')].every(d => d.dataset.sect === 'library:toolchain')
+  ok(await page.evaluate(() => [...document.querySelectorAll('.doc .librarytab .libgroup')].every(d => d.dataset.libgroup === 'toolchain')
      && document.querySelector('.doc .librarytab [data-libkind="toolchain"]').classList.contains('on')),
-     'a kind chip shows that kind\'s section alone, the chip wearing .on');
+     'a kind chip shows that kind\'s group alone, the chip wearing .on');
   await page.click('.doc .librarytab [data-libkind=""]');
   await page.waitForFunction(() => libKind === '');
-  ok(await page.$$eval('.doc .librarytab details.sect', ds => ds.length === 5), '...and All puts the five back');
+  ok(await page.$$eval('.doc .librarytab .libgroup', ds => ds.length === 5), '...and All puts the five back');
 } else ok(true, 'one kind only here, so no kind chips (chips need two groups)');
 
 // ---- a row opens on its description -----------------------------------
 {
-  const key = await page.evaluate(() => document.querySelector('.doc .librarytab .lrow[data-lrow^="toolchain:"]')?.dataset.lrow || '');
+  const key = await page.evaluate(() => document.querySelector('.doc .librarytab .lcard[data-lrow^="toolchain:"]')?.dataset.lrow || '');
   ok(!!key, `a toolchain row to open (${key})`);
-  const sel = `.doc .librarytab .lrow[data-lrow="${key}"]`;
+  const sel = `.doc .librarytab .lcard[data-lrow="${key}"]`;
   ok(await page.$eval(sel, r => !r.classList.contains('open') && getComputedStyle(r.querySelector('.ldetail')).display === 'none'),
-     'a row is shut on its one line until Details');
+     'a card is shut on its name and two lines until Details');
   await page.click(`${sel} [data-libmore]`);
-  await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lrow[data-lrow="${k}"]`)?.classList.contains('open'), key);
+  await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), key);
   ok(await page.$eval(sel, r => getComputedStyle(r.querySelector('.ldetail')).display !== 'none' && r.querySelector('[data-libmore]').textContent === 'Less'),
-     '...and Details opens it on the description, the button reading Less');
+     '...and Details opens it on the description, the card the grid\'s width, the button reading Less');
 }
 
 // ---- the whole description (step 2) -----------------------------------------
 // An app's row opens on its compose file with the blanks New container
 // fills; a toolchain's on what it adds to a session and its terms.
 {
-  const app = await page.evaluate(() => document.querySelector('.doc .librarytab .lrow[data-lrow^="app:"]')?.dataset.lrow || '');
+  const app = await page.evaluate(() => document.querySelector('.doc .librarytab .lcard[data-lrow^="app:"]')?.dataset.lrow || '');
   if (app){
-    await page.click(`.doc .librarytab .lrow[data-lrow="${app}"] [data-libmore]`);
-    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lrow[data-lrow="${k}"]`)?.classList.contains('open'), app);
-    ok(await page.$eval(`.doc .librarytab .lrow[data-lrow="${app}"]`, r => /image:/.test(r.querySelector('.libcompose')?.textContent || '')
+    await page.click(`.doc .librarytab .lcard[data-lrow="${app}"] [data-libmore]`);
+    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), app);
+    ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="${app}"]`, r => /image:/.test(r.querySelector('.libcompose')?.textContent || '')
        && r.querySelector('.ldetail code') && /Install opens New container/.test(r.querySelector('.ldetail').textContent)),
        `an app's row opens on its compose file, its blanks and how Install makes it a container (${app})`);
   } else ok(true, 'no app rows here (the account may not make containers)');
@@ -91,17 +91,17 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
     return r ? `toolchain:${r.name}` : '';
   });
   if (tc){
-    if (!await page.$eval(`.doc .librarytab .lrow[data-lrow="${tc}"]`, r => r.classList.contains('open')))
-      await page.click(`.doc .librarytab .lrow[data-lrow="${tc}"] [data-libmore]`);
-    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lrow[data-lrow="${k}"]`)?.classList.contains('open'), tc);
-    ok(await page.$eval(`.doc .librarytab .lrow[data-lrow="${tc}"] .ldetail`, d => /bb tool|Licensed|accept/.test(d.textContent)),
+    if (!await page.$eval(`.doc .librarytab .lcard[data-lrow="${tc}"]`, r => r.classList.contains('open')))
+      await page.click(`.doc .librarytab .lcard[data-lrow="${tc}"] [data-libmore]`);
+    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), tc);
+    ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="${tc}"] .ldetail`, d => /bb tool|Licensed|accept/.test(d.textContent)),
        `a toolchain's row opens on what it adds to a session and its terms (${tc})`);
   }
-  const ag = await page.evaluate(() => document.querySelector('.doc .librarytab .lrow[data-lrow="agent:claude-code"]')?.dataset.lrow || '');
+  const ag = await page.evaluate(() => document.querySelector('.doc .librarytab .lcard[data-lrow="agent:claude-code"]')?.dataset.lrow || '');
   if (ag){
-    await page.click(`.doc .librarytab .lrow[data-lrow="${ag}"] [data-libmore]`);
-    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lrow[data-lrow="${k}"]`)?.classList.contains('open'), ag);
-    ok(await page.$eval(`.doc .librarytab .lrow[data-lrow="${ag}"] .ldetail`, d => /session account/.test(d.textContent) && !!d.querySelector('[data-signin]')),
+    await page.click(`.doc .librarytab .lcard[data-lrow="${ag}"] [data-libmore]`);
+    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), ag);
+    ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="${ag}"] .ldetail`, d => /session account/.test(d.textContent) && !!d.querySelector('[data-signin]')),
        "Claude Code's row opens on its facts and this person's sign-in on the node");
   }
 }
@@ -119,7 +119,7 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
       && (lib.rows.find(r => r.kind === 'toolchain' && r.name === n)?.installed || lib.job.errors?.[n]), name, { timeout: 60000 });
     const said = await page.evaluate(n => ({installed: !!lib.rows.find(r => r.kind === 'toolchain' && r.name === n)?.installed, err: lib.job.errors?.[n] || ''}), name);
     ok(true, `Install on ${name} ran the toolchain job on the node (${said.installed ? 'installed' : said.err})`);
-    ok(await page.$eval(`.doc .librarytab .lrow[data-lrow="toolchain:${name}"]`, (r, s) => s.installed ? !!r.querySelector('[data-libact="remove"]')
+    ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="toolchain:${name}"]`, (r, s) => s.installed ? !!r.querySelector('[data-libact="remove"]')
        : r.querySelector('.sub.bad')?.textContent === s.err, said),
        said.installed ? '...and an installed row offers Remove' : '...and what failed is said under the row');
   } else ok(true, 'nothing uninstalled to install on the stub');
@@ -134,10 +134,53 @@ if (await page.$('.doc .librarytab [data-libkind="app"][data-libact="install"]')
   await page.evaluate(() => { $('cmodal').hidden = true; });
 }
 
+// ---- Add your own: an app of the person's own (step 3) -----------------------
+// The bar's Add your own opens one dialog for a tool pack or an app; an app
+// is a compose file with the known blanks, looked at before it is kept,
+// offered on an Apps card as sideloaded with Edit, and in New container.
+{
+  const COMPOSE = 'services:\n  notes:\n    image: ghcr.io/example/notes:2.4.1\n    ports:\n      - "${PORT}:8080"\n    volumes:\n      - ${DATA}/notes:/data\n';
+  await page.click('.doc .librarytab [data-libadd]');
+  await page.waitForSelector('#tpmodal:not([hidden]) [data-tpwhat="app"]', { timeout: 10000 });
+  ok(await page.$eval('#tpmodal h3', h => h.textContent === 'Add your own'), 'Add your own opens the one dialog, asking what is being added');
+  await page.click('#tpmodal [data-tpwhat="app"]');
+  await page.waitForSelector('#tpmodal #tpAppCompose');
+  await page.fill('#tpmodal #tpAppName', 'Notes');
+  await page.fill('#tpmodal #tpAppId', 'notes');
+  await page.fill('#tpmodal #tpAppWhat', 'a notebook with a web page');
+  await page.fill('#tpmodal #tpAppPort', '8080');
+  await page.fill('#tpmodal #tpAppCompose', 'services:\n  notes:\n    image: ghcr.io/example/notes:latest\n');
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForFunction(() => tpForm.error || tpForm.seen, null, { timeout: 10000 });
+  ok(await page.evaluate(() => /not pinned/.test(tpForm.error) && !document.querySelector('#tpmodal [data-tpadd]')),
+     'Look refuses an image that is not pinned to a tag, and nothing can be added until it is');
+  await page.fill('#tpmodal #tpAppCompose', COMPOSE);
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal [data-tpadd]', { timeout: 10000 });
+  ok(await page.$eval('#tpmodal .tpseen', d => /notes/.test(d.textContent) && /ghcr.io\/example\/notes:2.4.1/.test(d.textContent) && /DATA/.test(d.textContent)),
+     '...and a good one is shown as what it runs and the blanks it takes before Add');
+  await page.click('#tpmodal [data-tpadd]');
+  await page.waitForFunction(() => document.getElementById('tpmodal').hidden && lib?.rows.some(r => r.kind === 'app' && r.name === 'notes'), null, { timeout: 15000 });
+  ok(await page.$eval('.doc .librarytab .lcard[data-lrow="app:notes"]', c => /sideloaded/.test(c.querySelector('.lcmeta').textContent)
+     && !!c.querySelector('[data-libact="edit"]') && !!c.querySelector('[data-libact="install"]')),
+     'Add keeps it: an Apps card wearing sideloaded, with Install and Edit');
+  const offered = await page.evaluate(async () => { cApps = null; return (await loadNasApps()).some(a => a.id === 'notes' && a.tier === 'sideloaded'); });
+  ok(offered, '...and New container offers it among the apps');
+  await page.click('.doc .librarytab .lcard[data-lrow="app:notes"] [data-libact="edit"]');
+  await page.waitForFunction(() => !document.getElementById('tpmodal').hidden && document.querySelector('#tpmodal #tpAppCompose')?.value.includes('notes:2.4.1'), null, { timeout: 10000 });
+  ok(await page.$eval('#tpmodal #tpAppId', i => i.disabled && i.value === 'notes'), 'Edit opens it as kept, its id fixed');
+  await page.click('#tpmodal [data-tprmapp]');
+  await page.waitForSelector('.modal.askdlg:not([hidden]) [data-ai="0"]', { timeout: 10000 });
+  // The ask slides in, so it is pressed by the page rather than by a pointer waiting for it to settle.
+  await page.evaluate(() => document.querySelector('.modal.askdlg:not([hidden]) [data-ai="0"]').click());
+  await page.waitForFunction(() => document.getElementById('tpmodal').hidden && !lib?.rows.some(r => r.kind === 'app' && r.name === 'notes'), null, { timeout: 15000 });
+  ok(true, 'Remove in there takes it off the catalog, and the card goes');
+}
+
 // ---- no node ---------------------------------------------------------------
 await page.evaluate(() => { nodesList = []; libNode = ''; lib = null; loadLibrary(); });
 await page.waitForSelector('.doc .librarytab .libnone', { timeout: 20000 });
-ok(await page.evaluate(() => !document.querySelector('.doc .librarytab .lrow') && !document.querySelector('#libNodeSel')),
+ok(await page.evaluate(() => !document.querySelector('.doc .librarytab .lcard') && !document.querySelector('#libNodeSel')),
    'with no node enrolled it says to enroll one, and offers nothing');
 await page.evaluate(() => { nodesList = null; nodesStale = true; libNode = ''; lib = null; loadLibrary(); });
 await page.waitForSelector('.doc .librarytab #libNodeSel', { timeout: 20000 });

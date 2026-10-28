@@ -4237,6 +4237,7 @@ import devactions                                                # noqa: E402
 import home                                                      # noqa: E402
 import containers                                                # noqa: E402
 import nasapps                                                   # noqa: E402
+nasapps.configure(state=STATE, write_json=write_json)
 import nginxproxy                                                # noqa: E402
 import imagecheck                                                # noqa: E402
 import relocate                                                  # noqa: E402
@@ -11287,7 +11288,7 @@ class Handler(BaseHTTPRequestHandler):
         may_apps = not users.may(who, "docker-write")
         cat = catalogindex.index(settings.get("catalog_url") or None) if may_install else {}
         # An app's row opens on its compose file (step 2), so it rides along.
-        napps = [{**a, "compose": nasapps.APPS.get(a["id"], {}).get("compose", "")} for a in nasapps.catalog()] if may_apps else []
+        napps = [{**a, "compose": nasapps._all().get(a["id"], {}).get("compose", "")} for a in nasapps.catalog()] if may_apps else []
         # ...and an agent's on what this person added to it there (the Agents page's Yours).
         uid = users.uid_of(who)
         mine = next((x for x in plugins.of(uid) if x["node"] == nid), {}) if uid and n else {}
@@ -11297,6 +11298,7 @@ class Handler(BaseHTTPRequestHandler):
                            "may": {"install": may_install, "apps": may_apps, "packs": users.is_admin(who)},
                            "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb")},
                            "sandbox": bool(tc.get("sandbox")), "managed": bool(tc.get("administers")) and not tc.get("locked"),
+                           "catalog_repo": library.repo_of(settings.get("catalog_url") or ""),
                            "yours": {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}})
 
     def _get_catalog(self):
@@ -11338,6 +11340,27 @@ class Handler(BaseHTTPRequestHandler):
         why = users.may(who, "docker-write")
         if why:
             return self._json({"error": why}, 403)
+        # An app of a person's own (R170 step 3): looked at (preview), kept
+        # (add), read back for Edit (source) and dropped (remove); an
+        # administrator's, as a tool pack is, since every person's New
+        # container then offers it.
+        action = field(req, "action")
+        if action in ("preview", "add", "source", "remove"):
+            if not users.is_admin(who):
+                return self._json({"error": "adding an app to the catalog is an administrator's"}, 403)
+            if action == "preview":
+                r = nasapps.check(req.get("compose"))
+            elif action == "add":
+                r = nasapps.add(field(req, "app"), field(req, "name"), field(req, "what"), req.get("port"), req.get("compose"),
+                                by=who.get("name") or "", replace=bool(req.get("replace")))
+            elif action == "source":
+                r = nasapps.source(field(req, "app"))
+            else:
+                r = nasapps.remove(field(req, "app"))
+            # No revision token: the Library and New container read the
+            # catalog again on their next open, and the page that added
+            # it reads at once.
+            return self._json(r, 400 if r.get("error") else 200)
         r = nasapps.render(field(req, "app"), field(req, "data"), field(req, "media"), field(req, "ids") or "1000:1000",
                            field(req, "tz") or "UTC", req.get("port"), req.get("secrets") if isinstance(req.get("secrets"), dict) else None)
         return self._json(r, 400 if r.get("error") else 200)

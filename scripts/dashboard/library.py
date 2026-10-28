@@ -21,6 +21,17 @@ def _an(w):
     return ("an " if w[:1].upper() in "AEIOU" or (w[:1] == "x" and w[1:2].isupper()) else "a ") + w
 
 
+def repo_of(catalog_url):
+    """The catalog repository's page from its index address, for Submit to
+    the catalog: a raw.githubusercontent.com address names its owner and
+    repository; any other address is given as it is, without the file."""
+    u = str(catalog_url or "").strip()
+    m = re.match(r"https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/", u)
+    if m:
+        return f"https://github.com/{m.group(1)}/{m.group(2)}"
+    return u.rsplit("/", 1)[0] if u.endswith((".json", ".sig")) else u.rstrip("/")
+
+
 def _tier(t):
     return "official" if t in ("official", "") else "vetted" if t == "vetted" else "sideloaded"
 
@@ -57,7 +68,8 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions):
                     "pack": {k: pack.get(k) for k in ("url", "commit", "by", "at", "tier", "verbs", "here")} if pack else None,
                     "verb": "update" if i.get("state") == "update" else ("" if i.get("installed") else "install")})
     for a in apps or []:
-        out.append({"kind": "app", "tier": "official", "name": a["id"], "label": a["name"], "about": a.get("what") or "", "platforms": ["linux/*"],
+        out.append({"kind": "app", "tier": _tier(a.get("tier", "official")), "name": a["id"], "label": a["name"], "about": a.get("what") or "", "platforms": ["linux/*"],
+                    "by": a.get("by") or "", "at": a.get("at") or 0,
                     "port": a.get("port"), "media": bool(a.get("media")), "secrets": a.get("secrets") or [],
                     # Its compose file as the catalog holds it, and the blanks New container fills (step 2).
                     "compose": a.get("compose") or "", "blanks": sorted(set(re.findall(r"\$\{([A-Z_]+)\}", a.get("compose") or ""))),

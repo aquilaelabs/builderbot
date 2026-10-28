@@ -113,13 +113,14 @@ function libPills(r){
 
 // Where the row stands on the node, in a few words at its right.
 function libState(r){
-  if (r.running) return `<span class="sub prog plain">${esc(r.doing === "remove" ? "removing" : r.doing === "check" ? "checking" : r.kind === "agent" && r.installed ? "updating" : "installing")}<span class="dots"></span></span>`;
-  if (r.kind === "app") return `<span class="sub">runs as a container</span>`;
-  if (r.kind === "companion") return r.download ? `<span class="sub">${esc(r.version ? "held, " + r.version : "held")}</span>` : `<span class="sub warn">${esc(r.absent ? "not in " + r.absent : "not fetched yet")}</span>`;
-  if (r.wrong_platform) return `<span class="sub">${esc(r.wrong_platform)}</span>`;
-  if (r.installed) return `<span class="sub ok">${r.update ? "update available" : "installed"}</span>`;
-  if (r.unknown) return `<span class="sub">present, version unknown</span>`;
-  return `<span class="sub">not installed</span>`;
+  const w = (t, cls = "") => `<span class="state${cls ? " " + cls : ""}">${t}</span>`;
+  if (r.running) return w(`${esc(r.doing === "remove" ? "removing" : r.doing === "check" ? "checking" : r.kind === "agent" && r.installed ? "updating" : "installing")}<span class="dots"></span>`);
+  if (r.kind === "app") return w("");
+  if (r.kind === "companion") return r.download ? w(esc(r.version ? `held, ${r.version}` : "held")) : w(esc(r.absent ? `not in ${r.absent}` : "not fetched yet"), "warn");
+  if (r.wrong_platform) return w(esc(r.wrong_platform), "warn");
+  if (r.installed) return w(r.update ? "update available" : "installed", r.update ? "warn" : "ok");
+  if (r.unknown) return w("installed, version unknown");
+  return w("");
 }
 
 // The one verb a row takes, and Remove where it is installed (the
@@ -131,7 +132,7 @@ function libActs(r, may){
   if (r.kind === "companion") return r.download
     ? `<a class="btn primary" href="${esc(r.download.url)}" download title="${esc(r.download.file)} · sha256 ${esc((r.download.sha256 || "").slice(0, 12))}…">Download</a>`
     : `<button type="button" class="primary" disabled>Download</button>`;
-  if (r.kind === "app") return may.apps ? a("install", "Install", "primary") : "";
+  if (r.kind === "app") return `${may.apps ? a("install", "Install", "primary") : ""}${r.tier === "sideloaded" && may.packs ? a("edit", "Edit") : ""}`;
   if (!may.install || !n) return "";
   if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install");
   const verb = r.update ? a("install", "Update", "primary") : r.installed ? "" : a("install", "Install", r.kind === "agent" && r.agent === "claude" ? "primary" : "");
@@ -186,6 +187,7 @@ function libDetail(r){
     if (n && r.installed && a && typeof agExtras === "function") lines.push(agExtras(a));
   }
   if (r.kind === "app"){
+    if (r.tier === "sideloaded") lines.push(`<span class="sub">Added${r.by ? ` by ${esc(r.by)}` : ""}${r.at ? ` ${ago(r.at)}` : ""}, kept as sideloaded: Edit changes it, and Remove in there takes it off the catalog.</span>`);
     lines.push(`<span class="sub">Install opens New container with ${esc(r.label)} picked: its folders, the user, the time zone and the port are filled in, and Create makes it a container on the Containers page${r.port ? `, on port ${esc(String(r.port))}` : ""}.</span>`);
     if (r.secrets?.length) lines.push(`<span class="sub">Made for it when it is created: ${esc(r.secrets.join(", "))}.</span>`);
     if (r.blanks?.length) lines.push(`<span class="sub">Its blanks, filled from what you type: ${r.blanks.map(b => `<code>${esc(b)}</code>`).join(", ")}.</span>`);
@@ -198,16 +200,27 @@ function libDetail(r){
   return lines.filter(Boolean).join("");
 }
 
+// The glyph a card wears for its kind: the rail's and the tabs' own where
+// one exists, a box with a tag for a pack and a screen for a companion.
+const LIB_ICONS = {
+  agent: () => TOOL_ICONS.agents, toolchain: () => TOOL_ICONS.toolchains, app: () => TOOL_ICONS.docker,
+  pack: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.2 8 2.6l5.5 2.6v5.6L8 13.4l-5.5-2.6z"/><path d="M2.5 5.2 8 7.8l5.5-2.6"/><path d="M8 7.8v5.6"/><path d="M5.2 3.9l5.6 2.7"/></svg>`,
+  companion: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.2" y="3" width="11.6" height="7.6" rx="1.2"/><path d="M6 13.4h4M8 10.6v2.8"/></svg>`,
+};
+
+// One card (the Projects page's shape, R170: a store browses as cards):
+// its kind's glyph, its name with the tier and the versions as quiet pills,
+// what it is in two lines, and at its foot where it stands, Details, and
+// the verb. Open, it runs the grid's width with the whole description.
 function libRow(r, may){
   const key = `${r.kind}:${r.name}`, open = libOpen.has(key);
-  return `<div class="row lrow${open ? " open" : ""}" data-lrow="${esc(key)}">
-    <div class="grow">
-      <div class="name">${esc(r.label)} ${libPills(r)} <button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button></div>
-      <div class="sub labout">${esc(r.about)}</div>
-      <div class="ldetail">${open ? libDetail(r) : ""}</div>
-      ${!r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : ""}
-    </div>
-    <div class="acts">${libState(r)}${libActs(r, may)}</div>
+  const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : "";
+  return `<div class="lcard${open ? " open" : ""}${r.running ? " busy" : ""}" data-lrow="${esc(key)}">
+    <div class="lchead"><span class="lcicon">${(LIB_ICONS[r.kind] || LIB_ICONS.toolchain)()}</span>
+      <div class="lctitle"><div class="name">${esc(r.label)}</div><div class="lcmeta">${libPills(r)}</div></div></div>
+    <div class="lcabout">${esc(r.about)}</div>
+    <div class="ldetail">${open ? libDetail(r) : ""}</div>${err}
+    <div class="pcacts actbar">${libState(r)}<button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button>${libActs(r, may)}</div>
   </div>`;
 }
 
@@ -231,15 +244,20 @@ function libSections(rows, may){
     const all = (lib.rows || []).filter(r => r.kind === k);
     const here = rows.filter(r => r.kind === k);
     if (libKind && libKind !== k) return "";
-    if (k === "companion" && featureOff("apps"))
-      return docSection("library", k, title, "", `<div class="field">${deadWhy(featureOff("apps"))}</div>`);
     const inst = all.filter(r => r.installed).length;
-    const status = !all.length ? "" : k === "app" || k === "companion" ? `${all.length}` : `${inst} of ${all.length} installed`;
-    const body = here.length ? `<div class="rows">${here.map(r => libRow(r, may)).join("")}</div>`
-      : `<div class="empty">${all.length ? "Nothing here matches." : k === "companion" ? "This controller offers no apps for your own machines: an administrator picks them on the Controller page, under Apps." : "Nothing here yet."}</div>`;
-    // Picked by the kind chips, so no jump bar over them (sectJump's rule:
-    // a page's chips pick its groups, the jump bar is for its sections).
-    return docSection("library", k, title, status, body, {item: true});
+    const count = !all.length ? "" : k === "app" || k === "companion" ? `${all.length}` : `${inst} of ${all.length} installed`;
+    // The catalog's trouble is the packs' alone, said over them, never in the node's head.
+    // Over the packs: the catalog's trouble, and the way to offer one of
+    // yours to everybody (R169 step 3's vetting: a pull request there).
+    const submit = k === "pack" && lib.catalog_repo && may.packs
+      ? `<div class="hint">Made a pack worth sharing? <a href="${esc(lib.catalog_repo)}" target="_blank" rel="noopener">Submit it to the vetted catalog ↗</a>: a pull request there, reviewed and signed by the maintainers.</div>` : "";
+    const note = (k === "pack" && lib.catalog_error ? `<div class="hint warn">${esc(lib.catalog_error)}</div>` : "") + submit
+      || (k === "companion" && featureOff("apps") ? deadWhy(featureOff("apps")) : "");
+    const body = k === "companion" && featureOff("apps") ? ""
+      : here.length ? `<div class="lgrid">${here.map(r => libRow(r, may)).join("")}</div>`
+      : `<div class="empty">${all.length ? "Nothing here matches." : k === "companion" ? "This controller offers no apps for your own machines: an administrator picks them on the Controller page, under Apps."
+        : k === "pack" ? "Nothing added yet: Add your own brings in a tool pack of yours, and the vetted catalog's offers land here." : "Nothing here yet."}</div>`;
+    return `<div class="libgroup" data-libgroup="${esc(k)}"><h3 class="libgname">${esc(title)}${count ? ` <span class="dim">${esc(count)}</span>` : ""}</h3>${note}${body}</div>`;
   }).join("");
 }
 
@@ -248,9 +266,10 @@ function renderLibraryInto(i){
   if (!d) return;
   if (lib === null){
     d.setBar(skNodeBar([["Check for updates", "", "Check"], ["Add your own", "primary", "Add"]]));
+    const skcard = () => `<div class="lcard skcard"><div class="lchead"><span class="lcicon"></span><div class="lctitle">${skv(7, "name")}${skv(4)}</div></div>${skRows(1)}</div>`;
     d.list.innerHTML = skTpl(pageHead({title: GHOST, facts: [["Installed", GHOST], ["Updates due", GHOST], ["Store", GHOST]]})
       + `<div class="field lfilter libfilter"><input type="search" disabled placeholder="search by name or what it does">${skel("chips")}</div>`
-      + LIB_KINDS.map(([k, title]) => docSection("library", k, title, "", skRows(2), {item: true})).join(""));
+      + `<div class="field libgroups">${LIB_KINDS.map(([k, title]) => `<div class="libgroup"><h3 class="libgname">${esc(title)}</h3><div class="lgrid">${skcard()}${skcard()}${skcard()}</div></div>`).join("")}</div>`);
     if (!libSeq) loadLibrary();
     return;
   }
@@ -277,9 +296,8 @@ function renderLibraryInto(i){
     ["Installed", `${inst} of ${all.filter(r => r.kind !== "app" && r.kind !== "companion").length}`],
     ["Updates due", due ? String(due) : ""],
     ["Store", lib.store?.root ? `${lib.store.root}${free ? ", " + free : ""}` : ""],
-    ["Catalog", lib.catalog_error ? lib.catalog_error : ""],
   ]});
-  paint(d.list, `<div data-libnode="${esc(libNode)}">${head}${libFilterBand(all)}${libSections(rows, may)}</div>`);
+  paint(d.list, `<div data-libnode="${esc(libNode)}">${head}${libFilterBand(all)}<div class="field libgroups">${libSections(rows, may)}</div></div>`);
   wireLibrary(d.el);
 }
 
@@ -348,7 +366,10 @@ async function libAct(b, act, kind, name){
   const r = (lib?.rows || []).find(x => x.kind === kind && x.name === name);
   if (!r) return;
   const n = (nodesList || []).find(x => x.id === libNode), where = n?.name || "this node";
-  if (kind === "app"){ openNewContainerApp(name); return; }
+  if (kind === "app"){
+    if (act === "edit") tpOpenApp(name); else openNewContainerApp(name);
+    return;
+  }
   if (kind === "agent"){
     if (act === "remove" && !await askYes(`Remove ${r.label} from ${where}? Its sessions end, and none starts there until it is installed again.`)) return;
     if (act === "install" && r.installed && !await askYes(`Update ${r.label} on ${where}? Its sessions there end first; they start again from the project rows.`)) return;

@@ -51,7 +51,7 @@ const DRIVERS = {
   // with no agent node.
   library: {
     open: () => page.evaluate(() => openLibrary()),
-    readyWhen: '.librarytab details.sect[data-sect="library:toolchain"], .librarytab .empty',
+    readyWhen: '.librarytab .libgroup[data-libgroup="toolchain"], .librarytab .empty',
   },
   toolchains: {
     open: () => page.evaluate(() => openToolchains()),
