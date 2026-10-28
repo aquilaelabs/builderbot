@@ -319,6 +319,28 @@ the machine's root agent runs from its table (`zpool` on the disks'
 is never offered. Nothing here is on another node: pools are the controller's
 own machine's.
 
+**Array** (R162): an Unraid-style array beside the pools, for disks of
+mixed sizes: each data disk its own xfs or btrfs filesystem mounted at
+`/mnt/disks/dN`, pooled into one tree at `/mnt/array` by mergerfs (the
+policy picked says where a new file lands: the emptiest disk, the disk its
+folder is on, fill up, or the first with room), with parity on one or two
+disks at `/mnt/parity/pN` kept by SnapRAID. Parity is periodic, not real
+time: a file written since the last sync is unprotected until the next,
+which the section says; the usual pair is a sync daily and a scrub weekly,
+saved from the section as rows on the Schedules page (one of the machine's
+own jobs, its log on the Jobs page), with Sync now, Scrub and Check on the
+section. A parity disk is at least as large as the largest data disk,
+which both the page and the agent hold to. Add a disk formats it and
+takes the next slot; Replace on a slot formats the new disk and rebuilds
+that slot from parity (a data disk) or the parity on it (a parity disk),
+hours during which the array is readable, or unprotected, as the job says.
+The record is BuilderBot's own (`/etc/builderbot/array.json`), from which
+`snapraid.conf` and the array's fstab lines (by filesystem UUID, `nofail`)
+are written whole. Destroying the array unmounts it and forgets it: every
+data disk keeps its files, readable on any Linux. The cache tier and the
+mover the step's details describe wait on pools by purpose (R162 step 6),
+where write landing is a share's opt-in.
+
 **People on shares** (R164): an SMB share's users are BuilderBot's own
 accounts, named on the share by account name (each becomes its own Unix
 user on the machine, `bbu-` and the account's id, made when first named)

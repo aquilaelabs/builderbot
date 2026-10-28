@@ -1835,7 +1835,8 @@ def schedule_queue(s, argv, by):
         if nodes.system_job_for(nid):
             return {"error": f"a system job is already running on {n['name']}; one at a time"}
         r = nodes.job_add(principal, {"node": nid}, "system",
-                          {"apply": s["system"]["apply"], "config": dict(s["system"].get("config") or {}), "timeout": min(t, 900)})
+                          {"apply": s["system"]["apply"], "config": dict(s["system"].get("config") or {}),
+                           "timeout": schedules.SYSTEM_TIMEOUT.get(s["system"]["apply"], 900)})
     elif s.get("as") == "root":
         if not (n.get("reported") or {}).get("sandbox"):
             return {"error": f"{n['name']} was not provisioned as a BuilderBot sandbox, so root there is its owner's: "

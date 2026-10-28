@@ -45,7 +45,11 @@ AS = ("job", "root")
 # from the root agent's table rather than a script, on the node named;
 # the table's entries a page may schedule, each with the shape its config
 # must have, checked here before the record and again on the node.
-SYSTEM_APPLIES = {"storage-snapshot": {"pool": str, "kind": str, "keep": int}}
+SYSTEM_APPLIES = {"storage-snapshot": {"pool": str, "kind": str, "keep": int},
+                  "storage-array": {"array": str}}
+# How long each may run as a job: a snapshot is quick, a parity sync or
+# scrub of a large array takes hours.
+SYSTEM_TIMEOUT = {"storage-snapshot": 900, "storage-array": 86400}
 SCAN_ID = "scan"           # the row the built-in scan kept before 0.9.0, unlisted now (migration 0016)
 DAYS = ("Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays")
 DAY_NAMES = {d[:3].lower(): i for i, d in enumerate(DAYS)}
@@ -145,6 +149,9 @@ def system_words(sysj):
     cfg = sysj.get("config") or {}
     if sysj.get("apply") == "storage-snapshot":
         return f"a {cfg.get('kind', '')} snapshot of the pool {cfg.get('pool', '')}, {cfg.get('keep', 0)} kept"
+    if sysj.get("apply") == "storage-array":
+        return {"sync": "a SnapRAID sync of the array: the parity brought up to date", "scrub": "a SnapRAID scrub of the array: a part of it read back and checked",
+                "check": "a SnapRAID status of the array"}.get(cfg.get("array", ""), f"the array's {cfg.get('array', '')}")
     return str(sysj.get("apply") or "")
 
 
@@ -152,16 +159,19 @@ SNAP_CRON = {"hourly": "0 * * * *", "daily": "0 4 * * *", "weekly": "0 4 * * 0"}
 
 
 def snapshot_schedules(node_id):
-    """The storage-snapshot schedules on one node (R162 step 5), for the
-    Storage page's Snapshots section: [{id, pool, kind, keep, on, words,
-    next_at}], the pool's hourly, daily and weekly each one row."""
+    """The storage-snapshot and storage-array schedules on one node (R162
+    steps 5 and 2), for the Storage page: [{id, pool, kind, keep, array,
+    on, words, next_at}], a pool's hourly, daily and weekly and the
+    array's sync and scrub each one row."""
     out = []
     for r in listing():
         sysj = r.get("system") or {}
-        if r.get("node") != node_id or sysj.get("apply") != "storage-snapshot":
+        if r.get("node") != node_id or sysj.get("apply") not in ("storage-snapshot", "storage-array"):
             continue
         cfg = sysj.get("config") or {}
         out.append({"id": r["id"], "pool": cfg.get("pool", ""), "kind": cfg.get("kind", ""), "keep": cfg.get("keep", 0),
+                    # ...and the array's sync and scrub rows (R162 step 2), told apart by `array`.
+                    "array": cfg.get("array", "") if sysj.get("apply") == "storage-array" else "",
                     "on": bool(r.get("on")), "words": r.get("words", ""), "next_at": r.get("next_at")})
     return out
 
@@ -283,6 +293,8 @@ def _clean(req, was):
             for k, kind in shape.items():
                 if not isinstance(cfg.get(k), kind) or isinstance(cfg.get(k), bool):
                     return None, f"the {sysj['apply']} job's {k} is missing or not a {kind.__name__}"
+            if sysj["apply"] == "storage-array" and cfg.get("array") not in ("sync", "scrub", "check"):
+                return None, "the array's schedule runs sync, scrub or check"
             s["system"] = {"apply": sysj["apply"], "config": {k: cfg[k] for k in shape}}
             s["script"] = ""
             s["as"] = "root"
