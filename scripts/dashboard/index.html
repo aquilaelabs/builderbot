@@ -708,6 +708,10 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    and a toast; a tour never starts over a dialog. */
 /* A feature's own switch, under its sentence in its row (R91). */
 .ndfeat .ndvmlan{margin-top:8px}
+/* A USB device's row (R116): its picker and Give to a VM are a wide pair, so
+   under 600px they go under the words rather than squeezing the name into a
+   column beside them (B414). */
+@media (max-width:600px){ .ndusb{flex-direction:column;align-items:stretch;gap:6px} .ndusb .acts{margin-left:0;flex-wrap:wrap} .ndusb .grow{min-width:0} }
 .tourring{position:fixed;z-index:81;pointer-events:none;border:2px solid var(--accent);
   border-radius:var(--r-surface);box-shadow:0 0 0 9999px rgba(0,0,0,.35);transition:all .18s ease}
 .tourcard{position:fixed;z-index:82;width:min(360px,calc(100vw - 32px));background:var(--panel);
