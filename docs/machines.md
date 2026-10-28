@@ -381,6 +381,11 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   **Update from the folder** takes the files from a folder on the machine.
   The container edition has no such section: its image is pulled by the
   host.
+- **Backup** and **Backup copies** (R161): the backup password, under which
+  a sealed copy of the configuration is written after every change onto the
+  machine's pools and under the state (the five newest kept), Back up now,
+  the copies listed with Download for those under the state; a fresh
+  install's first page restores one ([image.md](image.md)).
 - **Update window**: a newer release applied by itself at an hour, daily or
   one weekday, the way Update does it; off by default.
 - **Idle sessions**: the idle rule, which ends any agent's session after N minutes

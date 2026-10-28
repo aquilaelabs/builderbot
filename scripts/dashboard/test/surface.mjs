@@ -82,7 +82,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'maintAsk', 'openKeysTab', 'postKeys', 'loadKeys', 'keysNotices', 'keysInstallBody', 'keysKeptBody', 'renderKeysInto', 'keysGo', 'keysChange', 'wireKeys',
   'loadKeyMine', 'keyMineSection', 'keyStorePurge', 'wireKeyMine', 'keyStoreHeld', 'keyStoreSecret', 'keyStoreUnlock', 'keyStoreOwn', 'keyStoreNewKey',
   'openAuditTab', 'loadAudit', 'openNetworkTab', 'networkReach', 'networkDialStatus', 'networkDial', 'renderNetworkInto', 'openMachineTab', 'ownMachine', 'machineHead', 'renderMachineInto', 'wireHeld', 'ndRowHtml', 'nodeMachineSection', 'wireMachineSection', 'drawHeldBand', 'auditRows', 'renderAuditInto', 'wireAudit',
-  'connectionIntro', 'connectionStatus', 'updatesSection', 'wireUpdates', 'loadMove', 'moveStatus', 'moveSection', 'wireMove', 'drawMovedBand', 'nginxAcmeLines',
+  'connectionIntro', 'connectionStatus', 'updatesSection', 'loadBackup', 'backupSection', 'wireBackup', 'wireUpdates', 'loadMove', 'moveStatus', 'moveSection', 'wireMove', 'drawMovedBand', 'nginxAcmeLines',
   'loadRouter', 'routerAct', 'nodeRouterSection', 'wireRouterSection',
   'usbHolder', 'usbWords', 'nodeUsbSection', 'wireUsbSection',
   'openScannersTab', 'loadScanners', 'scannersAct', 'scannersVersions', 'scannersLastRun', 'scannersNodeSection', 'scannersScheduleSection', 'scannersUncovered', 'scannersBar', 'renderScannersInto', 'wireScannersTab',

@@ -65,6 +65,26 @@ A machine needs the slot's size in memory beside what it runs (about 2 GB).
 The stick's own first run, its backup and the public stick maker are the
 USB edition's later steps.
 
+## The configuration backed up, and a new stick
+
+With a backup password set under Controller settings, Backup, the
+controller keeps a sealed copy of its configuration (the same bundle a move
+carries: the state without its logs, the stores, the secrets; never the
+repositories) after every change, once the state has been quiet for a
+quarter of an hour: under the state, and on every pool of the machine at
+`/mnt/POOL/.builderbot/backup`, the five newest in each; Back up now writes
+one at once, and each copy under the state is downloadable. The key is the
+password's (scrypt), so a copy carried off is a sealed file.
+
+A stick that dies is replaced by one written from the release's image with
+no configuration: its first page offers *Restoring a saved configuration*,
+lists the copies found on the machine's pools (newest first, with the
+machine and the version each came from) and takes the password, or takes a
+copy you kept; held to the same gate as a move (never onto an older build),
+restored and restarted, the machine is the controller as it was, its nodes
+checking back in. Pushing a copy to another BuilderBot or a node is the
+step's next piece.
+
 ## Installing it on a machine
 
 `builderbot-os-VERSION.iso` boots the same root live (UEFI or BIOS) with

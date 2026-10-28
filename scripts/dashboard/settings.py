@@ -115,6 +115,10 @@ KEYS = {
     "maintenance_mode": {"default": False, "kind": "bool", "applied": "now"},
     # The update window (R160 step 4): when a newer release is applied by
     # itself, never by default; the day (daily, or one weekday) and the hour.
+    # The backup password (R161 step 4): the copies of the state on the
+    # machine's pools are sealed under a key it derives; eight characters
+    # at least, sealed here like every secret.
+    "backup_password": {"default": "", "kind": "secret", "applied": "now"},
     "update_window": {"default": "", "kind": "choice", "applied": "now",
                       "choices": ["", "daily", "mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
     "update_hour": {"default": 4, "kind": "number", "min": 0, "max": 23, "applied": "now"},

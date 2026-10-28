@@ -41,6 +41,9 @@ WORKSPACE = Path("/workspace")
 SECRETS = ""
 TOKEN_LIFE = 72 * 3600
 HEADER = b"BBMOVE1\n"
+# A stick's backup (R161 step 4, backup.py): the same bundle sealed under a
+# password's key, with its own header, opened by restore with the key.
+BACKUP_HEADER = b"BBBACKUP1\n"
 # What the state carries that is nobody's to move: logs, CI logs, the job
 # trees, the apps fetched from the releases, this module's own output.
 LEAVE = {"logs", "ci-logs", "snapshots", "apps", "move", "csp-reports.json", "held.json", "clean-shutdown", "booted", "hold-next"}
@@ -142,6 +145,33 @@ def _tar_tree(tar, src, arc, leave=()):
     return n
 
 
+def pack(repos=False, carry_key=False):
+    """The tree a move or a backup carries, as one gzipped tar in memory:
+    the state without its logs and job trees, the stores kept outside it,
+    the repositories when asked, the secrets, the install key when asked.
+    Returns (bytes, counts)."""
+    buf = io.BytesIO()
+    counts = {}
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        counts["state"] = _tar_tree(tar, STATE, "state", leave=LEAVE)
+        for kind, path in (store_paths() or {}).items():
+            if path and not str(path).startswith(str(STATE)):
+                counts[kind] = _tar_tree(tar, path, f"stores/{kind}")
+        if repos:
+            counts["repos"] = _tar_tree(tar, WORKSPACE, "workspace")
+        if SECRETS and Path(SECRETS).is_dir():
+            counts["secrets"] = _tar_tree(tar, SECRETS, "secrets")
+        if carry_key:
+            k = install_key() or b""
+            if k:
+                info = tarfile.TarInfo("install-key")
+                info.size = len(k)
+                info.mtime = int(time.time())
+                tar.addfile(info, io.BytesIO(k))
+                counts["install_key"] = 1
+    return buf.getvalue(), counts
+
+
 def prepare(principal, to, repos=False, carry_key=False):
     """The bundle written under STATE/move, sealed under a new token, which
     is returned once and never kept; the nodes told from the next hello."""
@@ -166,26 +196,8 @@ def prepare(principal, to, repos=False, carry_key=False):
         d.update(made_at=made_at, to=to, bundle=name, size=0, used=False, repos=bool(repos), carries_key=bool(carry_key),
                  token_hash=token_hash(token), key_b64=base64.b64encode(key).decode(), by=str(principal)[:80])
         _save(d)
-    buf = io.BytesIO()
-    counts = {}
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        counts["state"] = _tar_tree(tar, STATE, "state", leave=LEAVE)
-        for kind, path in (store_paths() or {}).items():
-            if path and not str(path).startswith(str(STATE)):
-                counts[kind] = _tar_tree(tar, path, f"stores/{kind}")
-        if repos:
-            counts["repos"] = _tar_tree(tar, WORKSPACE, "workspace")
-        if SECRETS and Path(SECRETS).is_dir():
-            counts["secrets"] = _tar_tree(tar, SECRETS, "secrets")
-        if carry_key:
-            k = install_key() or b""
-            if k:
-                info = tarfile.TarInfo("install-key")
-                info.size = len(k)
-                info.mtime = int(time.time())
-                tar.addfile(info, io.BytesIO(k))
-                counts["install_key"] = 1
-    sealed = seal(buf.getvalue(), key)
+    raw, counts = pack(repos=repos, carry_key=carry_key)
+    sealed = seal(raw, key)
     manifest = {"format": 1, "version": build_version(), "state_version": int(state_version() or 0), "made_at": made_at,
                 "from": page_url(), "to": to, "repos": bool(repos), "carries_key": bool(carry_key and counts.get("install_key")),
                 "nodes": list(node_ids()), "bare_metal": bool(bare_metal()), "counts": counts, "token_hash": token_hash(token)}
@@ -261,16 +273,18 @@ def read_manifest(path):
     try:
         with open(path, "rb") as f:
             head = f.readline()
-            if head != HEADER:
-                return None, "not a BuilderBot move bundle"
+            if head not in (HEADER, BACKUP_HEADER):
+                return None, "not a BuilderBot move bundle or backup"
             line = f.readline()
         m = json.loads(line)
-        return (m, "") if isinstance(m, dict) and m.get("format") == 1 else (None, "a move bundle of a format this build does not read")
+        if isinstance(m, dict) and head == BACKUP_HEADER:
+            m["kind"] = "backup"
+        return (m, "") if isinstance(m, dict) and m.get("format") == 1 else (None, "a bundle of a format this build does not read")
     except (OSError, ValueError) as e:
         return None, f"could not read the bundle: {e}"
 
 
-def restore(path, token, state_dir=None, workspace_dir=None, secrets_dir=None, build_state_version=None, here_bare_metal=None):
+def restore(path, token="", state_dir=None, workspace_dir=None, secrets_dir=None, build_state_version=None, here_bare_metal=None, key=None):
     """The bundle unsealed under the token and put in place of the state here
     (the state as it is moved aside, as a reset does), its stores where the
     records name them, the repositories into the workspace, the secrets into
@@ -287,16 +301,21 @@ def restore(path, token, state_dir=None, workspace_dir=None, secrets_dir=None, b
     if int(m.get("state_version") or 0) > here_ver:
         return {"error": f"the bundle's state is at version {m.get('state_version')} and this build reads up to {here_ver}: "
                          "a move never lands on an older build; update this install first"}
-    if token_hash(token) != m.get("token_hash"):
-        return {"error": "that is not this bundle's move token"}
-    key = key_of(token)
+    # A backup opens under the key its password derives (backup.py); a
+    # move under its token's.
+    if key is None:
+        if m.get("kind") == "backup":
+            return {"error": "a backup opens under its password, not a move token"}
+        if token_hash(token) != m.get("token_hash"):
+            return {"error": "that is not this bundle's move token"}
+        key = key_of(token)
     with open(path, "rb") as f:
         f.readline(); f.readline()
         sealed = f.read()
     try:
         raw = open_with(key, sealed)
     except Exception:                                              # noqa: BLE001 (any failure to open is one answer)
-        return {"error": "the bundle did not open under that token"}
+        return {"error": "the bundle did not open under that " + ("password" if m.get("kind") == "backup" else "token")}
     work = Path(tempfile.mkdtemp(prefix=".move-", dir=str(state_dir.parent)))
     counts = {}
     try:
@@ -345,7 +364,8 @@ def restore(path, token, state_dir=None, workspace_dir=None, secrets_dir=None, b
                 rec = json.load(f)
         except (OSError, ValueError):
             rec = {}
-        rec.update(restored_at=int(time.time()), used=True, came_from=m.get("from", ""), source_bare_metal=bool(m.get("bare_metal")),
+        rec.update(restored_at=int(time.time()), used=True, came_from=m.get("from", "") or ("a backup" if m.get("kind") == "backup" else ""),
+                   source_bare_metal=bool(m.get("bare_metal")),
                    here_bare_metal=bool(here_bare_metal if here_bare_metal is not None else bare_metal()))
         rec.pop("moved_to", None)
         rec.pop("moved_at", None)
