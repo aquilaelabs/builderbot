@@ -36,11 +36,12 @@ from .array import ArrayMixin
 from .power import PowerMixin
 from .extmounts import ExtMountsMixin
 from .backups import BackupsMixin
+from .packconfig import PackConfigMixin
 from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, ExtMountsMixin, BackupsMixin, AccountsMixin,
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, ExtMountsMixin, BackupsMixin, PackConfigMixin, AccountsMixin,
             TokensMixin, ScanMixin):
     def __init__(self, state):
         self.state = state
@@ -337,6 +338,10 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # (R164 step 1), imported into Samba once per change.
             if isinstance(r.get("smb_users"), list):
                 self.smb_users_want(r["smb_users"])
+            # What each added pack is configured with here (R172): its env
+            # written into the store for its verbs, once per change.
+            if isinstance(r.get("pack_config"), list):
+                self.pack_config_want(r["pack_config"])
             # Other disks and shares on the controller's own machine (R162
             # step 4): the record mounted and unmounted as it says.
             if isinstance(r.get("ext_mounts"), list):

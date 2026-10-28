@@ -656,6 +656,14 @@ def _add_folder(url, commit, path, by, shipped, sha256, tier):
     return out
 
 
+def configs():
+    """{pack name: its config fields} for every added pack that asks for
+    any (R172), what packconfig.for_node reads the node's answers by."""
+    with _lock:
+        d = _load()
+    return {n: r["manifest"]["config"] for n, r in d["packs"].items() if isinstance(r, dict) and (r.get("manifest") or {}).get("config")}
+
+
 def where_said(name, where):
     """The refusal for removing a pack still installed (B84): its files
     would stay in those stores with no row left to uninstall them from, and

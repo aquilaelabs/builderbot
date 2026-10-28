@@ -4249,6 +4249,7 @@ import history                                                   # noqa: E402
 import extmounts                                                 # noqa: E402
 import storebackups                                              # noqa: E402
 import poolkeys                                                  # noqa: E402
+import packconfig                                                # noqa: E402
 import termws                                                    # noqa: E402
 termws.configure(agent_dir=nodes.AGENT_DIR)
 import tokenkeys                                                 # noqa: E402
@@ -4296,6 +4297,13 @@ try:
     nodes.pool_keys_forget = poolkeys.forget
     if (_sealed := poolkeys.seal_all()):
         print(f"dashboard: sealed {_sealed} pool passphrase(s) under the install's key", flush=True)
+    # What each added pack is configured with per node (R172): kept sealed,
+    # handed in the hello with the node's store root.
+    packconfig.configure(state=STATE, write_json=write_json, seal=signing.seal, unseal=signing.unseal,
+                         sealing=lambda: signing.MASTER is not None,
+                         store_root=lambda nid: (lambda st: (st.get("path") or "") + ("/" + st["scope"] if st.get("scope") else ""))(
+                             (((nodes.node(nid) or {}).get("reported") or {}).get("stores") or {}).get("toolchains") or {}))
+    nodes.pack_config = lambda nid: packconfig.for_node(nid, toolpacks.configs())
     if (_sealed := extmounts.seal_all()):
         print(f"dashboard: sealed {_sealed} share password(s) under the install's key", flush=True)
     # ...and the digest of the bb bundle, so a node can tell from hello alone

@@ -166,6 +166,7 @@ scripts/
     statemigrations/             numbered migrations for the JSON stores (NNNN_name.py, run(ctx)), each run once as the state moves, never edited once shipped
     toolchains.py                everything behind the Toolchains page: catalog, sizes, the job worker
     toolpacks.py                 the tool packs a person adds (docs/tool-packs.md): a repository's bbtool.json, pinned to a commit, as catalog rows
+    packconfig.py                what each added pack is configured with per node (R172): the answers to its config block, secrets sealed, handed in the hello
     library.py                   the Library's one list (R170): the toolchains and packs with what a node's store holds, the coding agents, the apps, the catalog's offers and the companions as rows of one shape
     catalogindex.py              the vetted catalog's index (R169 step 2): fetched from the catalog's address, its signature checked against config/catalog.pub before an entry is read, a withdrawn pack on the bell
     emulator.py                  everything behind the Emulator page: a node's Android system images
@@ -326,6 +327,7 @@ scripts/
     array.py                     the machine's Unraid-style array for the census and the storage-array job (R162 step 2): the record, snapraid.conf and the fstab lines rendered from it, made, a disk added or replaced, synced, scrubbed, checked, destroyed
     power.py                     the machine's UPS through NUT and its own packages' updates for the census, and the host-update job (R164 step 3)
     extmounts.py                 the other disks and shares the hello names (R162 step 4): each mounted at /mnt/other/NAME or unmounted as the record says, an SMB share's credentials root's alone, the census's rows
+    packconfig.py                what each added pack is configured with here (R172): the hello's rows written as one env file per pack under the store's .bb/config, the session account's alone, which bb tool reads into a verb's environment
     backups.py                   the storage-backup job (R162 step 5): rsync of a folder to another place, each run hard-linked to the one before, the oldest pruned, the last run for the census
     agent.py                     Agent: hello, the loop and self-update, made of the parts above
     cli.py                       enroll, run, status, sample
