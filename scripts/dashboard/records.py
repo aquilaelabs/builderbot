@@ -222,11 +222,6 @@ def _md_load(text):
 
 # ---- what each verb hands over ------------------------------------------------
 
-def roadmap_records(rows):
-    """A roadmap item whole: what the file keeps, nothing hidden."""
-    return [dict(r) for r in rows]
-
-
 def apply_plan(doc, rows):
     """What `bb roadmap apply` would change, record by record, against the
     rows as they stand: [(id, field, step index or None, new value)], and

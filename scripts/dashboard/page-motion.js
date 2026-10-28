@@ -423,30 +423,3 @@ function slideHidden(el, willShow, after){
              () => { el.hidden = !willShow; after?.(); });
 }
 
-// Grow or shrink a card around what a control just changed inside it: the
-// projects error toggle, the commands cut-off, doctor's detail, with the
-// same height tween as the card-level fold. `mutate` does the actual redraw.
-function slideBody(el, mutate){
-  // The card or panel hosting it, whose height is what moves; a row in a
-  // tab has no card and slides over its own height.
-  const card = el.closest(".card, .mpanel") || el;
-  if (noMotion()){ mutate(); return; }
-  const from = card.offsetHeight, own = el.offsetHeight;
-  // Only its own kind: canceling a card-level fold here would swallow the
-  // class write that fold's finish handler was going to make.
-  card.getAnimations().forEach(a => { if (a.id === "body") a.cancel(); });
-  mutate();
-  const to = card.offsetHeight;
-  // A row inside a card's scroll box (the Projects card's list) grows
-  // without the card growing, so the card had nothing to tween and the
-  // row snapped, where the same row on the Projects tab slid (the
-  // operator, 30 Sep): then the row moves over its own height.
-  const host = from === to && el !== card && el.offsetHeight !== own ? el : card;
-  const [h0, h1] = host === card ? [from, to] : [own, el.offsetHeight];
-  if (h0 === h1) return;
-  host.style.overflow = "hidden";
-  const anim = host.animate([{height: h0 + "px"}, {height: h1 + "px"}],
-                            {duration: 180, easing: "ease"});
-  anim.id = "body";
-  anim.onfinish = () => host.style.overflow = "";
-}

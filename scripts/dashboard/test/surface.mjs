@@ -41,7 +41,7 @@ import { dirname, join } from 'node:path';
 const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'adoptTheme', 'applyMode', 'applyNow', 'askProjectGroup', 'renameProjectGroup', 'pickProjectColor', 'applyTheme',
   'sectRemember', 'sectRecall', 'isToolKind', 'groupOf', 'railAllows', 'railGroups', 'railOn', 'railGo', 'shellPush', 'routeOf', 'openRoute', 'shellSync', 'shellBoot', 'shown',
   'drawRail', 'railMoreShow', 'shellBar', 'wireShellBar', 'jumpItems', 'drawJump', 'jumpMove', 'jumpGo', 'wireJump', 'revsDelay',
-  'argForSession', 'agentsLive', 'agExtras', 'routerModels', 'routerTooSmall', 'routerSays', 'agentPicker', 'agentAsker', 'rnFillAgents', 'launchAgent', 'agentEnd', 'dropAgentTab', 'myLiveSession', 'agentLogins', 'sendAgent', 'openSentTo', 'agentById', 'agentOfSession', 'agentSessionWords', 'agentOfArg', 'agentsWord', 'agentArg', 'agentSessionName', 'mySlots', 'freeSlot', 'loadRmConvs', 'pickSend', 'armModal', 'arriveBox', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
+  'argForSession', 'agentsLive', 'agExtras', 'routerModels', 'routerTooSmall', 'routerSays', 'agentPicker', 'agentAsker', 'rnFillAgents', 'launchAgent', 'agentEnd', 'dropAgentTab', 'myLiveSession', 'agentLogins', 'sendAgent', 'openSentTo', 'agentById', 'agentOfSession', 'agentSessionWords', 'agentOfArg', 'agentsWord', 'agentArg', 'mySlots', 'freeSlot', 'loadRmConvs', 'pickSend', 'armModal', 'arriveBox', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
   'askVerb', 'cSubmit', 'cUnderPicked', 'daemonHost', 'closeEditor',
   'closeNewProject', 'createProject',
   'closeRename', 'closeSendToDocker', 'commandButton', 'wireTacks', 'bootPage', 'bootRail', 'skSplit', 'dockDragStart', 'dockDragMove', 'dockDragEnd', 'dockHeld', 'dockNoScroll', 'dockPlaceTab', 'nodeCharted',
@@ -108,7 +108,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'roomForTab', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'ask', 'askText', 'askYes', 'askQuestion', 'askYesWord', 'setArchived', 'setBadge', 'setLocked', 'setPinned',
   'setProjectPinned', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack', 'holdLeaving',
-  'signIn', 'signOut', 'slideBody', 'slideDetails',
+  'signIn', 'signOut', 'slideDetails',
   'slideHidden', 'fadeIn', 'ghostOf', 'ghostOut', 'fadeThrough', 'slideMark', 'slidePanel', 'swapBox', 'startClaude', 'sendSure', 'launchClaude',   'openBrief', 'closeBrief', 'briefGo', 'pArchivePicked',
   'tabLabel', 'tabLabels', 'tabTitle', 'untitle', 'untitleIn', 'untitleWatch', 'helpToggle', 'helpShow', 'helpHide', 'cLock', 'dmUnrouted', 'nodeDoorConfig', 'nginxUndeployed', 'resumePicker', 'toggleBell', 'toggleUiMenu', 'unveil', 'watchSignin', 'wireConsole', 'wireLogSection', 'wireJobsTab', 'wireNodeConf', 'wireNodesTab', 'wireMacros',
   'wireProjectRows'
