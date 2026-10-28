@@ -2058,7 +2058,7 @@ function renderRunnerInto(i){
     // Its template (R218 step 16): the bar and the state row's words are the
     // page's own; the node and its runners are on their way.
     // In the node's panel, as it lands: its rows are bands there, not a card.
-    d.setBar(skNodeBar([["Add runner", "primary"]]));
+    d.setBar(skActBar([["Add runner", "primary"]]));
     d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${pageHead({title: GHOST, cls: "toolstate",
       facts: [["Runners", "one per git host, its labels deciding which workflows land here"]]})}<div class="ndruns">${skRows(1)}</div></div>`);
     return;
@@ -2067,7 +2067,7 @@ function renderRunnerInto(i){
   const has = n => (n.reported?.services?.runners || []).length || Object.keys(n.services?.runners || {}).length;
   if (!ns.some(n => n.id === runnerNode)) runnerNode = (ns.find(has) || ns[0])?.id || "";
   const n = ns.find(x => x.id === runnerNode);
-  d.setBar(nodeBar(nodePick("rnrPick", ns, runnerNode), runnerAddBtn(n, n ? nodeDraft(n) : {})));
+  d.setBar(nodeBar("", runnerAddBtn(n, n ? nodeDraft(n) : {})));    // the node is the Build group's header's (R178)
   const show = d.el.querySelector("[data-nrunnershow]");
   if (show) show.onclick = () => { nodeDraft(n).addRunner = true; nodesRev++; drawPanes(); };
   d.list.innerHTML = n
@@ -2084,9 +2084,6 @@ function renderRunnerInto(i){
     d.list.insertAdjacentHTML("afterbegin", `<div class="field">${deadWhy(featureOff("runner"))}</div>`);
   }
   d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
-  const pick = d.el.querySelector("#rnrPick");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (pick) pick.onchange = () => navPush(() => { runnerNode = pick.value; nodesRev++; drawPanes(); });
 }
 
 // Add runner, the page's main action, in its bar with every other header

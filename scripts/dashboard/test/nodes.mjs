@@ -471,7 +471,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   });
   writeFileSync(`${DIR}/dockerstate/deadhosts`, bbAddr + '\n');
   await page.waitForFunction(() => {
-    const s = document.querySelector('#dmNode');
+    const s = document.querySelector('.pane .bar #ndPick');
     const n = (nodesList || []).find(x => x.name === 'buildbox');
     if (!s || !n) return false;
     s.value = n.id;
@@ -509,7 +509,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // null about one run in several (B99's family, a site the report did not
   // name). A predicate with a side effect, deliberately.
   await page.waitForFunction(() => {
-    const s = document.querySelector('#dmNode');
+    const s = document.querySelector('.pane .bar #ndPick');
     // The bare name, not window's: a top-level `let` in a classic script
     // goes into the global LEXICAL scope and is not a property of window.
     const n = (nodesList || []).find(x => x.name === 'sandbox');

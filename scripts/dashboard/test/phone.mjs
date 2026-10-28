@@ -40,12 +40,12 @@ await api('/api/prefs', { project: 'alpha', node: sandbox.id });
 await page.evaluate(() => openPhoneTab());
 // The page itself (its Node picker), not its template's rows (R218 step 16).
 await page.waitForSelector('.doc.on .phonetab .row', { timeout: 20000 });
-await page.waitForSelector('.doc.on #phPick', { timeout: 20000 });
+await page.waitForSelector('.pane .bar #ndPick', { timeout: 20000 });
 // A phone is a tool of its own again (R121, the operator 4 Oct): a page
 // under Build with a Node picker of the nodes that carry adb; the Nodes
 // tab, a machine's configuration, only points at it.
 ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools.some(([k]) => k === 'phone')) && railAllows('phone')) && await page.evaluate(() => tabs.some(t => t.kind === 'phone'))
-   && await page.$eval('.doc.on #phPick', s => [...s.options].some(o => o.textContent.startsWith('sandbox'))),
+   && await page.$eval('.pane .bar #ndPick', s => [...s.options].some(o => o.textContent.startsWith('sandbox'))),
    'the rail opens a Phone page, its Node picker listing the node that carries adb');
 ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
    '...and the Nodes page carries no Phone section of its own');

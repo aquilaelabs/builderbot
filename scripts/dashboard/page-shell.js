@@ -370,12 +370,19 @@ function railMoreShow(on){
 function shellBar(t, i){
   const g = groupOf(t.kind);
   const tools = g ? g.tools.filter(([k]) => railAllows(k) || k === t.kind) : [[t.kind, tabLabel(t)]];
-  const nav = `<span class="subnav pseg" role="tablist" aria-label="${esc(g ? g.label : tabLabel(t))}">${tools.map(([k, label]) =>
-      `<button type="button" role="tab" aria-selected="${k === t.kind}" class="${k === t.kind ? "on" : ""}"${g ? ` data-subnav="${esc(k)}"` : ""}>${esc(label)}</button>`).join("")}</span>`;
-  // The Machines group wears one header over its sub-nav (R177): the node
-  // picked once for Nodes, Storage and Installed; the group's actions on
-  // the sub-nav's line, at its right (the operator, 28 Oct).
-  return g?.key === "machines" ? machinesHeader(t) + `<span class="subrow">${nav}<span class="sp"></span>${machinesActions()}</span>` : nav;
+  const grouped = !!g && GROUP_HEADS[g.key];
+  const nid = grouped ? groupNode(g, t.kind) : "";
+  const nav = `<span class="subnav pseg" role="tablist" aria-label="${esc(g ? g.label : tabLabel(t))}">${tools.map(([k, label]) => {
+    // A sub-tab whose feature the picked node lacks is drawn unavailable
+    // (R178): muted, the reason on it, still a press, and the page says
+    // the same and offers the one thing that makes it available.
+    const off = grouped && nid ? toolOff(k, nid) : "";
+    return `<button type="button" role="tab" aria-selected="${k === t.kind}" class="${k === t.kind ? "on" : ""}${off ? " off" : ""}"${g ? ` data-subnav="${esc(k)}"` : ""}${off ? ` title="${esc(off)}"` : ""}>${esc(label)}${off ? `<span class="navnote">not here</span>` : ""}</button>`;
+  }).join("")}</span>`;
+  // A group that wears one header over its sub-nav (R177, R178): the node
+  // picked once for every page of the group, the group's actions on the
+  // sub-nav's line at its right (the operator, 28 Oct).
+  return grouped ? groupHeader(t, g) + `<span class="subrow">${nav}<span class="sp"></span>${GROUP_HEADS[g.key].actions ? GROUP_HEADS[g.key].actions() : ""}</span>` : nav;
 }
 function wireShellBar(bar){
   // The line under the tab on show slides to the one pressed (slideMark),
@@ -386,43 +393,94 @@ function wireShellBar(bar){
     const g = groupOf(b.dataset.subnav);
     if (g) railGo(g.key, b.dataset.subnav);
   });
-  wireMachinesHeader(bar);
+  wireGroupHeader(bar);
 }
 
-// ---- the Machines group's header (R177) ----------------------------------------
+// ---- a group's header (R177, R178) --------------------------------------------------
 // The operator, 28 Oct: a header like a project's for the Machines group,
-// the node pulldown there instead of on each of the three sub-tabs. One
-// band in the project header's shape: the node picker where the name is,
-// the node's facts beside it in the data face (seen, reached from, its
-// agent), and at the right the actions the group carries (Create sandbox
-// VM, Enroll node); the sub-nav strip under it. One pick drives all three
-// pages: each keeps its own node state for its openers, and the header
-// reads the page on show and sets all three on a press.
+// the node pulldown there instead of on each of the three sub-tabs; then
+// the same for Build and Containers. One band in the project header's
+// shape: the node picker where the name is, the node's facts beside it in
+// the data face (seen, reached from, its agent), the sub-nav strip under
+// it with the group's own actions at its right. One pick drives every page
+// of the group: each keeps its own node state for its openers (NODE_PICKED
+// and NODE_SET name them), the header reads the page on show and sets them
+// all on a press. A page's own bar keeps its actions and loses its picker.
+const GROUP_HEADS = {
+  machines: {actions: () => machinesActions()},
+  build: {},
+  containers: {},
+};
+// What a page keeps in this browser about its node, written on a pick.
+const GROUP_KEEP = {library: "bb.libnode", emulator: "bb.emunode", storage: "bb.stnode", installed: "bb.instnode", nginx: "bb.ngnode"};
+// What the page on show reads again after a pick; the rest redraw from
+// what NODE_SET left them.
+const GROUP_LOAD = {library: () => loadLibrary(), emulator: () => loadEmulator(), installed: () => loadInstalled(), docker: () => loadDocker(),
+                    phone: () => phFetch(null, true)};
 function machinesLive(){
   return (nodesList || []).filter(n => n.state !== "retired" && n.kind !== "local" && !(state?.bare_metal && n.config?.own));
 }
 function machinesNode(kind){
   return NODE_PICKED[kind]?.() || "";
 }
-function machinesPick(nid){
-  nodesPick = nid; nodesFocus = null; nodesRev++;
-  if (nid !== storageNode){ storageNode = nid; storageRev++; }
-  if (nid !== instNode){ instNode = nid; inst = null; instRev++; }
-  try{ localStorage.setItem("bb.stnode", nid); localStorage.setItem("bb.instnode", nid); }catch(e){ /* private */ }
-  drawPanes();
-  if (tabOf(panes[0])?.kind === "installed") loadInstalled();
+function groupNode(g, kind){
+  const live = machinesLive();
+  const cur = machinesNode(kind);
+  return live.some(n => n.id === cur) ? cur : live[0]?.id || "";
 }
-function machinesHeader(t){
+function groupPick(g, nid){
+  (g.tools || []).forEach(([k]) => {
+    if (NODE_SET[k]) NODE_SET[k](nid);
+    if (GROUP_KEEP[k]){ try{ localStorage.setItem(GROUP_KEEP[k], nid); }catch(e){ /* private */ } }
+    if (k === "docker" && typeof dockerNodeKeep === "function") dockerNodeKeep();
+  });
+  if (g.key === "machines"){ nodesFocus = null; nodesRev++; storageRev++; instRev++; }
+  if (g.key === "build"){ libRev++; emuRev++; nodesRev++; }
+  if (g.key === "containers"){ dockerRev++; nginxRev++; }
+  drawPanes();
+  const on = tabOf(panes[0])?.kind;
+  if (on && GROUP_LOAD[on]) GROUP_LOAD[on]();
+}
+function machinesPick(nid){ groupPick(groupOf("nodes"), nid); }
+// Why a page's feature is not on this node, or "" (nothing known counts as
+// there: a list not read yet marks nothing).
+function toolOff(kind, nid){
+  const n = (nodesList || []).find(x => x.id === nid);
+  if (!n) return "";
+  if (kind === "nginx"){
+    const row = (typeof nginxList !== "undefined" && nginxList || []).find(x => x.node === nid);
+    return row && !row.deployed ? "nginx is not deployed on this node: Deploy is on its page" : "";
+  }
+  if (kind === "docker"){
+    const ns = typeof dockerList !== "undefined" && dockerList?.nodes;
+    return Array.isArray(ns) && ns.length && !ns.some(x => x.id === nid) ? "this node does not run Docker" : "";
+  }
+  if (kind === "emulator"){
+    const tc = n.reported?.toolchains || {};
+    return Object.keys(tc).length && !tc.emulator && !tc["android-sdk"] ? "no Android tools on this node: install them from the Library" : "";
+  }
+  if (kind === "phone"){
+    const ns = typeof ph !== "undefined" && ph?.nodes;
+    return Array.isArray(ns) && ns.length && !ns.some(x => x.id === nid) ? "no adb on this node: install Android platform tools from the Library" : "";
+  }
+  if (kind === "runner"){
+    const has = (n.reported?.services?.runners || []).length || Object.keys(n.services?.runners || {}).length;
+    return has ? "" : "no CI runner on this node yet: Add runner is on its page";
+  }
+  return "";
+}
+function groupHeader(t, g){
   if (nodesList === null){
     loadNodes();
-    // The Storage page has its nodes before the list lands: drawn from
-    // them, so its picker is there with its rows.
-    const have = t.kind === "storage" ? (typeof storageList !== "undefined" && storageList || []).map(n => ({id: n.node, name: n.name, live: n.live})) : [];
+    // A page that has its nodes before the list lands (Storage, nginx) is
+    // drawn from them, so its picker is there with its rows.
+    const have = t.kind === "storage" ? (typeof storageList !== "undefined" && storageList || []).map(n => ({id: n.node, name: n.name, live: n.live}))
+      : t.kind === "nginx" ? (typeof nginxList !== "undefined" && nginxList || []).map(n => ({id: n.node, name: n.name, live: n.live})) : [];
     if (!have.length) return `<span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>`;
     return `<span class="phead mchead">${nodePick("ndPick", have, machinesNode(t.kind) || have[0].id)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>`;
   }
   const live = machinesLive();
-  const cur = machinesNode(t.kind) || live[0]?.id || "";
+  const cur = groupNode(g, t.kind);
   const n = live.find(x => x.id === cur);
   const seen = n?.agent?.last_seen ? `seen ${ago(n.agent.last_seen)}` : n ? "never seen" : "";
   const from = n?.agent?.addr ? `dials in from ${n.agent.addr}` : "";
@@ -431,17 +489,18 @@ function machinesHeader(t){
   const pick = live.length ? nodePick("ndPick", live.map(x => ({id: x.id, name: x.name, live: x.live})), cur) : `<span class="pname">No node yet</span>`;
   return `<span class="phead mchead">${pick}${facts ? `<span class="pfacts">${esc(facts)}</span>` : ""}<span class="sp"></span></span>`;
 }
-// The group's actions, on the sub-nav's line: dead with the enroll feature
-// off (the reason is on the Nodes page) and until the node list lands.
+function machinesHeader(t){ return groupHeader(t, groupOf("nodes")); }
+// The Machines group's actions, on the sub-nav's line: dead with the enroll
+// feature off (the reason is on the Nodes page) and until the node list lands.
 function machinesActions(){
   const dead = nodesList === null || featureOff("enroll") ? " disabled" : "";
   return `<span class="actbar"><button type="button" id="ndVm"${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
     <button type="button" class="primary" id="ndEnroll"${dead}>${barSaid("Enroll node", "Enroll")}</button></span>`;
 }
-function wireMachinesHeader(bar){
+function wireGroupHeader(bar){
   const pick = bar.querySelector("#ndPick");
   // A pick is a history entry (B31), so Back returns to the node before.
-  if (pick) pick.onchange = () => navPush(() => machinesPick(pick.value));
+  if (pick) pick.onchange = () => navPush(() => groupPick(groupOf(tabOf(panes[0])?.kind || "nodes") || groupOf("nodes"), pick.value));
   const vm = bar.querySelector("#ndVm"), en = bar.querySelector("#ndEnroll");
   if (vm || en){
     const d = ndDialogs();
@@ -449,6 +508,7 @@ function wireMachinesHeader(bar){
     if (en) en.onclick = d.openEnroll;
   }
 }
+function wireMachinesHeader(bar){ wireGroupHeader(bar); }
 
 // ---- maintenance mode's band ---------------------------------------------------
 // Drawn under the header for the owner while maintenance mode is on: the

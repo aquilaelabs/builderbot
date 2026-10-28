@@ -36,9 +36,9 @@ const sandbox = await page.evaluate(() => (nginxList || []).find(n => n.name ===
 ok(sandbox && !sandbox.deployed && sandbox.routes.length === 0 && !Object.keys(sandbox.certs || {}).length,
    `the tab lists the sandbox node with no nginx on it yet (${JSON.stringify(sandbox && [sandbox.deployed, sandbox.routes])})`);
 // One node at a time, picked in the bar like Toolchains (the operator, 11 Oct).
-ok(await page.$eval('.nginxtab .docbarrow label.pick select#ngNodeSel', s => [...s.options].some(o => o.textContent === 'sandbox')),
+ok(await page.$eval('.pane .bar label.pick select#ndPick', s => [...s.options].some(o => o.textContent === 'sandbox')),
    'the bar picks the node, as Toolchains does');
-await page.selectOption('.nginxtab #ngNodeSel', sandbox.node);
+await page.selectOption('.pane .bar #ndPick', sandbox.node);
 const sect = `.nginxtab [data-ngnode="${sandbox.node}"]`;
 await page.waitForSelector(sect, { timeout: 10000 });
 ok(await page.$eval(sect, s => /not deployed/.test(s.querySelector('.toolstate .pill').textContent)
