@@ -37,6 +37,13 @@ function networkReach(){
     ["Nodes", String((nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired").length)]]});
 }
 
+// The dial section's status: how many of the nodes answer.
+function networkDialStatus(){
+  if (nodesList === null) return "";
+  const rows = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  return `${rows.filter(n => n.live).length} of ${rows.length} answering`;
+}
+
 function networkDial(){
   const rows = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
   if (nodesList === null) return `<div class="field">${skRows(2)}</div>`;
@@ -56,15 +63,32 @@ function renderNetworkInto(i){
   d.setBar("");
   if (!state?.settings){
     d.list.innerHTML = `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`;
+    delete d.el.dataset.netstamp;
     return;
   }
+  // The nodes move with every check-in (nodesRev), and a draw of the whole
+  // page on each would replace a secret being typed (a secret is never
+  // drafted) and an Apply under the pointer: when only the nodes moved, the
+  // head's count and the dial section are written again in place and the
+  // settings groups stay as they are.
+  const stamp = settingsLive();
+  const dial = d.list.querySelector('details[data-sect="network:dial"]');
+  if (d.el.dataset.netstamp === stamp && dial){
+    const head = d.list.querySelector(":scope > .pghead");
+    if (head) paint(head, networkReach(), true);
+    paint(dial.querySelector(":scope > .body"), networkDial(), true);
+    const st = dial.querySelector(":scope > summary .sst"), says = networkDialStatus();
+    if (st) st.textContent = says;
+    else if (says) dial.querySelector(":scope > summary").insertAdjacentHTML("beforeend", `<span class="sst">${esc(says)}</span>`);
+    return;
+  }
+  d.el.dataset.netstamp = stamp;
   const sect = (key, title, status, html, opts = {}) =>
     docSection("network", key, title, status, html.replace(/<h4>[^<]*<\/h4>\s*/, ""), opts);
   const groups = settingsSections().filter(g => NETWORK_GROUPS.includes(g.key));
-  const live = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired" && n.live).length;
   d.list.innerHTML = networkReach() + `<div class="sectjump" data-sects></div>`
     + sect("reach", "Reached at", location.protocol.replace(":", ""), `<div class="field" data-group="Reached at"><div class="sub">The page is at ${esc(location.origin)}; a node dials the same address, or the hostname Reach from outside names, and a phone or the companion pins the certificate the Connection group shows.</div></div>`)
-    + sect("dial", "Nodes dial in", nodesList === null ? "" : `${live} of ${(nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired").length} answering`, networkDial())
+    + sect("dial", "Nodes dial in", networkDialStatus(), networkDial())
     + groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("");
   sectJump(d.list.querySelector("[data-sects]"));
   wireSections(d.el);

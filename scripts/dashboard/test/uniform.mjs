@@ -350,7 +350,9 @@ async function bring(kind){
   // `notebook:<view>` is the notebook's tab with that view showing.
   const view = kind.startsWith('notebook:') ? kind.slice('notebook:'.length) : '';
   const had = await page.evaluate(k => {
-    const t = tabs.find(x => x.kind === k);
+    // Among the notebooks, alpha's: another project's would be focused and
+    // then asked for a view it never draws.
+    const t = tabs.find(x => x.kind === k && (k !== 'notebook' || x.arg === 'alpha'));
     if (t){ focusTab(t.id); return true; }
     if (tabs.length >= 11){
       const old = tabs.find(x => x.kind !== 'term' && x.kind !== k);

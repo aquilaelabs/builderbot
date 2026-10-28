@@ -3952,8 +3952,8 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
   }, own.id);
   ok(!box || (box.checked && box.disabled && /controller's own machine/.test(box.said)),
      `its session network box is ticked and cannot be cleared, with why on the row (${JSON.stringify(box)?.slice(0, 120)})`);
-  const off = await napi('/api/v1/nodes', { action: 'session-net', id: own.id, on: false });
-  ok(/controller's own machine/.test(off.error || ''), `...and the server refuses it off as well (${off.error || 'no error'})`);
+  // (The switch and its action went with R146: every session is kept to its
+  // project's network on every node, so there is nothing to refuse off.)
   const opts = await page.evaluate(async () => {
     // The dialog fills its picker once the project's settings are read, and
     // the options of the last opening are there until then: waited on by
