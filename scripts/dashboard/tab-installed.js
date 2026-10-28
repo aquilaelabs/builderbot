@@ -391,7 +391,17 @@ async function instAct(b, act, kind, name){
     tpOpen(r.name);
     return;
   }
-  if (!await askYes(`Uninstall ${r.label} from ${where}? The files are deleted; installing it again re-downloads them.`)) return;
+  // The machine's own two say what removing them does to the machine (R102,
+  // as the Toolchains page asked them); a store's toolchain, its files.
+  // With no card there is nothing for nouveau to take back (B168).
+  const ask = r.name === TC_DRIVER && r.machine?.state === "nocard"
+    ? `Remove NVIDIA's driver from ${where}? It has no card to drive here, and its tries for one stop.`
+    : r.name === TC_DRIVER
+    ? `Remove NVIDIA's driver from ${where}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`
+    : r.name === TC_TOOLKIT
+    ? `Remove the NVIDIA container toolkit from ${where}? A container that reserves the card no longer starts; NVIDIA's package source goes with it.`
+    : `Uninstall ${r.label} from ${where}? The files are deleted; installing it again re-downloads them.`;
+  if (!await askYes(ask)) return;
   busy(b, "Removing");
   await tcAct("remove", [r.name]);
   await loadInstalled();

@@ -148,9 +148,14 @@ function libState(r){
 
 // The one verb a row takes, and Remove where it is installed (the
 // Toolchains page's Remove and the Agents page's, moved here).
+// Why the store's verbs are held on every card, or "": a job running on
+// the node (one at a time), a node not reporting, a store it cannot write.
+// Set by the draw; the notice over the cards says the last two in full.
+let libHold = "";
 function libActs(r, may){
-  const n = libNode, a = (act, words, cls = "") =>
-    `<button type="button"${cls ? ` class="${cls}"` : ""} data-libact="${act}" data-libkind="${esc(r.kind)}" data-libname="${esc(r.name)}">${esc(words)}</button>`;
+  const n = libNode, a = (act, words, cls = "", held = "") =>
+    `<button type="button"${cls ? ` class="${cls}"` : ""} data-libact="${act}" data-libkind="${esc(r.kind)}" data-libname="${esc(r.name)}"${
+      held ? ` disabled title="${esc(held)}"` : ""}>${esc(words)}</button>`;
   if (r.running) return "";
   if (r.kind === "companion") return r.download
     ? `<a class="btn primary" href="${esc(r.download.url)}" download title="${esc(r.download.file)} · sha256 ${esc((r.download.sha256 || "").slice(0, 12))}…">Download</a>`
@@ -163,9 +168,13 @@ function libActs(r, may){
   // something is behind it, set on the Installed page.
   if (r.kind === "service") return !may.apps || r.installed ? "" : `<button type="button" class="primary" data-libact="install" data-libkind="service" data-libname="${esc(r.name)}"${r.ready ? " disabled" : ""}${r.ready ? ` title="${esc(r.ready)}: set on the Installed page"` : ""}>Install</button>`;
   if (!may.install || !n) return "";
-  if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install");
+  if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install", "", libHold);
   if (r.machine && !r.machine.managed) return "";
-  const verb = r.update ? a("install", "Update", "primary") : r.installed ? "" : a("install", "Install", r.kind === "agent" && r.agent === "claude" ? "primary" : "");
+  // The container toolkit installed but unknown to Docker is put right by
+  // installing it again, which its line on the Installed page says.
+  const again = r.machine?.state === "unconfigured";
+  const verb = r.update ? a("install", "Update", "primary", libHold) : again ? a("install", "Install again", "", libHold)
+    : r.installed ? "" : a("install", "Install", r.kind === "agent" && r.agent === "claude" ? "primary" : "", libHold);
   const edit = r.kind === "pack" && r.pack ? a("edit", "Edit") : "";
   return `${verb}${edit}`;
 }
@@ -387,7 +396,11 @@ function renderLibraryInto(i){
       unmet.map(([r, ps]) => `${esc(r)}: ${esc(ps.join(" "))}`).join("; ")}. ${lib.sandbox && may.install
         ? `<button type="button" data-libsysdeps${busy || stale ? " disabled" : ""} title="install these on ${esc(lib.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
         : "This node's owner installs them: the agent does not administer the machine."}</div></div>` : ""}`;
+  libHold = busy ? "another toolchain job is running on this node" : stale ? "this node is not reporting" : pro ? "this node's store is read-only to it" : "";
   paint(d.list, `<div data-libnode="${esc(libNode)}">${notes}${head}${libFilterBand(all)}<div class="field libgroups">${libSections(rows, may)}</div></div>`);
+  // The ellipsis on a card whose job runs is ticked by the one timer every
+  // page shares (tcTickDots), so a redraw does not restart it.
+  if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);
   wireLibrary(d.el);
 }
 
