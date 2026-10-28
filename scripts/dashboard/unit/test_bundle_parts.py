@@ -28,6 +28,11 @@ class BundleParts(unittest.TestCase):
         missing = [f for f in scripts if f"scripts/dashboard/{f}" not in parts]
         self.assertEqual(missing, [], f"not in the bundle a node runs sessions from: {missing}")
 
+    def test_the_record_documents_ride_too(self):
+        # design-verbs.py, wiki-verbs.py and roadmap-verbs.py import
+        # records from beside the dashboard (B426).
+        self.assertIn("scripts/dashboard/records.py", bundle_parts())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -554,7 +554,7 @@ function connectionStatus(s){
 // What the Apps section holds, over its switches, and Look now.
 function appsIntro(){
   return `<div class="sub">Each one on is fetched from the release that matches this controller, checked, and offered on the ${
-    pageLink("apps", "Apps page")} for your people to download and keep current.</div>
+    pageLink("library", "Library")}, under For you, for your people to download and keep current.</div>
     <div class="addbar ctlrow"><button type="button" id="setAppsCheck"${devApps?.checking ? " disabled" : ""}>${devApps?.checking ? "Looking…" : "Look now"}</button></div>`;
 }
 // ...and its line: what it holds, from which release, when it looked.

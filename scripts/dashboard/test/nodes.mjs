@@ -1781,6 +1781,10 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   ok(await page.$$eval('.tctab #tcNodeSel option', os => os.length > 0 && !os.some(o => o.value === 'local')),
      'the Tools tab picks among nodes and never offers this container (roadmap #26)');
   const tcBefore = await page.evaluate(() => tcNode);
+  // The page's own address is the entry a pick pushes over: a door pressed
+  // earlier left the Library's entry here (R170, until step 5 moves these
+  // checks onto its cards), so the page's address is made the entry first.
+  await page.evaluate(() => shellPush(routeOf(tabOf(panes[0]))));
   await page.selectOption('.tctab #tcNodeSel', minted.id);
   await page.waitForFunction(() => /^\s*shed\b/.test(document.querySelector('.tctab .tcact .name')?.textContent || ''),
                              null, { timeout: 15000 });
@@ -3669,14 +3673,15 @@ ok(page.errors.length === 0,
   let went = '';
   for (let i = 0; i < 3; i++){
     if (await page.isVisible(agLink)) await page.click(agLink, { timeout: 5000 }).catch(() => {});
-    went = await page.waitForFunction(id => agNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: patience(8000) })
+    // Since R170 the row's link opens the Library on that node, where Update is.
+    went = await page.waitForFunction(id => libNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: patience(8000) })
       .then(() => '', async () => JSON.stringify({ want: en.id, press: i + 1,
-        ...await page.evaluate(() => ({ agNode, bell: document.getElementById('bellPanel').hidden })) }));
+        ...await page.evaluate(() => ({ libNode, bell: document.getElementById('bellPanel').hidden })) }));
     if (!went) break;
   }
   ok(!went, `the bell's link names the node and shuts the bell${went ? ` (${went})` : ''}`);
-  await page.waitForSelector(`.agentstab [data-agnode="${en.id}"] [data-sect="agents:claude"]`, { timeout: 30000 });
-  ok(true, '...and its link opens the Agents page on that node');
+  await page.waitForSelector(`.librarytab [data-libnode="${en.id}"] .lcard[data-lrow="agent:claude-code"]`, { timeout: 30000 });
+  ok(true, '...and its link opens the Library on that node, with Claude Code\'s card');
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
      '...and the status payload says which node is behind');
   await page.evaluate(() => openNodesTab());

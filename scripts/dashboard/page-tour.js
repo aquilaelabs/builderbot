@@ -47,6 +47,11 @@ const TOUR_STEPS = {
     {say: "Analysis is what the linters and the code map found across your projects, worst first."},
     {at: TOUR_BAR, say: "Narrow it by project or by kind here."},
   ],
+  library: [
+    {say: "The Library is everything a BuilderBot installs or runs on a node: the coding agents, the toolchains for builds and tests, the tool packs you add, the apps a NAS runs, and the apps for your own machines."},
+    {at: TOUR_BAR, say: "Pick the node here. Check for updates reads what is newer; Add your own brings in a tool pack or an app of yours, looked at before it is kept."},
+    {at: `${TOUR_PANE} .lcard`, say: "Each card says its tier, what is installed and whether a newer one is out, with Install, Update or Remove on it; Details opens the whole description."},
+  ],
   toolchains: [
     {say: "Toolchains are the SDKs and tools a node has for builds, tests and sessions: Android, Flutter, Node and the rest."},
     {at: TOUR_BAR, say: "Pick the node here. Install and Remove act on what you tick; Check for updates reads what is newer."},

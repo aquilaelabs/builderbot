@@ -67,7 +67,7 @@ def missing_why(node):
     n = _node(node)
     if n.get("has_ftp") is False:
         return (f"{n.get('name') or 'its node'} does not have the ftp toolchain: "
-                "install it on the Toolchains page")
+                "install it from the Library")
     return ""
 
 
@@ -293,6 +293,12 @@ def login(node, project, name, password, addr):
     denied = {"access": "", "why": "Authentication failed."}
     rec = get(project)
     if not rec["on"] or project_node(project) != node:
+        # Said to the audit log as the other refusals are (B429), so the
+        # Audit page tells this from a wrong password: the server's own
+        # words stay the same, since they say no more than a sign-in page.
+        audit(f"ftp:{addr}", "ftp-login-refused", project,
+              {"name": str(name or "")[:60], "why": "file access is off for the project" if not rec["on"]
+               else "the login came through another node's agent than the project's"})
         return denied
     if _throttled(addr):
         return {"access": "", "why": "Too many failed logins from this address; try again in a few minutes."}

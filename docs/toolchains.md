@@ -14,7 +14,7 @@ emulator, and a phone lent to a project.
 The image carries no toolchain beyond node, python and the Playwright
 module. Everything a build needs: the JDK, the Android SDK, the emulator,
 Flutter, .NET: is a recipe installed into a **node's toolchain store**, from
-the Toolchains page with that node picked; the page lists nodes and nothing else,
+the Library with that node picked; the page lists nodes and nothing else,
 and with none enrolled it says so. The controller's own store: the SDK
 share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`): holds
 only what its boot keeps for `bb capture shot`, the Playwright browsers; nothing is
@@ -66,12 +66,12 @@ an image exists at every level in several flavors under names only
 Google's index knows (API 37 is `android-37.0`).
 
 **The NVIDIA driver is the machine's, not the store's.** On a node whose
-census names an NVIDIA card, the Toolchains page shows the driver as a row of
-its own above the store's. It behaves as the other rows do: a tick box, so
-it goes into Install selected with whatever else is ticked (last, since it
-ends at a restart), a bin to remove it, and **Check for updates** reads
-apt's lists again on the node, so the row says when a newer version of the
-installed branch is there to tick. It is not a recipe, though: the kernel
+census names an NVIDIA card, the Library shows the driver as a card of its
+own among the toolchains, with the container toolkit's beside it. It
+behaves as the other cards do: Install on the card (its version picked on
+the card first), Remove on it once it is there, and **Check for updates**
+reads apt's lists again on the node, so the card says when a newer version
+of the installed branch is there. It is not a recipe, though: the kernel
 module is built for that machine's kernel and the libraries must match it,
 so it is installed as root on that node alone, through `bb-sandbox
 gpu-driver`, and it takes the card only when the machine restarts, since
@@ -364,6 +364,54 @@ session.
 **The first boot after an update is not free.** A container whose share is
 empty installs the Playwright browsers (~1.3GB) on first start. That happens
 once per share; from then on updates cost nothing.
+
+## The Library
+
+**Build** opens on the **Library**: everything a BuilderBot installs or
+runs as one list for one node, picked in the bar. A section per kind, in
+this order: the coding agents a session runs (Claude Code, Codex CLI,
+Copilot CLI, Grok Build), the toolchains a project builds with, the tool
+packs a person added, the apps a NAS runs as containers, and under **For
+you** the companions a person downloads for their own machines. Every row
+is one shape: its name, its tier (official, shipped with BuilderBot;
+vetted, from the catalog the maintainers sign; sideloaded, added by URL or
+made here), what is installed and what an update would move it to, one
+line saying what it is, and at its right the one verb it takes: Install,
+Update, Remove, Edit on a pack, Download on a companion, and on an app New
+container, since an app is not installed on the node but made as a
+container, each press another one under its own name. Details opens the
+row on the whole description, the lines the Toolchains page's open row had:
+what it adds to a session, its terms, its system packages, what it needs,
+where it is on the store, how its download was checked, and its size; a
+pack's **Look**, which fetches its manifest at the commit it is pinned to
+and says what it fetches and runs, as the Add tool pack dialog does; an
+agent's facts, your sign-in on this node and what you added to it; an app's
+compose file as the catalog holds it, with the blanks New container fills
+and the secrets made for it; a companion's other files. A search box under the head matches a
+name, a description, a kind or a tier, and the chips beside it narrow the
+list by kind and by tier; nothing there is saved.
+
+Nothing installs a second way from here. A toolchain's Install is the
+toolchain job described below, with its agreements asked the same way; an
+agent's is the Agents verb; a pack's Install opens the Add tool pack dialog
+on the catalog's commit, with Look first; an app's Install opens New
+container with the app picked and its blanks shown, and Create makes it a
+container on the Containers page. **Check for updates** in the bar asks
+about every row that installs on the node, and **Add your own** is the
+sideload, one dialog asking what is being added: a tool pack (from a
+repository, a pasted bbtool.json or an upload of its files, docs/tool-packs.md;
+a pack with an agent block is a coding agent) or an app, a compose file of
+your own with the blanks New container fills (`${PORT}`, `${DATA}`,
+`${MEDIA}`, `${PUID}`, `${PGID}`, `${TZ}`), its name, its id, what it is
+and its port. Look checks it the way the shipped apps are held (every image
+pinned to a tag, never latest, nothing built or privileged, no blank but
+the known ones) and says what it would run; Add keeps it under the state as
+sideloaded, offered on an Apps card and in New container like the shipped
+ones, with Edit on its card to change or remove it. Both are an
+administrator's, since every person's New container then offers them. Over
+the Tool packs, **Submit it to the vetted catalog** links to the catalog's
+repository for a pull request, the way a pack becomes vetted. The
+Toolchains and Agents pages below are what the Library reads.
 
 ## The Toolchains page
 

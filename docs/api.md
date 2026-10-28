@@ -55,6 +55,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | GET | `/api/extmounts` | exact | `_get_extmounts` | GET /api/extmounts (R162 step 4): the other disks and shares the controller's own machine mounts, as recorded, never a password. |  |
 | GET | `/api/nasapps` | exact | `_get_nasapps` | GET /api/nasapps (R164 step 2): the catalog of ready apps the New container dialog offers, each with what it is and the blanks it takes. |  |
 | GET | `/api/catalog` | prefix | `_get_catalog` | GET /api/catalog[?fresh=1] (R169 step 2): the vetted catalog's index as kept (fetched again when older than an hour, or on fresh), verified against the key this install ships; with the reason when the newest could not be |  |
+| GET | `/api/library` | prefix | `_get_library` | GET /api/library?node=ID (R170): everything a BuilderBot installs or runs as one list for one node (library.rows): the toolchains and packs with what the node's store holds, the coding agents, the apps a NAS runs, the ve |  |
 | GET | `/api/storebackups` | exact | `_get_storebackups` | GET /api/storebackups (R162 step 5): the backups the controller's own machine copies, as recorded. |  |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes page's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |

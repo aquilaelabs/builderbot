@@ -3791,6 +3791,7 @@ toolchains.configure(run=run, write_json=write_json, state=STATE,
 # /config, and carried to the nodes in the bundle beside the shipped one.
 import toolpacks                                                   # noqa: E402
 import catalogindex                                              # noqa: E402
+import library                                                   # noqa: E402
 
 catalogindex.configure(state=STATE, write_json=write_json)
 toolpacks.configure(state=STATE, write_json=write_json,
@@ -4236,6 +4237,7 @@ import devactions                                                # noqa: E402
 import home                                                      # noqa: E402
 import containers                                                # noqa: E402
 import nasapps                                                   # noqa: E402
+nasapps.configure(state=STATE, write_json=write_json)
 import nginxproxy                                                # noqa: E402
 import imagecheck                                                # noqa: E402
 import relocate                                                  # noqa: E402
@@ -5730,6 +5732,7 @@ GET_ROUTES = (
     ("exact", "/api/extmounts", "_get_extmounts"),
     ("exact", "/api/nasapps", "_get_nasapps"),
     ("prefix", "/api/catalog", "_get_catalog"),
+    ("prefix", "/api/library", "_get_library"),
     ("exact", "/api/storebackups", "_get_storebackups"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
@@ -10915,12 +10918,12 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "preview":
             # From the catalog (R169 step 4): at the commit it pins, the
             # archive's sha256 checked too.
-            r = toolpacks.fetch(field(req, "url"), field(req, "commit"), shipped=shipped, sha256=field(req, "sha256"))
+            r = toolpacks.fetch(field(req, "url"), field(req, "commit"), shipped=shipped, sha256=field(req, "sha256"), path=field(req, "path"))
         elif action == "add" and field(req, "staged"):
             r = toolpacks.add_staged(field(req, "staged"), by, shipped)
         elif action == "add":
             r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped, sha256=field(req, "sha256"),
-                              tier="vetted" if field(req, "sha256") else "url")
+                              tier="vetted" if field(req, "sha256") else "url", path=field(req, "path"))
         elif action == "source":
             r = toolpacks.source(field(req, "name"))
         elif action == "where":
@@ -11260,6 +11263,45 @@ class Handler(BaseHTTPRequestHandler):
             db.audit(by, "storebackup-" + act, field(req, "id") or (r.get("backup") or {}).get("id", ""), {"name": (r.get("backup") or {}).get("name", "")})
         return self._json(r, 400 if r.get("error") else 200)
 
+    def _get_library(self):
+        """GET /api/library?node=ID (R170): everything a BuilderBot installs
+        or runs as one list for one node (library.rows): the toolchains and
+        packs with what the node's store holds, the coding agents, the apps
+        a NAS runs, the vetted catalog's offers and the companions a person
+        downloads. Read as the Toolchains page is read: for the nodes of
+        the person's own projects; never a session's. Each part comes only
+        to whoever its own page came to (Toolchains Read for the rows that
+        install on a node, a container's grant for the apps, an
+        administrator's for the catalog), so the list is what the person
+        may act on."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "the library is a person's to read here; a session has bb tool"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid, why = self._node_asked(q.get("node", [""])[0])
+        if why:
+            return self._json({"error": why, "rows": []})
+        on_node = bool(nid) and nid != "local" and not NODES_OK
+        tc = toolchains.payload_for_node(nid) if on_node else toolchains.payload()
+        n = nodes.node(nid) if on_node else None
+        may_install = not users.may(who, "toolchains-write")
+        may_apps = not users.may(who, "docker-write")
+        cat = catalogindex.index(settings.get("catalog_url") or None) if may_install else {}
+        # An app's row opens on its compose file (step 2), so it rides along.
+        napps = [{**a, "compose": nasapps._all().get(a["id"], {}).get("compose", "")} for a in nasapps.catalog()] if may_apps else []
+        # ...and an agent's on what this person added to it there (the Agents page's Yours).
+        uid = users.uid_of(who)
+        mine = next((x for x in plugins.of(uid) if x["node"] == nid), {}) if uid and n else {}
+        return self._json({"node": nid, "name": tc.get("name") or (n or {}).get("name") or "", "live": bool(tc.get("live", (n or {}).get("live"))),
+                           "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view()),
+                           "job": tc.get("job") or {"running": False}, "catalog_error": cat.get("error", ""),
+                           "may": {"install": may_install, "apps": may_apps, "packs": users.is_admin(who)},
+                           "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb"), "checked": tc.get("checked") or 0},
+                           "sysdeps": tc.get("sysdeps") or {}, "cleanable": tc.get("cleanable") or [], "locked": bool(tc.get("locked")),
+                           "sandbox": bool(tc.get("sandbox")), "managed": bool(tc.get("administers")) and not tc.get("locked"),
+                           "catalog_repo": library.repo_of(settings.get("catalog_url") or ""),
+                           "yours": {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}})
+
     def _get_catalog(self):
         """GET /api/catalog[?fresh=1] (R169 step 2): the vetted catalog's
         index as kept (fetched again when older than an hour, or on fresh),
@@ -11299,6 +11341,27 @@ class Handler(BaseHTTPRequestHandler):
         why = users.may(who, "docker-write")
         if why:
             return self._json({"error": why}, 403)
+        # An app of a person's own (R170 step 3): looked at (preview), kept
+        # (add), read back for Edit (source) and dropped (remove); an
+        # administrator's, as a tool pack is, since every person's New
+        # container then offers it.
+        action = field(req, "action")
+        if action in ("preview", "add", "source", "remove"):
+            if not users.is_admin(who):
+                return self._json({"error": "adding an app to the catalog is an administrator's"}, 403)
+            if action == "preview":
+                r = nasapps.check(req.get("compose"))
+            elif action == "add":
+                r = nasapps.add(field(req, "app"), field(req, "name"), field(req, "what"), req.get("port"), req.get("compose"),
+                                by=who.get("name") or "", replace=bool(req.get("replace")))
+            elif action == "source":
+                r = nasapps.source(field(req, "app"))
+            else:
+                r = nasapps.remove(field(req, "app"))
+            # No revision token: the Library and New container read the
+            # catalog again on their next open, and the page that added
+            # it reads at once.
+            return self._json(r, 400 if r.get("error") else 200)
         r = nasapps.render(field(req, "app"), field(req, "data"), field(req, "media"), field(req, "ids") or "1000:1000",
                            field(req, "tz") or "UTC", req.get("port"), req.get("secrets") if isinstance(req.get("secrets"), dict) else None)
         return self._json(r, 400 if r.get("error") else 200)

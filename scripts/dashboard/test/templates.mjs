@@ -23,7 +23,10 @@ const PAGES = [
   // This machine is a node's with a GPU or Claude Code row to show, which
   // is not known while it waits; on a phone, where it is drawn it is the one
   // open section, so the list's table is folded under it.
-  ['toolchains', '#/build/toolchains', 'toolchains = null; renderToolchainsInto(0)', ['title:This machine', 'phone:table']],
+  // The Library (R170): its five sections are always drawn, so the template
+  // is the page. Its address is where #/build/toolchains and #/build/apps
+  // land now, so those pages are not measured by address.
+  ['library', '#/build/library', 'lib = null; libSeq = 1; renderLibraryInto(0)'],
   // The fixture's node never reported its images (known false), so the page
   // lands with no tiles; a node that has carries them, as the template does.
   ['emulator', '#/build/emulator', 'emu = null; renderEmulatorInto(0)', ['tiles']],
@@ -32,7 +35,6 @@ const PAGES = [
   ['users', '#/people/users', 'usersList = null; renderUsersInto(0)'],
   ['roles', '#/people/roles', 'rolesData = null; renderRolesInto(0)'],
   ['profile', '#/settings', 'profile = null; renderProfileInto(0)'],
-  ['apps', '#/build/apps', 'devApps = null; renderAppsInto(0)'],
   ['notices', '#/notifications', 'noticesData = null; noticesFetching = true; renderNoticesInto(0)'],
   ['containers', '#/containers', 'dockerList = null; for (const k in dockerSeen) delete dockerSeen[k]; renderDockerInto(0)'],
   ['analysis', '#/projects/findings', 'findings = {loading: true}; renderFindingsInto(0)'],

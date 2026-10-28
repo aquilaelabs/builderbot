@@ -36,7 +36,7 @@ edge:
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Playwright** | CLI + the system deps; the browsers themselves install to the [toolchain store](toolchains.md#the-toolchain-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
-| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK and the emulator are recipes on the Toolchains page, installed with the node picked, and the system images the emulator boots are on the Emulator page |
+| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK and the emulator are cards on the Library page, installed with the node picked, and the system images the emulator boots are on the Emulator page |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins; no daemon and no host socket here, so containers run on a node |
 | **Search** | ripgrep, fd, fzf, jq, yq |

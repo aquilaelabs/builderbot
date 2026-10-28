@@ -123,7 +123,7 @@ function keysGo(r){
   if (where === "controller") return openSettingsTab();
   if (where === "profile") return openProfileTab();
   if (where === "user") return openUsersTab();
-  if (where === "agents") return openAgentsTab(arg);
+  if (where === "agents") return arg ? openLibraryOn(arg) : openLibrary();
 }
 
 async function keysChange(btn){

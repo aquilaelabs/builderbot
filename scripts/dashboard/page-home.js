@@ -182,7 +182,7 @@ function homeStartHtml(){
   const steps = [
     canNodes ? ["Your first node", !!s.node, `<button type="button" data-hstart="node">Nodes page</button>`] : null,
     ["Your name and email", s.git, `<button type="button" data-hstart="git">Profile</button>`],
-    canNodes ? ["Claude Code on your node", !!s.claude, `<button type="button" data-hstart="claude"${s.node ? "" : " disabled"}>Agents page</button>`] : null,
+    canNodes ? ["Claude Code on your node", !!s.claude, `<button type="button" data-hstart="claude"${s.node ? "" : " disabled"}>Library</button>`] : null,
     ["A first project", s.project, `<button type="button" data-hstart="project">New project</button>`],
   ].filter(Boolean);
   const left = steps.filter(x => !x[1]).length;

@@ -79,7 +79,14 @@ class FtpServers:
         # last line says so. The first line is the listening one.
         first = proc.stderr.readline()
         if "listening" not in first:
+            # A traceback's header lands first and its reason last, a moment
+            # later: the process is given that moment to end before the
+            # rest is read, or the section said "Traceback (most recent
+            # call last):" and nothing of why (B428).
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=3)
             tail = (first + proc.stderr.read() if proc.poll() is not None else first).strip().splitlines()
+            tail = [t for t in tail if t.strip()]
             rec["why"] = (tail[-1] if tail else "bb-ftpd ended at once")[:200]
             with contextlib.suppress(OSError):
                 proc.kill()

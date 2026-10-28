@@ -221,6 +221,13 @@ const TABKINDS = {
   notebook:     { multi: true, label: t => "Notebook: " + projLabel(t.arg),
               icon: TOOL_ICONS.notebook,
               render: (i, t) => renderNotebookInto(i, t.arg), live: "always" },
+  // The Library (R170): one list of everything a BuilderBot installs or
+  // runs, for one node; its own read, the node list, and the sign-in,
+  // which rides the status poll (an agent's row carries it).
+  library:  { multi: false, label: () => "Library",
+              icon: TOOL_ICONS.toolchains,
+              render: (i) => renderLibraryInto(i), live: () => `${libRev}/${nodesRev}/${signinRev()}`,
+              open: () => loadLibrary() },
   toolchains: { multi: false, label: () => "Toolchains",
               icon: TOOL_ICONS.toolchains,
               render: (i) => renderToolchainsInto(i), live: () => tcRev,

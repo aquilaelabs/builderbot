@@ -139,11 +139,10 @@ function wireSignin(root){
 // view: where a Claude button sends its press when that node has no sign-in
 // of this account's yet.
 function openNodeClaude(nodeId, agent = "claude"){
-  // The Agents page on that node (R95 step 15), the agent's section open.
-  sectOpen[`agents:${agent}`] = true;
-  openAgentsOn(nodeId);
+  // The Library on that node (R170), the agent's card open on its sign-in.
+  openLibraryOn(nodeId, agent);
   const show = (tries) => {
-    const s = document.querySelector(`.agentstab [data-agnode="${CSS.escape(nodeId)}"] [data-sect="agents:${CSS.escape(agent)}"]`);
+    const s = document.querySelector(`.librarytab [data-libnode="${CSS.escape(nodeId)}"] .lcard.open [data-signin][data-siagent="${CSS.escape(agent)}"]`)?.closest(".lcard");
     if (s) return s.scrollIntoView({block: "start", behavior: "smooth"});
     if (tries > 0) setTimeout(() => show(tries - 1), 150);
   };

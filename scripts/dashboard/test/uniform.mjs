@@ -47,6 +47,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => openDocker()),
     readyWhen: '.dmtab .dmpick',
   },
+  // The Library (R170): a section per kind, or the empty band on a box
+  // with no agent node.
+  library: {
+    open: () => page.evaluate(() => openLibrary()),
+    readyWhen: '.librarytab .libgroup[data-libgroup="toolchain"], .librarytab .empty',
+  },
   toolchains: {
     open: () => page.evaluate(() => openToolchains()),
     readyWhen: '.tctab .tc',
@@ -411,7 +417,10 @@ async function bring(kind){
 // ...nor a list of rows you open (the Roles tab's accounts and roles, R255
 // step 9: the rows-you-open rule), whose rows are rows that happen to be
 // pressed, not verbs.
-const NOT_A_BAR = ['nbtabs', 'nbgroups', 'nbsub', 'foot', 'pagemore', 'pseg', 'rlist'];
+// ...and a row of chips (the chips rule, R216): a view's groups, one in
+// force, never a set of verbs. No fixture drew two groups before the
+// Library's kinds (R170), which is when the row first met this check.
+const NOT_A_BAR = ['nbtabs', 'nbgroups', 'nbsub', 'foot', 'pagemore', 'pseg', 'rlist', 'chips'];
 
 async function language(){
   return page.evaluate(({ NOT_A_BAR }) => {
@@ -520,6 +529,10 @@ async function spanning(){
       // the action at the tab's right edge), so its union spans by design.
       // Its controls are measured one by one below, like any lone control.
       if (row.classList.contains('docbarrow')) continue;
+      // A row of chips scrolls sideways where the width runs out (the chips
+      // rule: never a row per group), so its union runs past the cap by
+      // design; each chip is still a fraction of the width.
+      if (row.classList.contains('chips')) continue;
       // A full action bar on a phone (four buttons or more) shares the row
       // between its buttons on purpose (the phone rule both-sizes: at 344px
       // four did not fit), so its union spans by design; each button is

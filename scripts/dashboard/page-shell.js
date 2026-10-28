@@ -35,7 +35,7 @@ const RAIL_ICONS = {
 const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
-  {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["agents", "Agents"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
+  {key: "build", label: "Build", icon: "toolchains", tools: [["library", "Library"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"]]},
   {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["vms", "VMs"], ["nginx", "nginx"], ["scanners", "Scanners"]]},
   // The controller, a group of its own (the operator, 22 Oct): how this
   // BuilderBot behaves, with room for the pages a bare-metal install and
@@ -58,7 +58,10 @@ function isToolKind(kind){ return kind !== "term" && kind !== "notebook"; }
 
 // The group a tab kind is a page of: the first group that lists it.
 function groupOf(kind){
-  return RAIL.find(g => (g.tools || []).some(([k]) => k === kind)) || null;
+  // The pages the Library replaced (R170) are off the rail but keep their
+  // addresses under Build until step 5 retires them.
+  return RAIL.find(g => (g.tools || []).some(([k]) => k === kind))
+    || (["toolchains", "agents", "apps"].includes(kind) ? RAIL.find(g => g.key === "build") : null);
 }
 
 // Which tool kinds this account may open, from the areas its grants read
@@ -82,6 +85,9 @@ function railAllows(kind){
     // The coding agents on a node (R95): installed as a toolchain is, and
     // signed in to by whoever works there, so either area draws it.
     case "agents": return !!a.toolchains || !!a.nodes;
+    // The Library (R170): the Toolchains and Agents pages as one, so either
+    // area draws it; what each row offers is the server's to gate.
+    case "library": return !!a.toolchains || !!a.nodes;
     case "jobs": return !!a.jobs;
     // An administrator's own cron (R117), its own area.
     case "schedules": return !!a.schedules;
@@ -113,6 +119,8 @@ function railOn(){
     if (g && (g.tools || []).some(([k]) => k === kind)) return railWant;
     railWant = "";
   }
+  // The pages the Library replaced (R170) are off the rail but keep their
+  // addresses under Build until step 5 retires them.
   return groupOf(kind)?.key || (kind === "notebook" ? "projects" : "");
 }
 
@@ -122,7 +130,10 @@ const OPENERS = {
   home: () => openHome(),
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
-  toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
+  // The Toolchains, Agents and Apps pages are the Library since R170: every
+  // door a person presses lands there; their own addresses still open them
+  // until step 5 retires them with their suites.
+  library: () => openLibrary(), toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), debug: () => openDebugTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), keys: () => openKeysTab(), profile: () => openProfileTab(),
   apps: () => openAppsTab(),
@@ -160,7 +171,7 @@ function shellPush(to){
 // The Jobs page has no node; its second segment is the chip it is narrowed
 // to (#/jobs/failed-today, which Home's "failed today" opens, B74).
 const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
-  toolchains: () => tcNode === "local" ? "" : tcNode, agents: () => agNode, emulator: () => emuNode, phone: () => phNode,
+  toolchains: () => tcNode === "local" ? "" : tcNode, agents: () => agNode, library: () => libNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
 // Toolchains' "local" (the controller's own store, for a shell and the
 // suite) is no node, so an address naming it opens on the node tcPick picks.
@@ -170,6 +181,7 @@ const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, sto
   toolchains: v => { const n = v === "local" ? "" : v;
                      if (n !== tcNode){ tcNode = n; toolchains = null; tcTicked.clear(); tcDriverPick = ""; } },
   agents: v => { if (v !== agNode){ agNode = v; agRows = null; } },
+  library: v => { if (v !== libNode){ libNode = v; lib = null; } },
   emulator: v => { if (v !== emuNode){ emuNode = v; emu = null; emuTicked.clear(); } },
   phone: v => { if (v !== phNode){ phNode = v; phIp = ""; } },
   runner: v => { runnerNode = v; },
@@ -258,8 +270,11 @@ function openRoute(hash){
   const multi = (g.tools || []).length > 1;
   // A group of one tool names its node second (#/group/NODE), as routeOf
   // writes it.
-  const named = (g.tools || []).some(([k]) => k === a);
-  const kind = railTool(g, named ? a : "");
+  // ...and a page the Library replaced (R170) keeps its address under Build
+  // until step 5 retires it, though the rail no longer lists it.
+  const retired = !!a && ["toolchains", "agents", "apps"].includes(a) && groupOf(a) === g && !!OPENERS[a] && railAllows(a);
+  const named = (g.tools || []).some(([k]) => k === a) || retired;
+  const kind = retired ? a : railTool(g, named ? a : "");
   if (!kind) return false;
   railWant = g.key;
   // The node the address names, set before the page draws (R256 step 3).

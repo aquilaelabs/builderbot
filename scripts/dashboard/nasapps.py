@@ -6,9 +6,29 @@ from the New container dialog and made through the Containers page as any
 container is: on the node picked, reached on its port, and put behind a
 node's nginx with a certificate from that node's nginx page. Images are
 pinned to a tag, never latest, and the registry update check says when
-one moves. The catalog is this list; the vetted public catalog is R169's.
+one moves. The catalog is this list, and beside it the apps a person
+added (R170 step 3, the Library's Add your own): a compose file of their
+own with the same blanks, checked before it is kept, held at tier
+sideloaded in sideapps.json under the state; the vetted public catalog is
+R169's.
 """
+import json
+import os
 import re
+import sys
+import time
+from pathlib import Path
+
+_lib = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib")
+if os.path.isdir(_lib) and _lib not in sys.path:
+    sys.path.insert(0, _lib)
+import markup  # noqa: E402
+
+FILE = None
+write_json = None
+ID_RE = re.compile(r"[a-z][a-z0-9-]{1,31}")
+BLANKS = ("DATA", "MEDIA", "PUID", "PGID", "TZ", "PORT")
+COMPOSE_MAX = 64 * 1024
 
 TZ_RE = re.compile(r"[A-Za-z0-9_+-]{1,32}(/[A-Za-z0-9_+-]{1,32}){0,2}")
 PATH_RE = re.compile(r"/(mnt|srv)/[\w./ +-]{1,180}")
@@ -211,10 +231,130 @@ APPS = {
 }
 
 
+def configure(*, state, write_json):
+    globals().update(FILE=Path(state) / "sideapps.json", write_json=write_json)
+
+
+def _load():
+    """{id: record} of the apps a person added; {} with no file."""
+    try:
+        d = json.loads(FILE.read_text()) if FILE else {}
+    except (OSError, ValueError):
+        return {}
+    apps = d.get("apps") if isinstance(d, dict) else None
+    return {k: v for k, v in (apps or {}).items() if isinstance(v, dict) and v.get("compose")}
+
+
+def _save(apps):
+    write_json(FILE, {"apps": apps})
+
+
+def _all():
+    """Every app, the shipped ones first with their tier, then the added."""
+    out = {k: {**v, "tier": "official"} for k, v in APPS.items()}
+    for k, v in _load().items():
+        out[k] = {**v, "tier": "sideloaded"}
+    return out
+
+
 def catalog():
-    """The list the dialog shows: [{id, name, what, port, media, secrets}]."""
-    return [{"id": k, "name": v["name"], "what": v["what"], "port": v["port"], "media": v.get("media", False), "secrets": v.get("secrets", [])}
-            for k, v in APPS.items()]
+    """The list the dialog and the Library show: [{id, name, what, port,
+    media, secrets, tier, by, at}]."""
+    return [{"id": k, "name": v["name"], "what": v["what"], "port": v["port"], "media": v.get("media", False), "secrets": v.get("secrets", []),
+             "tier": v.get("tier", "official"), "by": v.get("by", ""), "at": v.get("at", 0)}
+            for k, v in _all().items()]
+
+
+def source(app):
+    """One added app as kept, for Edit: {id, name, what, port, media, compose} or {error}."""
+    a = _load().get(str(app or ""))
+    if not a:
+        return {"error": f"no app called {app or 'nothing'} was added here"}
+    return {"id": app, "name": a["name"], "what": a["what"], "port": a["port"], "media": bool(a.get("media")), "compose": a["compose"]}
+
+
+def check(compose):
+    """What a compose file of a person's own would run, before it is kept
+    (the Look): {services: [{name, image, ports, volumes}], blanks, media}
+    or {error}. Held to what the shipped ones are held to: a services
+    mapping, every image pinned to a tag that is not latest, and no blank
+    but the ones New container fills."""
+    text = str(compose or "")
+    if not text.strip():
+        return {"error": "paste the app's compose file"}
+    if len(text.encode("utf-8")) > COMPOSE_MAX:
+        return {"error": f"a compose file is {COMPOSE_MAX // 1024} KB at most"}
+    try:
+        doc = markup.yaml_load(text)
+    except Exception as e:  # noqa: BLE001 (the reader's own word is the reason)
+        return {"error": f"not a compose file: {e}"}
+    services = doc.get("services") if isinstance(doc, dict) else None
+    if not isinstance(services, dict) or not services:
+        return {"error": "a compose file has a services mapping with at least one service"}
+    out = []
+    for name, svc in services.items():
+        if not isinstance(svc, dict):
+            return {"error": f"service {name} is a mapping"}
+        image = str(svc.get("image") or "")
+        if not image:
+            return {"error": f"service {name} names an image"}
+        if not re.fullmatch(r"[\w./-]+:[\w.-]+", image) or image.endswith(":latest"):
+            return {"error": f"service {name}: {image} is not pinned to a tag (never latest), so an update could change it under you"}
+        if "build" in svc or "privileged" in svc:
+            return {"error": f"service {name}: an app from the catalog is a pulled image, never built here, and never privileged"}
+        ports = svc.get("ports") if isinstance(svc.get("ports"), list) else []
+        vols = svc.get("volumes") if isinstance(svc.get("volumes"), list) else []
+        out.append({"name": str(name), "image": image, "ports": [str(p) for p in ports], "volumes": [str(v) for v in vols]})
+    blanks = sorted(set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", text)))
+    odd = [b for b in blanks if b not in BLANKS]
+    if odd:
+        return {"error": f"unknown blank {', '.join(odd)}: the blanks New container fills are {', '.join(BLANKS)}"}
+    if "PORT" not in blanks:
+        return {"error": "the app answers on ${PORT}: New container fills it with the port you pick"}
+    return {"services": out, "blanks": blanks, "media": "MEDIA" in blanks}
+
+
+def add(app, name, what, port, compose, by="", replace=False):
+    """Keep an app of a person's own, looked at first (check): {app} or
+    {error}. `replace` takes a new version of one added before; a shipped
+    app's id is never taken."""
+    app = str(app or "").strip().lower()
+    if not ID_RE.fullmatch(app):
+        return {"error": "an app's id is 2 to 32 lower-case letters, digits and dashes, starting with a letter"}
+    if app in APPS:
+        return {"error": f"{app} is a shipped app: pick another id"}
+    name, what = str(name or "").strip(), str(what or "").strip()
+    if not 1 <= len(name) <= 60:
+        return {"error": "its name is 1 to 60 characters"}
+    if not 1 <= len(what) <= 200:
+        return {"error": "what it is, in a line of 200 characters at most"}
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        return {"error": "a port is a number"}
+    if not 1 <= port <= 65535:
+        return {"error": "a port is 1 to 65535"}
+    seen = check(compose)
+    if seen.get("error"):
+        return seen
+    apps = _load()
+    if app in apps and not replace:
+        return {"error": f"{app} was added already: open it from its row to change it"}
+    apps[app] = {"name": name, "what": what, "port": port, "media": seen["media"], "compose": str(compose), "secrets": [],
+                 "by": str(by or ""), "at": int(time.time())}
+    _save(apps)
+    return {"app": app, "replaced": app in apps and replace, **{k: v for k, v in seen.items()}}
+
+
+def remove(app):
+    """Drop an added app: {ok} or {error}. A container made from it stays
+    what it is, its own compose file kept with it."""
+    apps = _load()
+    if app not in apps:
+        return {"error": f"no app called {app or 'nothing'} was added here"}
+    del apps[app]
+    _save(apps)
+    return {"ok": True}
 
 
 def render(app, data, media="", ids="1000:1000", tz="UTC", port=None, secrets=None):
@@ -223,7 +363,7 @@ def render(app, data, media="", ids="1000:1000", tz="UTC", port=None, secrets=No
     live, so the file stays the catalog's and the Environment tab says what
     was picked; a secret the dialog did not give is made here."""
     import secrets as _secrets
-    a = APPS.get(str(app or ""))
+    a = _all().get(str(app or ""))
     if not a:
         return {"error": f"no app called {app or 'nothing'} in the catalog"}
     data = str(data or "").rstrip("/")

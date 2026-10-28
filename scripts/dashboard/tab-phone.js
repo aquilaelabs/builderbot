@@ -67,7 +67,7 @@ function renderPhoneInto(i){
   d.setBar(phoneBar(nodes, n));
   phFoot = "";
   d.list.innerHTML = n ? phonePanel(n)
-    : `<div class="hint">No node carries adb yet: install Android platform tools on one from the ${pageLink("toolchains", "Toolchains page")}.</div>`;
+    : `<div class="hint">No node carries adb yet: install Android platform tools on one from the ${pageLink("library", "Library")}.</div>`;
   d.setFoot(phFoot);
   if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);
   wirePhoneTab(d.el);

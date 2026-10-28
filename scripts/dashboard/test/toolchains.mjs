@@ -12,7 +12,9 @@ await page.goto(URL);
 await ready(page);
 
 // ---- on the rail -------------------------------------------------------
-ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools.some(([k]) => k === 'toolchains')) && railAllows('toolchains')), 'Toolchains is a page under Build on the rail');
+// Since R170 the Build group opens on the Library, which reads this page's
+// rows; the page itself still opens by its address and from the bell.
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools.some(([k]) => k === 'library')) && railAllows('toolchains')), 'the Library is a page under Build on the rail, and Toolchains is allowed to whoever it allows');
 ok(await page.evaluate(() => railGroups().some(g => g.key === 'projects' && g.tools.some(([k]) => k === 'findings')) && railAllows('findings')), '...and the scanner report, Analysis, one under Projects');
 
 // ---- the tab -----------------------------------------------------------
@@ -41,6 +43,7 @@ ok(await page.$$eval('.doc #tcNodeSel option', os => !os.some(o => o.value === '
 // ...nor does an address that names it: #/build/toolchains/local opens on a
 // node, its store under its own name (B25).
 {
+  // The page keeps its address under Build until R170 step 5 retires it.
   await page.evaluate(() => { openRoute('#/build/toolchains/local'); });
   await page.waitForFunction(() => tcNode && tcNode !== 'local' && toolchains?.name
     && document.querySelector('.doc.on #tcNodeSel')?.value === tcNode, null, { timeout: 20000 });

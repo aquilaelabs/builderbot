@@ -66,7 +66,13 @@ you add is `url`, and a pack from the vetted catalog, when it comes, is
 not a pack and is not listed. The files are written from the tables by
 `tools/packs-export.py --write` and `bb lint` fails when they drift, so
 the format is one; the installer and the agents' adapters still read
-their own tables.
+their own tables. The same folders live in the catalog repository
+(`packs/official/NAME`, `packs/agents/NAME`, written there by
+`tools/packs-export.py --catalog DIR`), and its index pins every one of
+them at tier official to the catalog's own commit (`--catalog DIR
+--index`, then the maintainer signs), so the catalog is the one list of
+everything official and an install's Library shows a shipped row as the
+catalog's, never twice.
 
 ## The vetted catalog
 
@@ -80,19 +86,24 @@ signature checks: an index changed on the way, or signed by another key,
 is refused and the one read before stands, with the reason said. Where it
 is read from is **Catalog address** under Controller settings. A pack the
 catalog withdraws (`withdrawn: true` in the next signed index) is a line on
-the bell for every install that holds it, saying to remove it. Search and
-Install from the catalog on the Toolchains and Agents pages are the next
-step; the index is what they read.
+the bell for every install that holds it, saying to remove it. The Library
+is what reads it. An entry may name a `path`, the folder of its repository
+the pack lives in (the catalog's own packs do; a repository of several
+packs may): its sha256 is then of that folder's archive at the commit,
+Look reads the manifest there, and an install keeps the folder's files as
+a pack made here, so a node fetches the folder and nothing else.
 
 ### Installing from the catalog
 
-The Toolchains page's **Vetted catalog** section lists the index's packs
-with their tier (official, vetted; a pack you add by address is by URL),
-what each is and the platforms it works on, and **Install** opens the same
-dialog as Add tool pack on the commit the index pins, with the archive's
-sha256 checked on the way in: Look shows what it fetches and runs, and Add
-keeps exactly that. A pack the catalog withdrew is said and not offered,
-and one already added says so. **Refresh** reads the index again.
+The Library's **Tool packs** cards are the index's packs not yet added,
+each with its tier (official, vetted, sideloaded for one added by address
+or made here), what it is and the platforms it works on; **Install** opens
+the same dialog as Add your own on the commit the index pins, with the
+archive's sha256 checked on the way in: Look (on the card, or in the
+dialog) shows what it fetches and runs, and Add keeps exactly that. A pack
+the catalog withdrew is not offered, one already added is its own card,
+and an official entry is the shipped row it names. The catalog's trouble,
+when it cannot be read, is said over the cards.
 
 ## What a project's sessions can use
 

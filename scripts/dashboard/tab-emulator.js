@@ -273,7 +273,7 @@ function renderEmulatorInto(i){
                                   emuRev++; drawPanes(); loadEmulator(); });
 
   const toTc = el.querySelector("#emuToTc");
-  if (toTc) toTc.onclick = e => { e.preventDefault(); tcNode = emuNode; openToolchains(); };
+  if (toTc) toTc.onclick = e => { e.preventDefault(); openLibraryOn(emuNode); };
   const fl = el.querySelector("#imgFlavor");
   if (fl) fl.onchange = () => { emuFlavor = fl.value; emuRev++; drawPanes(); };
   el.querySelectorAll(".tc.emnew input").forEach(b => b.onchange = () => {

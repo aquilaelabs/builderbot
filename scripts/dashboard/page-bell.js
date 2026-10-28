@@ -823,7 +823,7 @@ function wireNeeds(root, after = () => {}){
   root.querySelectorAll("[data-btc]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
-    openToolchainsOn(a.dataset.btc);
+    openLibraryOn(a.dataset.btc);
   });
   // ...and a coding agent's update to that node's Agents page (R95).
   root.querySelectorAll("[data-b2fa]").forEach(a => a.onclick = e => {
@@ -834,12 +834,12 @@ function wireNeeds(root, after = () => {}){
   root.querySelectorAll("[data-bag]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
-    openAgentsOn(a.dataset.bag);
+    openLibraryOn(a.dataset.bag);
   });
   // ...and a node short of room to its Storage page.
   root.querySelectorAll("[data-btoolchains]").forEach(a => a.onclick = e => {
     e.preventDefault();
-    openToolchains();
+    openLibrary();
   });
   root.querySelectorAll("[data-bmachine]").forEach(a => a.onclick = e => {
     e.preventDefault();

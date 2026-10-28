@@ -126,6 +126,37 @@ class Repository(unittest.TestCase):
         self.assertTrue(r.get("ok"), r)
         self.assertEqual((r["pack"]["tier"], toolpacks.recipes()[0]["pack"]["tier"]), ("vetted", "vetted"))
 
+    def test_a_pack_in_a_folder_of_the_repository(self):
+        # R170 step 6: a pack kept in a folder (the catalog's own packs/):
+        # fetched with its path, the sha256 over that folder's archive, and
+        # kept as a pack made here from the folder's files alone.
+        import hashlib
+        import shutil
+        folder = os.path.join(self.repo, "packs", "hexkit")
+        os.makedirs(folder)
+        shutil.move(os.path.join(self.repo, "bbtool.json"), folder)
+        shutil.move(os.path.join(self.repo, "GUIDE.md"), folder)
+        with open(os.path.join(self.repo, "README.md"), "w") as f:
+            f.write("many packs live here\n")
+        git("add", "-A", cwd=self.repo)
+        git("commit", "-q", "-m", "a folder", cwd=self.repo)
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+        self.assertIn("has no bbtool.json at its root", toolpacks.fetch(self.url, commit)["error"])
+        self.assertIn("plain relative path", toolpacks.fetch(self.url, commit, path="../x")["error"])
+        seen = toolpacks.fetch(self.url, commit, path="packs/hexkit")
+        self.assertNotIn("error", seen, seen)
+        self.assertEqual((seen["path"], seen["guidance"]), ("packs/hexkit", "Look before you leap."))
+        tar = subprocess.run(["git", "archive", "--format=tar", "HEAD", "packs/hexkit"], cwd=self.repo, capture_output=True, check=True).stdout
+        good = hashlib.sha256(tar).hexdigest()
+        self.assertNotIn("error", toolpacks.fetch(self.url, commit, sha256=good, path="packs/hexkit"))
+        self.assertIn("not what the catalog vetted", toolpacks.fetch(self.url, commit, sha256="0" * 64, path="packs/hexkit")["error"])
+        r = toolpacks.add(self.url, commit, "operator", sha256=good, tier="vetted", path="packs/hexkit")
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual((r["pack"]["path"], r["pack"]["tier"], r["pack"]["url"], r["pack"]["commit"]), ("packs/hexkit", "vetted", self.url, commit))
+        row = toolpacks.recipes()[0]
+        self.assertEqual((row["pack"]["path"], row["pack"]["here"], row["source"]["kind"]), ("packs/hexkit", True, "git"))
+        self.assertTrue(row["source"]["url"].startswith("bundle:"), row["source"])
+
     def test_what_is_kept_is_what_was_shown(self):
         shown = toolpacks.fetch(self.url)["commit"]
         changed = json.loads(json.dumps(GOOD))

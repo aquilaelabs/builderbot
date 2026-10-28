@@ -58,7 +58,7 @@ def door_refused(said, app=""):
         return ""
     who = " ".join(str(app or "").split())[:60] or "this app"
     return (f"{who} speaks the controller's door {n} and the controller needs {DOOR_MIN} or newer: "
-            "update the app from the Apps page, or let it update itself")
+            "update the app from the Library, or let it update itself")
 
 
 UNLOCK = None            # (uid, key) -> unlocks.unlock, set by the server (R157)
