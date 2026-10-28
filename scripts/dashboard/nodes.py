@@ -1508,6 +1508,9 @@ def _census(c):
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
+    # ...and its disks' spin-down in minutes (R164 step 3), 0 for never.
+    if isinstance(c.get("spindown"), int) and not isinstance(c.get("spindown"), bool) and c["spindown"] in SPINDOWN_MINUTES:
+        out["spindown"] = c["spindown"]
     # BuilderBot OS on the machine (R160 step 4): the image's version and
     # snapshot, the slot this boot came from and the one GRUB boots next.
     if isinstance(c.get("os_image"), dict) and c["os_image"].get("version"):
@@ -3403,7 +3406,45 @@ def node_storage_pool(principal, node_id, req):
     return r
 
 
-def node_machine(principal, node_id, hostname="", timezone=""):
+SPINDOWN_MINUTES = (0, 5, 10, 15, 20, 30, 60, 120)
+DISK_HOT_C = 55
+
+
+def storage_attention():
+    """The bell's rows (kind disk) for the controller's own machine's
+    storage (R164 step 3), from the census on every poll so each leaves
+    the moment it stops being true: a disk SMART calls failing (bad), a
+    disk at DISK_HOT_C or more, a pool not online (bad), an array slot not
+    mounted (bad). Keyed on what is wrong, so a dismissal holds until it
+    changes."""
+    out = []
+    for n in node_list():
+        if n.get("kind") != "agent" or not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        for d in rep.get("disks") or []:
+            sm = d.get("smart") or {}
+            who = f"{d.get('model') or 'a disk'} ({d.get('name')}, serial {d.get('serial') or 'none'})"
+            if sm.get("health") == "failing":
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "failing", "bad": True, "key": f"disk:failing:{n['id']}:{d.get('serial') or d.get('name')}",
+                            "said": f"SMART says {who} is failing: replace it before it goes"})
+            elif isinstance(sm.get("temp_c"), int) and sm["temp_c"] >= DISK_HOT_C:
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "hot", "bad": False, "key": f"disk:hot:{n['id']}:{d.get('serial') or d.get('name')}:{sm['temp_c'] // 5 * 5}",
+                            "said": f"{who} is at {sm['temp_c']} °C; {DISK_HOT_C} °C and over shortens its life"})
+        for pl in rep.get("pools") or []:
+            if pl.get("health") and pl["health"] not in ("online", ""):
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "pool", "bad": True, "key": f"pool:{n['id']}:{pl['name']}:{pl['health']}",
+                            "said": f"the pool {pl['name']} is {pl['health']}{': ' + pl['errors'] if pl.get('errors') and 'no known data errors' not in pl['errors'].lower() else ''}"})
+        ar = rep.get("array") if isinstance(rep.get("array"), dict) else {}
+        for kind, key in (("d", "data"), ("p", "parity")):
+            for x in ar.get(key) or []:
+                if not x.get("mounted"):
+                    out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "array", "bad": True, "key": f"array:{n['id']}:{kind}{x.get('slot')}",
+                                "said": f"the array's {kind}{x.get('slot')} ({x.get('id') or 'unknown disk'}) is not mounted: the disk is gone or failed; Replace on the Storage page rebuilds it"})
+    return out
+
+
+def node_machine(principal, node_id, hostname="", timezone="", spindown=None):
     """The controller's own machine's name and time zone (R161 step 3, R56
     step 8): a system job on its node, whose root agent sets them through
     hostnamectl and timedatectl; refused anywhere else, since another node's
@@ -3429,11 +3470,21 @@ def node_machine(principal, node_id, hostname="", timezone=""):
         return {"error": "a hostname is letters, digits and hyphens, 63 at most"}
     if tz and not re.fullmatch(r"[A-Za-z0-9_+-]{1,32}(/[A-Za-z0-9_+-]{1,32}){0,2}", tz):
         return {"error": "a time zone is named as Region/City"}
-    if not host and not tz:
+    spin = None
+    if spindown is not None and spindown != "":
+        try:
+            spin = int(spindown)
+        except (TypeError, ValueError):
+            spin = -1
+        if spin not in SPINDOWN_MINUTES:
+            return {"error": f"a spin-down is one of {', '.join(str(m) for m in SPINDOWN_MINUTES)} minutes, 0 for never"}
+    if not host and not tz and spin is None:
         return {"error": "nothing to set"}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node; one at a time"}
     cfg = {k: v for k, v in (("hostname", host), ("timezone", tz)) if v}
+    if spin is not None:
+        cfg["spindown"] = spin
     r = job_add(principal, {"node": node_id}, "system", {"apply": "machine", "config": cfg, "timeout": 120})
     if r.get("ok"):
         audit(principal, "machine", node_id, {"job": r["job"], **cfg})
@@ -6489,7 +6540,7 @@ def verb(principal, req):
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
              "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
              "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
-             "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone")),
+             "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone"), req.get("spindown")),
              "storage-share": lambda: node_storage_share(principal, nid, req),
              "storage-pool": lambda: node_storage_pool(principal, nid, req),
              "storage-snapshot": lambda: node_storage_snapshot(principal, nid, req),

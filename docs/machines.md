@@ -319,6 +319,14 @@ the machine's root agent runs from its table (`zpool` on the disks'
 is never offered. Nothing here is on another node: pools are the controller's
 own machine's.
 
+**On the bell** (R164): a disk SMART calls failing, a disk at 55 °C or
+over, a pool not online and an array slot whose disk is gone are each a
+row on the bell (kind disk, which Where the bell reaches you can send by
+email or a push), read off the census on every poll so a row leaves the
+moment it stops being true, and keyed on what is wrong so a dismissal
+holds until that changes. Each links to the Storage page, where Replace
+and the rest are.
+
 **Array** (R162): an Unraid-style array beside the pools, for disks of
 mixed sizes: each data disk its own xfs or btrfs filesystem mounted at
 `/mnt/disks/dN`, pooled into one tree at `/mnt/array` by mergerfs (the
@@ -406,6 +414,11 @@ installed OS adds are held by their own modules until **Start** is pressed
 here. A band on every page says it is held and why. Safe mode at the boot
 menu and a disk the array names gone missing are the installed OS's own
 reasons to hold (R161, R162).
+
+Under Name and time, **Spin down disks** (R164) stops the spinning
+disks but the system's after the idle time picked (`hdparm -S`, five
+minutes to two hours, or never); a solid-state disk is left alone, and the
+agent sets it again after every boot, since the timer is the drive's own.
 
 ## Network
 

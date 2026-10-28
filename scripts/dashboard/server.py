@@ -2055,7 +2055,10 @@ def _attention(who):
     rows = (_held_rows(who)
             + ([] if users.may(who, "node") else nodes.attention(where) + _token_rows()
                # ...and a newer release for a bare-metal install (R90 step 5).
-               + releasecheck.attention(_own_node_id()))
+               + releasecheck.attention(_own_node_id())
+               # ...and a disk failing or hot, a pool not online, an array
+               # slot gone, on the controller's own machine (R164 step 3).
+               + nodes.storage_attention())
             # ...and a node short of disk or memory (R110), for whoever
             # manages nodes: what is short, on the Storage page's terms.
             + ([] if users.may(who, "node") else nodes.room_attention(

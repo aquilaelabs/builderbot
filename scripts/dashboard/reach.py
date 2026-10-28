@@ -40,9 +40,10 @@ SEALED = "bbseal:"
 TIMEOUT = 20
 MAX_DEST = 12
 MAX_ROWS = 12                # rows in one message
-KINDS = ("asks", "needs", "ci", "invites", "sync")
+KINDS = ("asks", "needs", "ci", "invites", "sync", "disk")
 KIND_WORDS = {"asks": "a session asking for your answer", "needs": "what a node or a project needs",
-              "ci": "a red CI run", "invites": "an invitation to a project", "sync": "a file changed in two places"}
+              "ci": "a red CI run", "invites": "an invitation to a project", "sync": "a file changed in two places",
+              "disk": "a disk failing or hot, a pool or an array slot gone, on this machine"}
 # Each channel: the fields it takes (name, label, secret?) in the order the
 # page draws them.
 CHANNELS = {

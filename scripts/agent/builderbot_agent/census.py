@@ -283,6 +283,8 @@ def census(state):
         # The machine's time zone (R161 step 3, R56 step 8): what the
         # system keeps, for This machine's Name and time.
         "timezone": timezone_now(),
+        # The disks' spin-down in minutes as kept (R164 step 3), 0 for never, left out where none was set.
+        **({"spindown": state.get("spindown")} if isinstance(state.get("spindown"), int) else {}),
         "machine": machine_now(),
         "docker": _run(["docker", "version", "--format", "{{.Server.Version}}"])
         if shutil.which("docker") else "",

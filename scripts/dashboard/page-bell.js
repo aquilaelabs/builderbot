@@ -349,6 +349,17 @@ function attRow(a){
           ${a.job ? `<a href="#" data-bjob="${esc(a.job)}">its log</a>` : ""}
           <a href="#" data-bscanners="1">Scanners page</a></span></div></div>`;
   }
+  // The controller's own machine's storage (R164 step 3): a disk SMART
+  // calls failing, a hot disk, a pool not online, an array slot gone;
+  // each to the Storage page, where Replace and the rest are.
+  if (a.kind === "disk"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${esc({failing: "A disk is failing", hot: "A disk runs hot", pool: "A pool is not online", array: "An array disk is gone"}[a.what] || "Storage")} on ${esc(a.node)}</div>
+      <div class="bsum">${esc(a.said)}</div>
+      <div class="bfoot"><span>${a.bad ? "until it is replaced or back" : "until it cools"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
+  }
   // A newer BuilderBot release, on a controller installed bare metal (R90
   // step 5): Update runs the installer through its own node's root agent.
   if (a.kind === "release"){
@@ -812,6 +823,10 @@ function wireNeeds(root, after = () => {}){
     after();
   });
   // ...and an nginx update to the nginx tab on that node.
+  root.querySelectorAll("[data-bstorage]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    openStorageTab(a.dataset.bstorage);
+  });
   root.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();

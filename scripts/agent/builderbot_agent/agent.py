@@ -643,6 +643,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             timed("firewall_check", self.session_firewall_check)
             timed("account_users", self.account_users_pass)
             timed("array", self.array_pass)
+            timed("spindown", self.spindown_pass)
             timed("tokens", self.token_pass)
             timed("idle_reap", self.session_idle_reap)
             timed("runner_check", self.runner_check)

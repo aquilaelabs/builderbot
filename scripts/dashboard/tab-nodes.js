@@ -662,6 +662,8 @@ function nodeUsbSection(n){
 // 8): set through the node's root agent, a system job each; the zones the
 // browser knows, offered as a list to type into. Nowhere else: another
 // node's name is its own administrator's.
+const SPINDOWN_WORDS = [["0", "never"], ["5", "after 5 minutes"], ["10", "after 10 minutes"], ["15", "after 15 minutes"], ["20", "after 20 minutes"],
+                        ["30", "after 30 minutes"], ["60", "after an hour"], ["120", "after two hours"]];
 function nodeMachineSection(n){
   if (!n.config?.own) return "";
   const r = n.reported || {};
@@ -674,21 +676,24 @@ function nodeMachineSection(n){
     <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" data-k="machinename" value="${esc(r.hostname || n.name || "")}" maxlength="63" autocomplete="off" spellcheck="false"${admin && !why ? "" : " disabled"}></label></div>
     <div class="field"><label class="pick"><span class="pickw">Time zone</span><input type="text" data-k="machinetz" list="ndZones" value="${esc(r.timezone || "")}" placeholder="Region/City" autocomplete="off" spellcheck="false"${admin && !why ? "" : " disabled"}></label>
       <datalist id="ndZones">${zones.map(z => `<option value="${esc(z)}">`).join("")}</datalist></div>
+    <div class="field"><label class="pick"><span class="pickw">Spin down disks</span><select data-k="machinespin"${admin && !why ? "" : " disabled"}>${optionList(SPINDOWN_WORDS, String(r.spindown ?? 0))}</select></label>
+      <div class="hint">Spinning disks but the system's stop after that long idle (hdparm); a solid-state disk is left alone. A spun-down disk takes a few seconds to answer the next read.</div></div>
     ${admin && !why ? `<div class="actbar"><span class="sp"></span><button type="button" class="primary" data-nd="machine-apply" disabled>Apply</button></div>` : ""}`;
-  return docSection("nodes", "machine", ndTitle("machine"), [r.hostname || "", r.timezone || ""].filter(Boolean).join(" · "), body);
+  return docSection("nodes", "machine", ndTitle("machine"), [r.hostname || "", r.timezone || "", r.spindown ? `disks spin down after ${r.spindown} min` : ""].filter(Boolean).join(" · "), body);
 }
 function wireMachineSection(root, n){
   const sect = root.querySelector('details[data-sect="nodes:machine"]');
   if (!sect) return;
-  const name = sect.querySelector('[data-k="machinename"]'), tz = sect.querySelector('[data-k="machinetz"]'), b = sect.querySelector('[data-nd="machine-apply"]');
+  const name = sect.querySelector('[data-k="machinename"]'), tz = sect.querySelector('[data-k="machinetz"]'), spin = sect.querySelector('[data-k="machinespin"]'), b = sect.querySelector('[data-nd="machine-apply"]');
   if (!b) return;
   const r = n.reported || {};
-  const wake = () => { b.disabled = (name.value.trim().toLowerCase() === (r.hostname || n.name || "").toLowerCase()) && tz.value.trim() === (r.timezone || ""); };
-  name.oninput = wake; tz.oninput = wake;
+  const wake = () => { b.disabled = (name.value.trim().toLowerCase() === (r.hostname || n.name || "").toLowerCase()) && tz.value.trim() === (r.timezone || "") && spin.value === String(r.spindown ?? 0); };
+  name.oninput = wake; tz.oninput = wake; spin.onchange = wake;
   b.onclick = () => pressing(b, async () => {
     const body = {action: "machine", id: n.id};
     if (name.value.trim().toLowerCase() !== (r.hostname || n.name || "").toLowerCase()) body.hostname = name.value.trim();
     if (tz.value.trim() !== (r.timezone || "")) body.timezone = tz.value.trim();
+    if (spin.value !== String(r.spindown ?? 0)) body.spindown = parseInt(spin.value, 10);
     busy(b, "Applying");
     const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
     notify(j.error || "set on the machine: its next check-in says the new name and zone", !!j.error);
