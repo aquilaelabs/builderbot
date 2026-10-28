@@ -95,7 +95,10 @@ def basic(uid):
 
 
 def _ua_digest(ua):
-    return hashlib.sha256(str(ua or "").encode("utf-8", "replace")).hexdigest()[:16]
+    """A browser's User-Agent, digested; "" for none, so a sign-in made with
+    no User-Agent at all (a script, a socket) binds to nothing and the
+    first browser to present it is the one it is held to."""
+    return hashlib.sha256(str(ua).encode("utf-8", "replace")).hexdigest()[:16] if ua else ""
 
 
 def browser_words(ua):
