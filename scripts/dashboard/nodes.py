@@ -1423,6 +1423,14 @@ def _census(c):
                        # put there by BuilderBot, and on now, which a restart
                        # and the firmware decide.
                        "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True}}
+    # The domains its libvirt has that BuilderBot did not make (R165 step 1):
+    # a name, a state and a size, read-only on the VMs page.
+    if isinstance(c.get("vms_other"), list):
+        out["vms_other"] = [{"name": str(v["name"]), "state": re.sub(r"[^a-z ]", "", str(v.get("state") or ""))[:20],
+                             "vcpus": int(v["vcpus"]) if isinstance(v.get("vcpus"), int) else 0,
+                             "mem_mb": int(v["mem_mb"]) if isinstance(v.get("mem_mb"), int) else 0}
+                            for v in c["vms_other"][:64]
+                            if isinstance(v, dict) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", str(v.get("name") or ""))]
     # ...and the VMs it runs (R91), each as libvirt says, with the room their
     # disks have: whitelisted field by field like the rest.
     if isinstance(c.get("vms"), list):
@@ -2949,12 +2957,9 @@ def node_feature(principal, node_id, fid, op):
     if fid not in FEATURES or op not in ("install", "remove"):
         return {"error": f"no such feature verb: {op} {fid}"}
     name = FEATURE_NAMES[fid]
-    if op == "install" and fid == "vmhost" and own_machine(n):
-        # The controller's own machine (R90 step 14): VM host puts the job
-        # account in libvirt's group, which is root here, and root holds the
-        # controller's state, as docker-host would (node_update).
-        return {"error": f"{n['name']} is the controller's own machine, so it is no VM host: libvirt's group is root here, "
-                         "and the wall keeps the controller's state from the node's accounts"}
+    # The controller's own machine takes VM host too (R165 step 1): there
+    # the VMs run through the root agent and the jobs account stays out of
+    # libvirt's group, which is root on that machine (R90 step 14).
     rep = n.get("reported") or {}
     if n.get("kind") != "agent" or not rep.get("administers"):
         return {"error": f"{n['name']} was not provisioned as a managed node with its agent as root, so {name} cannot be "

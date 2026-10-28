@@ -44,7 +44,7 @@ from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
 from . import storage
 from . import vmhw
-from .vms import isos_now, vm_memory, vm_pool, vms_now
+from .vms import isos_now, vm_memory, vm_pool, vms_now, vms_other
 
 
 def _sshd_listening():
@@ -298,6 +298,8 @@ def census(state):
         "features": features_now(),
         # ...and the VMs it runs, with the room their disks have (R91).
         "vms": vms_now(),
+        # ...and the domains libvirt has that BuilderBot did not make (R165 step 1).
+        "vms_other": vms_other(),
         "vm_pool": vm_pool(),
         # The installer ISOs fetched onto this node (R99).
         "vm_isos": isos_now(),

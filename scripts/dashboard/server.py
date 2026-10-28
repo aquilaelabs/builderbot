@@ -7942,7 +7942,10 @@ class Handler(BaseHTTPRequestHandler):
         uid = users.uid_of(me) or ""
         take = {p: not sess and can[p] == "write" and (users.is_admin(me) or (uid and membership.owner_of(p) == uid))
                 for p in seen}
-        return self._json(vms.payload(seen) | {"can": can, "take": take, "me": uid, "unowned": sorted(gone)})
+        return self._json(vms.payload(seen) | {"can": can, "take": take, "me": uid, "unowned": sorted(gone),
+                                               # The domains libvirt has that BuilderBot did not make
+                                               # (R165 step 1): an administrator's to read, nobody's to act on.
+                                               "others": vms.others() if not sess and users.is_admin(me) else []})
 
     def _vms(self, req):
         """POST /api/vms (R91): new, start, stop, restart, remove, snapshot,

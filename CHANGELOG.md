@@ -22,6 +22,7 @@
 - A browser's sign-in is bound to the browser it was made in: its cookie presented from another browser is refused, Profile's Signed in as you lists each browser signed in as you (its system and the address it came from) with Sign out, and Controller, Audit is who did what to this install, newest first, narrowed to a person or a machine (e6d74b8)
 - The nginx page gets certificates from Let's Encrypt: Get one from Let's Encrypt asks for a hostname's pair by an HTTP-01 challenge the node's nginx answers or a DNS-01 record written through the Cloudflare API token, keeps it like a pasted pair and renews it thirty days before it ends, with the result on the bell (1e534c6)
 - BuilderBot OS, the appliance image the installed editions are made from: Debian stable pinned to a dated snapshot with ZFS built against its kernel, the controller staged in as a bare-metal install lays it out, a read-only root in two slots so an update is a whole image and a bad one falls back, GRUB for UEFI and BIOS, /var and the changes to /etc the only things that persist, and the machine its controller's own node at its first boot; built by image/build.sh, in CI on every release tag (docs/image.md) (09109c1)
+- VMs on the controller's own machine: VM host installs on a bare-metal controller's machine too, its VMs run through the node's root agent with the jobs account kept out of libvirt's group there, and the VMs page lists for an administrator the domains a node's libvirt has that BuilderBot did not make, under Not BuilderBot's, read-only (98c12df)
 
 ### Changed
 

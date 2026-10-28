@@ -69,13 +69,16 @@ class OwnRow(unittest.TestCase):
         self.assertIn("runs no containers", r.get("error", ""))
         self.assertEqual(self.row("nas")["capabilities"], ["package-build"])
 
-    def test_it_is_no_vm_host(self):
-        # libvirt's group is root on the machine (R90 step 14), so VM host is
-        # refused on it as docker-host is, whatever else the row says.
+    def test_it_may_be_a_vm_host_through_the_root_agent(self):
+        # libvirt's group is root on the machine (R90 step 14), and VM host
+        # is still offered there (R165 step 1): the VMs run through the root
+        # agent and the jobs account stays out of the group, so the gate it
+        # meets is every node's, not one of its own.
         mint(self.state, "nas", "--own")
         n = self.row("nas")
         r = self.nodes.node_feature("user:t", n["id"], "vmhost", "install")
-        self.assertIn("controller's own machine, so it is no VM host", r.get("error", ""))
+        self.assertNotIn("no VM host", r.get("error", ""))
+        self.assertIn("not provisioned as a managed node", r.get("error", ""))
 
 
 class TheDoctorSaysTheWall(unittest.TestCase):

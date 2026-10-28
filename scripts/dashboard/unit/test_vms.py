@@ -352,6 +352,17 @@ class Census(unittest.TestCase):
                                    "autostart": False, "hw": {"cpuset": [], "devices": [], "net": "project"}, "usb": []}])
         self.assertEqual(got["vm_pool"], {"free_mb": 39000, "total_mb": 60000})
 
+    def test_the_domains_builderbot_did_not_make_reach_the_record_by_name_state_and_size(self):
+        # R165 step 1: read-only on the VMs page, so only what names and
+        # sizes one is kept, each to its shape.
+        import nodes
+        got = nodes._census({"vms_other": [{"name": "win11", "state": "running", "vcpus": 4, "mem_mb": 8192, "disk": "/x"},
+                                           {"name": "bad name!", "state": "running"}, "junk",
+                                           {"name": "old-box", "state": "shut <b>off</b>", "vcpus": "2"}]})
+        self.assertEqual(got["vms_other"], [{"name": "win11", "state": "running", "vcpus": 4, "mem_mb": 8192},
+                                            {"name": "old-box", "state": "shut boffb", "vcpus": 0, "mem_mb": 0}])
+        self.assertEqual(vms.others.__doc__ is not None, True)
+
     def test_a_usb_device_s_name_and_use_reach_the_record(self):
         # R116: the fields that name a device again and say what the host
         # does with it, each kept to its shape; a VM's devices as named; the
@@ -378,6 +389,38 @@ class Agent(unittest.TestCase):
         import agentpkg
         self.agent = agentpkg.load("builderbot_agent_vms")
         self.av = sys.modules[self.agent.Agent.__module__.rsplit(".", 1)[0] + ".vms"]
+
+    def test_the_domains_it_did_not_make_are_listed_and_never_ours(self):
+        # R165 step 1: a name without the prefix, or with it and without the
+        # agent's marker, is somebody else's; one with both is BuilderBot's
+        # and stays out of this list.
+        from unittest import mock
+        def virsh(argv, timeout=0, **kw):
+            verb = argv[len(self.av.VIRSH)]
+            if verb == "list":
+                return "bbvm-web-db\nwin11\nbbvm-fake\nbad/name\n"
+            name = argv[len(self.av.VIRSH) + 1]
+            if verb == "dumpxml":
+                return f"<domain><metadata><bb:vm xmlns:bb='{self.av.META_NS}'/></metadata></domain>" if name == "bbvm-web-db" else "<domain/>"
+            if verb == "dominfo":
+                return {"win11": "State:          running\nCPU(s):         4\nMax memory:     8388608 KiB\n",
+                        "bbvm-fake": "State:          shut off\nCPU(s):         1\nMax memory:     1048576 KiB\n"}.get(name, "")
+            return ""
+        with mock.patch.object(self.av, "_run", side_effect=virsh), mock.patch.object(self.av.shutil, "which", return_value="/usr/bin/virsh"):
+            self.assertEqual(self.av.vms_other(), [{"name": "win11", "state": "running", "vcpus": 4, "mem_mb": 8192},
+                                                   {"name": "bbvm-fake", "state": "stopped", "vcpus": 1, "mem_mb": 1024}])
+
+    def test_on_the_controllers_own_machine_a_vm_job_runs_as_the_agent(self):
+        # R165 step 1: the wall's file says the machine is the controller's
+        # own, and there the job keeps root rather than dropping to the jobs
+        # account, which is out of libvirt's group on that machine.
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            wall = os.path.join(d, "wall")
+            with mock.patch.dict(os.environ, {"BB_WALL_FILE": wall}):
+                self.assertFalse(self.av.own_here())
+                open(wall, "w").close()
+                self.assertTrue(self.av.own_here())
 
     def test_a_publisher_s_checksums_are_read_in_each_style(self):
         h = "a" * 64

@@ -294,6 +294,20 @@ def view(projects=None):
     return out
 
 
+def others():
+    """The libvirt domains on each node that BuilderBot did not make (R165
+    step 1), as its census says: an administrator reads them on the VMs page
+    by name, state and size, and nothing acts on one from here."""
+    out = []
+    for n in node_list():
+        for v in ((n.get("reported") or {}).get("vms_other") or [])[:64]:
+            if isinstance(v, dict) and v.get("name"):
+                out.append({"node": n["id"], "node_name": n.get("name") or n["id"], "name": str(v["name"]),
+                            "state": str(v.get("state") or "unknown"), "vcpus": int(v.get("vcpus") or 0),
+                            "mem_mb": int(v.get("mem_mb") or 0)})
+    return out
+
+
 def payload(projects=None):
     return {"vms": view(projects), "images": [{k: i.get(k) for k in ("id", "name", "family", "person", "why")}
                                                for i in catalog()],

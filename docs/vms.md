@@ -22,6 +22,15 @@ owned by the jobs account, which is in the libvirt group; no session can
 reach libvirt. Removing VM host is refused while any VM is there, and takes
 off exactly the packages its install added.
 
+On the controller's own machine (a bare-metal install, the appliance) VM
+host installs too, with one difference: libvirt's group is root on that
+machine, so the jobs account stays out of it and the VMs there run through
+the node's root agent, each action still one of its table's. Domains the
+machine's libvirt has that BuilderBot did not make (made with virt-manager,
+say) are listed on the VMs page for an administrator under **Not
+BuilderBot's**, by name, state and size, with nothing to press: the page
+reads them and never changes them.
+
 ## What a VM is made from
 
 An OS from `config/vm-images.json`, asked for by name in any of the ways a

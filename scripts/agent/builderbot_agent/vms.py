@@ -1,6 +1,8 @@
 """The VMs a node runs (R91): KVM through libvirt, on a node whose VM host
 feature is installed. Every command is built here from a fixed table with
-checked arguments, run as the jobs account (in the libvirt group), never by a
+checked arguments, run as the jobs account (in the libvirt group), or as the
+agent itself on the controller's own machine (R165 step 1: the jobs account is
+kept out of libvirt's group there, which is root), never by a
 session; the controller sends what to make, never a command line."""
 import contextlib
 import hashlib
@@ -106,6 +108,44 @@ def vm_memory():
         if "usable" not in st:
             _run(VIRSH + ["dommemstat", d, "--period", "10", "--live"], timeout=10)
     return {d: [st["usable"], st["available"]] for d, st in out.items() if "usable" in st and st.get("available")}
+
+
+WALL_FILE = "/etc/bb-session.wall"
+
+
+def own_here():
+    """Whether this node is its controller's own machine (R90): the wall
+    between the controller and the sessions is in force here, and a VM job
+    runs as the agent itself (root) rather than the jobs account, which is
+    kept out of libvirt's group on that machine (R165 step 1)."""
+    return os.path.exists(os.environ.get("BB_WALL_FILE") or WALL_FILE)
+
+
+def vms_other():
+    """The libvirt domains on this machine that BuilderBot did not make
+    (R165 step 1): a name without the bbvm- prefix, or one with the prefix
+    and without the agent's own metadata marker. Name, state, vCPUs and
+    memory, for the VMs page to list read-only for an administrator;
+    nothing here ever acts on one."""
+    if not shutil.which("virsh"):
+        return []
+    out = []
+    for name in _run(VIRSH + ["list", "--all", "--name"], timeout=15).split()[:128]:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
+            continue
+        if DOMAIN_RE.fullmatch(name) and META_NS in _run(VIRSH + ["dumpxml", name, "--inactive"], timeout=10):
+            continue
+        info = {}
+        for line in _run(VIRSH + ["dominfo", name], timeout=10).splitlines():
+            k, _, v = line.partition(":")
+            info[k.strip().lower()] = v.strip()
+        mem = re.match(r"(\d+)", info.get("max memory", ""))
+        out.append({"name": name, "state": _state_word(info.get("state", "")),
+                    "vcpus": int(info["cpu(s)"]) if info.get("cpu(s)", "").isdigit() else 0,
+                    "mem_mb": int(mem.group(1)) // 1024 if mem else 0})
+        if len(out) >= 64:
+            break
+    return out
 
 
 def vms_now():
@@ -478,8 +518,11 @@ class VmsMixin:
         if not shutil.which("virsh") or not os.path.isdir(VM_DIR):
             job.say("refused: this node's VM host feature is not installed (its Features section installs it)\n")
             return "failed", 78
-        who = self.drop_privileges({})
-        job.say(f"vm {action} {name}\n")
+        # The jobs account, in libvirt's group; on the controller's own
+        # machine the agent itself, since that group is root there (R165
+        # step 1) and the wall keeps the jobs account out of it.
+        who = {} if own_here() else self.drop_privileges({})
+        job.say(f"vm {action} {name}{' as the root agent' if not who and os.geteuid() == 0 else ''}\n")
         state, code = getattr(self, "_vm_" + action.replace("-", "_"))(job, spec, name, who)
         self.hello_again(f"the VM {name}: {action}")
         return state, code

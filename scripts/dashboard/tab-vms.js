@@ -152,6 +152,18 @@ function vmRow(v){
     <div class="dmbody">${inner}</div></details>`;
 }
 
+// Domains on a node's libvirt that BuilderBot did not make (R165 step 1):
+// an administrator reads them by name, state and size, and nothing on the
+// page acts on one; libvirt's own tools do, on the machine.
+function vmOthersHtml(rows){
+  const size = v => [v.vcpus ? `${v.vcpus} vCPU` : "", v.mem_mb ? (v.mem_mb >= 1024 ? `${+(v.mem_mb / 1024).toFixed(1)} GB` : `${v.mem_mb} MB`) : ""].filter(Boolean).join(" · ");
+  return `<section class="dmcard vmothers"><div class="field dmgroup"><b>Not BuilderBot's</b><span class="sub"> · on a node's libvirt, made outside BuilderBot: read here, never changed from here</span></div>
+    <div class="rows">${rows.map(v => `<div class="row stack2 vmother" data-vmother="${esc(v.node)}/${esc(v.name)}"><div class="grow"><div class="dmhead"><div class="dmid">
+      <div class="name">${esc(v.name)}<span class="pill${v.state === "running" ? " ok" : ""}">${esc(v.state || "unknown")}</span></div>
+      <div class="sub dmorigin">${[esc(v.node_name || ""), esc(size(v))].filter(Boolean).join(`<span class="sep"></span>`)}</div>
+    </div></div></div></div>`).join("")}</div></section>`;
+}
+
 // A VM whose repository is gone is in no project (the operator, 26 Oct),
 // grouped and chipped as No project.
 const vmOwner = p => (vmsData?.unowned || []).includes(p) ? "No project" : projLabel(p);
@@ -239,7 +251,13 @@ function renderVmsInto(i){
   // Written only when it says something new, as the Containers page is
   // (the operator, 26 Oct): a read bringing the same VMs leaves the page,
   // its menus and its focus alone.
-  const html = `<div class="doctab vmtab">${vmBar(false)}${head}${empty || vmGroupsHtml(rows)}</div>`;
+  // The domains a node's libvirt has that BuilderBot did not make (R165
+  // step 1): read here by an administrator, under the node picked, with no
+  // button on them; not counted in the tiles or the chips, which are
+  // BuilderBot's own VMs.
+  const others = off ? [] : (vmsData.others || []).filter(v => !vmsNode || v.node === vmsNode)
+    .filter(v => !q || [v.name, v.node_name].some(x => String(x || "").toLowerCase().includes(q)));
+  const html = `<div class="doctab vmtab">${vmBar(false)}${head}${empty || vmGroupsHtml(rows)}${others.length ? vmOthersHtml(others) : ""}</div>`;
   if (el.__vmHtml === html && el.querySelector(":scope > .vmtab")) return;
   const typing = document.activeElement?.id === "vmSearch" && el.contains(document.activeElement) ? document.activeElement.selectionStart : null;
   el.innerHTML = html;

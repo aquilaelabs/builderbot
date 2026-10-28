@@ -2879,12 +2879,9 @@ feature_vmhost() {
     case "$1" in
         state) [ -f "$FEATURES_DIR/vmhost" ] && echo installed || echo absent ;;
         install)
-            # Never beside the controller (R90 step 14): it puts the job
-            # account in libvirt's group, which is root here, and root holds
-            # the controller's state.
-            if [ "$BESIDE_CONTROLLER" = 1 ] || [ -s /etc/bb-session.wall ]; then
-                die "this machine is the controller's own, so it is no VM host: libvirt's group is root here, and the wall keeps the controller's state from the node's accounts"
-            fi
+            # Beside the controller (R165 step 1) the VMs run through the
+            # root agent: the job account stays out of libvirt's group, which
+            # is root on that machine (R90 step 14), below.
             # No /dev/kvm is a machine that cannot run a VM at speed: a VM
             # whose host does not pass virtualization through, or a box with
             # it off in the firmware. Said, not emulated (tens of times slower).
@@ -2907,7 +2904,12 @@ feature_vmhost() {
             have systemctl && { systemctl enable --now libvirtd >/dev/null 2>&1 || systemctl enable --now virtqemud.socket >/dev/null 2>&1 || true; }
             # Alpine's OpenRC, which has no systemctl.
             have rc-update && { rc-update add libvirtd default >/dev/null 2>&1; rc-service libvirtd start >/dev/null 2>&1 || true; }
-            getent group libvirt >/dev/null 2>&1 && id -u "$DOCKER_USER" >/dev/null 2>&1 && usermod -aG libvirt "$DOCKER_USER"
+            if [ "$BESIDE_CONTROLLER" = 1 ] || [ -s /etc/bb-session.wall ]; then
+                getent group libvirt >/dev/null 2>&1 && gpasswd -d "$DOCKER_USER" libvirt >/dev/null 2>&1 || true
+                say "the VMs here run through the root agent: ${DOCKER_USER} stays out of libvirt's group, which is root on the controller's own machine"
+            else
+                getent group libvirt >/dev/null 2>&1 && id -u "$DOCKER_USER" >/dev/null 2>&1 && usermod -aG libvirt "$DOCKER_USER"
+            fi
             # The cached cloud images and each VM's disk, the jobs account's;
             # 0755 so libvirt's own account reaches the disks it is handed.
             install -d -m 0755 -o "$DOCKER_USER" /var/lib/builderbot/vms /var/lib/builderbot/vms/images /var/lib/builderbot/vms/disks
