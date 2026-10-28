@@ -117,8 +117,9 @@ function renderSettingsInto(i){
            `<div class="row stack2" data-group="Idle sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
     ${state?.release?.running !== undefined ? sect("updates", "Updates", state.release.newer ? `${state.release.newer} is out` : state.release.latest ? "up to date" : "", updatesSection()) : ""}
-    ${sect("copies", "Backup copies", backupData?.made_at ? `last ${ago(backupData.made_at)}` : backupData?.on === false ? "off" : "", backupSection())}
-    ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
+    ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})
+        // The copies made go right under the Backup group that makes them.
+        + (g.key === "backup" ? sect("copies", "Backup copies", backupData?.made_at ? `last ${ago(backupData.made_at)}` : backupData?.on === false ? "off" : "", backupSection()) : "")).join("")}
     ${state?.can?.admin ? sect("move", "Move this controller", moveStatus(), moveSection()) : ""}
     ${
     // Last, apart from the settings (R218 step 32); the Nodes section that
