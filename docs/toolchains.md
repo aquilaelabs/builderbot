@@ -380,14 +380,16 @@ line saying what it is, and at its right the one verb it takes: Install,
 Update, Remove, Edit on a pack, Download on a companion, and on an app New
 container, since an app is not installed on the node but made as a
 container, each press another one under its own name. Details opens the
-row on the whole description, the lines the Toolchains page's open row had:
-what it adds to a session, its terms, its system packages, what it needs,
-where it is on the store, how its download was checked, and its size; a
-pack's **Look**, which fetches its manifest at the commit it is pinned to
-and says what it fetches and runs, as the Add tool pack dialog does; an
-agent's facts, your sign-in on this node and what you added to it; an app's
+card on the catalog's entry alone (the operator, 28 Oct: the Library is
+the catalog): what it is in full, its platforms, terms, size and source,
+what it adds to a session and what it asks for per node; a pack's
+**Look**, which fetches its manifest at the commit it is pinned to and says
+what it fetches and runs, as the Add tool pack dialog does; an app's
 compose file as the catalog holds it, with the blanks New container fills
-and the secrets made for it; a companion's other files. A search box under the head matches a
+and the secrets made for it; a companion's other files. What is on the
+node (an agent's sign-in, a toolchain's path and system packages, a
+service's configuration, Remove) is the Installed page's under Machines
+([machines.md](machines.md#installed)). A search box under the head matches a
 name, a description, a kind or a tier, and the chips beside it narrow the
 list by kind and by tier; nothing there is saved.
 
