@@ -320,8 +320,16 @@ const TP_COLS = [{label: "Pack"}, {label: "From"}, {label: "Commit", w: "6.5rem"
 let tpEdit = null;             // the dialog's pack: "" for Add tool pack, else the name of the pack in Edit
 // `from` is where Add takes the pack (a repository, a pasted bbtool.json or
 // an uploaded archive of its files); a pack made here edits by the last two.
-let tpForm = {url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null};
-const TP_BLANK = () => ({url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null});
+let tpForm = {url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null, catalog: null};
+const TP_BLANK = () => ({url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null, catalog: null});
+// The vetted catalog (R169 step 4): its index as /api/catalog answers it,
+// read when the page opens and on Refresh, never polled.
+let tpCatalog = null;
+async function loadCatalog(fresh){
+  try{ tpCatalog = await (await fetch("/api/catalog" + (fresh ? "?fresh=1" : ""))).json(); }
+  catch(e){ tpCatalog = {error: "the catalog: " + failWords(e)}; }
+  tcRev++; drawPanes();
+}
 
 // What a pack would install and give a session, from the manifest a look
 // fetched: its downloads are its install steps, its verbs the words each
@@ -367,6 +375,7 @@ function tpFromHtml(f, here){
   const seg = here ? "" : `<div class="field"><label id="tpFromLabel">From</label>
     <div class="pseg" role="group" aria-labelledby="tpFromLabel">${[["repo", "A repository"], ["paste", "Paste bbtool.json"], ["upload", "Upload files"]]
       .map(([k, t]) => `<button type="button" data-tpfrom="${k}" class="${f.from === k ? "on" : ""}" aria-pressed="${f.from === k}">${t}</button>`).join("")}</div></div>`;
+  if (f.catalog) return `<div class="field"><div class="sub">From the vetted catalog: <b>${esc(f.catalog.name)}</b> at <code>${esc(f.catalog.url)}</code>, commit ${esc(f.catalog.commit.slice(0, 12))}, its archive checked against the catalog's sha256 on the way in.</div></div>`;
   if (f.from === "repo") return seg + `<div class="field">${lbl("tpUrl", "Repository", "a git repository with a bbtool.json at its root: https, ssh, or http for a git host on your network")}
       <input id="tpUrl" value="${esc(f.url)}" placeholder="https://github.com/owner/repo" autocomplete="off" spellcheck="false"></div>`;
   const text = `<div class="field">${lbl("tpText", here ? "Its bbtool.json" : "bbtool.json",
@@ -393,7 +402,7 @@ function tpModalHtml(){
   const add = offer ? `<button type="button" class="primary" data-tpadd${f.busy ? " disabled" : ""}>${
     f.busy === "add" ? (fresh ? "Adding…" : "Updating…") : fresh ? "Add" : "Update"}</button>` : "";
   const rm = p ? `<button type="button" class="danger" data-tprm="${esc(p.name)}">Remove</button>` : "";
-  return `<div class="box wide"><h3>${fresh ? "Add tool pack" : `${esc(p.label)}, a tool pack`}</h3>
+  return `<div class="box wide"><h3>${fresh ? (f.catalog ? `Install ${esc(f.catalog.name)} from the catalog` : "Add tool pack") : `${esc(p.label)}, a tool pack`}</h3>
     ${p ? `<div class="field"><div class="sub">${here ? "Made here" : `From <code>${esc(p.pack.url)}</code>`} at ${esc(p.pack.commit.slice(0, 12))}, added by ${
           esc(p.pack.by || "an administrator")}${p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div></div>` : ""}
     ${fresh || here ? tpFromHtml(f, here) : ""}
@@ -407,8 +416,9 @@ function tpModalHtml(){
 
 function tpSection(items){
   const packs = (items || []).filter(i => i.pack);
+  const tier = p => p.pack.tier === "vetted" ? ` <span class="pill ok">vetted</span>` : p.pack.here ? "" : ` <span class="pill">by URL</span>`;
   const rec = p => `<div class="row ngrec">${tblLine(TP_COLS, [
-      `${esc(p.label)} <span class="sub">${esc(p.name)}</span>`, p.pack.here ? `<span class="sub">made here</span>` : `<code>${esc(p.pack.url)}</code>`,
+      `${esc(p.label)} <span class="sub">${esc(p.name)}</span>${tier(p)}`, p.pack.here ? `<span class="sub">made here</span>` : `<code>${esc(p.pack.url)}</code>`,
       esc(p.pack.commit.slice(0, 12)),
       esc(p.pack.by || ""), `<button type="button" data-tpedit="${esc(p.name)}">Edit</button>`])}</div>`;
   const body = packs.length ? tblWrap(TP_COLS, packs.map(rec).join(""), "tprecords")
@@ -420,10 +430,44 @@ function tpSection(items){
     <div class="field">${body}</div>`);
 }
 
+// The vetted catalog (R169 step 4): the packs the maintainers reviewed,
+// each pinned to a commit, with Install opening the same dialog as Add
+// tool pack on that commit (Look first, as always); a withdrawn one is
+// said and not offered; the three tiers read on every row.
+function tpCatalogSection(items){
+  const c = tpCatalog, idx = c?.index, have = new Set((items || []).filter(i => i.pack).map(i => i.name));
+  const rows = (idx?.packs || []).map(e => `<div class="row${e.withdrawn ? " bad" : ""}"><div class="grow">
+      <div class="name">${esc(e.name)} <span class="pill${e.withdrawn ? " bad" : " ok"}">${e.withdrawn ? "withdrawn" : e.tier}</span>${have.has(e.name) ? ` <span class="pill">added</span>` : ""}</div>
+      <div class="sub">${esc(e.about || "")}${e.platforms?.length ? ` · ${esc(e.platforms.join(", "))}` : ""} · <code>${esc(e.url)}</code> at ${esc(e.commit.slice(0, 12))}</div>
+      </div>${e.withdrawn ? `<span class="acts"><span class="sub bad">${have.has(e.name) ? "remove it from Tool packs" : "not offered"}</span></span>`
+        : `<span class="acts"><button type="button" data-tpinstall="${esc(e.name)}"${have.has(e.name) ? " disabled" : ""}>${have.has(e.name) ? "Added" : "Install"}</button></span>`}</div>`).join("");
+  const when = idx?.fetched_at ? `read ${ago(idx.fetched_at)}` : "";
+  const body = c === null ? skRows(2)
+    : `${c.error ? `<div class="hint${idx ? " warn" : " bad"}">${esc(c.error)}${idx ? "; the index read before stands" : ""}</div>` : ""}
+       ${rows ? `<div class="rows">${rows}</div>` : idx ? `<div class="empty">Nothing vetted yet: the catalog is open for submissions, and a pack by URL is Add tool pack above.</div>` : ""}`;
+  return docSection("toolchains", "catalog", "Vetted catalog", when,
+    `<div class="field"><div class="hint">Packs BuilderBot's maintainers reviewed, each pinned to a commit and the sha256 of its archive there, the index signed by them and checked here before it is read.${helpIcon(
+      "Install opens the same dialog as Add tool pack on that commit: Look shows what it fetches and runs, and Add keeps exactly that. The catalog's address is under Controller settings.")}</div></div>
+    <div class="field"><div class="addbar ctlrow" data-add="catalog"><button type="button" data-tprefresh>Refresh</button></div></div>
+    <div class="field">${body}</div>`);
+}
+function tpOpenCatalog(entry){
+  tpEdit = "";
+  tpForm = {...TP_BLANK(), url: entry.url, catalog: entry};
+  tpDraw(true);
+  tpLook();
+}
+
 // The section's two doors into the dialog.
 function tpWire(el){
   el.querySelectorAll("[data-tpnew]").forEach(b => b.onclick = () => tpOpen(""));
   el.querySelectorAll("[data-tpedit]").forEach(b => b.onclick = () => tpOpen(b.dataset.tpedit));
+  el.querySelectorAll("[data-tprefresh]").forEach(b => b.onclick = () => pressing(b, async () => { busy(b, "Reading"); await loadCatalog(true); }));
+  el.querySelectorAll("[data-tpinstall]").forEach(b => b.onclick = () => {
+    const e = (tpCatalog?.index?.packs || []).find(x => x.name === b.dataset.tpinstall);
+    if (e) tpOpenCatalog(e);
+  });
+  if (tpCatalog === null) loadCatalog(false);
 }
 
 function tpOpen(name){
@@ -454,6 +498,7 @@ async function tpLook(){
   f.busy = "look"; f.error = ""; tpDraw();
   let body;
   if (pack && !pack.here) body = {action: "preview", url: pack.url};
+  else if (!pack && f.catalog) body = {action: "preview", url: f.catalog.url, commit: f.catalog.commit, sha256: f.catalog.sha256};
   else if (!pack && f.from === "repo") body = {action: "preview", url: f.url.trim()};
   else if (f.file){
     // The archive goes up on its own first, as New project's does, and the
@@ -541,7 +586,8 @@ function tpDraw(first){
   if (add) add.onclick = async () => {
     tpForm.busy = "add"; tpDraw();
     const j = await post(tpForm.seen?.staged ? {action: "add", staged: tpForm.seen.staged}
-                                             : {action: "add", url: packUrl(), commit: tpForm.seen?.commit || ""});
+                                             : {action: "add", url: packUrl(), commit: tpForm.seen?.commit || "",
+                                                ...(tpForm.catalog ? {sha256: tpForm.catalog.sha256} : {})});
     if (j.error){ tpForm.busy = ""; tpForm.error = j.error; tpDraw(); return; }
     notify(j.unchanged ? `${j.pack.name}: nothing changed, so it is kept as it was`
          : j.replaced ? `${j.pack.name} updated: where it is installed, uninstall it and install it again to take the new version`
@@ -852,7 +898,7 @@ function renderToolchainsInto(i){
       + tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs"),
       `${(d.items || []).filter(i => i.installed).length} installed`)}
-    ${state?.can?.admin ? tpSection(d.items) : ""}
+    ${state?.can?.admin ? tpSection(d.items) + tpCatalogSection(d.items) : ""}
 `;
 
   // Its sections stand open at a desk and take turns on a phone.

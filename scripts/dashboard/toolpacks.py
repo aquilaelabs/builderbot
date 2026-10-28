@@ -277,10 +277,13 @@ def _git(args, cwd=None, timeout=FETCH_TIMEOUT):
                           timeout=timeout, env=env, check=False)
 
 
-def fetch(url, commit="", shipped=()):
+def fetch(url, commit="", shipped=(), sha256=""):
     """The repository at `commit` (its default branch's head when none):
     {commit, manifest, guidance} with the manifest validated, or {error}.
-    Fetched into a scratch directory that is gone when this returns."""
+    Fetched into a scratch directory that is gone when this returns. With
+    `sha256` (the catalog's, of the archive at that commit, R169 step 4)
+    the archive is made and compared, and a difference refuses the pack:
+    git's own hashes pin the commit, this pins what the maintainers saw."""
     url = str(url or "").strip()
     # A suite's pack is a repository on disk (BB_TOOLPACKS_FILE_URLS=1); a
     # controller only ever fetches one over the network.
@@ -302,6 +305,13 @@ def fetch(url, commit="", shipped=()):
         got = _git(["-C", tmp, "rev-parse", "FETCH_HEAD"]).stdout.strip()
         if commit and got != commit:
             return {"error": f"{url} answered {got[:12]} where {commit[:12]} was asked"}
+        if sha256:
+            if not re.fullmatch(r"[0-9a-f]{64}", sha256):
+                return {"error": "the catalog's sha256 is 64 hex digits"}
+            import hashlib  # noqa: PLC0415
+            r = subprocess.run(["git", "-C", tmp, "archive", "--format=tar", "FETCH_HEAD"], capture_output=True, timeout=120, check=False)
+            if r.returncode != 0 or hashlib.sha256(r.stdout).hexdigest() != sha256:
+                return {"error": f"{url} at {got[:12]} is not what the catalog vetted: its archive's sha256 differs, so it is refused"}
 
         def read(rel, cap):
             r = subprocess.run(["git", "-C", tmp, "show", f"FETCH_HEAD:{rel}"], capture_output=True,
@@ -504,18 +514,21 @@ def packs():
         return _load()["packs"]
 
 
-def add(url, commit, by, shipped=()):
+def add(url, commit, by, shipped=(), sha256="", tier="url"):
     """Keep a pack pinned to `commit`, which the person approving it saw:
     the repository is fetched again at exactly that commit, so what is kept
-    is what was shown. A pack of the same name is replaced (an update)."""
-    got = fetch(url, commit, shipped)
+    is what was shown. A pack of the same name is replaced (an update).
+    From the vetted catalog (R169 step 4) it carries the index's sha256,
+    checked on the way in, and its tier."""
+    got = fetch(url, commit, shipped, sha256)
     if got.get("error"):
         return got
     m = got["manifest"]
     with _lock:
         d = _load()
         rec = {"name": m["name"], "url": url, "commit": got["commit"], "manifest": m,
-               "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time())}
+               "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time()),
+               "tier": "vetted" if tier == "vetted" and sha256 else "url", "sha256": sha256 or ""}
         was = d["packs"].get(m["name"])
         if was and was.get("url") != url:
             return {"error": f"a pack called {m['name']} is already here from {was.get('url')}; remove it first"}
@@ -580,6 +593,7 @@ def recipe(rec):
            "platforms": m["platforms"], "layout": m["layout"], "source": src, "terms": m["terms"],
            "verbs": m["verbs"],
            "pack": {"url": rec["url"], "commit": rec["commit"], "by": rec.get("by", ""), "at": rec.get("at", 0),
+                    "tier": rec.get("tier") or ("here" if rec.get("hosted") else "url"),
                     "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted"))}}
     if m.get("system"):
         row["system"] = m["system"]

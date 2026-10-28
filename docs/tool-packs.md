@@ -84,6 +84,16 @@ the bell for every install that holds it, saying to remove it. Search and
 Install from the catalog on the Toolchains and Agents pages are the next
 step; the index is what they read.
 
+### Installing from the catalog
+
+The Toolchains page's **Vetted catalog** section lists the index's packs
+with their tier (official, vetted; a pack you add by address is by URL),
+what each is and the platforms it works on, and **Install** opens the same
+dialog as Add tool pack on the commit the index pins, with the archive's
+sha256 checked on the way in: Look shows what it fetches and runs, and Add
+keeps exactly that. A pack the catalog withdrew is said and not offered,
+and one already added says so. **Refresh** reads the index again.
+
 ## What a project's sessions can use
 
 Each project's **Settings → Toolchains** lists every toolchain installed on
