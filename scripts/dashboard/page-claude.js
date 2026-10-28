@@ -265,7 +265,7 @@ function resumeConversation(name, id, when, ev, agent = "claude"){
   // Nowhere to start it (placeResumeMenu found no Start agent to open under):
   // said, rather than a press that does nothing.
   if (resumeFor !== name)
-    notify(claude && claudeInstall(p) ? `Claude Code is not installed on ${p.node_name || "this project's node"}: install it from its Agents page, then resume`
+    notify(claude && claudeInstall(p) ? `Claude Code is not installed on ${p.node_name || "this project's node"}: install it from the Library, then resume`
       : "a session cannot start on this project now: its Start agent says why", true);
 }
 

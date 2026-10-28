@@ -43,6 +43,7 @@ ok(await page.$$eval('.doc #tcNodeSel option', os => !os.some(o => o.value === '
 // ...nor does an address that names it: #/build/toolchains/local opens on a
 // node, its store under its own name (B25).
 {
+  // The page keeps its address under Build until R170 step 5 retires it.
   await page.evaluate(() => { openRoute('#/build/toolchains/local'); });
   await page.waitForFunction(() => tcNode && tcNode !== 'local' && toolchains?.name
     && document.querySelector('.doc.on #tcNodeSel')?.value === tcNode, null, { timeout: 20000 });

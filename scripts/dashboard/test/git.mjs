@@ -1220,9 +1220,10 @@ ok(strip.groups.n === 5 && strip.groups.rows === 1 && strip.groups.inside && str
   await page.waitForFunction(b => location.hash === b, before, { timeout: 10000 });
   const view = await page.evaluate(() => getNotebook(tabOf(panes[0])?.arg)?.where());
   ok(/\/git$/.test(before) && view === 'git', `a view switched to is a history entry, and Back returns to the one before (${before}, ${view})`);
-  await page.evaluate(() => railGo('build', 'toolchains'));
-  await page.waitForFunction(() => /^#\/build\/toolchains\/[^/]+$/.test(location.hash), null, { timeout: 15000 });
-  const tc = await page.evaluate(() => ({ hash: location.hash, node: tcNode }));
+  // The Build group opens on the Library since R170, a node page like Toolchains was.
+  await page.evaluate(() => railGo('build', 'library'));
+  await page.waitForFunction(() => /^#\/build\/library\/[^/]+$/.test(location.hash), null, { timeout: 15000 });
+  const tc = await page.evaluate(() => ({ hash: location.hash, node: libNode }));
   ok(tc.hash.endsWith('/' + encodeURIComponent(tc.node)), `a node page's address names its node (${tc.hash})`);
 }
 

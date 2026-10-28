@@ -377,7 +377,9 @@ is one shape: its name, its tier (official, shipped with BuilderBot;
 vetted, from the catalog the maintainers sign; sideloaded, added by URL or
 made here), what is installed and what an update would move it to, one
 line saying what it is, and at its right the one verb it takes: Install,
-Update, Remove, Edit on a pack, Download on a companion. Details opens the
+Update, Remove, Edit on a pack, Download on a companion, and on an app New
+container, since an app is not installed on the node but made as a
+container, each press another one under its own name. Details opens the
 row on the whole description, the lines the Toolchains page's open row had:
 what it adds to a session, its terms, its system packages, what it needs,
 where it is on the store, how its download was checked, and its size; a

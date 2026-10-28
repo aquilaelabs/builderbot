@@ -22,6 +22,7 @@ let lib = null, libNode = "", libRev = 0, libSeq = 0, libLanded = 0, libFollow =
 let libQ = "", libKind = "", libTier = "";
 const libOpen = new Set();     // the rows opened on their descriptions (rows-you-open)
 const libSeen = {};            // what a pack's Look brought back, by row key ("looking" while it is asked)
+let libWantAgent = "";         // the agent whose card a door asked to open, until the rows land
 // The sections, in the page's order: what a session runs first, then what
 // it builds with, then what a person adds, then what the box hosts, then
 // what the person takes to their own machines.
@@ -33,8 +34,11 @@ function openLibrary(){
 }
 // ...on a node somebody named (the bell's rows, a node's page): read for
 // first when the page has not listed it yet (B754's lesson).
-function openLibraryOn(id){
+function openLibraryOn(id, agent = ""){
   if (id && id !== libNode){ libNode = id; lib = null; }
+  // A door that names a coding agent (a project's Sign in on NODE, the
+  // bell's row) opens that agent's card on its sign-in once the rows land.
+  if (agent) libWantAgent = agent;
   if (!(nodesList || []).some(n => n.id === id)) nodesStale = true;
   try{ localStorage.setItem("bb.libnode", id); }catch(e){ /* private */ }
   const was = location.hash;
@@ -82,6 +86,11 @@ async function loadLibrary(){
     lib = got;
   }catch(e){ if (!keep()) return; lib = {error: failWords(e)}; }
   libLanded = asked;
+  if (libWantAgent && !lib.error){
+    const r = (lib.rows || []).find(x => x.kind === "agent" && x.agent === libWantAgent);
+    if (r) libOpen.add(`agent:${r.name}`);
+    libWantAgent = "";
+  }
   // The lines the Toolchains and Agents pages draw read their own page's
   // state: the node's sandbox flag (Install them now on a system line) and
   // this person's plugins and MCP servers there (an agent's Yours).
@@ -217,11 +226,11 @@ function libRow(r, may){
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : "";
   return `<div class="lcard${open ? " open" : ""}${r.running ? " busy" : ""}" data-lrow="${esc(key)}">
     <div class="lchead"><span class="lcicon">${(LIB_ICONS[r.kind] || LIB_ICONS.toolchain)()}</span>
-      <div class="lctitle"><div class="name">${esc(r.label)}</div><div class="lcmeta">${libPills(r)}</div></div></div>
+      <div class="lctitle"><div class="name">${esc(r.label)} <button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button></div><div class="lcmeta">${libPills(r)}</div></div></div>
     <div class="lcabout">${esc(r.about)}</div>
     ${r.machine && r.name === TC_DRIVER ? libDriverPick(r.machine) : ""}
     <div class="ldetail">${open ? libDetail(r) : ""}</div>${err}
-    <div class="pcacts actbar">${libState(r)}<button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button>${libActs(r, may)}</div>
+    <div class="pcacts actbar">${libState(r)}${libActs(r, may)}</div>
   </div>`;
 }
 

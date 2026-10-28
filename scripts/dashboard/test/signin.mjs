@@ -44,7 +44,8 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
 await page.goto(URL);
 await ready(page);
-const block = () => page.$eval(`.agentstab [data-signin="${box.id}"]`, e => e.textContent.replace(/\s+/g, ' ').trim());
+// Since R170 a node's sign-in lives on the Library, on the agent's card, opened by the door that names it.
+const block = () => page.$eval(`.librarytab .lcard.open [data-signin="${box.id}"][data-siagent="claude"]`, e => e.textContent.replace(/\s+/g, ' ').trim());
 const redraw = () => page.evaluate(async () => { await refresh(); nodesRev++; drawPanes(); });
 
 // ---- a Claude press on a node with no sign-in offers that node's sign-in ----
@@ -58,8 +59,8 @@ const PC = '.pgrid .pcard[data-row="beta"] [data-c]';
 const btn = await page.$eval(PC, b => ({ dead: b.disabled, tip: saidOf(b) }));
 ok(!btn.dead && /not signed in on signbox/.test(btn.tip) && /Press for its sign-in/.test(btn.tip),
    `the Claude button of a project whose node has no sign-in stays live and says what a press offers (${btn.tip})`);
-await page.evaluate(id => { sectOpen['agents:claude'] = false; openAgentsOn(id); }, sandbox.id);
-await page.waitForSelector(`.agentstab [data-agnode="${sandbox.id}"]`, { timeout: 20000 });
+await page.evaluate(id => { libOpen.clear(); openLibraryOn(id); }, sandbox.id);
+await page.waitForSelector(`.librarytab [data-libnode="${sandbox.id}"]`, { timeout: 20000 });
 const terms = () => page.evaluate(() => tabs.filter(t => t.kind === 'term').length);
 const before = await terms();
 await page.evaluate(() => openProjectsTab());
@@ -86,19 +87,21 @@ ok(start.agents.includes('ChatGPT') && gpt.said === 'not signed in here' && gpt.
 await page.selectOption('#resumemenu #rmAgentSel', { label: 'Claude' });
 await page.click('#resumemenu [data-signin-node]');
 await page.waitForFunction(id => {
-  const s = document.querySelector(`.agentstab [data-agnode="${id}"] [data-sect="agents:claude"]`);
-  return !!s && s.open && !!s.querySelector('[data-signin]');
+  const s = document.querySelector(`.librarytab [data-libnode="${id}"] .lcard.open [data-signin][data-siagent="claude"]`);
+  return !!s;
 }, box.id, { timeout: 20000 });
-ok(await page.$eval('#agNodeSel', s => s.selectedOptions[0].textContent).then(t => /^signbox/.test(t)) && await terms() === before
-   && await page.$('#resumemenu') === null && /#\/build\/agents\//.test(await page.evaluate(() => location.hash)),
-   '...which opens the Agents page on that node with its Claude section unfolded, and starts no session');
+ok(await page.$eval('#libNodeSel', s => s.selectedOptions[0].textContent).then(t => /^signbox/.test(t)) && await terms() === before
+   && await page.$('#resumemenu') === null && /#\/build\/library\//.test(await page.evaluate(() => location.hash)),
+   '...which opens the Library on that node with Claude Code\'s card open on its sign-in, and starts no session');
 // The page holds every coding agent the table installs, in its order, each
-// saying where it stands on this node (R95 step 15).
-const secs = await page.$$eval(`.agentstab [data-agnode="${box.id}"] details.sect`, ds => ds.map(d =>
-  [d.dataset.sect, d.querySelector('summary .sst')?.textContent.trim() || '']));
-ok(secs.map(s => s[0]).join() === 'agents:claude,agents:codex,agents:copilot,agents:grok,agents:open'
-   && /^1\.0\.0/.test(secs[0][1]) && /not signed in/.test(secs[0][1]) && /^0\.163\.0, not signed in/.test(secs[1][1])
-   && secs[2][1] === 'not installed' && secs[3][1] === 'not installed' && secs[4][1] === 'not installed',
+// card saying where it stands on this node (R95 step 15, R170).
+const secs = await page.evaluate(id => [...document.querySelectorAll(`.librarytab [data-libnode="${id}"] .lcard[data-lrow^="agent:"]`)].map(c => {
+  const r = lib.rows.find(x => `${x.kind}:${x.name}` === c.dataset.lrow);
+  return [r.agent, [...c.querySelectorAll('.lcmeta .pill')].map(p => p.textContent.trim()).join(', '), c.querySelector('.pcacts .state')?.textContent.trim() || ''];
+}), box.id);
+ok(secs.map(s => s[0]).join() === 'claude,codex,copilot,grok,open'
+   && /\b1\.0\.0\b/.test(secs[0][1]) && /not signed in/.test(await block()) && /\b0\.163\.0\b/.test(secs[1][1])
+   && secs[2][2] === '' && secs[3][2] === '' && secs[4][2] === '',
    `the Agents page has a section per coding agent, Claude first, each with where it stands here (${JSON.stringify(secs)})`);
 await page.evaluate(() => startClaude('beta', null, ''));
 ok(/sign in to Claude on signbox first/.test(await page.$eval('#toast', e => e.textContent)) && await terms() === before,
@@ -154,7 +157,7 @@ await page.waitForFunction(sel => !/not signed in/.test(saidOf(document.querySel
 const tip = await page.$eval(PC, b => saidOf(b));
 ok(!/not signed in/.test(tip) && await page.evaluate(id => claudeSigninFirst('beta', id), box.id) === false,
    `the project's Claude button goes to a session again (${tip.slice(0, 50)})`);
-await page.evaluate(id => openAgentsOn(id), box.id);   // back to the node's Agents page
+await page.evaluate(id => openLibraryOn(id, 'claude'), box.id);   // back to the node's Library, Claude's card open
 
 // ---- signing out, on this node ----------------------------------------------
 // Not while this account's own session is open there, said on the row.
@@ -202,8 +205,8 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
 // the one-time code the flow printed, for the person to enter on OpenAI's
 // page; nothing is pasted back. The node's report names the account.
 {
-  const CX = `.agentstab [data-signin="${box.id}"][data-siagent="codex"]`;
-  await page.evaluate(id => openAgentsOn(id), box.id);
+  const CX = `.librarytab .lcard.open [data-signin="${box.id}"][data-siagent="codex"]`;
+  await page.evaluate(id => openLibraryOn(id, 'codex'), box.id);
   await page.waitForSelector(`${CX} [data-si="in"]`, { timeout: 20000 });
   ok(/You are not signed in to ChatGPT on signbox/.test(await page.$eval(CX, e => e.textContent)),
      'the ChatGPT section holds its own sign-in, beside Claude\'s, saying this account has none here');
@@ -299,21 +302,22 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
                                && document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')?.disabled === false);
   await up.click('.pgrid .pcard[data-row="beta"] [data-c]');
   await up.click('#resumemenu [data-signin-node]');
-  await up.waitForSelector(`.agentstab [data-signin="${box.id}"]`, { timeout: 20000 });
+  await up.waitForSelector(`.librarytab .lcard.open [data-signin="${box.id}"][data-siagent="claude"]`, { timeout: 20000 });
   const seen = await up.evaluate(() => {
-    const root = document.querySelector('.agentstab').closest('.doc');
+    const root = document.querySelector('.librarytab').closest('.doc');
     const all = [...root.querySelectorAll('button, input, select, textarea')];
-    return { picker: [...document.querySelectorAll('#agNodeSel option')].map(o => o.textContent.split(':')[0]),
-             live: all.filter(c => !c.disabled).map(c => c.id || c.dataset.si || c.dataset.agact || c.textContent.trim().slice(0, 20)),
-             installs: root.querySelectorAll('[data-agact]').length,
-             said: root.querySelector('[data-sect="agents:claude"]')?.textContent.replace(/\s+/g, ' ') || '',
-             open: root.querySelector('[data-sect="agents:claude"]')?.open };
+    const card = root.querySelector('.lcard.open[data-lrow="agent:claude-code"]');
+    return { picker: [...document.querySelectorAll('#libNodeSel option')].map(o => o.textContent.split(':')[0]),
+             live: all.filter(c => !c.disabled).map(c => c.id || c.dataset.si || c.dataset.libact || c.textContent.trim().slice(0, 20)),
+             installs: root.querySelectorAll('[data-libact="install"][data-libkind="agent"]').length,
+             said: card?.textContent.replace(/\s+/g, ' ') || '',
+             open: !!card };
   });
   const cc = await up.evaluate(async () => (await (await fetch('/api/status')).json()).claude_code || {});
   ok(Object.keys(cc.nodes || {}).join() === box.id && 'latest' in cc,
      `the Claude Code versions it is sent are those nodes' too, so the section reads what an administrator's does (${Object.keys(cc.nodes || {}).length} node)`);
   ok(seen.picker.join() === 'signbox', `its node picker lists the nodes its own projects are on, and no others (${seen.picker.join()})`);
-  ok(seen.open && seen.live.includes('in') && seen.live.includes('agNodeSel'),
+  ok(seen.open && seen.live.includes('in') && seen.live.includes('libNodeSel'),
      `its chooser's sign-in lands on the same section, where its own Sign in is live (${seen.live.join()})`);
   ok(seen.installs === 0 && !/administrator/i.test(seen.said),
      `it is offered no install, update or removal, and nothing says why (the operator, 21 Oct: a role somebody lacks is not advertised) (${seen.installs})`);

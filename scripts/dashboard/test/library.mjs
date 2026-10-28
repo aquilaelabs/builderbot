@@ -21,7 +21,8 @@ ok(await page.evaluate(() => !railGroups().some(g => g.tools.some(([k]) => k ===
 await page.evaluate(() => openLibrary());
 await page.waitForSelector('.doc .librarytab #libNodeSel', { timeout: 20000 });
 await page.waitForFunction(() => lib && !lib.nonode && Array.isArray(lib.rows), null, { timeout: 20000 });
-ok(await page.evaluate(() => location.hash === '#/build/library/' + encodeURIComponent(libNode)),
+// ...pushed by the draw that follows the read, so waited for.
+ok(await page.waitForFunction(() => location.hash === '#/build/library/' + encodeURIComponent(libNode), null, { timeout: 10000 }).then(() => true, () => false),
    `the address names the page and its node (${await page.evaluate(() => location.hash)})`);
 const sects = await page.$$eval('.doc .librarytab .libgroup', ds => ds.map(d => d.dataset.libgroup));
 ok(['agent', 'toolchain', 'pack', 'app', 'companion'].every(k => sects.includes(k)),
@@ -83,8 +84,8 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
     await page.click(`.doc .librarytab .lcard[data-lrow="${app}"] [data-libmore]`);
     await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), app);
     ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="${app}"]`, r => /image:/.test(r.querySelector('.libcompose')?.textContent || '')
-       && r.querySelector('.ldetail code') && /Install opens New container/.test(r.querySelector('.ldetail').textContent)),
-       `an app's row opens on its compose file, its blanks and how Install makes it a container (${app})`);
+       && r.querySelector('.ldetail code') && /New container opens the Containers page/.test(r.querySelector('.ldetail').textContent)),
+       `an app's row opens on its compose file, its blanks and how New container makes it one (${app})`);
   } else ok(true, 'no app rows here (the account may not make containers)');
   const tc = await page.evaluate(() => {
     const r = lib.rows.find(x => x.kind === 'toolchain' && (x.tool || x.terms?.length));
@@ -130,7 +131,8 @@ if (await page.$('.doc .librarytab [data-libkind="app"][data-libact="install"]')
   await page.click('.doc .librarytab [data-libkind="app"][data-libact="install"]');
   await page.waitForFunction(() => !document.getElementById('cmodal').hidden, null, { timeout: 10000 });
   await page.waitForFunction(id => document.getElementById('cApp').value === id && !document.getElementById('cAppFields').hidden, id, { timeout: 10000 });
-  ok(true, `Install on an app opens New container with ${id} picked and its blanks shown`);
+  ok(await page.$eval('.doc .librarytab [data-libkind="app"][data-libact="install"]', b => b.textContent.trim() === 'New container'),
+     `an app's press reads New container, and opens that dialog with ${id} picked and its blanks shown`);
   await page.evaluate(() => { $('cmodal').hidden = true; });
 }
 
@@ -158,6 +160,7 @@ if (await page.$('.doc .librarytab [data-libkind="app"][data-libact="install"]')
 // offered on an Apps card as sideloaded with Edit, and in New container.
 {
   const COMPOSE = 'services:\n  notes:\n    image: ghcr.io/example/notes:2.4.1\n    ports:\n      - "${PORT}:8080"\n    volumes:\n      - ${DATA}/notes:/data\n';
+  await page.evaluate(async () => { await postJSON('/api/nasapps', {action: 'remove', app: 'notes'}); });   // a run cut short may have left it
   await page.click('.doc .librarytab [data-libadd]');
   await page.waitForSelector('#tpmodal:not([hidden]) [data-tpwhat="app"]', { timeout: 10000 });
   ok(await page.$eval('#tpmodal h3', h => h.textContent === 'Add your own'), 'Add your own opens the one dialog, asking what is being added');

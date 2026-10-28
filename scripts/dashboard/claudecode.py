@@ -180,7 +180,7 @@ def holds(reap=False):
             out[n["id"]] = (f"Claude Code is updating on {n['name']}: its Claude sessions were ended for "
                             "it, and start again from the project rows when it is done")
         elif missing(n) and not reap:
-            out[n["id"]] = (f"Claude Code is not installed on {n['name']}: the Library installs it there")
+            out[n["id"]] = (f"Claude Code is not installed on {n['name']}: its Agents page installs it")
     return out
 
 
