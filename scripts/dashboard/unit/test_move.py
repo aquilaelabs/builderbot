@@ -179,7 +179,12 @@ class Move(unittest.TestCase):
         self.assertTrue(pcs["state"]["fixed"] and pcs["state"]["on"] and pcs["state"]["size"] > 0)
         self.assertTrue(pcs["store:gitrelay"]["on"] and not pcs["store:logs"]["on"], "the logs store is off unless ticked")
         self.assertFalse(pcs["repos"]["on"] or pcs["install_key"]["on"])
-        self.assertEqual(pcs["repos"]["size"], len("ref: refs/heads/main\n"))
+        self.assertEqual((pcs["repos"]["size"], pcs["repos"]["over"]), (len("ref: refs/heads/main\n"), False))
+        move._sizes.clear()
+        move.SIZE_BUDGET_S = -1
+        self.assertTrue(move.pieces()[0]["over"], "past the budget a size is a floor, said so (B432)")
+        move.SIZE_BUDGET_S = 1.0
+        move._sizes.clear()
         (self.tmp / "logs").mkdir()
         (self.tmp / "logs" / "a.log").write_text("x")
         r = move.prepare("user:ann", "", stores=["gitrelay", "logs"])

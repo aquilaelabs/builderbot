@@ -290,7 +290,7 @@ function moveSection(){
       (m.not_here || []).length ? ` ${m.not_here.length} node${m.not_here.length === 1 ? " has" : "s have"} not checked in since: the Nodes page gives each its line.` : ""}</div>` : "";
   const sizeMb = m.size ? moveSize(m.size) : "";
   const token = moveToken ? `<div class="field"><div class="hint warn">The move token, shown once and never kept here: <code>${esc(moveToken)}</code>. Give it on the new install's first page (Moving a controller here?) with this controller's address, or with the bundle.</div></div>` : "";
-  const pieces = (m.pieces || []).map(pc => `<div class="field"><label class="ndcap"><input type="checkbox" data-movepiece="${esc(pc.key)}"${pc.on ? " checked" : ""}${pc.fixed ? " disabled" : ""}> ${esc(pc.label)} <span class="dim">(${moveSize(pc.size || 0)}${pc.about ? `; ${esc(pc.about)}` : ""})</span></label></div>`).join("");
+  const pieces = (m.pieces || []).map(pc => `<div class="field"><label class="ndcap"><input type="checkbox" data-movepiece="${esc(pc.key)}"${pc.on ? " checked" : ""}${pc.fixed ? " disabled" : ""}> ${esc(pc.label)} <span class="dim">(${pc.over ? "at least " : ""}${moveSize(pc.size || 0)}${pc.about ? `; ${esc(pc.about)}` : ""})</span></label></div>`).join("");
   const stores = Array.isArray(m.stores) ? m.stores : [];
   return `<div class="row stack2" data-group="Move"><div class="grow">
       ${arrived}

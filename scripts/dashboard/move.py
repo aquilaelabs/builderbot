@@ -210,12 +210,24 @@ def _tar_tree(tar, src, arc, leave=()):
 STORES_OFF = {"logs", "job-snapshots"}
 
 
+# How long a piece is measured for (B432: the workspace on a share took
+# minutes and the section never drew): past it the size is "at least".
+SIZE_BUDGET_S = 1.0
+_sizes = {}      # path: (at, bytes, over), kept a while
+
+
 def _size_of(src, leave=()):
-    """Bytes under a tree, symlinks not followed; 0 for nothing there."""
+    """(bytes, over) under a tree, symlinks not followed, within
+    SIZE_BUDGET_S: `over` says the walk stopped and the bytes are a floor.
+    Kept for ten minutes per path."""
     src = Path(src)
     if not src.exists():
-        return 0
-    n = 0
+        return 0, False
+    key = (str(src), tuple(sorted(leave)))
+    got = _sizes.get(key)
+    if got and time.time() - got[0] < 600:
+        return got[1], got[2]
+    n, over, t0 = 0, False, time.monotonic()
     for root, dirs, files in os.walk(src):
         rel = Path(root).relative_to(src)
         if rel.parts and rel.parts[0] in leave:
@@ -228,7 +240,11 @@ def _size_of(src, leave=()):
                 continue
             if not os.path.islink(os.path.join(root, f)):
                 n += st.st_size
-    return n
+        if time.monotonic() - t0 > SIZE_BUDGET_S:
+            over = True
+            break
+    _sizes[key] = (time.time(), n, over)
+    return n, over
 
 
 def pieces():
@@ -237,15 +253,16 @@ def pieces():
     outside it (on unless it is logs or the job trees); the repositories
     (off: both homes may mount the same share); the install key (off: the
     new home asks for it)."""
-    out = [{"key": "state", "label": "The state", "about": "accounts, nodes, projects, settings, the notebooks, the database, what is sealed",
-            "size": _size_of(STATE, LEAVE), "on": True, "fixed": True}]
+    def piece(key, label, about, path, on, fixed=False, leave=()):
+        size, over = _size_of(path, leave)
+        return {"key": key, "label": label, "about": about, "size": size, "over": over, "on": on, "fixed": fixed}
+    out = [piece("state", "The state", "accounts, nodes, projects, settings, the notebooks, the database, what is sealed", STATE, True, True, LEAVE)]
     for kind, path in (store_paths() or {}).items():
         if path and not str(path).startswith(str(STATE)):
-            out.append({"key": f"store:{kind}", "label": kind, "about": str(path), "size": _size_of(path), "on": kind not in STORES_OFF})
+            out.append(piece(f"store:{kind}", kind, str(path), path, kind not in STORES_OFF))
     if SECRETS and Path(SECRETS).is_dir():
-        out.append({"key": "secrets", "label": "The deploy key and the secrets", "about": SECRETS, "size": _size_of(SECRETS), "on": True, "fixed": True})
-    out.append({"key": "repos", "label": "The repositories", "about": f"{WORKSPACE}: leave off when both homes mount the same share",
-                "size": _size_of(WORKSPACE), "on": False})
+        out.append(piece("secrets", "The deploy key and the secrets", SECRETS, SECRETS, True, True))
+    out.append(piece("repos", "The repositories", f"{WORKSPACE}: leave off when both homes mount the same share", WORKSPACE, False))
     out.append({"key": "install_key", "label": "The install key", "about": "else the new home asks for it", "size": len(install_key() or b""), "on": False})
     return out
 
