@@ -497,7 +497,9 @@ def report_files():
     try:
         host = (sorted(REPORTS.glob("*.sarif")) + sorted(REPORTS.glob("*.sarif.json"))) if REPORTS.is_dir() else []
     except OSError:
-        host = []
+        # A mount that cannot be listed (stale) is nothing to read, unless
+        # the nodes sent reports of their own.
+        return sent or None
     return sent + host
 
 

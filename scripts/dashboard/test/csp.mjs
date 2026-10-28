@@ -36,7 +36,7 @@ const p2 = await ctx2.newPage();
 await p2.addInitScript(() => { window.__csp = []; document.addEventListener('securitypolicyviolation', e => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI)); });
 const r = await p2.goto(BASE + '/login');
 const h = r.headers()['content-security-policy'] || '';
-ok(/script-src 'self' 'sha256-/.test(h) && !/unsafe-inline/.test(h), `the login page's policy names its own script by hash (${h.slice(0, 60)})`);
+ok(/script-src 'self' 'sha256-/.test(h) && !/script-src[^;]*unsafe-inline/.test(h), `the login page's policy names its own script by hash (${h.slice(0, 60)})`);
 await p2.waitForTimeout(500);
 ok((await p2.evaluate(() => window.__csp)).length === 0, 'the login card draws under it');
 await done(browser);

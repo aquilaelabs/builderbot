@@ -124,8 +124,8 @@ const TOUR_STEPS = {
   ],
   schedules: [
     {say: "Schedules: commands run on a node at the times you set, as cron runs them. Each run is a job, with its log on the Jobs page."},
-    {at: TOUR_BAR, say: "New schedule is here. The static analysis scan is built in, off until you turn it on."},
-    {at: `${TOUR_PANE} .schedrow`, say: "Each schedule says when it runs, where and as whom, and how its last run went. Run now runs it once."},
+    {at: TOUR_BAR, say: "New schedule is here. The static analysis scan is the Scanners page's, under Containers."},
+    {at: `${TOUR_PANE} .schedrow, ${TOUR_PANE} .empty`, say: "Each schedule says when it runs, where and as whom, and how its last run went. Run now runs it once."},
   ],
   users: [
     {say: "Users: the accounts that sign in here, and the roles each holds."},

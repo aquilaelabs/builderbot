@@ -59,7 +59,7 @@ def header(html):
             f"script-src 'self'{(' ' + ' '.join(scripts)) if scripts else ''}; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; "
-            "connect-src 'self'; frame-src 'self'; worker-src 'self' blob:; "
+            "connect-src 'self'; frame-src 'self' data: blob:; worker-src 'self' blob:; "
             "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; "
             "report-uri /api/csp-report")
 

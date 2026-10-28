@@ -29,7 +29,7 @@ const call = async (path, body, headers = H) => {
 };
 
 // The page is a tool of the Containers group, between Containers and nginx.
-ok(await page.evaluate(() => railGroups().some(g => g.key === 'containers' && g.tools.map(([k]) => k).join() === 'docker,vms,nginx')),
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'containers' && g.tools.map(([k]) => k).join() === 'docker,vms,nginx,scanners')),
    'the rail offers VMs in the Containers group, between Containers and nginx');
 await page.evaluate(() => openVmsTab());
 await page.waitForSelector('.vmtab .vmnone', { timeout: 15000 });

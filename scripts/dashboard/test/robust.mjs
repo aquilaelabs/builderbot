@@ -59,7 +59,7 @@ const get = (path, extra = {}) => new Promise((resolve, reject) => {
   const later = new Date(Date.now() + 5000);
   utimesSync(served, later, later);
   const g1 = await get('/');
-  const v1 = g1.text.match(/<script data-cfasync="false" src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)">/);
+  const v1 = g1.text.match(/<script data-cfasync="false" src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)" integrity="sha384-[A-Za-z0-9+/=]+">/);
   ok(v1 && v && v1[1] !== v[1] && g1.tag !== g0.tag,
      `...and a script that changes gets a new name and a new page tag, the page itself untouched (${v1?.[1]}, ${g1.tag !== g0.tag})`);
   const js = await get('/nb-history.js?v=' + (v1 ? v1[1] : ''));

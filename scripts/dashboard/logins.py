@@ -142,7 +142,9 @@ def seen(uid, lid, ua=None, ip=""):
         r = (d.get(uid) or {}).get(lid)
         if not isinstance(r, dict):
             return False
-        if ua is not None:
+        # A request with no User-Agent at all (a socket, a script) names no
+        # browser: nothing to hold it to, and nothing to bind to.
+        if ua:
             if r.get("ua") and r["ua"] != _ua_digest(ua):
                 return False
             if not r.get("ua"):
