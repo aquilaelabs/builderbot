@@ -387,10 +387,12 @@ const pillIs = async (want) => {
 // them is drawn.
 {
   await dmRefresh();
-  const sel = await page.$('.dmtab select:not([disabled])');
+  // The menu is the Containers group's node picker in the pane's bar (R178),
+  // which redraws with the page.
+  const sel = await page.$('.pane .bar select#ndPick:not([disabled])');
   ok(!!sel, 'the manager has a menu to open');
   if (sel){
-    await page.evaluate(() => { window.__heldSel = document.querySelector('.dmtab select:not([disabled])');
+    await page.evaluate(() => { window.__heldSel = document.querySelector('.pane .bar select#ndPick:not([disabled])');
                                 window.__heldTab = document.querySelector('.dmtab'); });
     await sel.click();
     const open = await page.evaluate(() => window.__heldSel.matches(':open'));
