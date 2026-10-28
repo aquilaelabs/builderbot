@@ -36,6 +36,9 @@ def node_view(n, may_see):
             # lists them (R162 step 1): the Storage page's Disks section.
             "own": bool((n.get("config") or {}).get("own")),
             "disks": (n.get("reported") or {}).get("disks") or [],
+            "shares": (n.get("reported") or {}).get("shares") or [],
+            "smb": bool((((n.get("reported") or {}).get("features") or {}).get("shares") or {}).get("smb")),
+            "nfs": bool((((n.get("reported") or {}).get("features") or {}).get("shares") or {}).get("nfs")),
             "measured": bool(st.get("at")), "at": int(st.get("at") or 0), "took_s": int(st.get("took_s") or 0),
             "age_s": max(0, int(time.time()) - int(st.get("at") or 0)) if st.get("at") else None,
             "filesystems": st.get("filesystems") or [], "stores": st.get("stores") or {},

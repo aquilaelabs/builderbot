@@ -187,6 +187,54 @@ function storageMachineDisks(n){
   return docSection("storage", "disks", "Disks", disks.length ? `${disks.length}${failing ? `, ${failing} failing` : ""}` : "", body, {cls: failing ? "bad" : ""});
 }
 
+// The controller's own machine's shares (R162 step 1): each as BuilderBot's
+// own two files say it (the path, SMB with its users or as a guest, NFS
+// with its clients), with Remove; and a form for a new one, every press a
+// system job the root agent runs, which writes the files whole and tells
+// Samba and NFS to read again. The SMB password an account sets is R164's.
+function storageShares(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.smb && !n.nfs ? `No Samba or NFS on this machine yet: Shares on its ${pageLink("machine", "Features section")} installs them.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const shares = n.shares || [];
+  const rows = shares.map(s => `<div class="row stack2 stshare" data-share="${esc(s.name)}"><div class="grow">
+      <div class="name">${esc(s.name)} <code>${esc(s.path)}</code></div>
+      ${s.smb?.on ? `<div class="sub">SMB${s.smb.ro ? ", read-only" : ""}: ${s.smb.guest ? "everybody, as a guest" : (s.smb.users || []).map(esc).join(", ") || "nobody yet"} · \\\\${esc(n.name)}\\${esc(s.name)}</div>` : ""}
+      ${s.nfs?.on ? `<div class="sub">NFS${s.nfs.ro ? ", read-only" : ""}: ${(s.nfs.clients || []).map(esc).join(", ")} · ${esc(n.name)}:${esc(s.path)}</div>` : ""}
+      </div>${admin && !why ? `<span class="acts"><button type="button" class="danger" data-stshare="remove" data-name="${esc(s.name)}">Remove</button></span>` : ""}</div>`).join("");
+  const mounts = (n.pools || []).map(p => p.mount).filter(Boolean);
+  const form = !admin || why ? "" : `<div class="field stnewshare"><div class="hint">New share: a name, a folder on a pool${mounts.length ? ` (${mounts.map(esc).join(", ")})` : ""}, and who reaches it over SMB, NFS or both.</div>
+      <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" id="stShareName" placeholder="media" maxlength="63" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="pick"><span class="pickw">Folder</span><input type="text" id="stSharePath" placeholder="${esc(mounts[0] ? mounts[0] + "/media" : "/mnt/tank/media")}" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stShareSmb" checked> SMB (Windows, a Mac, a phone)</label>
+        <label class="ndcap"><input type="checkbox" id="stShareGuest"> everybody as a guest, no password</label>
+        <label class="pick"><span class="pickw">Users</span><input type="text" id="stShareUsers" placeholder="the machine's users who may reach it, separated by spaces" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stShareNfs"> NFS (Linux, a hypervisor)</label>
+        <label class="pick"><span class="pickw">Clients</span><input type="text" id="stShareClients" placeholder="192.168.1.0/24, or * for any" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stShareRo"> read-only</label></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stshare="set">Share it</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No share yet${n.smb || n.nfs ? ": the form below makes one" : ""}.</div>`}${form}`;
+  return docSection("storage", "shares", "Shares", shares.length ? String(shares.length) : "", body);
+}
+function wireStorageShares(root, n){
+  root.querySelectorAll("[data-stshare]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stshare, body = {action: "storage-share", id: n.node, share: act, name: b.dataset.name || ""};
+    if (act === "set"){
+      body.name = ($("stShareName")?.value || "").trim();
+      body.path = ($("stSharePath")?.value || "").trim();
+      const ro = !!$("stShareRo")?.checked;
+      body.smb = {on: !!$("stShareSmb")?.checked, guest: !!$("stShareGuest")?.checked, ro, users: ($("stShareUsers")?.value || "").split(/[\s,]+/).filter(Boolean)};
+      body.nfs = {on: !!$("stShareNfs")?.checked, ro, clients: ($("stShareClients")?.value || "").split(/[\s,]+/).filter(Boolean)};
+      if (!body.name || !body.path){ notify("a share takes a name and a folder", true); return; }
+    } else if (!await askYes(`Stop sharing ${body.name}? The folder and what is in it stay; nobody reaches it over SMB or NFS after.`, {title: "Remove the share?", verb: "Remove", danger: true})) return;
+    busy(b, act === "set" ? "Sharing" : "Removing");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act === "set" ? "shared" : "removed"}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+}
+
 function storageProjects(n, where){
   const rows = [...(n.projects || [])];
   if (n.other) rows.push({name: "other projects", other: true, ...n.other});
@@ -265,6 +313,7 @@ function storageBody(n, where){
   return `<div data-stnode="${esc(n.node)}">
     ${head}
     ${storageMachineDisks(n)}
+    ${storageShares(n)}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
     ${(n.phones || []).length ? docSection("storage", "phones", "Phones", `${n.phones.length}, ${sgb(n.phones.reduce((a, p) => a + (p.mb || 0), 0))}`, storagePhones(n)) : ""}
@@ -295,6 +344,7 @@ function renderStorageInto(i){
   d.list.innerHTML = n ? storageBody(n, where)
     : noNodeYet("the disks measured here are a node's");
   wireStorageTab(d.el);
+  if (n) wireStorageShares(d.el, n);
 }
 
 function wireStorageTab(root){

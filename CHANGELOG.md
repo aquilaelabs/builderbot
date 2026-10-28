@@ -31,6 +31,7 @@
 - This machine sets the machine's name and time zone: a Name and time section on the controller's own machine, each set on the machine by its root agent, the zones offered as a list to type into; the first-run page's This machine card says the name, the address and the clock's zone, and where to change them (bb086ed)
 - The Storage page lists the controller's own machine's disks: each by name, model, size, serial, spinning or solid state and what each partition holds, with SMART's health, temperature and hours where the machine has smartctl, the system disk marked; read before anything is written to one (bb086ed)
 - Storage and shares are features of the controller's own machine: its Features section installs ZFS, mergerfs, SnapRAID and SMART as Storage and Samba and NFS as Shares, each with exactly its packages, removed with them and refused while a pool or a share stands; the row says which tools answer (bb086ed)
+- Shares on the Storage page: the controller's own machine's SMB and NFS shares, each a folder on a pool given to the machine's users or to everybody as a guest over SMB and to named clients over NFS, read-only or not, with Remove; every press a job the machine's root agent runs, which writes BuilderBot's own share files whole and tells Samba and NFS to read again (6a559f9)
 
 ### Changed
 

@@ -1447,6 +1447,20 @@ def _census(c):
                                                              ("temp_c", int(sm["temp_c"]) if isinstance(sm.get("temp_c"), int) else None),
                                                              ("hours", int(sm["hours"]) if isinstance(sm.get("hours"), int) else None))
                                            if v is not None}})
+    # ...and its shares (R162 step 1): a name, a path, SMB's and NFS's halves.
+    if isinstance(c.get("shares"), list):
+        sw = lambda v, n: re.sub(r"[^\w .,:/()*@+-]", "", str(v or ""))[:n]  # noqa: E731
+        out["shares"] = []
+        for sh in c["shares"][:64]:
+            if not isinstance(sh, dict) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}", str(sh.get("name") or "")):
+                continue
+            smb = sh.get("smb") if isinstance(sh.get("smb"), dict) else {}
+            nfs = sh.get("nfs") if isinstance(sh.get("nfs"), dict) else {}
+            out["shares"].append({"name": sh["name"], "path": sw(sh.get("path"), 200),
+                                  "smb": {"on": smb.get("on") is True, "guest": smb.get("guest") is True, "ro": smb.get("ro") is True,
+                                          "users": [sw(u, 32) for u in (smb.get("users") or [])[:64] if isinstance(u, str)]},
+                                  "nfs": {"on": nfs.get("on") is True, "ro": nfs.get("ro") is True,
+                                          "clients": [sw(c, 80) for c in (nfs.get("clients") or [])[:64] if isinstance(c, str)]}})
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
@@ -3039,6 +3053,67 @@ def node_feature(principal, node_id, fid, op):
                 {"apply": "feature", "config": {"id": fid, "op": op}, "timeout": 1800})
     if r.get("ok"):
         audit(principal, "node-feature", node_id, {"job": r["job"], "id": fid, "op": op})
+    return r
+
+
+def node_storage_share(principal, node_id, req):
+    """A share on the controller's own machine (R162 step 1): set (SMB,
+    NFS or both, on a folder under a pool's mount) or removed, a system job
+    on its node whose root agent writes BuilderBot's own two files whole and
+    tells Samba and NFS to read again. Refused anywhere else, and without
+    the shares feature's daemons."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "shares are served from the controller's own machine (the installed edition's Storage page); another node's folders are its own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot serve a share"}
+    sh = (rep.get("features") or {}).get("shares") or {}
+    action = str(req.get("share") or "")
+    name = str(req.get("name") or "").strip()
+    if action not in ("set", "remove"):
+        return {"error": "a share action is set or remove"}
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}", name):
+        return {"error": "a share's name is letters, digits, dots, hyphens and underscores, 63 at most"}
+    cfg = {"share": action, "name": name}
+    if action == "set":
+        path = str(req.get("path") or "").strip()
+        smb = req.get("smb") if isinstance(req.get("smb"), dict) else {}
+        nfs = req.get("nfs") if isinstance(req.get("nfs"), dict) else {}
+        if not (path.startswith(("/mnt/", "/srv/")) and ".." not in path.split("/") and len(path) <= 200):
+            return {"error": "a share's path is a folder under /mnt or /srv"}
+        if not smb.get("on") and not nfs.get("on"):
+            return {"error": "a share is served over SMB, NFS or both"}
+        if smb.get("on") and not sh.get("smb"):
+            return {"error": "no Samba on the machine yet: install Shares on its Features section first"}
+        if nfs.get("on") and not sh.get("nfs"):
+            return {"error": "no NFS server on the machine yet: install Shares on its Features section first"}
+        users = [str(u).strip() for u in (smb.get("users") or []) if isinstance(u, str) and str(u).strip()]
+        clients = [str(c).strip() for c in (nfs.get("clients") or []) if isinstance(c, str) and str(c).strip()]
+        if smb.get("on") and not smb.get("guest") and not users:
+            return {"error": "an SMB share takes the users who may reach it, or everybody as a guest"}
+        if nfs.get("on") and not clients:
+            return {"error": "an NFS share takes the clients it is exported to (an address, a network, a name, or *)"}
+        for u in users:
+            if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", u):
+                return {"error": f"{u!r} is not a user name"}
+        for c in clients:
+            if not re.fullmatch(r"[A-Za-z0-9*][A-Za-z0-9*./:_-]{0,80}", c):
+                return {"error": f"{c!r} is not a client (an address, a network like 192.168.1.0/24, a name, or *)"}
+        cfg.update(path=path, smb={"on": bool(smb.get("on")), "guest": bool(smb.get("guest")), "ro": bool(smb.get("ro")), "users": users[:64]},
+                   nfs={"on": bool(nfs.get("on")), "ro": bool(nfs.get("ro")), "clients": clients[:64]})
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-share", "config": cfg, "timeout": 120})
+    if r.get("ok"):
+        audit(principal, "storage-share", node_id, {"job": r["job"], **cfg})
     return r
 
 
@@ -6125,6 +6200,7 @@ def verb(principal, req):
              "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
              "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
              "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone")),
+             "storage-share": lambda: node_storage_share(principal, nid, req),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,

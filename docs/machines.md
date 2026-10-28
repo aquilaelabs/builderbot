@@ -298,6 +298,16 @@ exactly its packages and removed with them, refused while a pool or a
 share still stands; on BuilderBot OS the packages are the image's. The
 row says which of each one's tools answer.
 
+**Shares** (R162): the own machine's SMB and NFS shares as BuilderBot's own
+two files say them (an include of `smb.conf`, and `exports.d`): each a
+folder on a pool, served over SMB to named users of the machine or to
+everybody as a guest, over NFS to named clients (an address, a network, a
+name, `*`), read-only or not, with the address to map it by and Remove;
+and a form for a new one. Every press is a job the machine's root agent
+runs: it writes the two files whole, checks Samba accepts them, and tells
+Samba and NFS to read again. The SMB password an account sets for itself is
+R164's.
+
 **Disks** (R162): on the controller's own machine the page opens with the
 machine's disks as its agent lists them (`lsblk`, and `smartctl` where it
 is installed): each by name, model, size, serial, spinning or solid state,
