@@ -93,6 +93,12 @@ function homeTiles(){
     {key: "sessions", label: "sessions open", value: sessions, sub: claudes ? `${claudes} of them ${agentsWord(agentSs.map(s => s.name))}` : ""},
     {key: "updates", label: updates === 1 ? "update due" : "updates due", value: updates, tone: updates ? "warn" : ""},
     {key: "ci", label: "CI red", value: red, tone: red ? "bad" : "", sub: red === 1 ? projLabel(state.ci_red[0].project) : ""},
+    // The own machine's backups (R162 step 5): the last good run, or what
+    // failed or went stale; only where a backup is recorded.
+    h.backups ? {key: "backups", label: h.backups.count === 1 ? "backup" : "backups", value: h.backups.count,
+                 sub: h.backups.failed?.length ? `${h.backups.failed.length} failed` : h.backups.stale?.length ? `${h.backups.stale.length} not run in two days`
+                   : h.backups.newest_ok_at ? `last good run ${ago(h.backups.newest_ok_at)}` : "none run yet",
+                 tone: h.backups.failed?.length ? "bad" : h.backups.stale?.length ? "warn" : ""} : null,
   ].filter(Boolean);
 }
 
@@ -109,7 +115,7 @@ function homeHref(key){
           // The updates due are toolchains, images, nginx and agents on every
           // node, which one node's Toolchains page never held: they are listed
           // on Home's own Attention card, so the tile brings that into view (B73).
-          updates: "#/home",
+          updates: "#/home", backups: "#/machines/storage",
           ci: c ? `#/projects/${encodeURIComponent(c.project)}/git` : "#/projects", sessions: "#"}[key] || "#";
 }
 function homeTilesHtml(tiles){

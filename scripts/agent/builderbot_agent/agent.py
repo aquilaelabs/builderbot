@@ -35,11 +35,12 @@ from .pools import PoolsMixin
 from .array import ArrayMixin
 from .power import PowerMixin
 from .extmounts import ExtMountsMixin
+from .backups import BackupsMixin
 from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, ExtMountsMixin, AccountsMixin,
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, ExtMountsMixin, BackupsMixin, AccountsMixin,
             TokensMixin, ScanMixin):
     def __init__(self, state):
         self.state = state
@@ -340,6 +341,9 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # step 4): the record mounted and unmounted as it says.
             if isinstance(r.get("ext_mounts"), list):
                 self.ext_mounts_want(r["ext_mounts"])
+            # ...and the backups it copies (R162 step 5), the record the job names a row of.
+            if isinstance(r.get("store_backups"), list):
+                self.backups_want(r["store_backups"])
             # The coding agents' sign-ins sealed (R126): the controller's
             # switch, and each account's public key here, kept in node.json.
             ts, pubs = bool(r.get("token_seal")), r.get("token_pubs") if isinstance(r.get("token_pubs"), dict) else {}

@@ -51,6 +51,7 @@ from .pools import pools_now, snapshots_now
 from .array import array_now
 from .power import host_updates_now, ups_now
 from .extmounts import extmounts_now
+from .backups import backups_now
 from .vms import isos_now, vm_memory, vm_pool, vms_now, vms_other
 
 
@@ -381,6 +382,8 @@ def census(state):
         "array": array_now(),
         # ...and its other disks and shares (R162 step 4), as the record the hello left says.
         "ext_mounts": extmounts_now(state),
+        # ...and its backups' last runs (R162 step 5).
+        "store_backups": backups_now(state),
         # ...and its UPS and its own packages' updates (R164 step 3).
         "ups": ups_now(),
         "host_updates": host_updates_now(state),

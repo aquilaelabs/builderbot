@@ -576,6 +576,78 @@ function wireStorageOther(root, n){
   }));
 }
 
+// Backups (R162 step 5): a folder here copied to another place by rsync,
+// each run a dated folder hard-linked to the one before, the oldest pruned
+// past what is kept; Run now, a daily or weekly schedule (the Schedules
+// page's row), the last run from the census, and a form for a new one.
+function storageBackups(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const recs = n.backups || [], live = n.store_backups || [], scheds = (n.snapshot_schedules || []).filter(x => x.backup);
+  const places = [...(n.pools || []).map(p => [p.mount, `the pool ${p.name} (${p.mount})`]).filter(x => x[0]),
+                  ...(n.array?.mounted ? [[n.array.mount || "/mnt/array", `the array (${n.array.mount || "/mnt/array"})`]] : []),
+                  ...(n.extmounts || []).filter(m => (n.ext_mounts || []).find(x => x.id === m.id)?.mounted).map(m => [`/mnt/other/${m.name}`, `${m.name} (/mnt/other/${m.name})`]),
+                  ["/var/lib/builderbot-controller", "the controller's state"]];
+  const rows = recs.map(r => {
+    const st = live.find(x => x.id === r.id || x.name === r.name) || {};
+    const sch = scheds.find(x => x.backup === r.name);
+    const pill = !st.last_at ? `<span class="pill">never run</span>` : st.ok ? `<span class="pill ok">last run ${esc(ago(st.last_at))}</span>` : `<span class="pill bad">failed ${esc(ago(st.last_at))}</span>`;
+    return `<div class="row stack2 stbackup${st.last_at && !st.ok ? " bad" : ""}" data-backup="${esc(r.id)}"><div class="grow">
+      <div class="name">${esc(r.name)} ${pill}${sch ? ` <span class="pill${sch.on ? " ok" : ""}">${esc(sch.words || "scheduled")}${sch.on ? "" : ", off"}</span>` : ""}</div>
+      <div class="sub"><code>${esc(r.source)}</code> to <code>${esc(r.dest)}/${esc(r.name)}</code>, ${r.keep} run${r.keep === 1 ? "" : "s"} kept${st.size_mb ? ` · ${esc(humanBytes(st.size_mb * 1048576))} in ${st.runs} run${st.runs === 1 ? "" : "s"}` : ""}${st.took_s ? ` · the last took ${st.took_s < 120 ? `${st.took_s} s` : `${Math.round(st.took_s / 60)} min`}` : ""}</div>
+      ${st.error && !st.ok ? `<div class="sub bad">${esc(st.error)}</div>` : ""}
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-stbackup="run" data-name="${esc(r.name)}">Run now</button>${actMore([
+        `<button type="button" data-stbackup="daily" data-name="${esc(r.name)}">${sch ? "Schedule: daily at 4:00" : "Schedule daily at 4:00"}</button>`,
+        `<button type="button" data-stbackup="weekly" data-name="${esc(r.name)}">Schedule weekly, Sundays at 4:00</button>`,
+        sch ? `<button type="button" data-stsnapsched="${esc(sch.id)}">Remove the schedule</button>` : "",
+        `<button type="button" class="danger" data-stbackup="remove" data-id="${esc(r.id)}" title="forgotten here; the runs already copied stay where they are">Remove</button>`], true)}</span>` : ""}</div>`;
+  }).join("");
+  const form = !admin || why ? "" : `<div class="field stnewbackup"><div class="hint">A new backup: a folder here, where its runs go (another pool, the array, a disk or a share under Other disks and shares), and how many runs to keep. Each run is whole and shares what did not change with the run before.</div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Name</span><input type="text" id="stBackupName" placeholder="media" maxlength="31" autocomplete="off" spellcheck="false"></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Keep</span><input type="number" id="stBackupKeep" min="1" max="365" value="7"></label></div>
+      </div>
+      <div class="field"><label class="pick"><span class="pickw">Copy</span><input type="text" id="stBackupSrc" list="stBackupPlaces" placeholder="${esc(places[0]?.[0] || "/mnt/tank/media")}" autocomplete="off" spellcheck="false"></label>
+        <label class="pick"><span class="pickw">To</span><input type="text" id="stBackupDest" list="stBackupPlaces" placeholder="/mnt/other/backup" autocomplete="off" spellcheck="false"></label>
+        <datalist id="stBackupPlaces">${places.map(([v, w]) => `<option value="${esc(v)}">${esc(w)}</option>`).join("")}</datalist></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stbackup="set">Add the backup</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No backup yet${admin ? ": the form below adds one" : ""}.</div>`}${form}`;
+  const bad = recs.filter(r => { const st = live.find(x => x.name === r.name) || {}; return st.last_at && !st.ok; }).length;
+  return docSection("storage", "backups", "Backups", recs.length ? `${recs.length}${bad ? `, ${bad} failed` : ""}` : "", body, {cls: bad ? "bad" : ""});
+}
+function wireStorageBackups(root, n){
+  root.querySelectorAll("[data-stbackup]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stbackup;
+    if (act === "set"){
+      const body = {action: "set", name: ($("stBackupName")?.value || "").trim(), source: ($("stBackupSrc")?.value || "").trim(), dest: ($("stBackupDest")?.value || "").trim(), keep: parseInt($("stBackupKeep")?.value || "7", 10)};
+      if (!body.name || !body.source || !body.dest){ notify("a backup takes a name, a folder to copy and where its runs go", true); return; }
+      busy(b, "Adding");
+      const j = await (await postJSON("/api/storebackups", body)).json().catch(() => ({error: "no answer"}));
+      notify(j.error || "added: Run now copies it, or give it a schedule", !!j.error);
+      await refresh(); return;
+    }
+    if (act === "remove"){
+      if (!await askYes("Forget this backup? The runs already copied stay where they are.", {title: "Remove the backup?", verb: "Remove", danger: true})) return;
+      const j = await (await postJSON("/api/storebackups", {action: "remove", id: b.dataset.id})).json().catch(() => ({error: "no answer"}));
+      notify(j.error || "forgotten", !!j.error); await refresh(); return;
+    }
+    if (act === "daily" || act === "weekly"){
+      const was = (n.snapshot_schedules || []).find(x => x.backup === b.dataset.name);
+      const body = {action: "save", ...(was ? {id: was.id} : {}), name: `Backup ${b.dataset.name}`, cron: act === "daily" ? "0 4 * * *" : "0 4 * * 0", node: n.node, on: true,
+                    system: {apply: "storage-backup", config: {name: b.dataset.name}}};
+      busy(b, "Saving");
+      const j = await (await postJSON("/api/schedules", body)).json().catch(() => ({error: "no answer"}));
+      notify(j.error || `${b.dataset.name}: ${j.schedule?.words || act}; the row is on the Schedules page too`, !!j.error);
+      await refresh(); return;
+    }
+    busy(b, "Copying");
+    const j = await (await postJSON("/api/v1/nodes", {action: "storage-backup", id: n.node, name: b.dataset.name})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "copying: the job runs on the machine; its log is on the Jobs page and the row follows the next check-in", !!j.error);
+    await refresh();
+  }));
+}
+
 function storageProjects(n, where){
   const rows = [...(n.projects || [])];
   if (n.other) rows.push({name: "other projects", other: true, ...n.other});
@@ -659,6 +731,7 @@ function storageBody(n, where){
     ${storageSnapshots(n)}
     ${storageShares(n)}
     ${storageOther(n)}
+    ${storageBackups(n)}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
     ${(n.phones || []).length ? docSection("storage", "phones", "Phones", `${n.phones.length}, ${sgb(n.phones.reduce((a, p) => a + (p.mb || 0), 0))}`, storagePhones(n)) : ""}
@@ -694,6 +767,7 @@ function renderStorageInto(i){
   if (n) wireStorageSnapshots(d.el, n);
   if (n) wireStorageArray(d.el, n);
   if (n) wireStorageOther(d.el, n);
+  if (n) wireStorageBackups(d.el, n);
 }
 
 function wireStorageTab(root){

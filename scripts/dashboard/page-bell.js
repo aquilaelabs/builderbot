@@ -364,6 +364,15 @@ function attRow(a){
   // battery, the battery low or to be replaced, the UPS silent; and its
   // own packages: security updates waiting, a restart they need. To This
   // machine, where the Power section and Updates are.
+  // A backup of the own machine that failed, or went stale (R162 step 5): to the Storage page.
+  if (a.kind === "backup"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${a.what === "failed" ? "A backup failed" : "A backup is overdue"} on ${esc(a.node)}</div>
+      <div class="bsum">${esc(a.said)}</div>
+      <div class="bfoot"><span>${a.what === "failed" ? "until the next run succeeds" : "until it runs"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
+  }
   if (a.kind === "power" || a.kind === "host"){
     const title = {battery: "On the UPS battery", low: "The UPS battery is low", replace: "The UPS battery needs replacing", silent: "The UPS does not answer",
                    security: "Security updates waiting", reboot: "A restart is needed"}[a.what] || "This machine";

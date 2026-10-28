@@ -115,6 +115,8 @@ class ConfigPlaneMixin:
             return self._apply_storage_array(job, cfg)
         if what == "host-update":
             return self._apply_host_update(job, cfg)
+        if what == "storage-backup":
+            return self._apply_storage_backup(job, cfg)
         if what == "machine":
             return self._apply_machine(job, cfg)
         if what == "os-update":
