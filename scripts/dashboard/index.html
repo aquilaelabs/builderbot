@@ -6497,6 +6497,27 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <div id="cmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cTitle">
   <div class="box wide">
     <h3 id="cTitle">New container</h3>
+    <!-- Apps a NAS runs (R164 step 2): a ready app from the catalog fills
+         the name, the compose file and the environment from a few blanks;
+         none picked, the dialog is the image-or-compose one it always was. -->
+    <div class="field" id="cAppField">
+      <label for="cApp">From the catalog</label>
+      <select id="cApp"><option value="">none: an image, or a compose file of your own</option></select>
+      <div class="hint" id="cAppWhat"></div>
+      <div id="cAppFields" hidden>
+        <div class="prefrow ctlrow">
+          <div class="setrow col ctlrow"><label for="cAppData">Its data</label><input id="cAppData" placeholder="/mnt/tank/apps/jellyfin" autocomplete="off" spellcheck="false"></div>
+          <div class="setrow col ctlrow" id="cAppMediaField"><label for="cAppMedia">Its media or files</label><input id="cAppMedia" placeholder="/mnt/tank/media" autocomplete="off" spellcheck="false"></div>
+        </div>
+        <div class="prefrow ctlrow">
+          <div class="setrow col ctlrow"><label for="cAppIds">Runs as (uid:gid)</label><input id="cAppIds" value="1000:1000" autocomplete="off" spellcheck="false"></div>
+          <div class="setrow col ctlrow"><label for="cAppTz">Time zone</label><input id="cAppTz" placeholder="Europe/Paris" autocomplete="off" spellcheck="false"></div>
+          <div class="setrow col ctlrow"><label for="cAppPort">Its port</label><input id="cAppPort" type="number" min="1" max="65535"></div>
+        </div>
+        <div class="hint">The folders are a share's or a pool's on the node; the user is the one that owns them (a share's files are written as it). The app answers on its port on the node; a hostname and a certificate for it are the node's nginx page.</div>
+        <div class="actbar"><span class="sp"></span><button type="button" id="cAppFill">Fill the definition in</button></div>
+      </div>
+    </div>
     <div class="field">
       <label for="cName">Name</label>
       <input id="cName" maxlength="60" autocomplete="off" spellcheck="false"
