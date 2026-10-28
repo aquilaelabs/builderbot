@@ -454,7 +454,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // read in a second round trip can land on the moment between two draws and
   // come back empty (B99's family; this file has had three).
   const opts = await page.waitForFunction(() => {
-    const os = [...document.querySelectorAll('.dmtab .dmpick option')];
+    const os = [...document.querySelectorAll('.pane .bar #ndPick option')];
     return os.length ? os.map(o => o.textContent.trim()) : false;
   }, null, { timeout: 15000 }).then(h => h.jsonValue());
   ok(opts.length === 2 && opts.some(o => /sandbox/.test(o))
@@ -471,7 +471,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   });
   writeFileSync(`${DIR}/dockerstate/deadhosts`, bbAddr + '\n');
   await page.waitForFunction(() => {
-    const s = document.querySelector('#dmNode');
+    const s = document.querySelector('.pane .bar #ndPick');
     const n = (nodesList || []).find(x => x.name === 'buildbox');
     if (!s || !n) return false;
     s.value = n.id;
@@ -496,8 +496,8 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // while the file passed alone.
   ok(/not a BuilderBot sandbox|does not answer|will not say what it is/.test(emptyWhy),
      `an unreachable node shows its reason, not a spinner (${emptyWhy.slice(0, 50)})`);
-  await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
-  ok(await page.$eval('.dmtab .dmpick select', s => !s.disabled),
+  await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
+  ok(await page.$eval('.pane .bar #ndPick', s => !s.disabled),
      '...with the picker still live: the way back is the way in');
   // and back: the sandbox's last-known answer paints instantly from cache.
   // Waited for at the point of USE, not at the assertion above: the picker
@@ -509,7 +509,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // null about one run in several (B99's family, a site the report did not
   // name). A predicate with a side effect, deliberately.
   await page.waitForFunction(() => {
-    const s = document.querySelector('#dmNode');
+    const s = document.querySelector('.pane .bar #ndPick');
     // The bare name, not window's: a top-level `let` in a classic script
     // goes into the global LEXICAL scope and is not a property of window.
     const n = (nodesList || []).find(x => x.name === 'sandbox');

@@ -319,7 +319,7 @@ function renderLibraryInto(i){
   const d = docSurface(i, "library");
   if (!d) return;
   if (lib === null){
-    d.setBar(skNodeBar([["Check for updates", "", "Check"], ["Add your own", "primary", "Add"]]));
+    d.setBar(skActBar([["Check for updates", "", "Check"], ["Add your own", "primary", "Add"]]));
     const skcard = () => `<div class="lcard skcard"><div class="lchead"><span class="lcicon"></span><div class="lctitle">${skv(7, "name")}${skv(4)}</div></div>${skRows(1)}</div>`;
     d.list.innerHTML = skTpl(pageHead({title: GHOST, facts: [["Installed", GHOST], ["Updates due", GHOST], ["Store", GHOST]]})
       + `<div class="field lfilter libfilter"><input type="search" disabled placeholder="search by name or what it does">${skel("chips")}</div>`
@@ -338,7 +338,8 @@ function renderLibraryInto(i){
   const node = pnodes.find(x => x.id === libNode) || {};
   const stale = nodeStale(node), pro = node.reported?.store_ro === true;
   const clean = may.install && !pro ? (lib.cleanable || []) : [];
-  d.setBar(nodeBar(nodePick("libNodeSel", pnodes, libNode), may.install
+  // The node is the Build group's header's (R178).
+  d.setBar(nodeBar("", may.install
     ? `${busy ? abortBtn('data-libabort', job.aborting) : ""}
        <button type="button" data-libcheck${busy || stale ? " disabled" : ""} title="ask each upstream what it has now">${
          busy && job.action === "check" ? `${barSaid("Checking for updates", "Checking")}<span class="dots"></span>`
@@ -380,12 +381,6 @@ function renderLibraryInto(i){
 function wireLibrary(root){
   wireSections(root);
   if (typeof wireSignin === "function") wireSignin(root);
-  const psel = root.querySelector("#libNodeSel");
-  if (psel) psel.onchange = () => navPush(() => {
-    libNode = psel.value; lib = null;
-    try{ localStorage.setItem("bb.libnode", libNode); }catch(e){ /* private */ }
-    libRev++; drawPanes(); loadLibrary();
-  });
   const q = root.querySelector("#libFind");
   if (q){
     q.oninput = () => { libQ = q.value; libRev++; drawPanes(); keepFocus(q); };

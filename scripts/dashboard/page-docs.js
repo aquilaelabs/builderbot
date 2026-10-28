@@ -139,6 +139,10 @@ function skTpl(html, {said = "loading…", live = false} = {}){
 // what it lists is on its way: the picker's box shimmering, the actions
 // there and dead until the page they act on has drawn. An action given as
 // [label, "primary"] is the page's main action and wears its fill.
+function skActBar(actions = []){
+  return nodeBar("", actions.map(a => [].concat(a)).map(([a, cls, short]) =>
+    `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${short ? barSaid(a, short) : esc(a)}</button>`).join(""));
+}
 function skNodeBar(actions = []){
   return nodeBar(nodePick("", null), actions.map(a => [].concat(a)).map(([a, cls, short]) =>
     `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${short ? barSaid(a, short) : esc(a)}</button>`).join(""));
@@ -193,9 +197,11 @@ function bootPage(hash){
   }
   // The Machines group's header over its sub-nav (R177): the picker's
   // placeholder, the facts' shimmer and the two actions, dead.
-  bar = key === "machines"
-    ? `<div class="bar page machines"><span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>
-        <span class="subrow">${seg(g.tools, tool)}<span class="sp"></span><span class="actbar"><button type="button" disabled>${barSaid("Create sandbox VM", "New VM")}</button><button type="button" class="primary" disabled>${barSaid("Enroll node", "Enroll")}</button></span></span></div>`
+  // A group's header over its sub-nav (R177, R178): the picker's
+  // placeholder, the facts' shimmer, the Machines group's two actions dead.
+  bar = ["machines", "build", "containers"].includes(key)
+    ? `<div class="bar page grouped${key === "machines" ? " machines" : ""}"><span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>
+        <span class="subrow">${seg(g.tools, tool)}<span class="sp"></span>${key === "machines" ? `<span class="actbar"><button type="button" disabled>${barSaid("Create sandbox VM", "New VM")}</button><button type="button" class="primary" disabled>${barSaid("Enroll node", "Enroll")}</button></span>` : ""}</span></div>`
     : `<div class="bar page">${seg(g.tools, tool)}</div>`;
   if (key === "home")
     // Home's own order: the tiles, Attention and Last jobs, the projects at

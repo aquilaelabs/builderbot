@@ -2597,8 +2597,9 @@ function dmImage(img){
 // phone finds it without scrolling past every container (R119 step 5).
 function dmBar(b){
   const ghost = !b, dead = ghost ? " disabled" : "";
-  return `<div class="field docbarrow dmpick">${
-      nodePick("dmNode", ghost ? null : b.nodes, dockerNode || b?.nodes[0]?.id)}<input${ghost ? "" : ` id="dmSearch"`} type="search"
+  // The node is the Containers group's header's (R178): the search takes
+  // the picker's room.
+  return `<div class="field docbarrow dmpick"><input${ghost ? "" : ` id="dmSearch"`} type="search"
         placeholder="${isPhone() ? "search" : "name, image, port or project"}" autocomplete="off" aria-label="narrow the containers: name, image, port or project" value="${esc(dmSearch)}"${dead}><span class="sp"></span>
       ${dmViewSeg(dead)}
       ${mayDocker() ? `<span class="actbar">${
@@ -2855,16 +2856,6 @@ function renderDockerInto(i){
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   const ck = el.querySelector("#bDockerCheck");
   if (ck) ck.onclick = () => dmCheck(ck, dockerList?.node || dockerNode || "", () => { dockerRev++; loadDocker(); });
-  const pk = el.querySelector("#dmNode");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (pk) pk.onchange = () => navPush(() => {
-    dockerNode = pk.value;
-    dockerNodeKeep();
-    // The last-known answer first: instant, honestly stale (the blind path
-    // says so), and a fresh ask behind it.
-    dockerList = dockerSeen[dockerNode] || null;
-    dockerRev++; drawPanes(); loadDocker();
-  });
   const nb = el.querySelector("#bDockerNew");
   if (nb) nb.onclick = openNewContainer;
   // A chip narrows the list to one project's group (the chips rule): a

@@ -39,9 +39,9 @@ function openPhoneTab(){
 // The bar, the page's and its placeholder's (R218, the operator 18 Oct):
 // the node switcher and Check now in the button group every page's bar has.
 function phoneBar(nodes, n){
+  // The node is the Build group's header's (R178): Check now alone.
   const g = !nodes;
-  return nodeBar(nodePick("phPick", g ? null : nodes, n?.id),
-                 `<button type="button"${g ? " disabled" : ` id="phRefresh"`} title="ask the node's adb about the phone now">Check now</button>`);
+  return nodeBar("", `<button type="button"${g ? " disabled" : ` id="phRefresh"`} title="ask the node's adb about the phone now">Check now</button>`);
 }
 
 function renderPhoneInto(i){
@@ -63,10 +63,14 @@ function renderPhoneInto(i){
     return;
   }
   const nodes = ph.nodes || [];
-  const n = nodes.find(x => x.id === phNode) || nodes[0];
+  // The node the Build group's header picked (R178): one without adb is
+  // said so, not swapped for the first that has it.
+  const picked = (nodesList || []).find(x => x.id === phNode);
+  const n = nodes.find(x => x.id === phNode) || (!phNode ? nodes[0] : null);
   d.setBar(phoneBar(nodes, n));
   phFoot = "";
   d.list.innerHTML = n ? phonePanel(n)
+    : picked ? `<div class="hint">${esc(picked.name)} has no adb: install Android platform tools on it from the ${pageLink("library", "Library")}.</div>`
     : `<div class="hint">No node carries adb yet: install Android platform tools on one from the ${pageLink("library", "Library")}.</div>`;
   d.setFoot(phFoot);
   if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);
@@ -316,9 +320,6 @@ function phonePanel(n){
 
 function wirePhoneTab(root){
   const $$ = id => root.querySelector("#" + id);
-  const pick = $$("phPick");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (pick) pick.onchange = () => navPush(() => { phNode = pick.value; phIp = ""; phFetch(null, true); });
   const rf = $$("phRefresh");
   // Refresh says so on the button itself, like every other tab's (the
   // operator, 13 Oct); the pill is for what the phone is being asked to do.

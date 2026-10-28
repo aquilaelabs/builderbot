@@ -55,6 +55,7 @@ function paintBar(pane, t, i){
   bar.classList.toggle("page", isToolKind(t.kind));
   bar.classList.toggle("proj", proj);
   bar.classList.toggle("machines", isToolKind(t.kind) && groupOf(t.kind)?.key === "machines");
+  bar.classList.toggle("grouped", isToolKind(t.kind) && !!GROUP_HEADS[groupOf(t.kind)?.key]);
   if (fresh){
     wireShellBar(bar);
     if (proj) wireProjectHeader(bar);

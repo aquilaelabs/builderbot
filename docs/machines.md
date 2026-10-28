@@ -25,8 +25,10 @@ says whether the wall between its sessions and the controller holds. The
 page shows one node, picked in the Machines header over it (R177: one band
 for Nodes, Storage and Installed, the node pulldown where a project's name
 is, when it was seen, where it dials in from and its agent beside it, and
-**Create sandbox VM** and **Enroll node** at its right; the pick holds across
-the three pages): a header with its state, and where it dials in from, which is the address of its
+**Create sandbox VM** and **Enroll node** at the right of the sub-nav's line;
+the pick holds across the three pages, and the Build and Containers groups
+wear the same header, R178, a sub-tab reading *not here* when the node
+lacks its feature): a header with its state, and where it dials in from, which is the address of its
 last hello, so a node whose address moves is followed within a minute, its
 screen relay rebound onto the new address by its agent and the session-port
 rule on the node rewritten if the controller's own address is what moved,
@@ -564,7 +566,10 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   names it for the next boot, the restart yours ([image.md](image.md)), and
   **Update from the folder** takes the files from a folder on the machine.
   The container edition has no such section: its image is pulled by the
-  host.
+  host. On a controller in debug mode with the dev switch on the section
+  carries a **Channel** pulldown, Releases or Dev builds
+  ([versions.md](versions.md#two-channels)); everywhere else the releases
+  are the only channel and no pulldown is drawn.
 - **Power** (a controller installed bare metal, the OS and the USB edition
   among them, R175): Restart and Shut down for the machine the controller
   runs on, through its own node's reboot and power-off verbs with This

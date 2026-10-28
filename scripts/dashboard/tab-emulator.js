@@ -191,7 +191,7 @@ function renderEmulatorInto(i){
   if (!d){
     // Its template (R218 step 16): the bar and the add list's label are the
     // page's own; the node's images are on their way.
-    surf.setBar(skNodeBar([]));
+    surf.setBar("");
     // In the page's order: its head, its tiles, the images it holds,
     // then the ones to add.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
@@ -217,8 +217,8 @@ function renderEmulatorInto(i){
     : job.running ? "another job is writing to this store"
     : stale ? staleWhy(pnode)
     : d.sdkmanager === false ? `${d.name} needs the Android command-line tools first` : "";
-  // The one node switcher (page-docs.js nodePick, R121).
-  surf.setBar(nodeBar(nodePick("emuNodeSel", pnodes, emuNode)));
+  // The node is the Build group's header's (R178).
+  surf.setBar("");
   surf.list.innerHTML = `
     ${
     // Its node as a head (the operator, 25 Oct): where the images an
@@ -266,11 +266,6 @@ function renderEmulatorInto(i){
 
   // Its sections stand open at a desk and take turns on a phone.
   wireSections(el);
-  const sel = el.querySelector("#emuNodeSel");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (sel) sel.onchange = () => navPush(() => { emuNode = sel.value; emu = null; emuTicked.clear();
-                                  try{ localStorage.setItem("bb.emunode", emuNode); }catch(e){ /* private */ }
-                                  emuRev++; drawPanes(); loadEmulator(); });
 
   const toTc = el.querySelector("#emuToTc");
   if (toTc) toTc.onclick = e => { e.preventDefault(); openLibraryOn(emuNode); };

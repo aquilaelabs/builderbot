@@ -407,8 +407,11 @@ jobs:
           TAG: ${{ steps.pack.outputs.tag }}
           NAME: ${{ steps.pack.outputs.name }}
         run: |
+          # A dev build's tag (vX.Y.Z-dev.N, R179) is a pre-release and never
+          # the latest: the dev channel alone takes it.
+          pre=(); case "$TAG" in *-dev.*) pre=(--prerelease --latest=false);; esac
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes "BuilderBot ${TAG#v}: see CHANGELOG.md."
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$TAG" --notes "BuilderBot ${TAG#v}: see CHANGELOG.md."
           gh release upload "$TAG" "$NAME" "$NAME.sha256" --repo "$GITHUB_REPOSITORY" --clobber
 
   # The appliance image (R160 step 1): BuilderBot OS, built by image/build.sh
@@ -558,6 +561,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF_NAME}"
+          pre=(); case "$tag" in *-dev.*) pre=(--prerelease --latest=false);; esac
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$tag" --notes "BuilderBot ${tag#v}: see CHANGELOG.md."
+            || gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$tag" --notes "BuilderBot ${tag#v}: see CHANGELOG.md."
           gh release upload "$tag" out/builderbot-os-* --repo "$GITHUB_REPOSITORY" --clobber

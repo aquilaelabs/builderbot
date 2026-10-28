@@ -103,7 +103,9 @@ not evidence that anything stopped. It is also fast, because a daemon known to
 be off is asked nothing, rather than waiting on a machine that is not there
 until a timeout.
 
-**With more than one docker host, the manager grows a node picker.** Nodes
+**With more than one docker host, the node is picked in the Containers
+group's header over the page** (the pick holds for nginx too, and the
+Containers sub-tab says *not here* on a node without Docker). Nodes
 with the `docker-host` capability are listed online or not; picking one
 switches the whole view to that node's daemon: one page, redrawn, never a
 page per node. Each node's last-known container list is kept, so switching to

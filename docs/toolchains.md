@@ -368,7 +368,10 @@ once per share; from then on updates cost nothing.
 ## The Library
 
 **Build** opens on the **Library**: everything a BuilderBot installs or
-runs as one list for one node, picked in the bar. A section per kind, in
+runs as one list for one node, picked in the Build group's header over
+the page (the pick holds across the Library, the Emulator, the Phone and
+the CI runner, and a sub-tab says *not here* when the node lacks what it
+needs). A section per kind, in
 this order: the coding agents a session runs (Claude Code, Codex CLI,
 Copilot CLI, Grok Build), the toolchains a project builds with, the tool
 packs a person added, the apps a NAS runs as containers, and under **For

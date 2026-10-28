@@ -19,7 +19,7 @@ ok(await page.evaluate(() => !railGroups().some(g => g.tools.some(([k]) => k ===
 
 // ---- the page ----------------------------------------------------------
 await page.evaluate(() => openLibrary());
-await page.waitForSelector('.doc .librarytab #libNodeSel', { timeout: 20000 });
+await page.waitForSelector('.pane .bar #ndPick', { timeout: 20000 });
 await page.waitForFunction(() => lib && !lib.nonode && Array.isArray(lib.rows), null, { timeout: 20000 });
 // ...pushed by the draw that follows the read, so waited for.
 ok(await page.waitForFunction(() => location.hash === '#/build/library/' + encodeURIComponent(libNode), null, { timeout: 10000 }).then(() => true, () => false),
@@ -222,9 +222,9 @@ if (await page.$('.doc .librarytab [data-libkind="app"][data-libact="install"]')
 // ---- no node ---------------------------------------------------------------
 await page.evaluate(() => { nodesList = []; libNode = ''; lib = null; loadLibrary(); });
 await page.waitForSelector('.doc .librarytab .libnone', { timeout: 20000 });
-ok(await page.evaluate(() => !document.querySelector('.doc .librarytab .lcard') && !document.querySelector('#libNodeSel')),
+ok(await page.evaluate(() => !document.querySelector('.doc .librarytab .lcard') && !document.querySelector('.pane .bar #ndPick')),
    'with no node enrolled it says to enroll one, and offers nothing');
 await page.evaluate(() => { nodesList = null; nodesStale = true; libNode = ''; lib = null; loadLibrary(); });
-await page.waitForSelector('.doc .librarytab #libNodeSel', { timeout: 20000 });
+await page.waitForSelector('.pane .bar #ndPick', { timeout: 20000 });
 
 await done(browser);
