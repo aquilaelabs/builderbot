@@ -58,7 +58,10 @@ function isToolKind(kind){ return kind !== "term" && kind !== "notebook"; }
 
 // The group a tab kind is a page of: the first group that lists it.
 function groupOf(kind){
-  return RAIL.find(g => (g.tools || []).some(([k]) => k === kind)) || null;
+  // The pages the Library replaced (R170) are off the rail but keep their
+  // addresses under Build until step 5 retires them.
+  return RAIL.find(g => (g.tools || []).some(([k]) => k === kind))
+    || (["toolchains", "agents", "apps"].includes(kind) ? RAIL.find(g => g.key === "build") : null);
 }
 
 // Which tool kinds this account may open, from the areas its grants read
@@ -116,6 +119,8 @@ function railOn(){
     if (g && (g.tools || []).some(([k]) => k === kind)) return railWant;
     railWant = "";
   }
+  // The pages the Library replaced (R170) are off the rail but keep their
+  // addresses under Build until step 5 retires them.
   return groupOf(kind)?.key || (kind === "notebook" ? "projects" : "");
 }
 
@@ -125,11 +130,13 @@ const OPENERS = {
   home: () => openHome(),
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
-  // The Toolchains, Agents and Apps pages are the Library since R170: their addresses and every door land there.
-  library: () => openLibrary(), toolchains: () => openLibrary(), agents: () => openLibrary(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
+  // The Toolchains, Agents and Apps pages are the Library since R170: every
+  // door a person presses lands there; their own addresses still open them
+  // until step 5 retires them with their suites.
+  library: () => openLibrary(), toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), debug: () => openDebugTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), keys: () => openKeysTab(), profile: () => openProfileTab(),
-  apps: () => { libKind = "companion"; openLibrary(); },
+  apps: () => openAppsTab(),
   sessions: () => openSessionsTab(), help: () => openHelp(),
   // The pages of 0.9.0 (B410: an address with no opener landed on its
   // group's first page): Scanners, Audit, This machine and Network.
@@ -164,16 +171,16 @@ function shellPush(to){
 // The Jobs page has no node; its second segment is the chip it is narrowed
 // to (#/jobs/failed-today, which Home's "failed today" opens, B74).
 const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
-  toolchains: () => libNode, agents: () => libNode, library: () => libNode, emulator: () => emuNode, phone: () => phNode,
+  toolchains: () => tcNode === "local" ? "" : tcNode, agents: () => agNode, library: () => libNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
 // Toolchains' "local" (the controller's own store, for a shell and the
 // suite) is no node, so an address naming it opens on the node tcPick picks.
 // A page that keeps what it read for one node forgets it when Back names
 // another, or the other node's list showed under this one until the read.
 const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
-  // ...and the old pages' addresses name the Library's node (R170 step 4).
-  toolchains: v => { const n = v === "local" ? "" : v; if (n && n !== libNode){ libNode = n; lib = null; } },
-  agents: v => { if (v && v !== libNode){ libNode = v; lib = null; } },
+  toolchains: v => { const n = v === "local" ? "" : v;
+                     if (n !== tcNode){ tcNode = n; toolchains = null; tcTicked.clear(); tcDriverPick = ""; } },
+  agents: v => { if (v !== agNode){ agNode = v; agRows = null; } },
   library: v => { if (v !== libNode){ libNode = v; lib = null; } },
   emulator: v => { if (v !== emuNode){ emuNode = v; emu = null; emuTicked.clear(); } },
   phone: v => { if (v !== phNode){ phNode = v; phIp = ""; } },
@@ -263,8 +270,11 @@ function openRoute(hash){
   const multi = (g.tools || []).length > 1;
   // A group of one tool names its node second (#/group/NODE), as routeOf
   // writes it.
-  const named = (g.tools || []).some(([k]) => k === a);
-  const kind = railTool(g, named ? a : "");
+  // ...and a page the Library replaced (R170) keeps its address under Build
+  // until step 5 retires it, though the rail no longer lists it.
+  const retired = !!a && ["toolchains", "agents", "apps"].includes(a) && groupOf(a) === g && !!OPENERS[a] && railAllows(a);
+  const named = (g.tools || []).some(([k]) => k === a) || retired;
+  const kind = retired ? a : railTool(g, named ? a : "");
   if (!kind) return false;
   railWant = g.key;
   // The node the address names, set before the page draws (R256 step 3).

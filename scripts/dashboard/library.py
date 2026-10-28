@@ -100,6 +100,9 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions):
         # withdrew is not offered (the bell says so to an install that holds it).
         if e["name"] in packs_here or e.get("withdrawn") or (e.get("tier") == "official" and e["name"] in shipped):
             continue
+        # A Docker app in the catalog is step 7's card; until then it is not a pack to offer.
+        if e.get("kind") == "app":
+            continue
         out.append({"kind": "pack", "tier": _tier(e.get("tier")), "name": e["name"], "label": e["name"], "about": e.get("about") or "",
                     "platforms": e.get("platforms") or [], "installed": False, "version": "", "latest": e.get("commit", "")[:12], "update": False,
                     "running": False, "catalog": {"url": e["url"], "commit": e["commit"], "sha256": e["sha256"], "path": e.get("path", "")}, "verb": "add"})

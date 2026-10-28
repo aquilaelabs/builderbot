@@ -53,7 +53,7 @@ class ClaudeToolchain(unittest.TestCase):
         n = node(claude="")
         self.use(n)
         self.assertEqual(agentcode.claude_row(n)["state"], "absent")
-        self.assertIn("Claude Code is not installed on clbox: the Library installs it there",
+        self.assertIn("Claude Code is not installed on clbox: its Agents page installs it",
                       claudecode.holds().get("n1", ""))
 
     def test_none_installed_does_not_end_a_running_session(self):

@@ -91,12 +91,12 @@ def down_fail(u):
 class Folders(unittest.TestCase):
     def test_an_entry_in_a_folder_keeps_its_path_and_a_bad_one_is_dropped(self):
         # R170 step 6: the catalog's own packs live in folders of its repository.
-        good = {**ENTRY, "name": "jdk", "path": "packs/official/jdk"}
+        good = {**ENTRY, "name": "jdk", "path": "packs/official/jdk", "kind": "app"}
         bad = {**ENTRY, "name": "evil", "path": "../etc"}
         plain = {**ENTRY, "name": "plain"}
         idx, why = catalogindex.parse(json.dumps({"version": 1, "generated": "x", "packs": [good, bad, plain]}).encode())
         self.assertEqual(why, "")
-        self.assertEqual([(p["name"], p["path"]) for p in idx["packs"]], [("jdk", "packs/official/jdk"), ("plain", "")])
+        self.assertEqual([(p["name"], p["path"], p["kind"]) for p in idx["packs"]], [("jdk", "packs/official/jdk", "app"), ("plain", "", "pack")])
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ let lib = null, libNode = "", libRev = 0, libSeq = 0, libLanded = 0, libFollow =
 let libQ = "", libKind = "", libTier = "";
 const libOpen = new Set();     // the rows opened on their descriptions (rows-you-open)
 const libSeen = {};            // what a pack's Look brought back, by row key ("looking" while it is asked)
+let libWantAgent = "";         // the agent whose card a door asked to open, until the rows land
 // The sections, in the page's order: what a session runs first, then what
 // it builds with, then what a person adds, then what the box hosts, then
 // what the person takes to their own machines.
@@ -33,8 +34,11 @@ function openLibrary(){
 }
 // ...on a node somebody named (the bell's rows, a node's page): read for
 // first when the page has not listed it yet (B754's lesson).
-function openLibraryOn(id){
+function openLibraryOn(id, agent = ""){
   if (id && id !== libNode){ libNode = id; lib = null; }
+  // A door that names a coding agent (a project's Sign in on NODE, the
+  // bell's row) opens that agent's card on its sign-in once the rows land.
+  if (agent) libWantAgent = agent;
   if (!(nodesList || []).some(n => n.id === id)) nodesStale = true;
   try{ localStorage.setItem("bb.libnode", id); }catch(e){ /* private */ }
   const was = location.hash;
@@ -82,6 +86,11 @@ async function loadLibrary(){
     lib = got;
   }catch(e){ if (!keep()) return; lib = {error: failWords(e)}; }
   libLanded = asked;
+  if (libWantAgent && !lib.error){
+    const r = (lib.rows || []).find(x => x.kind === "agent" && x.agent === libWantAgent);
+    if (r) libOpen.add(`agent:${r.name}`);
+    libWantAgent = "";
+  }
   // The lines the Toolchains and Agents pages draw read their own page's
   // state: the node's sandbox flag (Install them now on a system line) and
   // this person's plugins and MCP servers there (an agent's Yours).
@@ -145,7 +154,10 @@ function libActs(r, may){
   if (r.kind === "companion") return r.download
     ? `<a class="btn primary" href="${esc(r.download.url)}" download title="${esc(r.download.file)} · sha256 ${esc((r.download.sha256 || "").slice(0, 12))}…">Download</a>`
     : `<button type="button" class="primary" disabled>Download</button>`;
-  if (r.kind === "app") return `${may.apps ? a("install", "Install", "primary") : ""}${r.tier === "sideloaded" && may.packs ? a("edit", "Edit") : ""}`;
+  // An app is not installed on the node from here (the operator, 28 Oct):
+  // its press sends it to the Containers page's New container with the app
+  // picked, and each press makes another container under its own name.
+  if (r.kind === "app") return `${may.apps ? a("install", "New container", "primary") : ""}${r.tier === "sideloaded" && may.packs ? a("edit", "Edit") : ""}`;
   if (!may.install || !n) return "";
   if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install");
   if (r.machine && !r.machine.managed) return "";
@@ -226,7 +238,7 @@ function libDetail(r){
   }
   if (r.kind === "app"){
     if (r.tier === "sideloaded") lines.push(`<span class="sub">Added${r.by ? ` by ${esc(r.by)}` : ""}${r.at ? ` ${ago(r.at)}` : ""}, kept as sideloaded: Edit changes it, and Remove in there takes it off the catalog.</span>`);
-    lines.push(`<span class="sub">Install opens New container with ${esc(r.label)} picked: its folders, the user, the time zone and the port are filled in, and Create makes it a container on the Containers page${r.port ? `, on port ${esc(String(r.port))}` : ""}.</span>`);
+    lines.push(`<span class="sub">New container opens the Containers page's dialog with ${esc(r.label)} picked: its folders, the user, the time zone and the port are filled in, and Create makes it a container there${r.port ? `, on port ${esc(String(r.port))}` : ""}. Each press makes another, under its own name.</span>`);
     if (r.secrets?.length) lines.push(`<span class="sub">Made for it when it is created: ${esc(r.secrets.join(", "))}.</span>`);
     if (r.blanks?.length) lines.push(`<span class="sub">Its blanks, filled from what you type: ${r.blanks.map(b => `<code>${esc(b)}</code>`).join(", ")}.</span>`);
     if (r.compose) lines.push(`<pre class="libcompose mono">${esc(r.compose.trim())}</pre>`);
@@ -255,11 +267,11 @@ function libRow(r, may){
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : "";
   return `<div class="lcard${open ? " open" : ""}${r.running ? " busy" : ""}" data-lrow="${esc(key)}">
     <div class="lchead"><span class="lcicon">${(LIB_ICONS[r.kind] || LIB_ICONS.toolchain)()}</span>
-      <div class="lctitle"><div class="name">${esc(r.label)}</div><div class="lcmeta">${libPills(r)}</div></div></div>
+      <div class="lctitle"><div class="name">${esc(r.label)} <button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button></div><div class="lcmeta">${libPills(r)}</div></div></div>
     <div class="lcabout">${esc(r.about)}</div>
     ${r.machine && r.name === TC_DRIVER ? libDriverPick(r.machine) : ""}
     <div class="ldetail">${open ? libDetail(r) : ""}</div>${err}
-    <div class="pcacts actbar">${libState(r)}<button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button>${libActs(r, may)}</div>
+    <div class="pcacts actbar">${libState(r)}${libActs(r, may)}</div>
   </div>`;
 }
 

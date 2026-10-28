@@ -86,7 +86,9 @@ def parse(index_bytes):
         path = str(p.get("path") or "")
         if path and (not re.fullmatch(r"[a-z0-9][\w./-]{0,120}", path) or ".." in path.split("/")):
             continue
-        out.append({"name": name, "url": str(p["url"])[:300], "commit": str(p["commit"]), "sha256": str(p["sha256"]), "path": path,
+        # What the entry is (R170 step 7): a tool pack, or a Docker app.
+        kind = "app" if p.get("kind") == "app" else "pack"
+        out.append({"name": name, "url": str(p["url"])[:300], "commit": str(p["commit"]), "sha256": str(p["sha256"]), "path": path, "kind": kind,
                     "tier": "official" if p.get("tier") == "official" else "vetted", "withdrawn": p.get("withdrawn") is True,
                     "about": str(p.get("about") or "")[:400],
                     "platforms": [str(x)[:20] for x in (p.get("platforms") or []) if isinstance(x, str)][:8]})

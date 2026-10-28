@@ -44,7 +44,7 @@ def configure(*, state, write_json, lock):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" is the Analysis tab the Static analysis button opens, the
 # report as a document tab beside the notebook's own view of it.
-TAB_KINDS = {"term", "toolchains", "agents", "emulator", "notebook", "projects", "docker", "findings", "roles", "nginx", "vms", "storage",
+TAB_KINDS = {"term", "toolchains", "agents", "library", "emulator", "notebook", "projects", "docker", "findings", "roles", "nginx", "vms", "storage",
              "nodes", "settings", "jobs", "users", "profile", "apps", "phone", "runner", "home", "notices", "help",
              "sessions", "chat", "schedules", "debug", "keys", "audit", "scanners", "machine", "network"}
 

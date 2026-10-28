@@ -507,7 +507,7 @@ function tpSection(items){
 // said and not offered; the three tiers read on every row.
 function tpCatalogSection(items){
   const c = tpCatalog, idx = c?.index, have = new Set((items || []).filter(i => i.pack).map(i => i.name));
-  const rows = (idx?.packs || []).map(e => `<div class="row${e.withdrawn ? " bad" : ""}"><div class="grow">
+  const rows = (idx?.packs || []).filter(e => e.kind !== "app").map(e => `<div class="row${e.withdrawn ? " bad" : ""}"><div class="grow">
       <div class="name">${esc(e.name)} <span class="pill${e.withdrawn ? " bad" : " ok"}">${e.withdrawn ? "withdrawn" : e.tier}</span>${have.has(e.name) ? ` <span class="pill">added</span>` : ""}</div>
       <div class="sub">${esc(e.about || "")}${e.platforms?.length ? ` · ${esc(e.platforms.join(", "))}` : ""} · <code>${esc(e.url)}</code> at ${esc(e.commit.slice(0, 12))}</div>
       </div>${e.withdrawn ? `<span class="acts"><span class="sub bad">${have.has(e.name) ? "remove it from Tool packs" : "not offered"}</span></span>`
