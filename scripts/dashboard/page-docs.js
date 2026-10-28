@@ -194,8 +194,8 @@ function bootPage(hash){
   // The Machines group's header over its sub-nav (R177): the picker's
   // placeholder, the facts' shimmer and the two actions, dead.
   bar = key === "machines"
-    ? `<div class="bar page machines"><span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span>
-        <button type="button" disabled>${barSaid("Create sandbox VM", "New VM")}</button><button type="button" class="primary" disabled>${barSaid("Enroll node", "Enroll")}</button></span>${seg(g.tools, tool)}</div>`
+    ? `<div class="bar page machines"><span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>
+        <span class="subrow">${seg(g.tools, tool)}<span class="sp"></span><span class="actbar"><button type="button" disabled>${barSaid("Create sandbox VM", "New VM")}</button><button type="button" class="primary" disabled>${barSaid("Enroll node", "Enroll")}</button></span></span></div>`
     : `<div class="bar page">${seg(g.tools, tool)}</div>`;
   if (key === "home")
     // Home's own order: the tiles, Attention and Last jobs, the projects at

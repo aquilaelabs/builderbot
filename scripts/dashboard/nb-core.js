@@ -1003,7 +1003,7 @@ function projectState(p){
 }
 // The one notice a project carries (why nobody can start here, the agent
 // out of window), in the notice voice, or nothing.
-function projectNote(p){
+function projectNote(p, band = false){
   const here = withMe(p.name).length > 0;
   // What holds it back is said ahead of a wait that would end by itself
   // (B826: a copy going up was said and the missing Claude Code that really
@@ -1018,7 +1018,15 @@ function projectNote(p){
   // ahead of the rest, which are about starting one.
   const behind = !here ? [] : [...new Set(((state?.claude_where || {})[tmuxName(p.name)] || (state?.claude_where || {})[p.name] || [])
     .filter(r => r.who === state?.me).flatMap(r => r.behind || []))];
-  if (behind.length) return `<div class="pnote warn">Restart your session to use what changed: ${esc(behind.join("; "))}.</div>`;
+  // A band between the header and the view strip, put away with its x for
+  // as long as it says the same (the operator, 28 Oct); what changed next
+  // brings it back.
+  if (behind.length){
+    const text = `Restart your session to use what changed: ${behind.join("; ")}.`;
+    if (!band) return `<div class="pnote warn">${esc(text)}</div>`;
+    if (pnotePutAway(p.name) === text) return "";
+    return `<div class="pnote warn pband" data-pnote="${esc(p.name)}"><span class="grow">${esc(text)}</span><button type="button" class="ic" data-pnote-x aria-label="put this away">×</button></div>`;
+  }
   // The project's agent missing on its node, for an account that may install
   // it: the button says it (Install Claude, Install ChatGPT), so no line does.
   if (agentInstall(p, projectAgent(p))) return "";
@@ -1152,12 +1160,24 @@ function projectHeader(t){
     ${projectState(p)}
     <span class="sp"></span>
     ${projectActions(p)}
-  </div>${projectNote(p)}${p.testing ? `<div class="pnote dim ptesting">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}`;
+  </div>${projectNote(p, true)}${p.testing ? `<div class="pnote dim ptesting">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}`;
 }
 // The row's handlers serve the header too (the same data-* names); the
 // menu's own button is the one thing the row did differently.
+// The restart band put away in this browser, by project: the text it had.
+function pnotePutAway(name, text){
+  try{
+    if (text !== undefined) localStorage.setItem("bb.pnote:" + name, text);
+    return localStorage.getItem("bb.pnote:" + name) || "";
+  }catch(e){ return ""; }
+}
 function wireProjectHeader(bar){
   wireProjectRows(bar);
+  bar.querySelectorAll("[data-pnote-x]").forEach(b => b.onclick = () => {
+    const band = b.closest("[data-pnote]");
+    pnotePutAway(band.dataset.pnote, band.querySelector(".grow")?.textContent || "");
+    band.remove();
+  });
   bar.querySelectorAll("select[data-reposw]").forEach(s => s.onchange = () => openNotebook(s.value));
   // On the project's own page its menu's Settings is the notebook's Settings
   // view (R259: the view strip carries no tab for it), not the dialog. Only
