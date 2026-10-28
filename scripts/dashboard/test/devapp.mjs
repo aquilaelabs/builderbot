@@ -387,10 +387,12 @@ const pillIs = async (want) => {
 // them is drawn.
 {
   await dmRefresh();
-  const sel = await page.$('.dmtab select:not([disabled])');
+  // The menu is the Containers group's node picker in the pane's bar (R178),
+  // which redraws with the page.
+  const sel = await page.$('.pane .bar select#ndPick:not([disabled])');
   ok(!!sel, 'the manager has a menu to open');
   if (sel){
-    await page.evaluate(() => { window.__heldSel = document.querySelector('.dmtab select:not([disabled])');
+    await page.evaluate(() => { window.__heldSel = document.querySelector('.pane .bar select#ndPick:not([disabled])');
                                 window.__heldTab = document.querySelector('.dmtab'); });
     await sel.click();
     const open = await page.evaluate(() => window.__heldSel.matches(':open'));
@@ -3394,26 +3396,27 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   });
   ok(!narrow.fold, `on a phone the row's detail and its Project picker are on the row, no fold (${JSON.stringify(narrow)})`);
   ok(!narrow.sideways && narrow.actsVisible, '...nothing scrolls sideways, and the row keeps its buttons');
-  // At 360 and 344 the bar's controls stay on one line under a long node
-  // name, the picker giving up width, and the running tile's words fit (B29).
+  // At 360 and 344 the bar's controls stay on one line (the search giving up
+  // width, R178: the node is picked in the group's header), and the running
+  // tile's words fit (B29).
   for (const w of [360, 344]){
     await page.setViewportSize({ width: w, height: 780 });
     await page.evaluate(() => { dockerRev++; drawPanes(); });
-    await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
+    await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
     const bar = await page.evaluate(() => {
       const b = document.querySelector('.pane .doc.on .docbarrow.dmpick');
-      const sel = b.querySelector('label.pick select');
-      sel.options[sel.selectedIndex].textContent = 'bb-dev-sandbox-with-a-long-name';
       const top = e => Math.round(e.getBoundingClientRect().top);
-      const tops = [sel.closest('label'), b.querySelector('.pseg'), ...b.querySelectorAll('.actbar > button')]
+      // The search has a line of its own under 440px (the stylesheet's .dmpick
+      // rule); the views and the buttons share theirs.
+      const tops = [b.querySelector('.pseg'), ...b.querySelectorAll('.actbar > button')]
         .filter(e => e && e.offsetHeight).map(top);
       const tile = [...document.querySelectorAll('.pane .doc.on .tiles .tile .ts')][0];
-      return { tops, right: Math.max(...[...b.querySelectorAll('button, select')].map(e => e.getBoundingClientRect().right)),
+      return { tops, right: Math.max(...[...b.querySelectorAll('button, select, input')].map(e => e.getBoundingClientRect().right)),
                tileLines: tile ? (() => { const r = document.createRange(); r.selectNodeContents(tile);
                  return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; })() : 1 };
     });
     ok(new Set(bar.tops).size === 1 && bar.right <= w && bar.tileLines <= 1,
-       `at ${w}px the Containers bar keeps its picker, views, Check and New on one line, and the tile on one line (${JSON.stringify(bar)})`);
+       `at ${w}px the Containers bar keeps its views, Check and New on one line, the search on its own, and the tile on one line (${JSON.stringify(bar)})`);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });

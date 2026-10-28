@@ -292,9 +292,11 @@ function nginxUndeployed(n){
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
   // The page's head (the operator, 17 and 25 Oct): not deployed and what
-  // Deploy brings; Deploy is in the bar with every header button.
+  // Deploy brings, and Deploy at its right (R178: the bar holds no picker and
+  // no button, so the page is one shape on every node).
   return `<div data-ngnode="${esc(n.node)}">
-    ${pageHead({title: n.name || "", cls: "toolstate", pills: `<span class="pill">not deployed</span>`, facts: [
+    ${pageHead({title: n.name || "", cls: "toolstate", pills: `<span class="pill">not deployed</span>`,
+      actions: `<button type="button" class="primary" data-ngdeploy>Deploy</button>`, facts: [
       ["Deploy brings", count || certs ? `${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
                                        : "nginx alone: its routes and certificates are set here once it is there"]]})}
     ${clash}
@@ -423,8 +425,9 @@ function nginxBody(n){
 // the node switcher, and Deploy, an undeployed node's one action, at its
 // right; waiting, which node and whether it is deployed are not known yet.
 function nginxBar(pnodes, n){
-  return nodeBar(nodePick("ngNodeSel", pnodes, nginxNode),
-                 n && !n.deployed ? `<button type="button" class="primary" data-ngdeploy>Deploy</button>` : "");
+  // The node is the Containers group's header's (R178), and Deploy sits in
+  // an undeployed node's head, so the bar is the same on every node: none.
+  return "";
 }
 
 function renderNginxInto(i){
@@ -470,11 +473,6 @@ function nginxReadDraft(sect, n){
 function wireNginxTab(root){
   // One section open at a time on a phone, sliding, as on every page (B171).
   wireSections(root);
-  const psel = root.querySelector("#ngNodeSel");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (psel) psel.onchange = () => navPush(() => { nginxNode = psel.value;
-                                    try{ localStorage.setItem("bb.ngnode", nginxNode); }catch(e){ /* private */ }
-                                    nginxRedraw(); });
   const sect = root.querySelector("[data-ngnode]");
   if (!sect) return;
   const nid = sect.dataset.ngnode;

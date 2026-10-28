@@ -36,15 +36,15 @@ const sandbox = await page.evaluate(() => (nginxList || []).find(n => n.name ===
 ok(sandbox && !sandbox.deployed && sandbox.routes.length === 0 && !Object.keys(sandbox.certs || {}).length,
    `the tab lists the sandbox node with no nginx on it yet (${JSON.stringify(sandbox && [sandbox.deployed, sandbox.routes])})`);
 // One node at a time, picked in the bar like Toolchains (the operator, 11 Oct).
-ok(await page.$eval('.nginxtab .docbarrow label.pick select#ngNodeSel', s => [...s.options].some(o => o.textContent === 'sandbox')),
+ok(await page.$eval('.pane .bar label.pick select#ndPick', s => [...s.options].some(o => o.textContent === 'sandbox')),
    'the bar picks the node, as Toolchains does');
-await page.selectOption('.nginxtab #ngNodeSel', sandbox.node);
+await page.selectOption('.pane .bar #ndPick', sandbox.node);
 const sect = `.nginxtab [data-ngnode="${sandbox.node}"]`;
 await page.waitForSelector(sect, { timeout: 10000 });
 ok(await page.$eval(sect, s => /not deployed/.test(s.querySelector('.toolstate .pill').textContent)
-     && document.querySelector('.nginxtab .docbarrow [data-ngdeploy]') && !s.querySelector('[data-ngremove]')
+     && s.querySelector('.pghead [data-ngdeploy]') && !document.querySelector('.nginxtab .docbarrow:not([hidden])') && !s.querySelector('[data-ngremove]')
      && !s.querySelector('[data-ngsave]') && !s.querySelector('[data-ngadd]') && !s.querySelector('#ngCert')),
-   '...its state row says so, with Deploy alone, in the bar with every header button: no routes or certificates before nginx is there (R181)');
+   '...its state row says so, with Deploy alone in its head and no bar (R178): no routes or certificates before nginx is there (R181)');
 
 // Routes kept before Deploy, as the Enroll dialog's tick has them for a node
 // that has not said hello yet: the server keeps them, and Deploy brings
@@ -94,7 +94,7 @@ ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, rou
    '...and a certificate that is not one');
 
 // Deploy: the container is written from the routes and built on the node.
-await page.click('.nginxtab .docbarrow [data-ngdeploy]');
+await page.click('.nginxtab .pghead [data-ngdeploy]');
 await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.deployed, sandbox.node, { timeout: 20000 });
 const rec = JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['nginx-sandbox'];
 const written = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
