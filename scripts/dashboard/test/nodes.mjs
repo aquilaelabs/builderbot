@@ -2676,12 +2676,12 @@ ok(await page.evaluate(t => (state.doctor?.when || 0) > t, docBefore),
 // uuid points a second VM at the first one's OVMF nvram file, and a shared MAC
 // puts them both on the first one's address.
 await page.evaluate(() => openNodesTab());
-await page.waitForSelector('.nodestab #ndVm', { timeout: 20000 });
+await page.waitForSelector('.pane .bar #ndVm', { timeout: 20000 });
 // The enroll dialog asks for the account jobs run as, and the command it
 // prints carries it: the record follows whatever the agent reports at
 // enrollment, and this is what stops the row saying bb in the meantime and
 // somebody having to remember the flag.
-await page.click('.nodestab #ndEnroll');
+await page.click('.pane .bar #ndEnroll');
 await page.waitForSelector('#ndBody #ndEnUser', { timeout: 10000 });
 // The machine's system (R204): the vetted ones by name, nothing tagged dev
 // while Offer dev features is off, Ubuntu first as the default.
@@ -2762,7 +2762,7 @@ await page.evaluate(async () => {
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: on } }) });
     await refresh(); }, v);
   await devSet(false);
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   const offeredOff = await page.evaluate(() => ({ reach: [...$('ndEnReach').options].map(o => o.value),
     door: [...$('ndEnDoor').options].map(o => o.value) }));
@@ -2781,7 +2781,7 @@ await page.evaluate(async () => {
      `with dev features off, Enroll node offers the LAN, a public hostname and the cloudflared door, and the server refuses WireGuard and Tailscale (${JSON.stringify(offeredOff)}; ${refusedOff.error})`);
   await page.click('#ndBody #ndEnCancel');
   await devSet(true);
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   ok(await page.$eval('#ndBody #ndEnWgRow', r => r.hidden) && await page.$eval('#ndBody #ndEnCtl', i => i.value) === new globalThis.URL(URL).origin,
      'Enroll node asks how the machine reaches the controller, at this page\'s address, with no config to choose on the LAN');
@@ -2835,7 +2835,7 @@ await page.evaluate(async () => {
   // provisioner with --reach public; the home end is the tunnel's rule
   // (cloudflared's config as the example), and the controller answers that
   // hostname on the agent's API alone.
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   await fillHeld(page, '#ndBody #ndEnName', 'vpsbox');
   await page.selectOption('#ndBody #ndEnReach', 'public');
@@ -2918,7 +2918,7 @@ await page.evaluate(async () => {
   // the script carries the secret in a block and runs the provisioner with
   // the door's flags; the pending row knows the door; and once the node
   // reports it, the row's switch queues the system job.
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnDoor', { timeout: 10000 });
   await fillHeld(page, '#ndBody #ndEnName', 'doorbox');
   await page.selectOption('#ndBody #ndEnDoor', 'cloudflared');
@@ -2971,10 +2971,10 @@ await page.evaluate(async () => {
       ? new Promise(res => { window.__vmLand = () => res(window.__realNodeAct(b)); })
       : window.__realNodeAct(b);
   });
-  await page.click('.nodestab #ndVm');
+  await page.click('.pane .bar #ndVm');
   await page.waitForSelector('#ndBody #vmGo', { timeout: 10000 });
   await page.evaluate(() => { document.getElementById('ndmodal').hidden = true; });
-  await page.click('.nodestab #ndEnroll');
+  await page.click('.pane .bar #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnName', { timeout: 10000 });
   await fillHeld(page, '#ndBody #ndEnName', 'racebox');
   await page.evaluate(async () => { window.__vmLand(); await new Promise(r => setTimeout(r, 300)); });
@@ -2984,7 +2984,7 @@ await page.evaluate(async () => {
   await page.evaluate(() => { nodeAct = window.__realNodeAct; document.getElementById('ndmodal').hidden = true;
     document.getElementById('ndBody').innerHTML = ''; });
 }
-await page.click('.nodestab #ndVm');
+await page.click('.pane .bar #ndVm');
 await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
    'Create sandbox VM opens on the machine\'s sizes, with nothing rendered yet');

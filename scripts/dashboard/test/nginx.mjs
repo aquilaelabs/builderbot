@@ -429,8 +429,8 @@ ok(!ghost || !!(await api('/api/v1/jobs?active=1')).jobs?.some(j => j.project ==
 // The Enroll dialog's tick: a node enrolled with it gets nginx on its first
 // hello, with the routes saved for it beforehand.
 await page.evaluate(() => openNodesTab());
-await page.waitForSelector('.nodestab #ndEnroll', { timeout: 15000 });
-await page.click('.nodestab #ndEnroll');
+await page.waitForSelector('.pane .bar #ndEnroll', { timeout: 15000 });
+await page.click('.pane .bar #ndEnroll');
 await page.waitForSelector('#ndBody #ndEnNginx', { timeout: 10000 });
 await page.fill('#ndBody #ndEnName', 'vpsbox');
 await page.check('#ndBody #ndEnNginx');

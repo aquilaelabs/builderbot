@@ -412,7 +412,14 @@ function machinesPick(nid){
   if (tabOf(panes[0])?.kind === "installed") loadInstalled();
 }
 function machinesHeader(t){
-  if (nodesList === null){ loadNodes(); return `<span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>`; }
+  if (nodesList === null){
+    loadNodes();
+    // The Storage page has its nodes before the list lands: drawn from
+    // them, so its picker is there with its rows.
+    const have = t.kind === "storage" ? (typeof storageList !== "undefined" && storageList || []).map(n => ({id: n.node, name: n.name, live: n.live})) : [];
+    if (!have.length) return `<span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>`;
+    return `<span class="phead mchead">${nodePick("ndPick", have, machinesNode(t.kind) || have[0].id)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>`;
+  }
   const live = machinesLive();
   const cur = machinesNode(t.kind) || live[0]?.id || "";
   const n = live.find(x => x.id === cur);

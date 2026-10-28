@@ -42,6 +42,7 @@ const row = await page.evaluate(() => (storageList || []).find(n => n.name === '
 ok(row && row.measured && row.projects.map(p => p.name).join() === 'alpha,beta' && row.projects[0].total === 6400 && !row.other,
    `the tab lists the node with its projects largest first, every one named for an administrator (${JSON.stringify(row?.projects)})`);
 // One node at a time, picked in the bar like Toolchains (the operator, 11 Oct).
+await page.waitForFunction(() => [...document.querySelectorAll('.pane .bar select#ndPick option')].some(o => o.textContent === 'diskbox'), null, { timeout: 15000 });
 ok(await page.$eval('.pane .bar label.pick select#ndPick', s => [...s.options].some(o => o.textContent === 'diskbox')),
    'the bar picks the node, as Toolchains does');
 await page.selectOption('.pane .bar #ndPick', minted.id);
