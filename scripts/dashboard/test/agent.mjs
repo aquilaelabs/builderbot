@@ -3916,9 +3916,13 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
   const win = /^(\d+\.\d+)\./.exec(av)?.[1] || '';
   const proj = readFileSync(`${REPO}/VERSION`, 'utf8').trim();
   const minor = proj.split('.').slice(0, 2).join('.');
+  // ...or the minor a branch builds towards (R112: VERSION stays at the
+  // last release until the bump, and a version line one minor up is what a
+  // dev build reads), never further.
+  const ahead = `${minor.split('.')[0]}.${+minor.split('.')[1] + 1}`;
   ok(/^\d+\.\d+\.\d+$/.test(av),
      `the agent's version is WINDOW.BUILD (${av || 'unset'})`);
-  ok(win === minor,
+  ok(win === minor || win === ahead,
      `...and its window is the project's minor: bump one and you bump both (${
        win} against ${minor} from VERSION ${proj})`);
   // The agent's is the only other copy of the window there is. There used

@@ -140,7 +140,7 @@ ok(woke.status === 200 && (woke.changes || []).some(c => c[0] === 'from-laptop.t
 // into a folder, the first copy made; then a change made in the folder goes
 // up and one made elsewhere comes down, with nothing but the app running.
 {
-  const appEnv = { ...process.env, APPDATA: `${DIR}/appdata`, PYTHONPATH: `${REPO}/windows:${REPO}/scripts/agent`,
+  const appEnv = { ...process.env, APPDATA: `${DIR}/appdata`, PYTHONPATH: `${REPO}/apps/windows:${REPO}/scripts/agent`,
                    BB_COMPANION_PASSWORD: people['dv.rw'] };
   const app = (...args) => { try { return { code: 0, out: execFileSync('python3', ['-m', 'bbcompanion', ...args], { env: appEnv, encoding: 'utf8', timeout: 120000 }) }; }
                              catch (e) { return { code: e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; } };
