@@ -272,10 +272,18 @@ class Updates(unittest.TestCase):
     def test_every_supported_release_is_one_an_update_starts_on(self):
         vers = sorted(os.listdir(SNAPS))
         self.assertGreater(len(vers), 3)
+        floor = int(re.search(r"^SUPPORTED_FROM = (\d+)$", open(os.path.join(DASH, "stateversion.py"), encoding="utf-8").read(), re.M).group(1))
         for ver in vers:
+            with open(os.path.join(SNAPS, ver, "manifest.json"), encoding="utf-8") as f:
+                state = json.load(f)["state"]
             with tempfile.TemporaryDirectory() as d:
                 r = self.gate(self.unpack(ver, d), d)
-                self.assertEqual(r.returncode, 0, (ver, r.stderr))
+                if state < floor:
+                    # Under the floor (0.5.x since 0.9): refused, naming the way through.
+                    self.assertEqual(r.returncode, 78, (ver, r.stderr))
+                    self.assertIn("Start the newest 0.6 release on it first", r.stderr)
+                else:
+                    self.assertEqual(r.returncode, 0, (ver, r.stderr))
 
     def test_a_state_newer_than_the_release_changes_nothing(self):
         with tempfile.TemporaryDirectory() as d:
