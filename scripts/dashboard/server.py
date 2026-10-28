@@ -6967,13 +6967,13 @@ class Handler(BaseHTTPRequestHandler):
             n = int(q.get("n", ["0"])[0])
         except ValueError:
             n = 0
-        body, code = gitview.view(name, q.get("what", [""])[0], sha=q.get("sha", [""])[0],
-                                  path=q.get("path", [""])[0], n=n,
-                                  branch=q.get("branch", [""])[0])
-        if code == 200 and isinstance(body, dict) and q.get("what", [""])[0] in ("", "all", "status"):
+        body = gitview.view(name, q.get("what", [""])[0], sha=q.get("sha", [""])[0],
+                            path=q.get("path", [""])[0], n=n,
+                            branch=q.get("branch", [""])[0])
+        if isinstance(body, dict) and not body.get("error") and q.get("what", [""])[0] in ("", "all", "status"):
             # Whose token a press would use (R159), by name.
             body["token"] = _token_said(name, users.uid_of(self._who()))
-        return self._json(body, code)
+        return self._result(body)
 
     def _get_changelog(self):
         """GET /api/changelog: changelog.reading, for a project this account
@@ -11092,7 +11092,7 @@ class Handler(BaseHTTPRequestHandler):
             # whether each is signed in now; what the asker's own press
             # would run with.
             body["givers"] = _givers_said(name, users.uid_of(self._who()))
-            body["token"] = _token_said(name, users.uid_of(self._who()))
+            body["runs_as"] = _token_said(name, users.uid_of(self._who()))
             lk = body.get("linked") or {}
             if lk.get("uid"):
                 # `host` holds the entry's id since entries have ids: its host said.

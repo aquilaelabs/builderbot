@@ -66,6 +66,19 @@ WORKSPACE = None
 STATE = None
 
 
+def _needs_token(project):
+    """Whether git's network half on this project would ask for a token:
+    an https remote. One over ssh authenticates with the key on the
+    controller, and a local path with nothing, so neither waits on a
+    person's token (R159)."""
+    try:
+        r = subprocess.run(["git", "-C", str(WORKSPACE / project), "remote", "get-url", "origin"],
+                           capture_output=True, text=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.stdout.strip().lower().startswith(("http://", "https://"))
+
+
 def configure(**deps):
     globals().update(deps)
 
@@ -318,7 +331,7 @@ def run(me, req, project):
         # are signed in (R159): signed out everywhere, bb git waits for them,
         # and a project nobody signed in gave a token says so.
         u = gitcreds.usable(project, str(me.get("uid") or ""))
-        if u.get("why"):
+        if u.get("why") and _needs_token(project):
             return {"error": u["why"]}, 409
         # The project's git policy may turn the hold off (the Git view's
         # "Hold a push that looks sensitive"): the push then goes unread.

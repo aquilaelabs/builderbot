@@ -880,9 +880,11 @@ function nodePortsLocalRow(n){
 
 function nodeSessNetRow(n){
   // Every session here is kept to its own project's network (R146): the
-  // switch went in 0.9.0. A draft until the section's Save is pressed (the
-  // rule apply-not-onchange, the operator, 24 Sep): each tick is kept across
-  // the repaints a heartbeat brings, and the press is where it is made.
+  // switch went in 0.9.0, and it is on wherever sessions run. A draft until
+  // the section's Save is pressed (the rule apply-not-onchange, the
+  // operator, 24 Sep): each tick is kept across the repaints a heartbeat
+  // brings, and the press is where it is made.
+  const on = !n.config?.host_only;
   const c = nodeDraft(n);
   // Whether a session here may ask for a root command at all (the
   // operator, 24 Sep): the same draft, the same Save.
