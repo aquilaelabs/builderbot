@@ -1,6 +1,7 @@
 // Every Linux system Enroll node offers, walked on a real machine (roadmap
 // R97 step 5): for each, a VM made a node on a real VM host, then what a
-// node does, then Uninstall and the VM gone. What the vetted note in
+// node does (toolchains, features, nginx, storage, a project synced, a
+// terminal), then Uninstall and the VM gone. What the vetted note in
 // systems.py says was walked is what this runs, so a change to the
 // provisioner is proved on every system again before a release.
 //
@@ -106,6 +107,43 @@ for (const os of SYSTEMS){
       // deployed says the container is this node's; running, that it runs.
       const up = !!x?.state?.running;
       ok(!!x && up === (action === 'deploy'), `[${os}] nginx ${action === 'deploy' ? 'runs as a container there' : 'comes off again'}${x && up !== (action === 'deploy') ? ` (running ${up})` : ''}`);
+    }
+    // The Features section's installs where they apply (R107 step 3): VM
+    // host where the machine has /dev/kvm (a VM made on a host that passes
+    // virtualization through), the IOMMU on an Intel or AMD machine, each
+    // installed and removed as a system job; the hosting firewall is a
+    // hosting-only node's and this one runs sessions, and a GPU driver
+    // needs a card, so each of those is said as not applying rather than
+    // skipped in silence. A reboot is never asked for here: the IOMMU's
+    // line is checked as written, not as booted.
+    {
+      const feat = async (fid, op) => {
+        const r = await api('/api/v1/nodes', { action: 'feature', id: nid, feature: fid, op });
+        if (r.error) return { error: r.error };
+        const j = await wait(async () => { const x = await api(`/api/v1/jobs?id=${r.job}`); return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null; }, 30 * 60000, 5000);
+        const fe = await wait(async () => { const n = (await nodes()).find(x => x.id === nid); const f = n?.reported?.features?.[fid];
+          return f && !!f.installed === (op === 'install') ? f : null; }, 5 * 60000, 5000);
+        return { state: j?.state, feature: fe };
+      };
+      const rep = (await nodes()).find(n => n.id === nid)?.reported || {};
+      const kvm = !!rep.features?.vmhost?.kvm;
+      if (kvm){
+        for (const op of ['install', 'remove']){
+          const r = await feat('vmhost', op);
+          ok(r.state === 'succeeded' && !!r.feature, `[${os}] VM host ${op}s from the Features section (${r.error || r.state}${r.feature?.libvirt ? `, libvirt ${r.feature.libvirt}` : ''})`);
+        }
+      } else {
+        ok(true, `[${os}] VM host does not apply here: no /dev/kvm (its host passes no virtualization through)`);
+      }
+      if (/^(x86_64|amd64)/.test(rep.arch || '')){
+        for (const op of ['install', 'remove']){
+          const r = await feat('iommu', op);
+          ok(r.state === 'succeeded' && !!r.feature, `[${os}] the IOMMU's kernel line ${op === 'install' ? 'is written' : 'comes off'} from the Features section (${r.error || r.state})`);
+        }
+      } else {
+        ok(true, `[${os}] the IOMMU switch does not apply here: ${rep.arch || 'another architecture'}`);
+      }
+      ok(true, `[${os}] the hosting firewall does not apply here: this node runs sessions, and a GPU driver needs a card (${rep.gpu_card ? 'one reported' : 'none reported'})`);
     }
     // Its disks measured on the Storage page (R107: storage, as R97's step
     // 2 named): Measure now runs, and the page lists the node's filesystems.
