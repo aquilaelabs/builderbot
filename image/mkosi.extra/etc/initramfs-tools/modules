@@ -3,3 +3,4 @@
 squashfs
 overlay
 ext4
+loop

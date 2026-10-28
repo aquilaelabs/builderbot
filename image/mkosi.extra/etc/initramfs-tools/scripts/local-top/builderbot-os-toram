@@ -1,0 +1,34 @@
+#!/bin/sh
+# The USB edition (R161 step 1): the root slot loaded into RAM before it is
+# mounted, so the stick is read once at boot and the system runs from
+# memory as Unraid's does; the stick keeps the configuration (the data
+# partition, /var) apart from both slots. Asked for by bbtoram=1 on the
+# kernel's command line, which GRUB adds when its environment says
+# bb_toram=1 (the stick maker sets it; an installed disk never has it): the
+# slot's partition (bbslotdev=) is copied, exactly its squashfs's bytes,
+# into a tmpfs, and /dev/loop0 is made of the copy, which root= names.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "${1:-}" in prereqs) prereqs; exit 0 ;; esac
+# shellcheck source=/dev/null  # the initramfs's own library
+. /scripts/functions
+toram=0; slotdev=""
+read -r cmdline < /proc/cmdline
+for w in $cmdline; do
+    case "$w" in bbtoram=1) toram=1 ;; bbslotdev=*) slotdev="${w#bbslotdev=}" ;; esac
+done
+[ "$toram" = 1 ] && [ -n "$slotdev" ] || exit 0
+case "$slotdev" in PARTUUID=*) dev="/dev/disk/by-partuuid/${slotdev#PARTUUID=}" ;; *) dev="$slotdev" ;; esac
+i=0
+while [ ! -b "$dev" ] && [ "$i" -lt 200 ]; do sleep 0.1; i=$((i + 1)); done
+[ -b "$dev" ] || panic "BuilderBot OS: the slot to load into RAM ($slotdev) is not here"
+# The squashfs superblock's bytes_used, at offset 40, little-endian.
+bytes="$(od -An -t u8 -j 40 -N 8 "$dev" 2>/dev/null | tr -d ' ')"
+case "$bytes" in ''|*[!0-9]*) panic "BuilderBot OS: $dev does not hold a squashfs" ;; esac
+mb=$(( (bytes + 1048575) / 1048576 ))
+mkdir -p /run/bbroot
+mount -t tmpfs -o "size=$((mb + 64))m,mode=0700" tmpfs /run/bbroot || panic "BuilderBot OS: no memory for the root slot ($mb MB)"
+log_begin_msg "BuilderBot OS: loading slot ($mb MB) into memory"
+dd if="$dev" of=/run/bbroot/root.squashfs bs=1M count="$mb" 2>/dev/null || panic "BuilderBot OS: the slot did not copy into memory"
+log_end_msg
+losetup /dev/loop0 /run/bbroot/root.squashfs || panic "BuilderBot OS: /dev/loop0 did not take the slot's copy"

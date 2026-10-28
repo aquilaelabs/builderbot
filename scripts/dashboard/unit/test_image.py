@@ -51,8 +51,8 @@ class Partitions(unittest.TestCase):
 
     def test_grub_boots_each_slot_by_its_partition_and_finds_the_esp_by_its_serial(self):
         g = read(IMG, "grub.cfg")
-        self.assertIn(f"root=PARTUUID={self.p['BB_PART_ROOT_A']} ", g)
-        self.assertIn(f"root=PARTUUID={self.p['BB_PART_ROOT_B']} ", g)
+        self.assertIn(f'set root_a="root=PARTUUID={self.p["BB_PART_ROOT_A"]}"', g)
+        self.assertIn(f'set root_b="root=PARTUUID={self.p["BB_PART_ROOT_B"]}"', g)
         self.assertIn(f"--fs-uuid --set=root {self.p['BB_ESP_FSUUID']}", g)
         self.assertIn("bbslot=a", g)
         self.assertIn("bbslot=b", g)
@@ -254,6 +254,30 @@ class Workflow(unittest.TestCase):
         self.assertIn("github.event_name == 'schedule'", wf)
         self.assertIn("builderbot-os-*.packages", wf)
         self.assertIn('"$OUT/$NAME.packages"', read(IMG, "build.sh"))
+
+    def test_a_stick_loads_the_slot_into_memory_when_grub_says_so(self):
+        # R161 step 1: bb_toram=1 in grubenv turns root= into the copy in
+        # memory and names the slot's partition; the initramfs script and
+        # hook do the copy, and the slot tool reads and sets the switch.
+        p = shell_vars(os.path.join(IMG, "partitions.sh"))
+        g = read(IMG, "grub.cfg")
+        self.assertIn('if [ "$bb_toram" = 1 ]', g)
+        self.assertIn(f'root=/dev/loop0 bbslotdev=PARTUUID={p["BB_PART_ROOT_A"]} bbtoram=1', g)
+        self.assertIn(f'root=/dev/loop0 bbslotdev=PARTUUID={p["BB_PART_ROOT_B"]} bbtoram=1', g)
+        self.assertIn("$root_a rootfstype=squashfs", g)
+        top = read(EXTRA, "etc", "initramfs-tools", "scripts", "local-top", "builderbot-os-toram")
+        self.assertIn("od -An -t u8 -j 40 -N 8", top)
+        self.assertIn("losetup /dev/loop0 /run/bbroot/root.squashfs", top)
+        hook = read(EXTRA, "etc", "initramfs-tools", "hooks", "builderbot-os")
+        self.assertIn("copy_exec /sbin/losetup", hook)
+        self.assertIn("loop", read(EXTRA, "etc", "initramfs-tools", "modules").split())
+        tool = os.path.join(EXTRA, "usr", "lib", "builderbot-os", "slot")
+        with tempfile.TemporaryDirectory() as d:
+            c = os.path.join(d, "cmdline")
+            open(c, "w").write("root=/dev/loop0 bbslotdev=PARTUUID=x bbtoram=1 bbslot=a\n")
+            r = sh(f"bash {tool} status", {"BB_CMDLINE": c, "BB_ESP": os.path.join(d, "esp"), "BB_OS_RELEASE": os.path.join(d, "none")})
+            self.assertIn("root in memory: yes", r.stdout)
+            self.assertEqual(sh(f"bash {tool} ram", {"BB_CMDLINE": c, "BB_ESP": os.path.join(d, "esp")}).stdout.strip(), "off")
 
     def test_build_sh_says_how_without_root(self):
         r = sh("bash image/build.sh --help")

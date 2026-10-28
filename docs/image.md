@@ -52,6 +52,19 @@ Beside the disk, the build leaves the pieces an update and the stick maker
 take: the slot's squashfs (`.root.squashfs`), its kernel and initrd, and the
 release stamp, each with a `.sha256`.
 
+## On a stick, run from memory
+
+The same disk written to a USB stick is the USB edition's base (R161): with
+`bb_toram=1` in GRUB's environment (`slot ram on`; the stick maker sets
+it) the initramfs copies the slot's squashfs into memory, exactly its
+bytes, and the root is that copy, so the stick is read once at boot and the
+system runs from memory as Unraid's does; `/var` and `/etc`'s changes stay
+on the stick's data partition, apart from both slots, and an update writes
+the other slot as on a disk. `slot status` says when the root is in memory.
+A machine needs the slot's size in memory beside what it runs (about 2 GB).
+The stick's own first run, its backup and the public stick maker are the
+USB edition's later steps.
+
 ## Installing it on a machine
 
 `builderbot-os-VERSION.iso` boots the same root live (UEFI or BIOS) with

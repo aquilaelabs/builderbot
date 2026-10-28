@@ -4,7 +4,8 @@
 #   slot current         the slot this boot came from (a or b), from the kernel's command line
 #   slot other           the one an update writes
 #   slot next [a|b]      the slot GRUB boots next time (set, or printed when none is named)
-#   slot status          the running release, both slots and which is next
+#   slot status          the running release, both slots, which is next, and whether the root is in memory
+#   slot ram [on|off]    whether GRUB loads the slot into memory at boot (the USB edition), read or set
 #
 # GRUB keeps the choice in its environment block on the ESP (bb_slot), the one
 # place this tool writes. Counting a new slot's tries and marking it good is
@@ -38,16 +39,30 @@ next() {
         *) echo "slot next takes a or b" >&2; return 2 ;;
     esac
 }
+ram() {
+    case "${1:-}" in
+        "")
+            if [ -s "$ENVF" ]; then grub-editenv "$ENVF" list | grep -qx 'bb_toram=1' && echo on || echo off
+            else echo off; fi ;;
+        on|off)
+            [ -d "$ESP/grub" ] || { echo "slot: no GRUB at $ESP/grub: is the ESP mounted?" >&2; return 1; }
+            [ -s "$ENVF" ] || grub-editenv "$ENVF" create
+            if [ "$1" = on ]; then grub-editenv "$ENVF" set bb_toram=1; else grub-editenv "$ENVF" unset bb_toram; fi ;;
+        *) echo "slot ram takes on or off" >&2; return 2 ;;
+    esac
+}
 status() {
-    local cur nxt
+    local cur nxt inram=no
     cur="$(current 2>/dev/null || echo '?')"; nxt="$(next)"
+    grep -qw 'bbtoram=1' "$CMDLINE" 2>/dev/null && inram=yes
     [ -r "$RELEASE" ] && sed 's/^/release: /' "$RELEASE"
-    printf 'booted: slot %s\nnext boot: slot %s\n' "$cur" "$nxt"
+    printf 'booted: slot %s\nnext boot: slot %s\nroot in memory: %s\n' "$cur" "$nxt" "$inram"
 }
 case "${1:-}" in
     current) current ;;
     other) other ;;
     next) next "${2:-}" ;;
+    ram) ram "${2:-}" ;;
     status) status ;;
-    *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

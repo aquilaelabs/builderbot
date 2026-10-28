@@ -26,6 +26,7 @@
 - BuilderBot OS as a VM: the appliance image comes as a qcow2 for Proxmox, Unraid and libvirt and as an OVA for VMware and VirtualBox beside the raw disk, the same disk converted, so a hypervisor is the easiest place to try it (f93aa97)
 - BuilderBot OS updates from the page: on a machine running the image, Update under Controller settings fetches the release's image, checks each file against its sha256 and the root against its build attestation, writes the slot not in use and names it for the next boot, the restart yours from This machine and the slot running now kept to fall back to; an offline machine takes the same files from a folder; an Update window under Controller settings applies a newer release by itself at an hour, daily or one weekday, off by default (31d0cee)
 - BuilderBot OS installs from an ISO: it boots the same root live with an installer on the console that asks for the disk (everything on it lost, said first) and the features to turn on at the first boot, lays the disk out with the very script that made the image, the data partition grown to the disk, and restarts into the machine as its own controller and node; the ISO's second entry boots the live system without installing (31d0cee)
+- BuilderBot OS on a stick runs from memory: with the switch set in GRUB's environment the slot is copied into memory at boot, exactly its bytes, and the system runs from the copy while the stick keeps the configuration apart from both slots; the slot tool reads and sets the switch (31d0cee)
 
 ### Changed
 
