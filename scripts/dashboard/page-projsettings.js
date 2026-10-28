@@ -460,8 +460,14 @@ function rnFillTestNode(p){
   if (!sel || !f) return;
   const names = new Map([...($("rnNode")?.options || [])].map(o => [o.value, o.textContent]));
   const ids = [...new Set([p?.prefs?.node, ...(p?.prefs?.nodes || [])].filter(Boolean))];
+  // Filled again while the dialog is open (the nodes landing, a poll): a
+  // pick made since stays, as long as it is this project's and still offered;
+  // the saved value otherwise.
+  const picked = sel.dataset.proj === (p?.name || "") && sel.options.length ? sel.value : null;
   sel.innerHTML = `<option value="">the session's own node</option>` + ids.map(id => `<option value="${esc(id)}">${esc(names.get(id) || id)}</option>`).join("");
-  sel.value = ids.includes(p?.prefs?.test_node) ? p.prefs.test_node : "";
+  sel.dataset.proj = p?.name || "";
+  sel.value = picked !== null && (picked === "" || ids.includes(picked)) && picked !== (p?.prefs?.test_node || "") ? picked
+    : ids.includes(p?.prefs?.test_node) ? p.prefs.test_node : "";
   f.hidden = ids.length === 0;
 }
 function rnFillPrefsRest(p){
@@ -1369,7 +1375,7 @@ function closeRename(){
 const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "tools", "build", "claude", "yours"];
 // Which section each of rnPrefWas's fields is in, and what it is called.
 const RN_WAS = {
-  node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"],
+  node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"], test_node: ["runs", "Test node"],
   reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"],
   tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
@@ -1631,7 +1637,7 @@ async function rnSubmit(sect, end = false){
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
                               tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default, agent_slots: v.agent_slots,
                               build: v.build, test: v.test, gate: v.gate,
-                              tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks, term_scheme: v.term_scheme,
+                              tests_in: v.tests_in, test_node: v.test_node, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks, term_scheme: v.term_scheme,
                               devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(v.capture_days !== "" ? {capture_days: +v.capture_days} : {}),
