@@ -127,6 +127,9 @@ const OPENERS = {
   roles: () => openRolesTab(), settings: () => openSettingsTab(), keys: () => openKeysTab(), profile: () => openProfileTab(),
   apps: () => openAppsTab(),
   sessions: () => openSessionsTab(), help: () => openHelp(),
+  // The pages of 0.9.0 (B410: an address with no opener landed on its
+  // group's first page): Scanners, Audit, This machine and Network.
+  scanners: () => openScannersTab(), audit: () => openAuditTab(), machine: () => openMachineTab(), network: () => openNetworkTab(),
 };
 function railGo(key, tool){
   const g = RAIL.find(x => x.key === key);
