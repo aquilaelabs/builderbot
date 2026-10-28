@@ -48,17 +48,18 @@ FILE = "state.json"
 BACKUPS = "backups"
 KEEP = 3
 
-# The oldest state this build migrates from. 0 is a /config from before the
-# stamp existed (every install before 0.5.0), which migration 0001 carries.
-# The policy (docs/install.md#upgrading): any 0.5.x to any later 0.5.x, and
-# to the next minor from the last release of the one before; a release that
-# drops a state from here names the release that still reads it in THROUGH.
-SUPPORTED_FROM = 0
+# The oldest state this build migrates from: state 2, what 0.6.0 shipped,
+# so any 0.6.x, 0.7.x or 0.8.x install upgrades in one step (the operator,
+# 28 Oct: 0.9 is a clean break with upgrade paths from 0.6, 0.7 and 0.8).
+# The migrations below it are gone from the tree (bb lint allows that for a
+# number under this floor alone). A release that drops a state from here
+# names the release that still reads it in THROUGH.
+SUPPORTED_FROM = 2
 
 # state -> the release line to go through for a state this build no longer
 # migrates from: its newest release carries it to one this build reads.
-# Empty while SUPPORTED_FROM is 0.
-THROUGH = {}
+# State 0 is a /config from before the stamp (before 0.5.0), state 1 a 0.5.x.
+THROUGH = {0: "0.6", 1: "0.6"}
 
 # What the copy before a migration leaves out: what grows and is not state
 # (each kind paths.py lets the Settings page move: logs, the trees jobs ran

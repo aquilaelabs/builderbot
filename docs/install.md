@@ -98,7 +98,7 @@ Everything else has sane defaults: full reference in [reference.md](reference.md
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir: read-only; see [Static analysis reports](building.md#static-analysis-reports) |
 | Docker builds (CI jobs, a project's containers) | On a node, never in this container: a node's own Docker, or the Docker sandbox VM ([sandbox-vm.md](sandbox-vm.md)). The template has no Docker socket field |
-| Extra tools | the Toolchains page, per node; the controller carries what it needs in the image |
+| Extra tools | the Library, per node; the controller carries what it needs in the image |
 | Virtual machines | **VM host** in a node's Features section on the Nodes page (or ticked on Enroll node), on a machine with `/dev/kvm`; then the VMs page, see [vms.md](vms.md) |
 | A box on the internet that only serves | Enroll it hosting-only and tick the hosting firewall: it takes in 80 and 443 alone, and its page's **Lock down** stops and revokes it in one press |
 
@@ -132,8 +132,8 @@ only CUDA), each stored **runner token** is still accepted by its host, and
 on a node, where sessions run.
 
 Each person signs in to the agent they use (Claude, ChatGPT or Copilot) on
-each node they work on, from that agent's section of the node's Agents page
-(under Build): **Sign in**, which a project's **Start agent** offers the
+each node they work on, from that agent's row of the Installed page
+(under Machines): **Sign in**, which a project's **Start agent** offers the
 first time. The flow runs on that node, the machine the agent is installed
 on: Claude's code is pasted back in the section, and ChatGPT's and
 Copilot's device codes are entered at OpenAI or GitHub. Each node keeps the
@@ -207,6 +207,8 @@ compose file or template, and move it on when you choose to upgrade.
   0.5.3, say), in one step.
 - To a **new line** (0.6.0) **from the last release of the line before**
   (the newest 0.5.x). An older install goes there first, then on.
+- **0.9 upgrades from any 0.6.x, 0.7.x or 0.8.x** in one step. A 0.5.x or
+  older install goes through the newest 0.6.x first.
 - **No downgrades.** Going back is restoring the backup the upgrade made,
   below, with the older image.
 

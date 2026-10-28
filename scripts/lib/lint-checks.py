@@ -266,9 +266,18 @@ def channels():
 SHIPPED = ("scripts/dashboard/migrations", "scripts/dashboard/statemigrations")
 
 
+def _state_floor():
+    """stateversion.SUPPORTED_FROM, read off the file: a state migration
+    numbered at or under it never runs, so it may leave the tree."""
+    m = re.search(r"^SUPPORTED_FROM = (\d+)$", pathlib.Path("scripts/dashboard/stateversion.py").read_text(), re.M)
+    return int(m.group(1)) if m else 0
+
+
 def shipped():
     """Every migration present at the newest release tag (v*) is in the tree
-    byte-for-byte. No tag yet, nothing shipped: it passes, and says so."""
+    byte-for-byte, but a state migration at or under the state floor, which no
+    install this build starts on runs. No tag yet, nothing shipped: it
+    passes, and says so."""
     import subprocess
 
     def git(*a):
@@ -284,6 +293,9 @@ def shipped():
         try:
             now = pathlib.Path(path).read_bytes()
         except OSError:
+            num = pathlib.Path(path).name[:4]
+            if path.startswith("scripts/dashboard/statemigrations/") and num.isdigit() and int(num) <= _state_floor():
+                continue
             bad.append(f"{path} shipped in {tag} and is gone")
             continue
         if now != then:
