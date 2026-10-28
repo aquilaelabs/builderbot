@@ -101,7 +101,32 @@ the ESP each boot reads into the controller's environment: `TZ`
 the maker writes the lines into those same bytes as the image streams, so
 nothing writes a FAT partition by hand on any system; with the stick in
 another machine it is a plain file to edit, and `verify` takes the same
-`--set` to read such a stick back. It runs as root (sudo) on Linux and a
+`--set` to read such a stick back.
+
+`--config FILE` writes a prepared configuration into the stick's
+`builderbot/firstboot.json` (64 KiB, laid and filled the same way), which the
+first boot applies before anyone signs in. It is a JSON object:
+
+```json
+{"format": 1, "first_run": "skip",
+ "machine": {"hostname": "tower", "timezone": "Europe/Berlin"},
+ "owner": {"name": "ada", "password_hash": "pbkdf2_sha256$600000$SALT$HASH"},
+ "people": [{"name": "sam", "role": "user", "smb_nt": "NTHASH"}],
+ "shares": [], "pools": [], "array": {}, "apps": []}
+```
+
+Before the controller starts, the boot sets the hostname and the time zone,
+hands the rest to the controller and blanks the file on the stick, so the
+password hash is never left there. The controller makes the owner from the
+hash (the dashboard's own scheme, so a tool that writes the file hashes what
+was typed) and each person by name and role, with their SMB password where
+it came with them and no dashboard password until the owner sets one on the
+Users page. `"first_run": "skip"` marks the setup page done; without an
+owner's hash the first-run page makes the owner as on any stick. The shares,
+pools, array and apps wait until their disks are adopted. This machine's
+**From the stick** section says what was applied, what waits and what could
+not be, and nothing of a hash is kept on the controller beyond the accounts
+themselves. It runs as root (sudo) on Linux and a
 Mac and as an administrator on Windows, where it locks and dismounts the
 stick's volumes first. A stick made this way boots the appliance with the
 slot loaded into memory and keeps its configuration on the stick's data

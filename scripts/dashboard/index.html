@@ -2010,6 +2010,10 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
 @media (max-width:600px){.storagetab .ndmeter{grid-template-columns:6em minmax(0,1fr) 7.5em}}
 /* An agent's row in parts (its sign-in, what is yours on the node), each
    under a small head in the gear's voice. */
+/* A fact whose value is news: applied in --ok, not applied in --warn (This
+   machine's From the stick, R161 step 8). */
+.facts dd.ok{color:var(--ok)}
+.facts dd.warn{color:var(--warn)}
 .fsub{font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin:2px 0 8px}
 /* The Library (tab-library.js, R170): a store browses as cards, the
    Projects page's grid under a heading per kind; a card opened on its

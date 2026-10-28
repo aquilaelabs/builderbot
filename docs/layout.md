@@ -232,6 +232,7 @@ scripts/
     router.py                    a model router on a node (R144): LiteLLM with the provider keys and Ollama as a written container, a key per allowed project, the models and the spend read at the router
     reach.py                     the bell's rows sent elsewhere per person (R149): email over SMTP, a webhook and its presets, each destination's kinds and quiet window, the minute loop holding a repeat while unchanged
     releasecheck.py              a newer BuilderBot release for a bare-metal install (R90 step 5): asked of GitHub daily, said on the bell and under Controller settings, applied through the own node
+    firstboot.py                 a stick's prepared configuration at its first boot (R161 step 8): the owner and the people made, the setup page skipped where asked, the rest kept waiting, said on This machine
     held.py                      a held start on a bare-metal install (R56 step 9): held after an unclean stop or when armed for the next restart, lifted by Start on This machine
     move.py                      moving this controller to another home (R90 step 12): the sealed bundle and its token, the nodes' challenges, the restore under the version gate, the old home marked moved
     backup.py                    the configuration backed up (R161 step 4): the move's bundle under a password's key, written onto the pools after every change, found and restored at a first run

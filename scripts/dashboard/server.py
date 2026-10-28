@@ -5198,6 +5198,18 @@ def _update_in_window(version):
 # start, lifted by Start on This machine, armed for the next restart.
 import held                                                      # noqa: E402
 held.configure(state=STATE, bare_metal=lambda: BARE_METAL, write_json_fn=write_json)
+# A prepared configuration a stick's first boot handed over (R161 step 8,
+# firstboot.py): applied once, here, before anybody can sign in or claim.
+import firstboot                                                 # noqa: E402
+firstboot.configure(state=STATE, write_json_fn=write_json, users_mod=users, settings_mod=settings)
+if BARE_METAL:
+    try:
+        _fb = firstboot.apply()
+        if _fb:
+            print(f"dashboard: a prepared configuration from the stick: {len(_fb['done'])} applied, "
+                  f"{len(_fb['waiting'])} waiting, {len(_fb['failed'])} not applied (This machine says which)", flush=True)
+    except Exception as e:                                # noqa: BLE001 (a start must not fail on this)
+        print(f"dashboard: the stick's prepared configuration was not applied: {e}", flush=True)
 import backup                                                    # noqa: E402
 # Moving this controller to another home (R90 step 12, move.py): the bundle
 # and its token, the nodes told, the knock answered once restored here.
@@ -5550,6 +5562,9 @@ def _snapshot(who):
                                                       if BARE_METAL else {})),
         # ...and whether its start is held (R56 step 9), with why.
         "held": held.status(),
+        # ...and what a stick's prepared configuration did (R161 step 8), an
+        # administrator's to read on This machine.
+        "firstboot": firstboot.view() if BARE_METAL and users.is_admin(who) else None,
         # ...and where this controller went, when it moved (R90 step 12):
         # the page is read-only then and says so.
         "moved_to": move.moved_to(),

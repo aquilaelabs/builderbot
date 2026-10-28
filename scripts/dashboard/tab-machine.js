@@ -67,12 +67,26 @@ function renderMachineInto(i){
   const inflight = t => (n.jobs || []).some(j => j.type === t || j.apply === t);
   d.list.innerHTML = machineHead(n)
     + (state?.release?.running !== undefined ? docSection("nodes", "updates", "Updates", state.release.newer ? `${state.release.newer} is out` : state.release.latest ? "up to date" : "", updatesSection()) : "")
+    + firstbootSection()
     + ndRowHtml(n);
   wireNodesTab(d.el);
   nodesReadOnly(d.el);
   wireUpdates(d.el);
   wireHeld(d.el);
   void inflight;
+}
+
+// What a stick's prepared configuration did at the first boot (R161 step 8,
+// firstboot.py): each piece applied, waiting for disks to be adopted, or not
+// applied with why, in the facts voice. Nothing on an install that had none.
+function firstbootSection(){
+  const f = state?.firstboot;
+  if (!f) return "";
+  const line = (x, cls) => [x.what, `${x.said}${x.count ? ` (${x.count})` : ""}`, {cls}];
+  const rows = [...(f.done || []).map(x => line(x, "ok")), ...(f.waiting || []).map(x => line(x, "")), ...(f.failed || []).map(x => line(x, "warn"))];
+  const status = (f.failed || []).length ? `${f.failed.length} not applied` : (f.waiting || []).length ? `${f.waiting.length} waiting` : "applied";
+  return docSection("nodes", "firstboot", "From the stick", status,
+    `<div class="field">${factGrid(rows, "fbfacts")}<div class="hint">Taken off the stick at the first boot ${esc(ago(f.at))} and blanked there; what waits is applied once its disks are adopted.</div></div>`);
 }
 
 function wireHeld(root){

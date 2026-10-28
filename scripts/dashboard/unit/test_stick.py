@@ -115,6 +115,36 @@ class Stick(unittest.TestCase):
             self.assertTrue(env.startswith("# builderbot.env BB-STICK-ENV-1"))
             self.assertEqual([x for x in env.splitlines() if "=" in x and not x.startswith("#")], ["TZ=Europe/Berlin", "BB_RELEASE_LINE=0.9"])
 
+    def test_config_writes_the_prepared_configuration_beside_the_env_file(self):
+        # R161 step 8: firstboot.json's 64 KiB behind its own marker, the two
+        # files written in one pass, the rest of the image as it was.
+        import json
+        env = self.m.ENV_MARK + b": x\n"
+        env += b" " * (self.m.ENV_SIZE - 1 - len(env)) + b"\n"
+        boot = self.m.BOOT_MARK + b" " * (self.m.BOOT_SIZE - 1 - len(self.m.BOOT_MARK)) + b"\n"
+        a, b = (1 << 20) - 50, (2 << 20) - 3000          # each across a chunk's end
+        raw = os.urandom(a) + env + os.urandom(b - a - len(env)) + boot + os.urandom(1 << 20)
+        img = os.path.join(self.d, "i.stick.raw.xz")
+        with lzma.open(img, "wb") as f:
+            f.write(raw)
+        dev = os.path.join(self.d, "stick.img")
+        open(dev, "wb").write(b"\xff" * len(raw))
+        cfg = os.path.join(self.d, "plan.json")
+        json.dump({"format": 1, "machine": {"hostname": "tower"}, "first_run": "skip"}, open(cfg, "w"))
+        with mock.patch.object(self.m, "CHUNK", 1 << 20), \
+                mock.patch.object(self.m, "open_disk", side_effect=lambda d: open(d, "r+b", buffering=0)):
+            self.m.write_image(img, dev, sets=["TZ=UTC"], config=cfg)
+        got = open(dev, "rb").read()
+        self.assertEqual(len(got), len(raw))
+        self.assertIn(b"\nTZ=UTC\n", got[a:a + self.m.ENV_SIZE])
+        lines = got[b:b + self.m.BOOT_SIZE].decode().split("\n", 1)
+        self.assertEqual(lines[0], "BB-FIRSTBOOT-1")
+        self.assertEqual(json.loads(lines[1])["machine"]["hostname"], "tower")
+        self.assertEqual(got[b + self.m.BOOT_SIZE:], raw[b + self.m.BOOT_SIZE:])
+        json.dump({"machine": {}}, open(cfg, "w"))
+        with self.assertRaises(SystemExit):
+            self.m.boot_block(cfg)
+
     def test_set_is_refused_on_a_bad_line_and_on_an_image_with_no_env_file(self):
         with self.assertRaises(SystemExit):
             self.m.env_block(["tz=Europe/Berlin"])

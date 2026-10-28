@@ -922,6 +922,51 @@ def add(name, password, role="user", projects=None):
     return {"ok": True, "name": name}
 
 
+def adopt(owner, people):
+    """A prepared configuration's accounts (R161 step 8, firstboot.py), on a
+    store with nobody in it: the owner from a name and a password hash in
+    this file's own scheme (a stick maker hashed what was typed), and each
+    person by name and role with no password, which the owner sets on the
+    Users page, and their SMB password's NT hash where one came with them.
+    {ok, made: [names], skipped: [(name, why)]} or {error}."""
+    name = str((owner or {}).get("name") or "").strip()
+    pw = str((owner or {}).get("password_hash") or "")
+    if not NAME_RE.match(name):
+        return {"error": "the owner's name is letters, digits and . _ @ + - , up to 64"}
+    if not re.fullmatch(r"pbkdf2_sha256\$\d+\$[0-9a-f]{32}\$[0-9a-f]{64}", pw):
+        return {"error": "the owner's password is not a hash this controller reads"}
+    made, skipped = [], []
+    with _lock:
+        d = load()
+        if d["users"]:
+            return {"error": "this controller already has an account"}
+        now = int(time.time())
+        d["users"][name] = {"uid": mint_uid(), "role": "owner", "projects": [], "password": pw,
+                            "created": now, "seen": 0, "prefs": {}, "pins_empty": True}
+        made.append(name)
+        for p in people or []:
+            pn = str((p or {}).get("name") or "").strip()
+            role = str((p or {}).get("role") or "user")
+            nt = str((p or {}).get("smb_nt") or "").upper()
+            if not NAME_RE.match(pn) or pn in d["users"]:
+                skipped.append((pn, "not a name, or a name taken"))
+                continue
+            if role not in ("admin", "user"):
+                role = "user"
+            u = {"uid": mint_uid(), "role": role, "roles": [], "projects": [], "password": "",
+                 "created": now, "seen": 0, "prefs": {}, "pins_empty": True}
+            if re.fullmatch(r"[0-9A-F]{32}", nt):
+                u["smb_nt"], u["smb_at"] = nt, now
+            d["users"][pn] = u
+            made.append(pn)
+        _save(d)
+    import accountkeys
+    if accountkeys.STATE is not None:
+        for n in made:
+            accountkeys.key_of((load()["users"].get(n) or {}).get("uid") or "")
+    return {"ok": True, "made": made, "skipped": skipped}
+
+
 # ---- SMB passwords (R164 step 1) ----
 # A share on the controller's own machine is reached as the account's own
 # Unix user there (bbu- and the id's hex, accounts.py), with an SMB password

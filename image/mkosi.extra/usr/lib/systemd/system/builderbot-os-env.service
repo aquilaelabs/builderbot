@@ -8,6 +8,9 @@ Before=builderbot-controller.service
 [Service]
 Type=oneshot
 ExecStart=/usr/lib/builderbot-os/env
+# A prepared configuration on the stick, taken off it before the controller
+# starts (R161 step 8); a blank one is nothing.
+ExecStart=-/usr/lib/builderbot-os/firstboot-take
 RemainAfterExit=yes
 
 [Install]

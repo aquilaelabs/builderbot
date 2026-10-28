@@ -4,7 +4,7 @@ and Linux, nothing but Python's own library, that writes a release's stick
 image onto a USB stick and checks it.
 
     builderbot-stick.py list                      the removable disks here
-    builderbot-stick.py write DISK [--image FILE | --release vX.Y.Z | --latest] [--set KEY=VALUE ...] [--yes]
+    builderbot-stick.py write DISK [--image FILE | --release vX.Y.Z | --latest] [--set KEY=VALUE ...] [--config FILE] [--yes]
     builderbot-stick.py verify DISK --image FILE  the stick read back against the image
 
 DISK is /dev/sdX on Linux, /dev/diskN on a Mac, \\\\.\\PhysicalDriveN or its
@@ -40,6 +40,9 @@ GB = 1e9
 # The stick's builderbot.env (image/lay-disk): 4 KiB behind this line.
 ENV_MARK = b"# builderbot.env BB-STICK-ENV-1"
 ENV_SIZE = 4096
+# ...and its builderbot/firstboot.json, a prepared configuration: 64 KiB.
+BOOT_MARK = b"BB-FIRSTBOOT-1\n"
+BOOT_SIZE = 65536
 
 
 def say(s):
@@ -173,26 +176,48 @@ def env_block(sets):
     return body + b" " * (ENV_SIZE - 1 - len(body)) + b"\n"
 
 
-def patched(src, block):
-    """The image's bytes in CHUNKs, builderbot.env's 4 KiB put in place
-    where its marker is. A chunk is held until the next is read, so a file
-    across the line between two is found and written whole. With block
-    None the bytes pass as they are; with a block and no marker in the
-    image, the write stops before the end (an image older than the file)."""
-    held, found = b"", block is None
+def boot_block(path):
+    """The 64 KiB firstboot.json is, holding the prepared configuration in
+    the JSON file at path (format 1, docs/image.md): the marker line, the
+    JSON on one line, blank padding."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError) as e:
+        die(f"--config {path}: {e}")
+    if not isinstance(cfg, dict) or cfg.get("format") != 1:
+        die(f"--config {path}: a prepared configuration is a JSON object with \"format\": 1")
+    body = BOOT_MARK + json.dumps(cfg, separators=(",", ":")).encode() + b"\n"
+    if len(body) > BOOT_SIZE - 1:
+        die(f"--config {path}: {len(body)} bytes, and firstboot.json holds {BOOT_SIZE}")
+    return body + b" " * (BOOT_SIZE - 1 - len(body)) + b"\n"
+
+
+def patched(src, block, boot=None):
+    """The image's bytes in CHUNKs, builderbot.env's 4 KiB and firstboot.json's
+    64 KiB put in place where their markers are. A chunk is held until the
+    next is read, so a file across the line between two is found and written
+    whole. A block of None passes its file as it is; a block with no marker
+    in the image stops the write before the end (an image older than the
+    file)."""
+    want = [(m, n, b) for m, n, b in ((ENV_MARK, ENV_SIZE, block), (BOOT_MARK, BOOT_SIZE, boot)) if b is not None]
+    hold = max((n + len(m) for m, n, _ in want), default=0)
+    held = b""
     for chunk in iter(lambda: src.read(CHUNK), b""):
         buf = held + chunk
-        if not found:
-            at = buf.find(ENV_MARK)
-            if at >= 0 and at + ENV_SIZE <= len(buf):
-                buf = buf[:at] + block + buf[at + ENV_SIZE:]
-                found = True
-        keep = 0 if found else min(len(buf), ENV_SIZE + len(ENV_MARK))
+        for w in list(want):
+            mark, size, blk = w
+            at = buf.find(mark)
+            if at >= 0 and at + size <= len(buf):
+                buf = buf[:at] + blk + buf[at + size:]
+                want.remove(w)
+        keep = min(len(buf), hold) if want else 0
         out, held = (buf[:len(buf) - keep], buf[len(buf) - keep:]) if keep else (buf, b"")
         if out:
             yield out
-    if not found:
-        die("this image has no builderbot.env to write --set into (made before 0.9.0): nothing past the start of the stick is right, so write it again without --set or with a newer image")
+    if want:
+        what = " and ".join("builderbot.env to write --set into" if m == ENV_MARK else "firstboot.json to write --config into" for m, _, _ in want)
+        die(f"this image has no {what} (made before 0.9.0): nothing past the start of the stick is right, so write it again without them or with a newer image")
     if held:
         yield held
 
@@ -234,14 +259,15 @@ def open_disk(dev):
     return open(dev, "r+b", buffering=0)
 
 
-def write_image(image, dev, verify_after=True, sets=()):
+def write_image(image, dev, verify_after=True, sets=(), config=None):
     size_xz = os.path.getsize(image)
     say(f"writing {os.path.basename(image)} ({size_xz / GB:.1f} GB compressed) to {dev}")
     block = env_block(sets) if sets else None
+    boot = boot_block(config) if config else None
     h = hashlib.sha256()
     written = 0
     with lzma.open(image, "rb") as src, open_disk(dev) as dst:
-        for chunk in patched(src, block):
+        for chunk in patched(src, block, boot):
             dst.write(chunk)
             h.update(chunk)
             written += len(chunk)
@@ -302,7 +328,7 @@ def cmd_write(a):
     if not a.yes:
         if input("Type yes to write it: ").strip().lower() != "yes":
             die("nothing written")
-    write_image(image, d["id"], verify_after=not a.no_verify, sets=a.set or ())
+    write_image(image, d["id"], verify_after=not a.no_verify, sets=a.set or (), config=a.config)
     say("Done. Boot the machine from the stick: it comes up as its own controller, and the dashboard's first page, at http://ITS-ADDRESS:7680 on the LAN, makes the owner or restores a saved configuration.")
 
 
@@ -311,7 +337,7 @@ def cmd_verify(a):
     h = hashlib.sha256()
     n = 0
     with lzma.open(a.image, "rb") as src:
-        for chunk in patched(src, env_block(a.set) if a.set else None):
+        for chunk in patched(src, env_block(a.set) if a.set else None, boot_block(a.config) if a.config else None):
             h.update(chunk)
             n += len(chunk)
     verify(d["id"], n, h.hexdigest())
@@ -327,6 +353,7 @@ def main(argv=None):
     w.add_argument("--release", help="the release's tag to fetch the image from (vX.Y.Z)")
     w.add_argument("--latest", action="store_true", help="fetch the newest release's image (what it does when nothing else is named)")
     w.add_argument("--set", action="append", metavar="KEY=VALUE", help="a line for the stick's builderbot.env: TZ=Region/City, BB_RELEASE_LINE=X.Y")
+    w.add_argument("--config", metavar="FILE", help="a prepared configuration (JSON, docs/image.md) the stick's first boot applies, skipping the first-run page where it says so")
     w.add_argument("--channel", choices=["normal", "dev"], default="normal", help=argparse.SUPPRESS)
     w.add_argument("--yes", action="store_true", help="do not ask")
     w.add_argument("--no-verify", action="store_true", help="skip reading the stick back")
@@ -335,6 +362,7 @@ def main(argv=None):
     v.add_argument("disk")
     v.add_argument("--image", required=True)
     v.add_argument("--set", action="append", metavar="KEY=VALUE", help="the lines the stick was written with")
+    v.add_argument("--config", metavar="FILE", help="the prepared configuration it was written with")
     v.set_defaults(fn=cmd_verify)
     a = ap.parse_args(argv)
     a.fn(a)

@@ -345,6 +345,13 @@ class Workflow(unittest.TestCase):
         lay = read(IMG, "lay-disk")
         self.assertIn('"$MNT/builderbot.env"', lay)
         self.assertIn("# builderbot.env BB-STICK-ENV-1", lay)
+        # ...and the prepared configuration's 64 KiB (R161 step 8), taken off
+        # the stick by a root step before the controller starts.
+        self.assertIn('"$MNT/builderbot/firstboot.json"', lay)
+        self.assertIn("BB-FIRSTBOOT-1", lay)
+        self.assertIn("ExecStart=-/usr/lib/builderbot-os/firstboot-take",
+                      read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service"))
+        self.assertTrue(os.access(os.path.join(EXTRA, "usr", "lib", "builderbot-os", "firstboot-take"), os.X_OK))
         unit = read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service")
         self.assertIn("Before=builderbot-controller.service", unit)
         self.assertIn("builderbot-os-env.service", read(IMG, "mkosi.postinst"))
