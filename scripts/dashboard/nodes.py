@@ -1458,6 +1458,7 @@ def _census(c):
             nfs = sh.get("nfs") if isinstance(sh.get("nfs"), dict) else {}
             out["shares"].append({"name": sh["name"], "path": sw(sh.get("path"), 200),
                                   "smb": {"on": smb.get("on") is True, "guest": smb.get("guest") is True, "ro": smb.get("ro") is True,
+                                          "tm": smb.get("tm") is True,
                                           "users": [sw(u, 32) for u in (smb.get("users") or [])[:64] if isinstance(u, str)]},
                                   "nfs": {"on": nfs.get("on") is True, "ro": nfs.get("ro") is True,
                                           "clients": [sw(c, 80) for c in (nfs.get("clients") or [])[:64] if isinstance(c, str)]}})
@@ -1490,6 +1491,20 @@ def _census(c):
                                       "newest": [{"name": str(x["name"]), "at": int(x["at"]) if isinstance(x.get("at"), int) else 0}
                                                  for x in (v.get("newest") or [])[:10]
                                                  if isinstance(x, dict) and re.fullmatch(r"bb-(hourly|daily|weekly|manual)-\d{8}-\d{4}", str(x.get("name") or ""))]}
+    # ...and its array (R162 step 2): the disks by slot with their room,
+    # the merged tree, and SnapRAID's last sync, scrub and check.
+    if isinstance(c.get("array"), dict):
+        ar = c["array"]
+        aw = lambda v, n: re.sub(r"[^\w .,:;/()'@%+-]", "", str(v or ""))[:n]  # noqa: E731
+        mb = lambda v: int(v) if isinstance(v, int) and not isinstance(v, bool) else 0  # noqa: E731
+        rows = lambda key, most: [{"slot": mb(x.get("slot")), "id": aw(x.get("id"), 120), "fs": aw(x.get("fs"), 8),  # noqa: E731
+                                   "size_mb": mb(x.get("size_mb")), "used_mb": mb(x.get("used_mb")), "mounted": x.get("mounted") is True}
+                                  for x in (ar.get(key) or [])[:most] if isinstance(x, dict) and 1 <= mb(x.get("slot")) <= 99]
+        out["array"] = {} if not ar.get("data") else {
+            "policy": aw(ar.get("policy"), 8), "mount": aw(ar.get("mount"), 40), "mounted": ar.get("mounted") is True,
+            "data": rows("data", 24), "parity": rows("parity", 2),
+            **{k: mb(ar.get(k)) for k in ("last_sync", "last_scrub", "last_check")},
+            "status": aw(ar.get("status"), 400), "running": aw(ar.get("running"), 16)}
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
@@ -2158,6 +2173,10 @@ def token_seal_on(nid):
 # made from the install key (tokenkeys.py). nid -> {uid: hex}, or {} where
 # the controller has no install key and so cannot ever open a seal.
 token_pubs = None
+# The accounts' SMB passwords for the controller's own machine (R164 step
+# 1): users.smb_users, and the resolver of a share's names (users.smb_resolve).
+smb_users = None
+smb_resolve = None
 # ...and how many of a node's seals are under a key before today's.
 token_stale = None
 # ...and whether there is an install key to make any of it from.
@@ -3141,6 +3160,100 @@ def node_storage_snapshot(principal, node_id, req):
     return r
 
 
+ARRAY_ACTIONS = ("create", "add", "replace", "sync", "scrub", "check", "destroy")
+ARRAY_POLICIES = ("mfs", "lfs", "epmfs", "ff")
+ARRAY_LONG = 86400
+
+
+def node_storage_array(principal, node_id, req):
+    """The array on the controller's own machine (R162 step 2): made of
+    data disks and one or two parity disks, a disk added or a slot's disk
+    replaced, SnapRAID's sync, scrub and check run now, or the array
+    destroyed (the word typed again; the disks keep their files); a system
+    job on its node, each argument checked here and again there, every
+    disk one the census lists, a parity disk at least as large as the
+    largest data disk. The schedules are the Schedules page's, made from
+    the Storage page."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "the array is the controller's own machine's (the installed edition's Storage page); another node's disks are its own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot make an array"}
+    sto = (rep.get("features") or {}).get("storage") or {}
+    if not (sto.get("mergerfs") and sto.get("snapraid")):
+        return {"error": "no mergerfs or SnapRAID on the machine yet: install Storage on its Features section first"}
+    action = str(req.get("array") or "")
+    if action not in ARRAY_ACTIONS:
+        return {"error": f"an array action is one of {', '.join(ARRAY_ACTIONS)}"}
+    known = {d["name"]: d for d in rep.get("disks") or [] if isinstance(d, dict)}
+    have = rep.get("array") if isinstance(rep.get("array"), dict) else {}
+    cfg = {"array": action}
+
+    def disks_ok(names):
+        for d in names:
+            if d not in known:
+                return f"{d} is not a disk {n['name']} lists"
+            if known[d].get("system"):
+                return f"{d} is the system disk, which never goes into the array"
+        return ""
+    if action == "create":
+        data = [str(x) for x in (req.get("data") or []) if isinstance(x, str)]
+        parity = [str(x) for x in (req.get("parity") or []) if isinstance(x, str)]
+        fs, policy = str(req.get("fs") or "xfs"), str(req.get("policy") or "mfs")
+        if have.get("data"):
+            return {"error": "an array is on the machine already: add to it, or destroy it first"}
+        if fs not in ("xfs", "btrfs") or policy not in ARRAY_POLICIES:
+            return {"error": "a filesystem is xfs or btrfs and a policy one of mfs, lfs, epmfs, ff"}
+        if not 1 <= len(data) <= 24 or not 1 <= len(parity) <= 2 or len(set(data + parity)) != len(data) + len(parity):
+            return {"error": "an array takes 1 to 24 data disks and 1 or 2 parity disks, each once"}
+        why = disks_ok(data + parity)
+        if why:
+            return {"error": why}
+        biggest = max(int(known[d].get("size_mb") or 0) for d in data)
+        small = [p for p in parity if int(known[p].get("size_mb") or 0) < biggest]
+        if small:
+            return {"error": f"a parity disk is at least as large as the largest data disk; {', '.join(small)} is smaller"}
+        cfg.update(data=data, parity=parity, fs=fs, policy=policy, wipe=req.get("wipe") is True)
+    elif action in ("add", "replace"):
+        new = str(req.get("new" if action == "replace" else "disk") or "")
+        if not have.get("data"):
+            return {"error": "no array on the machine yet"}
+        why = disks_ok([new]) if new else "which disk?"
+        if why:
+            return {"error": why}
+        if action == "replace":
+            which = str(req.get("which") or "")
+            slots = {f"d{x['slot']}" for x in have.get("data") or []} | {f"p{x['slot']}" for x in have.get("parity") or []}
+            if which not in slots:
+                return {"error": f"replace takes the slot to replace, one of {', '.join(sorted(slots))}"}
+            cfg.update(which=which, new=new, wipe=req.get("wipe") is True)
+        else:
+            cfg.update(disk=new, wipe=req.get("wipe") is True)
+    elif action == "destroy":
+        if not have.get("data"):
+            return {"error": "no array on the machine yet"}
+        if str(req.get("confirm") or "") != "array":
+            return {"error": "destroying the array takes the word array typed again"}
+        cfg["confirm"] = "array"
+    elif not have.get("data"):
+        return {"error": "no array on the machine yet"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "storage-array", "config": cfg, "timeout": 900 if action in ("check", "destroy") else ARRAY_LONG})
+    if r.get("ok"):
+        audit(principal, "storage-array", node_id, {"job": r["job"], **cfg})
+    return r
+
+
 def node_storage_share(principal, node_id, req):
     """A share on the controller's own machine (R162 step 1): set (SMB,
     NFS or both, on a folder under a pool's mount) or removed, a system job
@@ -3176,6 +3289,11 @@ def node_storage_share(principal, node_id, req):
         if nfs.get("on") and not sh.get("nfs"):
             return {"error": "no NFS server on the machine yet: install Shares on its Features section first"}
         users = [str(u).strip() for u in (smb.get("users") or []) if isinstance(u, str) and str(u).strip()]
+        # An account's name or role:NAME to the Unix users Samba is told (R164 step 1).
+        if smb_resolve and users:
+            users, why = smb_resolve(users)
+            if why:
+                return {"error": why}
         clients = [str(c).strip() for c in (nfs.get("clients") or []) if isinstance(c, str) and str(c).strip()]
         if smb.get("on") and not smb.get("guest") and not users:
             return {"error": "an SMB share takes the users who may reach it, or everybody as a guest"}
@@ -3187,7 +3305,7 @@ def node_storage_share(principal, node_id, req):
         for c in clients:
             if not re.fullmatch(r"[A-Za-z0-9*][A-Za-z0-9*./:_-]{0,80}", c):
                 return {"error": f"{c!r} is not a client (an address, a network like 192.168.1.0/24, a name, or *)"}
-        cfg.update(path=path, smb={"on": bool(smb.get("on")), "guest": bool(smb.get("guest")), "ro": bool(smb.get("ro")), "users": users[:64]},
+        cfg.update(path=path, smb={"on": bool(smb.get("on")), "guest": bool(smb.get("guest")), "ro": bool(smb.get("ro")), "tm": smb.get("tm") is True, "users": users[:64]},
                    nfs={"on": bool(nfs.get("on")), "ro": bool(nfs.get("ro")), "clients": clients[:64]})
     why = node_locked(n)
     if why:
@@ -3200,6 +3318,26 @@ def node_storage_share(principal, node_id, req):
     if r.get("ok"):
         audit(principal, "storage-share", node_id, {"job": r["job"], **cfg})
     return r
+
+
+def smb_shares_for(uid):
+    """The SMB shares on the controller's own machine a person reaches (R164
+    step 1), for Profile: {host, address, rows: [{name, ro, guest, tm}]} with
+    the address to map each by, or None where no own machine serves any."""
+    me = "bbu-" + uid[2:] if re.fullmatch(r"u_[0-9a-f]{8}", str(uid or "")) else ""
+    for n in node_list():
+        if not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        if not ((rep.get("features") or {}).get("shares") or {}).get("smb"):
+            return None
+        rows = [{"name": sh["name"], "ro": bool(sh["smb"].get("ro")), "guest": bool(sh["smb"].get("guest")), "tm": bool(sh["smb"].get("tm"))}
+                for sh in rep.get("shares") or [] if isinstance(sh, dict) and (sh.get("smb") or {}).get("on")
+                and (sh["smb"].get("guest") or (me and me in (sh["smb"].get("users") or [])))]
+        addrs = ((rep.get("network") or {}).get("addresses") or [])
+        return {"host": str(rep.get("hostname") or n.get("name") or ""), "address": str(addrs[0]).split("/")[0] if addrs else "",
+                "rows": rows}
+    return None
 
 
 POOL_ACTIONS = ("create", "add", "scrub", "replace", "export", "destroy")
@@ -3999,6 +4137,10 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             "ports_local": ports_local_on(nid),
             # Each account a Unix user of its own there (R125).
             "account_users": account_users_on(nid),
+            # ...and, on the controller's own machine, the accounts' SMB
+            # passwords as Samba keeps them (R164 step 1): its agent imports
+            # them and removes the ones gone.
+            "smb_users": (smb_users() if smb_users and own_machine(n) else []),
             # ...and its coding agents' sign-ins sealed there (R126), with
             # each account's public key to seal them with.
             "token_seal": token_seal_on(nid),
@@ -6351,6 +6493,7 @@ def verb(principal, req):
              "storage-share": lambda: node_storage_share(principal, nid, req),
              "storage-pool": lambda: node_storage_pool(principal, nid, req),
              "storage-snapshot": lambda: node_storage_snapshot(principal, nid, req),
+             "storage-array": lambda: node_storage_array(principal, nid, req),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,

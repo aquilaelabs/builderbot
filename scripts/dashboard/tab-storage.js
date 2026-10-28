@@ -200,16 +200,18 @@ function storageShares(n){
   const shares = n.shares || [];
   const rows = shares.map(s => `<div class="row stack2 stshare" data-share="${esc(s.name)}"><div class="grow">
       <div class="name">${esc(s.name)} <code>${esc(s.path)}</code></div>
-      ${s.smb?.on ? `<div class="sub">SMB${s.smb.ro ? ", read-only" : ""}: ${s.smb.guest ? "everybody, as a guest" : (s.smb.users || []).map(esc).join(", ") || "nobody yet"} · \\\\${esc(n.name)}\\${esc(s.name)}</div>` : ""}
+      ${s.smb?.on ? `<div class="sub">SMB${s.smb.ro ? ", read-only" : ""}${s.smb.tm ? ", a Time Machine target" : ""}: ${s.smb.guest ? "everybody, as a guest" : (s.accounts || s.smb.users || []).map(esc).join(", ") || "nobody yet"} · \\\\${esc(n.name)}\\${esc(s.name)}</div>` : ""}
       ${s.nfs?.on ? `<div class="sub">NFS${s.nfs.ro ? ", read-only" : ""}: ${(s.nfs.clients || []).map(esc).join(", ")} · ${esc(n.name)}:${esc(s.path)}</div>` : ""}
       </div>${admin && !why ? `<span class="acts"><button type="button" class="danger" data-stshare="remove" data-name="${esc(s.name)}">Remove</button></span>` : ""}</div>`).join("");
   const mounts = (n.pools || []).map(p => p.mount).filter(Boolean);
-  const form = !admin || why ? "" : `<div class="field stnewshare"><div class="hint">New share: a name, a folder on a pool${mounts.length ? ` (${mounts.map(esc).join(", ")})` : ""}, and who reaches it over SMB, NFS or both.</div>
+  const form = !admin || why ? "" : `<div class="field stnewshare"><div class="hint">New share: a name, a folder on a pool${mounts.length ? ` (${mounts.map(esc).join(", ")})` : ""}, and who reaches it over SMB, NFS or both. A person reaches an SMB share with their account's name and the SMB password they set on Profile; a role names everybody holding it now.</div>
       <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" id="stShareName" placeholder="media" maxlength="63" autocomplete="off" spellcheck="false"></label></div>
       <div class="field"><label class="pick"><span class="pickw">Folder</span><input type="text" id="stSharePath" placeholder="${esc(mounts[0] ? mounts[0] + "/media" : "/mnt/tank/media")}" autocomplete="off" spellcheck="false"></label></div>
       <div class="field"><label class="ndcap"><input type="checkbox" id="stShareSmb" checked> SMB (Windows, a Mac, a phone)</label>
         <label class="ndcap"><input type="checkbox" id="stShareGuest"> everybody as a guest, no password</label>
-        <label class="pick"><span class="pickw">Users</span><input type="text" id="stShareUsers" placeholder="the machine's users who may reach it, separated by spaces" autocomplete="off" spellcheck="false"></label></div>
+        ${(n.accounts || []).length || (n.roles || []).length ? `<div class="lbox" id="stShareWho">${(n.roles || []).map(r => `<label class="ndcap"><input type="checkbox" data-stsharewho="role:${esc(r)}"> everybody with the role ${esc(r)}</label>`).join("")}${(n.accounts || []).map(a => `<label class="ndcap"><input type="checkbox" data-stsharewho="${esc(a)}"> ${esc(a)}</label>`).join("")}</div>` : ""}
+        <label class="pick"><span class="pickw">Other users</span><input type="text" id="stShareUsers" placeholder="the machine's own users, separated by spaces" autocomplete="off" spellcheck="false"></label>
+        <label class="ndcap"><input type="checkbox" id="stShareTm"> a Mac's Time Machine target</label></div>
       <div class="field"><label class="ndcap"><input type="checkbox" id="stShareNfs"> NFS (Linux, a hypervisor)</label>
         <label class="pick"><span class="pickw">Clients</span><input type="text" id="stShareClients" placeholder="192.168.1.0/24, or * for any" autocomplete="off" spellcheck="false"></label></div>
       <div class="field"><label class="ndcap"><input type="checkbox" id="stShareRo"> read-only</label></div>
@@ -224,7 +226,9 @@ function wireStorageShares(root, n){
       body.name = ($("stShareName")?.value || "").trim();
       body.path = ($("stSharePath")?.value || "").trim();
       const ro = !!$("stShareRo")?.checked;
-      body.smb = {on: !!$("stShareSmb")?.checked, guest: !!$("stShareGuest")?.checked, ro, users: ($("stShareUsers")?.value || "").split(/[\s,]+/).filter(Boolean)};
+      const who = [...root.querySelectorAll("[data-stsharewho]:checked")].map(i => i.dataset.stsharewho);
+      body.smb = {on: !!$("stShareSmb")?.checked, guest: !!$("stShareGuest")?.checked, ro, tm: !!$("stShareTm")?.checked,
+                  users: [...who, ...($("stShareUsers")?.value || "").split(/[\s,]+/).filter(Boolean)]};
       body.nfs = {on: !!$("stShareNfs")?.checked, ro, clients: ($("stShareClients")?.value || "").split(/[\s,]+/).filter(Boolean)};
       if (!body.name || !body.path){ notify("a share takes a name and a folder", true); return; }
     } else if (!await askYes(`Stop sharing ${body.name}? The folder and what is in it stay; nobody reaches it over SMB or NFS after.`, {title: "Remove the share?", verb: "Remove", danger: true})) return;
@@ -381,6 +385,125 @@ function wireStorageSnapshots(root, n){
   }));
 }
 
+// The array (R162 step 2): disks of mixed sizes each their own filesystem,
+// one tree over them by mergerfs, parity on one or two disks kept by
+// SnapRAID on a schedule (not in real time: what was written since the last
+// sync is unprotected until the next, said on the section). Each disk by
+// slot with its room, Sync now, Scrub and Check, a disk added or a slot's
+// disk replaced, the sync and scrub schedules (the Schedules page's rows),
+// and a form for a new array that names the disks by model, size and
+// serial and says the whole again before anything is written.
+const ARRAY_POLICIES = [["mfs", "most free space: each new file lands on the emptiest disk"], ["epmfs", "existing path first, then most free space: a folder's files stay together"],
+                        ["lfs", "fill up: one disk fills before the next is used"], ["ff", "the first disk with room"]];
+const ARRAY_KINDS = [["sync", "Sync", "0 4 * * *", "Daily, at 4:00"], ["scrub", "Scrub", "0 5 * * 0", "Weekly, Sundays at 5:00"]];
+function storageArray(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.mergerfs || !n.snapraid ? `No mergerfs or SnapRAID on this machine yet: Storage on its ${pageLink("machine", "Features section")} installs them.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const a = n.array || {}, has = (a.data || []).length > 0, scheds = (n.snapshot_schedules || []).filter(x => x.array);
+  const free = (n.disks || []).filter(d => !d.system && !(d.parts || []).some(p => p.holds && p.holds !== "nothing") && (!d.holds || d.holds === "nothing"));
+  const used = (n.disks || []).filter(d => !d.system && !free.includes(d) && !(d.parts || []).some(p => /^(xfs|btrfs) at \/mnt\/(disks|parity)\//.test(p.holds || "")) && !/^(xfs|btrfs) at \/mnt\/(disks|parity)\//.test(d.holds || ""));
+  const diskLine = d => `${esc(d.name)}: ${esc(d.model || "unnamed")}, ${esc(humanBytes((d.size_mb || 0) * 1048576))}, serial ${esc(d.serial || "none")}`;
+  const when = t => t ? ago(t) : "never";
+  const slotRow = (kind, x) => {
+    const pct = x.size_mb ? (x.used_mb || 0) / x.size_mb * 100 : 0;
+    return `<div class="row stslot${x.mounted ? "" : " bad"}" data-slot="${kind}${x.slot}"><div class="grow">
+      <div class="name">${kind}${x.slot} <span class="pill">${kind === "d" ? "data" : "parity"}</span>${x.mounted ? "" : ` <span class="pill bad">not mounted</span>`} <code>${esc(x.id.replace(/^\/dev\/disk\/by-id\//, ""))}</code></div>
+      ${x.mounted ? `<div class="ndmeters">${meter("used", pct, `${sgb(x.used_mb)} / ${sgb(x.size_mb)}`, `${sgb((x.size_mb || 0) - (x.used_mb || 0))} free`)}</div>` : ""}
+      </div>${admin && !why && free.length ? `<span class="acts">${actMore([`<button type="button" data-starray="replace" data-which="${kind}${x.slot}" title="a new disk takes this slot; ${kind === "d" ? "its files are rebuilt from parity" : "parity is rebuilt on it"}">Replace</button>`], true)}</span>` : ""}</div>`;
+  };
+  const pick = (id, held) => `<div class="field"><div class="lbox" id="${id}">${[...free, ...(held ? used : [])].map(d => `<label class="ndcap"><input type="checkbox" data-${id}="${esc(d.name)}"${used.includes(d) ? ' data-held="1"' : ""}> ${diskLine(d)}${used.includes(d) ? ` <span class="pill warn">holds ${esc((d.parts || []).find(p => p.holds && p.holds !== "nothing")?.holds || d.holds)}</span>` : ""}</label>`).join("") || `<div class="empty">No disk free for it.</div>`}</div></div>`;
+  let body;
+  if (has){
+    const kinds = ARRAY_KINDS.map(([k, label]) => { const sch = scheds.find(x => x.array === k); return `<span class="pill${sch?.on ? " ok" : ""}">${label.toLowerCase()}: ${sch ? `${esc(sch.words || "")}${sch.on ? "" : ", off"}` : "not scheduled"}</span>`; }).join(" ");
+    const total = (a.data || []).reduce((s, x) => s + (x.size_mb || 0), 0), usedT = (a.data || []).reduce((s, x) => s + (x.used_mb || 0), 0);
+    body = `<div class="row stack2"><div class="grow">
+        <div class="name">${esc(a.mount || "/mnt/array")} <span class="pill${a.mounted ? " ok" : " bad"}">${a.mounted ? "mounted" : "not mounted"}</span>${a.running ? ` <span class="pill warn">${esc(a.running)} running</span>` : ""}</div>
+        <div class="ndmeters">${meter("used", total ? usedT / total * 100 : 0, `${sgb(usedT)} / ${sgb(total)}`, `${(a.data || []).length} data, ${(a.parity || []).length} parity`)}</div>
+        ${factGrid([["Last sync", when(a.last_sync)], ["Last scrub", when(a.last_scrub)], ["Last check", when(a.last_check)], ["New files land on", (ARRAY_POLICIES.find(p => p[0] === a.policy) || [a.policy, a.policy])[1]]])}
+        <div class="sub">${kinds}</div>
+        ${a.status ? `<div class="sub dim">${esc(a.status)}</div>` : ""}
+        <div class="hint">Parity is periodic: what was written since the last sync is not protected until the next one runs.</div>
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-starray="sync" title="bring the parity up to date now">Sync now</button>${actMore([
+        `<button type="button" data-starray="scrub" title="read a part of the array back against its parity">Scrub</button>`,
+        `<button type="button" data-starray="check" title="SnapRAID's status: what is out of date and what it found">Check</button>`,
+        `<button type="button" class="danger" data-starray="destroy" title="unmounted and forgotten; the disks keep their files">Destroy</button>`])}</span>` : ""}</div>
+      <div class="rows">${(a.data || []).map(x => slotRow("d", x)).join("")}${(a.parity || []).map(x => slotRow("p", x)).join("")}</div>
+      ${admin && !why ? `<div class="field stnewslot"><div class="hint">Add a data disk: it is wiped, takes the next slot, and the parity is synced after${free.length ? "" : "; no disk here is free"}.</div>
+        ${pick("stArrayAdd", true)}
+        <div class="field"><label class="ndcap"><input type="checkbox" id="stArrayWipe2"> wipe disks that hold something (what is on them is gone)</label></div>
+        <div class="actbar"><span class="sp"></span><button type="button" data-starray="add">Add the disk</button></div></div>
+      <div class="field"><div class="hint">A schedule: the parity synced daily and a scrub weekly is the usual pair.</div>
+        <div class="prefrow ctlrow">
+          <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Run</span><select id="stArraySched">${optionList(ARRAY_KINDS.map(([k, label, , said]) => [k, `${label}, ${said.toLowerCase()}`]), "sync")}</select></label></div>
+        </div>
+        <div class="actbar"><span class="sp"></span>${scheds.length ? actMore(scheds.map(x => `<button type="button" class="danger" data-stsnapsched="${esc(x.id)}">Remove the ${esc(x.array)} schedule</button>`), true) : ""}<button type="button" class="primary" data-starray="schedule">Save the schedule</button></div></div>` : ""}`;
+  } else {
+    const form = !admin || why ? "" : `<div class="field stnewarray"><div class="hint">New array: the data disks (any sizes, each wiped and given its own filesystem), one or two parity disks at least as large as the largest data disk, and where new files land.</div>
+      <div class="field"><div class="hint">Data disks</div>${pick("stArrayData", true)}</div>
+      <div class="field"><div class="hint">Parity disks</div>${pick("stArrayParity", true)}</div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Filesystem</span><select id="stArrayFs"><option value="xfs">xfs: the usual choice</option><option value="btrfs">btrfs: checksums per file</option></select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">New files land on</span><select id="stArrayPolicy">${optionList(ARRAY_POLICIES, "mfs")}</select></label></div>
+      </div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stArrayWipe"> wipe disks that hold something (what is on them is gone)</label></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-starray="create">Make the array</button></div></div>`;
+    body = `<div class="empty">No array yet${n.mergerfs && n.snapraid ? ": the form below makes one" : ""}.</div>${form}`;
+  }
+  return docSection("storage", "array", "Array", has ? `${(a.data || []).length} data, ${(a.parity || []).length} parity` : "", `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${body}`,
+                    {cls: has && (!a.mounted || (a.data || []).some(x => !x.mounted)) ? "bad" : ""});
+}
+function wireStorageArray(root, n){
+  const picked = id => [...root.querySelectorAll(`[data-${id}]:checked`)].map(i => i.getAttribute(`data-${id}`));
+  const heldAmong = id => [...root.querySelectorAll(`[data-${id}]:checked[data-held]`)].length;
+  const say = names => names.map(d => { const x = (n.disks || []).find(y => y.name === d); return x ? `${d} (${x.model || "unnamed"}, ${humanBytes((x.size_mb || 0) * 1048576)}, serial ${x.serial || "none"})` : d; });
+  root.querySelectorAll("[data-starray]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.starray;
+    if (act === "schedule"){
+      const kind = $("stArraySched")?.value || "sync", k = ARRAY_KINDS.find(x => x[0] === kind);
+      const was = (n.snapshot_schedules || []).find(x => x.array === kind);
+      const body = {action: "save", ...(was ? {id: was.id} : {}), name: `Array ${kind}`, cron: k[2], node: n.node, on: true, system: {apply: "storage-array", config: {array: kind}}};
+      busy(b, "Saving");
+      const j = await (await postJSON("/api/schedules", body)).json().catch(() => ({error: "no answer"}));
+      notify(j.error || `the array's ${kind}: ${j.schedule?.words || ""}; the row is on the Schedules page too`, !!j.error);
+      await refresh();
+      return;
+    }
+    const body = {action: "storage-array", id: n.node, array: act};
+    if (act === "create"){
+      body.data = picked("stArrayData"); body.parity = picked("stArrayParity");
+      body.fs = $("stArrayFs")?.value || "xfs"; body.policy = $("stArrayPolicy")?.value || "mfs"; body.wipe = !!$("stArrayWipe")?.checked;
+      if (!body.data.length || !body.parity.length){ notify("an array takes at least one data disk and one parity disk", true); return; }
+      if (body.data.some(d => body.parity.includes(d))){ notify("a disk is data or parity, not both", true); return; }
+      const held = heldAmong("stArrayData") + heldAmong("stArrayParity");
+      if (held && !body.wipe){ notify(`${held} of the disks picked hold something: tick wipe to take them`, true); return; }
+      if (!await askYes(`Make the array?\n\nData, each ${body.fs}:\n${say(body.data).join("\n")}\n\nParity:\n${say(body.parity).join("\n")}\n\nEverything on these disks is gone. Parity is kept by SnapRAID on a schedule, not in real time.`, {title: "Make the array?", verb: "Make it", danger: true})) return;
+    } else if (act === "add"){
+      body.disk = picked("stArrayAdd")[0] || ""; body.wipe = !!$("stArrayWipe2")?.checked;
+      if (!body.disk){ notify("pick the disk to add", true); return; }
+      if (heldAmong("stArrayAdd") && !body.wipe){ notify("the disk picked holds something: tick wipe to take it", true); return; }
+      if (!await askYes(`Add ${say([body.disk])[0]} to the array as its next data disk? Everything on it is gone, and the parity is synced after.`, {title: "Add the disk?", verb: "Add it", danger: true})) return;
+    } else if (act === "replace"){
+      body.which = b.dataset.which;
+      const free = (n.disks || []).filter(d => !d.system && !(d.parts || []).some(p => p.holds && p.holds !== "nothing") && (!d.holds || d.holds === "nothing"));
+      const choice = await ask({title: `Replace ${body.which}`, text: `The disk that takes the slot ${body.which}; it is wiped, then ${body.which[0] === "d" ? "its files are rebuilt from parity" : "the parity is rebuilt on it"}, which takes hours.`,
+                                choices: free.map(d => ({label: say([d.name])[0], value: d.name}))});
+      if (!choice) return;
+      body.new = choice;
+    } else if (act === "destroy"){
+      const typed = await askText("Destroy the array?\n\nIt is unmounted and forgotten; every data disk keeps its files, readable on any Linux, and the parity disks are left as they are.", {verb: "Destroy", label: "Type array to go on"});
+      if (typed === null || typed === undefined) return;
+      if (String(typed).trim() !== "array"){ notify("the word typed is not array; nothing destroyed", true); return; }
+      body.confirm = "array";
+    }
+    busy(b, {sync: "Syncing", scrub: "Scrubbing", check: "Checking"}[act] || "Working");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act}: the job runs on the machine; its log is on the Jobs page and the page follows the next check-in`, !!j.error);
+    await refresh();
+  }));
+}
+
 function storageProjects(n, where){
   const rows = [...(n.projects || [])];
   if (n.other) rows.push({name: "other projects", other: true, ...n.other});
@@ -460,6 +583,7 @@ function storageBody(n, where){
     ${head}
     ${storageMachineDisks(n)}
     ${storagePools(n)}
+    ${storageArray(n)}
     ${storageSnapshots(n)}
     ${storageShares(n)}
     ${storageDisks(n)}
@@ -495,6 +619,7 @@ function renderStorageInto(i){
   if (n) wireStorageShares(d.el, n);
   if (n) wireStoragePools(d.el, n);
   if (n) wireStorageSnapshots(d.el, n);
+  if (n) wireStorageArray(d.el, n);
 }
 
 function wireStorageTab(root){

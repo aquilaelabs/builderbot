@@ -74,7 +74,7 @@ class TheAgent(unittest.TestCase):
             got = self.sm.shares_now()
         by = {s["name"]: s for s in got}
         self.assertEqual(set(by), {"media", "docs", "backup"})
-        self.assertEqual(by["media"]["smb"], {"on": True, "guest": True, "ro": False, "users": []})
+        self.assertEqual(by["media"]["smb"], {"on": True, "guest": True, "ro": False, "tm": False, "users": []})
         self.assertEqual(by["media"]["nfs"], {"on": True, "ro": True, "clients": ["192.168.1.0/24", "nas2"]})
         self.assertEqual(by["docs"]["smb"]["users"], ["bbu-0a1b2c3d", "ada"])
         self.assertFalse(by["docs"]["nfs"]["on"])
@@ -107,6 +107,57 @@ class TheAgent(unittest.TestCase):
         self.assertNotIn("[media]", open(self.smb).read())
         self.assertNotIn("/mnt/tank/media", open(self.nfs).read())
 
+    def test_a_time_machine_target_is_said_to_the_finder_and_read_back(self):
+        smb, _nfs = self.sm.render([{"name": "tm", "path": "/mnt/tank/tm", "smb": {"on": True, "guest": False, "ro": False, "tm": True, "users": ["bbu-0a1b2c3d"]},
+                                     "nfs": {"on": False, "ro": False, "clients": []}}])
+        self.assertIn("vfs objects = catia fruit streams_xattr", smb)
+        self.assertIn("fruit:time machine = yes", smb)
+        open(self.smb, "w").write(smb)
+        with mock.patch.dict(os.environ, self.env):
+            got = self.sm.shares_now()
+        self.assertEqual((got[0]["name"], got[0]["smb"]["tm"]), ("tm", True))
+        smb, _nfs = self.sm.render([{"name": "plain", "path": "/mnt/tank/p", "smb": {"on": True, "guest": True, "ro": False, "tm": False, "users": []},
+                                     "nfs": {"on": False, "ro": False, "clients": []}}])
+        self.assertNotIn("time machine", smb)
+
+    def test_the_accounts_smb_passwords_are_imported_once_per_change_and_the_gone_removed(self):
+        sm = self.sm
+        a = self.A(); a.state = {}
+        runs = []
+        users_file = os.path.join(self.d, "smbusers")
+        fake_pw = {"bbu-0a1b2c3d": mock.Mock(pw_uid=1001)}
+
+        def run(argv, **kw):
+            runs.append(argv)
+            if argv[0] == "useradd":
+                fake_pw[argv[-1]] = mock.Mock(pw_uid=1002)
+            if argv[:2] == ["/usr/bin/pdbedit", "-i"]:
+                runs.append(("file", open(users_file).read()))
+            return mock.Mock(returncode=0, stderr="", stdout="")
+
+        def getpwnam(n):
+            if n in fake_pw:
+                return fake_pw[n]
+            raise KeyError(n)
+        rows = [{"user": "bbu-0a1b2c3d", "nt": "8846f7eaee8fb117ad06bdd830b7586c"}, {"user": "bbu-deadbeef", "nt": "31D6CFE0D16AE931B73C59D7E0C089C0"},
+                {"user": "root", "nt": "31D6CFE0D16AE931B73C59D7E0C089C0"}, {"user": "bbu-00000000", "nt": "junk"}]
+        with mock.patch.dict(os.environ, {"BB_SMB_USERS_FILE": users_file}), mock.patch.object(sm.shutil, "which", return_value="/usr/bin/pdbedit"), \
+             mock.patch.object(sm.os, "geteuid", return_value=0), mock.patch.object(sm.subprocess, "run", side_effect=run), \
+             mock.patch.object(sm, "save_state"), mock.patch("pwd.getpwnam", side_effect=getpwnam), \
+             mock.patch.object(self.A, "_out", create=True, return_value="bbu-0a1b2c3d:1001:\nbbu-feedface:1003:\nnobody:65534:\n"):
+            a.smb_users_want(rows)
+            n = len(runs)
+            a.smb_users_want(rows)
+            self.assertEqual(len(runs), n, "the same set again does nothing")
+        # The missing user made, the gone one removed, the file imported with both hashes upper-case, and removed after.
+        self.assertEqual([r for r in runs if r[0] == "useradd"][0][-1], "bbu-deadbeef")
+        self.assertIn(["/usr/bin/pdbedit", "-x", "-u", "bbu-feedface"], runs)
+        text = [r[1] for r in runs if isinstance(r, tuple)][0]
+        self.assertEqual(text, "bbu-0a1b2c3d:1001:" + "X" * 32 + ":8846F7EAEE8FB117AD06BDD830B7586C:[U          ]:LCT-00000000:\n"
+                               "bbu-deadbeef:1002:" + "X" * 32 + ":31D6CFE0D16AE931B73C59D7E0C089C0:[U          ]:LCT-00000000:\n")
+        self.assertFalse(os.path.exists(users_file))
+        self.assertTrue(a.state.get("smb_users_sig"))
+
     def test_what_is_refused_writes_nothing(self):
         before = open(self.smb).read()
         for cfg, why in (({"share": "set", "name": "x", "path": "/home/ada", "smb": {"on": True, "guest": True}}, "under /mnt or /srv"),
@@ -131,7 +182,7 @@ class TheController(unittest.TestCase):
         import nodes
         got = nodes._census({"shares": [{"name": "media", "path": "/mnt/tank/media<b>", "smb": {"on": True, "guest": "yes", "ro": False, "users": ["ada", 7]},
                                          "nfs": {"on": True, "ro": True, "clients": ["192.168.1.0/24"]}}, {"name": "bad name"}]})
-        self.assertEqual(got["shares"], [{"name": "media", "path": "/mnt/tank/mediab", "smb": {"on": True, "guest": False, "ro": False, "users": ["ada"]},
+        self.assertEqual(got["shares"], [{"name": "media", "path": "/mnt/tank/mediab", "smb": {"on": True, "guest": False, "ro": False, "tm": False, "users": ["ada"]},
                                           "nfs": {"on": True, "ro": True, "clients": ["192.168.1.0/24"]}}])
 
     def test_the_verb_is_the_own_machines(self):

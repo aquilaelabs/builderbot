@@ -62,6 +62,7 @@ const PROFILE_SAYS = {
   mykey: "your key, who holds it, the tokens you gave repositories, Unlock and Lock",
   uses: "each time a token of yours was opened, and for what",
   terminal: "the size, cursor and colors of your terminals",
+  shares: "the shares on this machine you may reach, the address of each, and your SMB password",
   devices: "your browsers and apps, to sign out",
   reach: "email, a webhook, ntfy, Gotify, Pushover, Telegram, Discord or Slack, each with what it takes and a quiet window",
 };
@@ -172,6 +173,7 @@ function renderProfileInto(i){
     ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
     ${keyMineSection()}
     ${sec("terminal", "Your terminal", profileTerminal())}
+    ${profile.smb ? docSection("profile", "shares", "Your shares", profile.smb.rows?.length ? String(profile.smb.rows.length) : "", profileShares(profile.smb)) : ""}
     ${docSection("profile", "reach", "Where the bell reaches you", (pfReach?.dest || []).length ? String(pfReach.dest.length) : "", profileReach())}
     ${docSection("profile", "devices", "Signed in as you", "", profileSignins(profile.signins || []) + profileDevices(profile.devices || []))}`;
   wireSections(d.list);
@@ -182,6 +184,58 @@ function renderProfileInto(i){
   wireTwoFactor(d.el);
   wireKeyMine(d.el);
   wireTerminalLook(d.el);
+  wireShares(d.el);
+}
+
+// Your shares (R164 step 1): the SMB shares on the controller's own machine
+// this account may reach (named on them, or everybody as a guest), each
+// with the address to map it by on Windows and on a Mac, and the SMB
+// password, set here and never shown: the machine keeps what Samba keeps.
+function profileShares(sm){
+  const host = sm.host || "", addr = sm.address || "";
+  const rows = (sm.rows || []).map(r => `<div class="row"><div class="grow">
+      <div class="name">${esc(r.name)}${r.ro ? ` <span class="pill">read-only</span>` : ""}${r.guest ? ` <span class="pill">everybody</span>` : ""}${r.tm ? ` <span class="pill">Time Machine</span>` : ""}</div>
+      <div class="sub"><code>\\${esc(host)}\${esc(r.name)}</code> on Windows, <code>smb://${esc(host)}/${esc(r.name)}</code> on a Mac${addr ? `, or by the address ${esc(addr)}` : ""}</div>
+    </div></div>`).join("");
+  const when = sm.at ? `set ${esc(ago(sm.at))}` : "none set yet: the shares named to you ask for one";
+  return `<div class="row stack2"><div class="grow">
+    ${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No share names you yet${sm.set ? "" : ", and no SMB password is set"}. An administrator names you on one from the Storage page.</div>`}
+    <div class="logset">
+      <div class="logdays setrow col ctlrow">
+        ${lbl("pfSmb", "SMB password", "what you type when a share asks: your account's name and this; at least 8 characters, kept apart from your sign-in")}
+        <input id="pfSmb" type="password" autocomplete="new-password">
+      </div>
+      <div class="logdays setrow col ctlrow">
+        ${lbl("pfSmb2", "SMB password again")}
+        <input id="pfSmb2" type="password" autocomplete="new-password">
+      </div>
+      <div class="actbar">
+        <span class="state">${when}${sm.set ? ` · sign in to a share as <code>${esc(profile.name)}</code>` : ""}</span>
+        ${sm.set ? `<button type="button" id="pfSmbClear">Clear</button>` : ""}
+        <button type="button" id="pfSmbSet" class="primary" disabled>${sm.set ? "Change" : "Set"}</button>
+      </div>
+    </div></div></div>`;
+}
+function wireShares(root){
+  const a = root.querySelector("#pfSmb"), b = root.querySelector("#pfSmb2"), set = root.querySelector("#pfSmbSet"), clear = root.querySelector("#pfSmbClear");
+  if (!a || !b || !set) return;
+  const check = () => { set.disabled = !(a.value.length >= 8 && a.value === b.value); };
+  a.oninput = b.oninput = check;
+  const post = async (btn, password, word) => {
+    busy(btn, word);
+    try{
+      const j = await (await postJSON("/api/profile", {action: "smb-password", password})).json();
+      if (j.error){ notify(j.error, true); return; }
+      notify(password ? "your SMB password is set: the machine takes it up within a minute" : "your SMB password is cleared");
+      await loadProfile();
+    }catch(e){ notify("profile: " + failWords(e), true); }
+    finally{ unbusy(btn, word); }
+  };
+  set.onclick = () => post(set, a.value, "Setting");
+  if (clear) clear.onclick = async () => {
+    if (!await askYes("Clear your SMB password? The shares named to you refuse you until you set another.", {title: "Clear it?", verb: "Clear", danger: true})) return;
+    post(clear, "", "Clearing");
+  };
 }
 
 // Your terminal (R133 step 10): its text size, cursor and colors, yours in

@@ -316,6 +316,7 @@ scripts/
     disks.py                     the machine's disks for the census (R162 step 1): lsblk's JSON and smartctl's, each whole disk with what its partitions hold
     shares.py                    the machine's SMB and NFS shares for the census and the storage-share job (R162 step 1): BuilderBot's own two files, read and written whole
     pools.py                     the machine's ZFS pools for the census and the storage-pool job (R162 step 1): made, grown, scrubbed, a member replaced, exported, destroyed, each disk held to the census
+    array.py                     the machine's Unraid-style array for the census and the storage-array job (R162 step 2): the record, snapraid.conf and the fstab lines rendered from it, made, a disk added or replaced, synced, scrubbed, checked, destroyed
     agent.py                     Agent: hello, the loop and self-update, made of the parts above
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only

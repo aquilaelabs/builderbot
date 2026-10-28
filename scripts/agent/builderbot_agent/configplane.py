@@ -103,6 +103,8 @@ class ConfigPlaneMixin:
             return self._apply_storage_pool(job, cfg)
         if what == "storage-snapshot":
             return self._apply_storage_snapshot(job, cfg)
+        if what == "storage-array":
+            return self._apply_storage_array(job, cfg)
         if what == "machine":
             return self._apply_machine(job, cfg)
         if what == "os-update":

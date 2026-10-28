@@ -32,11 +32,12 @@ from .configplane import ConfigPlaneMixin
 from .osimage import OsImageMixin
 from .shares import SharesMixin
 from .pools import PoolsMixin
+from .array import ArrayMixin
 from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, AccountsMixin,
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, AccountsMixin,
             TokensMixin, ScanMixin):
     def __init__(self, state):
         self.state = state
@@ -329,6 +330,10 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 self.account_users_pass()
                 self.refresh_session_tool()
                 self.session_renew()
+            # The accounts' SMB passwords on the controller's own machine
+            # (R164 step 1), imported into Samba once per change.
+            if isinstance(r.get("smb_users"), list):
+                self.smb_users_want(r["smb_users"])
             # The coding agents' sign-ins sealed (R126): the controller's
             # switch, and each account's public key here, kept in node.json.
             ts, pubs = bool(r.get("token_seal")), r.get("token_pubs") if isinstance(r.get("token_pubs"), dict) else {}
@@ -637,6 +642,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             timed("session_check", self.session_check)
             timed("firewall_check", self.session_firewall_check)
             timed("account_users", self.account_users_pass)
+            timed("array", self.array_pass)
             timed("tokens", self.token_pass)
             timed("idle_reap", self.session_idle_reap)
             timed("runner_check", self.runner_check)
