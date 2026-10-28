@@ -1475,6 +1475,7 @@ def _census(c):
             out["pools"].append({"name": pl["name"],
                                  **{k: int(pl[k]) if isinstance(pl.get(k), int) else 0 for k in ("size_mb", "alloc_mb", "free_mb")},
                                  "health": pw(pl.get("health"), 16), "mount": pw(pl.get("mount"), 120),
+                                 "encrypted": pl.get("encrypted") is True, "locked": pl.get("locked") is True,
                                  "scrub": pw(pl.get("scrub"), 160), "errors": pw(pl.get("errors"), 120),
                                  "vdevs": [{"type": pw(v.get("type"), 12), "state": pw(v.get("state"), 12),
                                             "disks": [{"id": pw(d.get("id"), 120), "state": pw(d.get("state"), 12)}
@@ -2214,6 +2215,9 @@ ext_mounts = None
 # ...and the backups it copies (storebackups.wanted, R162 step 5), with its scheduled names for the bell.
 store_backups = None
 backup_summary = None
+# ...and the passphrases of its encrypted pools (poolkeys.wanted, R162 step 3), given what is unlocked.
+pool_keys = None
+pool_keys_set = None
 # ...and how many of a node's seals are under a key before today's.
 token_stale = None
 # ...and whether there is an install key to make any of it from.
@@ -3291,6 +3295,36 @@ def node_storage_array(principal, node_id, req):
     return r
 
 
+pool_keys_offer = pool_keys_forget = None
+
+
+def node_storage_key(principal, node_id, req):
+    """An encrypted pool's key (R162 step 3): unlock (the passphrase typed
+    after a boot, handed to the agent once), keep (the passphrase kept
+    sealed here from now on) or forget (asked after every boot from now
+    on); the own machine's, an administrator's."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "encrypted pools are the controller's own machine's"}
+    act, pool = str(req.get("key") or ""), str(req.get("pool") or "")
+    if act not in ("unlock", "keep", "forget") or not pool_keys_offer or not pool_keys_set or not pool_keys_forget:
+        return {"error": "a key action is unlock, keep or forget"}
+    if not any(p.get("name") == pool and p.get("encrypted") for p in (n.get("reported") or {}).get("pools") or []):
+        return {"error": f"{pool or 'nothing'} is not an encrypted pool {n['name']} lists"}
+    if act == "forget":
+        r = pool_keys_forget(pool)
+    elif act == "keep":
+        r = pool_keys_set(pool, req.get("passphrase"), True)
+    else:
+        r = pool_keys_offer(pool, req.get("passphrase"))
+    if r.get("ok"):
+        audit(principal, "storage-key", node_id, {"pool": pool, "key": act})
+        _bump()
+    return r
+
+
 def node_storage_share(principal, node_id, req):
     """A share on the controller's own machine (R162 step 1): set (SMB,
     NFS or both, on a folder under a pool's mount) or removed, a system job
@@ -3425,6 +3459,16 @@ def node_storage_pool(principal, node_id, req):
             if known[d].get("system"):
                 return {"error": f"{d} is the system disk, which never goes into a pool"}
         cfg.update(layout=layout, disks=disks, wipe=req.get("wipe") is True)
+        # Native encryption (R162 step 3): the passphrase goes to the key
+        # record (kept sealed here, or asked after every boot), never into
+        # the job; the hello hands it to the agent before the job runs.
+        if action == "create" and req.get("encrypt") is True:
+            if not pool_keys_set:
+                return {"error": "encrypted pools are not set up on this controller"}
+            r = pool_keys_set(name, req.get("passphrase"), req.get("keep_key") is True)
+            if r.get("error"):
+                return r
+            cfg["encrypt"] = True
     elif action == "replace":
         old, new = str(req.get("old") or "")[:120], str(req.get("new") or "")
         if not old or new not in known or known[new].get("system"):
@@ -3466,6 +3510,9 @@ def storage_attention():
                 out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "hot", "bad": False, "key": f"disk:hot:{n['id']}:{d.get('serial') or d.get('name')}:{sm['temp_c'] // 5 * 5}",
                             "said": f"{who} is at {sm['temp_c']} °C; {DISK_HOT_C} °C and over shortens its life"})
         for pl in rep.get("pools") or []:
+            if pl.get("locked"):
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "locked", "bad": False, "key": f"pool:locked:{n['id']}:{pl['name']}",
+                            "said": f"the pool {pl['name']} is locked: its passphrase is asked for on the Storage page, and its shares wait until then"})
             if pl.get("health") and pl["health"] not in ("online", ""):
                 out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "pool", "bad": True, "key": f"pool:{n['id']}:{pl['name']}:{pl['health']}",
                             "said": f"the pool {pl['name']} is {pl['health']}{': ' + pl['errors'] if pl.get('errors') and 'no known data errors' not in pl['errors'].lower() else ''}"})
@@ -4350,6 +4397,10 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             "ext_mounts": (ext_mounts() if ext_mounts and own_machine(n) else []),
             # ...and the backups it copies (R162 step 5).
             "store_backups": (store_backups() if store_backups and own_machine(n) else []),
+            # ...and its encrypted pools' passphrases (R162 step 3): the kept ones, and an
+            # offered one until the census says the pool is open; none in Safe mode.
+            "pool_keys": (pool_keys({p["name"] for p in (n.get("reported") or {}).get("pools") or [] if not p.get("locked")})
+                          if pool_keys and own_machine(n) else []),
             # ...and its coding agents' sign-ins sealed there (R126), with
             # each account's public key to seal them with.
             "token_seal": token_seal_on(nid),
@@ -6717,6 +6768,7 @@ def verb(principal, req):
              "storage-snapshot": lambda: node_storage_snapshot(principal, nid, req),
              "storage-array": lambda: node_storage_array(principal, nid, req),
              "storage-backup": lambda: node_storage_backup(principal, nid, field(req, "name")),
+             "storage-key": lambda: node_storage_key(principal, nid, req),
              "host-update": lambda: node_host_update(principal, nid, req.get("reboot") is True),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),

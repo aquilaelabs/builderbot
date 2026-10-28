@@ -403,6 +403,23 @@ into Samba's database there, never written in a job or shown again. A
 share ticked as a Mac's Time Machine target is offered to the Finder as
 one (`fruit:time machine`), found by mDNS as Samba registers it.
 
+**Encryption** (R162): a new pool can be made with ZFS native encryption
+(`aes-256-gcm`, a passphrase). Where its key lives is the person's choice,
+said on the form with what each protects against: kept on the machine,
+sealed under the install key as every secret is, so the pool unlocks at
+every boot and the disks are unreadable pulled from the machine; or asked
+for on the Storage page after every boot, which also covers the whole
+machine being taken, at the cost of a person at the page after each boot
+while the pool and its shares wait. The choice is changed later from the
+pool's row (Keep its key here, Stop keeping its key here). The passphrase
+never rides a job: the controller hands it to the own machine's agent in
+its hello (a kept key every time, an offered one until the pool reports
+open), the agent keeps it in memory only and gives it to `zpool` and
+`zfs load-key` on their stdin. A locked pool is a row on the bell, a share
+on it says its pool is locked rather than vanishing, and Safe mode boots
+with every pool locked. Nothing recovers a pool without its passphrase.
+Each array disk under LUKS is not here yet.
+
 **Snapshots** (R162): under the pools, each pool's snapshots as `zfs`
 lists them, counted by kind (hourly, daily, weekly, manual) with the
 newest ten named, and Snapshot now, which takes one of every dataset at

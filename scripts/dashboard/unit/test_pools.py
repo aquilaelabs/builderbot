@@ -190,7 +190,7 @@ class TheController(unittest.TestCase):
                                         "scrub": "none requested", "errors": "No known data errors",
                                         "vdevs": [{"type": "mirror", "state": "online", "disks": [{"id": "ata-A", "state": "online"}, "junk"]}]},
                                        {"name": "Bad Name"}]})
-        self.assertEqual(got["pools"], [{"name": "tank", "size_mb": 10, "alloc_mb": 0, "free_mb": 4, "health": "ONLINEb", "mount": "/mnt/tank",
+        self.assertEqual(got["pools"], [{"name": "tank", "size_mb": 10, "alloc_mb": 0, "free_mb": 4, "health": "ONLINEb", "mount": "/mnt/tank", "encrypted": False, "locked": False,
                                          "scrub": "none requested", "errors": "No known data errors",
                                          "vdevs": [{"type": "mirror", "state": "online", "disks": [{"id": "ata-A", "state": "online"}]}]}])
 
