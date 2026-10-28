@@ -74,6 +74,38 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
      '...and Details opens it on the description, the button reading Less');
 }
 
+// ---- the whole description (step 2) -----------------------------------------
+// An app's row opens on its compose file with the blanks New container
+// fills; a toolchain's on what it adds to a session and its terms.
+{
+  const app = await page.evaluate(() => document.querySelector('.doc .librarytab .lrow[data-lrow^="app:"]')?.dataset.lrow || '');
+  if (app){
+    await page.click(`.doc .librarytab .lrow[data-lrow="${app}"] [data-libmore]`);
+    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lrow[data-lrow="${k}"]`)?.classList.contains('open'), app);
+    ok(await page.$eval(`.doc .librarytab .lrow[data-lrow="${app}"]`, r => /image:/.test(r.querySelector('.libcompose')?.textContent || '')
+       && r.querySelector('.ldetail code') && /Install opens New container/.test(r.querySelector('.ldetail').textContent)),
+       `an app's row opens on its compose file, its blanks and how Install makes it a container (${app})`);
+  } else ok(true, 'no app rows here (the account may not make containers)');
+  const tc = await page.evaluate(() => {
+    const r = lib.rows.find(x => x.kind === 'toolchain' && (x.tool || x.terms?.length));
+    return r ? `toolchain:${r.name}` : '';
+  });
+  if (tc){
+    if (!await page.$eval(`.doc .librarytab .lrow[data-lrow="${tc}"]`, r => r.classList.contains('open')))
+      await page.click(`.doc .librarytab .lrow[data-lrow="${tc}"] [data-libmore]`);
+    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lrow[data-lrow="${k}"]`)?.classList.contains('open'), tc);
+    ok(await page.$eval(`.doc .librarytab .lrow[data-lrow="${tc}"] .ldetail`, d => /bb tool|Licensed|accept/.test(d.textContent)),
+       `a toolchain's row opens on what it adds to a session and its terms (${tc})`);
+  }
+  const ag = await page.evaluate(() => document.querySelector('.doc .librarytab .lrow[data-lrow="agent:claude-code"]')?.dataset.lrow || '');
+  if (ag){
+    await page.click(`.doc .librarytab .lrow[data-lrow="${ag}"] [data-libmore]`);
+    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lrow[data-lrow="${k}"]`)?.classList.contains('open'), ag);
+    ok(await page.$eval(`.doc .librarytab .lrow[data-lrow="${ag}"] .ldetail`, d => /session account/.test(d.textContent) && !!d.querySelector('[data-signin]')),
+       "Claude Code's row opens on its facts and this person's sign-in on the node");
+  }
+}
+
 // ---- the verbs are the pages' own ------------------------------------------
 // Install on a toolchain row that is not installed: the toolchain job on
 // the node, which the stub agent answers at once (it fails the install, as

@@ -103,7 +103,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   // The Library (R170).
   'lib', 'libNode', 'libRev', 'libSeq', 'libLanded', 'libFollow', 'libQ', 'libKind', 'libTier', 'libOpen', 'LIB_KINDS', 'LIB_TIERS',
   'openLibrary', 'openLibraryOn', 'libPick', 'loadLibrary', 'libMatch', 'libPills', 'libState', 'libActs', 'libDetail', 'libRow',
-  'libFilterBand', 'libSections', 'renderLibraryInto', 'wireLibrary', 'keepFocus', 'libWithToolchains', 'libAct', 'cAppWant', 'openNewContainerApp',
+  'libFilterBand', 'libSections', 'renderLibraryInto', 'wireLibrary', 'keepFocus', 'libWithToolchains', 'libAct', 'libSeen', 'libLook', 'cAppWant', 'openNewContainerApp',
   'reschedRevs', 'rnDrawAuth', 'rnDrawKey', 'rnDrawStore', 'rnKeyAct', 'drawSetup', 'setupFinish', 'setupNeeded', 'setupNode', 'setupOwn',
   'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillTestNode', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnDrawGitPol', 'rnWhyOff', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnSavePeople', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveLayout', 'sendCode', 'sendKey',

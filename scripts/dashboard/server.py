@@ -11286,12 +11286,18 @@ class Handler(BaseHTTPRequestHandler):
         may_install = not users.may(who, "toolchains-write")
         may_apps = not users.may(who, "docker-write")
         cat = catalogindex.index(settings.get("catalog_url") or None) if may_install else {}
+        # An app's row opens on its compose file (step 2), so it rides along.
+        napps = [{**a, "compose": nasapps.APPS.get(a["id"], {}).get("compose", "")} for a in nasapps.catalog()] if may_apps else []
+        # ...and an agent's on what this person added to it there (the Agents page's Yours).
+        uid = users.uid_of(who)
+        mine = next((x for x in plugins.of(uid) if x["node"] == nid), {}) if uid and n else {}
         return self._json({"node": nid, "name": tc.get("name") or (n or {}).get("name") or "", "live": bool(tc.get("live", (n or {}).get("live"))),
-                           "rows": library.rows(tc, agentcode.rows(n) if n else [], nasapps.catalog() if may_apps else [],
-                                                cat.get("index"), apps.view()),
+                           "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view()),
                            "job": tc.get("job") or {"running": False}, "catalog_error": cat.get("error", ""),
                            "may": {"install": may_install, "apps": may_apps, "packs": users.is_admin(who)},
-                           "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb")}})
+                           "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb")},
+                           "sandbox": bool(tc.get("sandbox")), "managed": bool(tc.get("administers")) and not tc.get("locked"),
+                           "yours": {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}})
 
     def _get_catalog(self):
         """GET /api/catalog[?fresh=1] (R169 step 2): the vetted catalog's

@@ -378,9 +378,14 @@ vetted, from the catalog the maintainers sign; sideloaded, added by URL or
 made here), what is installed and what an update would move it to, one
 line saying what it is, and at its right the one verb it takes: Install,
 Update, Remove, Edit on a pack, Download on a companion. Details opens the
-row on the whole description: what it fetches and runs, its terms, its
-platforms, its size on the store, an agent's sign-in on this node, an app's
-port and the secrets made for it. A search box under the head matches a
+row on the whole description, the lines the Toolchains page's open row had:
+what it adds to a session, its terms, its system packages, what it needs,
+where it is on the store, how its download was checked, and its size; a
+pack's **Look**, which fetches its manifest at the commit it is pinned to
+and says what it fetches and runs, as the Add tool pack dialog does; an
+agent's facts, your sign-in on this node and what you added to it; an app's
+compose file as the catalog holds it, with the blanks New container fills
+and the secrets made for it; a companion's other files. A search box under the head matches a
 name, a description, a kind or a tier, and the chips beside it narrow the
 list by kind and by tier; nothing there is saved.
 

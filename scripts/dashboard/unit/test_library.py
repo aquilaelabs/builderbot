@@ -13,14 +13,17 @@ TC = {"name": "box", "live": True, "root": "/mnt/SDK", "free_mb": 2048,
       "job": {"running": True, "action": "install", "current": "jdk"},
       "items": [
           {"name": "jdk", "label": "JDK 21", "about": "Java", "installed": False, "state": "", "latest": "21.0.4", "platforms": ["linux/amd64"]},
-          {"name": "node", "label": "Node", "about": "JavaScript", "installed": True, "version": "22.1", "latest": "22.2", "state": "update", "updatable": True},
+          {"name": "node", "label": "Node", "about": "JavaScript", "installed": True, "version": "22.1", "latest": "22.2", "state": "update", "updatable": True,
+           "tool": "node", "path": "/mnt/SDK/node", "system": {"manager": "apt", "names": ["libx"], "missing": []}, "needs": [], "needed_by": ["pnpm"],
+           "verified": {"algo": "sha256", "where": "its release notes"}, "pinned_by": ["web"], "reopen": 1},
           {"name": "ghidra", "label": "Ghidra", "about": "a decompiler", "installed": True, "version": "11", "state": "current",
            "pack": {"url": "https://example.com/g", "commit": "a" * 40, "tier": "vetted", "by": "ann"}},
           {"name": "mine", "label": "Mine", "about": "my own", "installed": False, "pack": {"url": "", "commit": "b" * 40, "tier": "url", "here": True}},
       ]}
 AGENTS = [{"name": "claude-code", "agent": "claude", "label": "Claude Code", "for": "Claude", "installed": "2.1", "latest": "2.2", "state": "update", "running": False},
           {"name": "codex-cli", "agent": "codex", "label": "Codex CLI", "for": "Codex", "installed": "", "latest": "0.9", "state": "absent"}]
-APPS = [{"id": "jellyfin", "name": "Jellyfin", "what": "media", "port": 8096, "media": True, "secrets": []}]
+APPS = [{"id": "jellyfin", "name": "Jellyfin", "what": "media", "port": 8096, "media": True, "secrets": [],
+         "compose": "services:\n  jellyfin:\n    image: jellyfin/jellyfin:10.9\n    ports: ['${PORT}:8096']\n    volumes: ['${DATA}:/config', '${MEDIA}:/media']\n"}]
 INDEX = {"packs": [{"name": "ghidra", "url": "https://example.com/g", "commit": "a" * 40, "sha256": "c" * 64, "tier": "vetted", "about": "a decompiler"},
                    {"name": "radare", "url": "https://example.com/r", "commit": "d" * 40, "sha256": "e" * 64, "tier": "vetted", "about": "another", "platforms": ["linux/*"]},
                    {"name": "gone", "url": "https://example.com/x", "commit": "f" * 40, "sha256": "0" * 64, "tier": "vetted", "withdrawn": True}]}
@@ -65,9 +68,20 @@ class Rows(unittest.TestCase):
         r = offers[0]
         self.assertEqual((r["tier"], r["verb"], r["catalog"]["sha256"], r["latest"]), ("vetted", "add", "e" * 64, "d" * 12))
 
+    def test_the_open_rows_lines_ride_along(self):
+        # Step 2: what the Toolchains page's open row says comes with the row.
+        node = self.by[("toolchain", "node")]
+        self.assertEqual((node["tool"], node["path"], node["needed_by"], node["pinned"], node["reopen"]), ("node", "/mnt/SDK/node", ["pnpm"], ["web"], 1))
+        self.assertEqual(node["system"]["manager"], "apt")
+        self.assertEqual(node["verified"]["algo"], "sha256")
+        self.assertEqual(self.by[("toolchain", "jdk")]["system"], None)
+
     def test_apps_and_companions(self):
         j = self.by[("app", "jellyfin")]
         self.assertEqual((j["label"], j["port"], j["media"], j["verb"], j["installed"]), ("Jellyfin", 8096, True, "install", False))
+        # ...and its compose with the blanks New container fills, sorted (step 2).
+        self.assertIn("image: jellyfin/jellyfin:10.9", j["compose"])
+        self.assertEqual(j["blanks"], ["DATA", "MEDIA", "PORT"])
         a, v = self.by[("companion", "android")], self.by[("companion", "vscode")]
         self.assertEqual((a["verb"], a["download"]["url"], a["version"]), ("download", "/apps/a.apk", "0.9.0"))
         self.assertEqual((v["verb"], v["absent"], v["download"]), ("", "0.9.0", None))

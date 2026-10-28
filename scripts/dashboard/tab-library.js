@@ -21,6 +21,7 @@
 let lib = null, libNode = "", libRev = 0, libSeq = 0, libLanded = 0, libFollow = null;
 let libQ = "", libKind = "", libTier = "";
 const libOpen = new Set();     // the rows opened on their descriptions (rows-you-open)
+const libSeen = {};            // what a pack's Look brought back, by row key ("looking" while it is asked)
 // The sections, in the page's order: what a session runs first, then what
 // it builds with, then what a person adds, then what the box hosts, then
 // what the person takes to their own machines.
@@ -81,6 +82,10 @@ async function loadLibrary(){
     lib = got;
   }catch(e){ if (!keep()) return; lib = {error: failWords(e)}; }
   libLanded = asked;
+  // The lines the Toolchains and Agents pages draw read their own page's
+  // state: the node's sandbox flag (Install them now on a system line) and
+  // this person's plugins and MCP servers there (an agent's Yours).
+  if (!lib.error){ tcSandboxNow = !!lib.sandbox; agYours = lib.yours || {plugins: [], mcp: {}}; }
   // One follow-up while a job writes a row, not a poll: the toolchains
   // revision moves when the job ends, and the row's "installing" until then.
   clearTimeout(libFollow); libFollow = null;
@@ -142,23 +147,49 @@ function libDetail(r){
   const n = (nodesList || []).find(x => x.id === libNode);
   const lines = [];
   if (r.platforms?.length) lines.push(`<span class="sub">Platforms: ${esc(r.platforms.join(", "))}</span>`);
+  const key = `${r.kind}:${r.name}`;
   if (r.kind === "toolchain" || r.kind === "pack"){
+    // The Toolchains page's open row, line for line: what it adds to a
+    // session, its terms, its system packages, what it needs, where it
+    // is, how its download was checked, and who started before it landed.
+    if (r.tool) lines.push(`<span class="sub">Adds <code>bb tool ${esc(r.tool)}</code> to a session.</span>`);
+    if (r.needs?.length) lines.push(`<span class="sub">Needs ${esc(r.needs.join(", "))}, installed with it.${r.needed_by?.length ? ` Needed by ${esc(r.needed_by.join(", "))}.` : ""}</span>`);
+    else if (r.needed_by?.length) lines.push(`<span class="sub">Needed by ${esc(r.needed_by.join(", "))}.</span>`);
     lines.push(tcTermsLine(r));
+    lines.push(tcSystemLine(r, !!lib?.managed));
+    lines.push(tcNeedsLine(r));
+    if (r.installed && r.path && !r.running) lines.push(`<span class="sub">At ${esc(r.path)}.</span>`);
+    lines.push(tcVerifiedLine(r));
+    if (r.reopen && !r.running) lines.push(`<span class="sub warn">${r.reopen === 1 ? "1 session" : `${r.reopen} sessions`} open here started before this was installed: reopen ${r.reopen === 1 ? "it" : "them"} to use it.</span>`);
     if (r.size) lines.push(`<span class="sub">About ${esc(r.size)} on the store.</span>`);
     if (r.pack) lines.push(`<span class="sub">${r.pack.here ? "Made here" : `From <code>${esc(r.pack.url)}</code> at ${esc((r.pack.commit || "").slice(0, 12))}`}${r.pack.by ? `, added by ${esc(r.pack.by)}` : ""}. A session has <code>bb tool ${esc(r.name)}</code>.</span>`);
-    if (r.catalog) lines.push(`<span class="sub">From <code>${esc(r.catalog.url)}</code> at ${esc((r.catalog.commit || "").slice(0, 12))}, its archive's sha256 checked on the way in. Install opens the Add tool pack dialog on that commit: Look shows what it fetches and runs, and Add keeps exactly that.</span>`);
+    if (r.catalog) lines.push(`<span class="sub">From <code>${esc(r.catalog.url)}</code> at ${esc((r.catalog.commit || "").slice(0, 12))}, its archive's sha256 checked on the way in. Install opens the Add tool pack dialog on that commit, and Add keeps exactly that.</span>`);
     if (r.wrong_platform) lines.push(`<span class="sub warn">${esc(r.wrong_platform)}</span>`);
     if (r.pinned?.length) lines.push(`<span class="sub">Pinned by ${esc(r.pinned.map(projLabel).join(", "))}.</span>`);
+    // What a pack fetches and runs, the dialog's Look drawn on the row
+    // (tpSeen): asked once per row, kept while the page is open.
+    if (r.pack && !r.pack.here || r.catalog){
+      const seen = libSeen[key];
+      lines.push(seen === "looking" ? `<span class="sub">Looking at the repository<span class="dots"></span></span>`
+        : seen?.error ? `<span class="sub bad">${esc(seen.error)}</span>`
+        : seen ? tpSeen(seen, null, false)
+        : `<span class="sub"><button type="button" class="link" data-liblook="${esc(key)}">Look</button> at what it fetches and runs, before anything is installed.</span>`);
+    }
   }
   if (r.kind === "agent"){
-    lines.push(`<span class="sub">Installed for the node's session account; ${r.latest ? `the latest is ${esc(r.latest)}` : "its latest is not known yet"}.</span>`);
+    const a = agentById(r.agent);
+    lines.push(`<span class="sub">${a?.product ? `${esc(a.product)}, installed` : "Installed"} for the node's session account; ${r.latest ? `the latest is ${esc(r.latest)}` : "its latest is not known yet"}.${
+      a?.provider ? ` Signs in with ${/^(?:[AEIOU]|x(?=[A-Z]))/.test(a.provider) ? "an" : "a"} ${esc(a.provider)} account.` : ""}</span>`);
     if (r.error) lines.push(`<span class="sub bad">${esc(r.error)}</span>`);
-    if (n && r.installed && typeof signinBlock === "function" && (agentById(r.agent) || {}).provider)
+    if (n && (r.installed || r.agent === "claude") && typeof signinBlock === "function" && a?.provider)
       lines.push(`<div class="field agpart"><div class="fsub">Your sign-in</div>${signinBlock(n, r.agent)}</div>`);
+    if (n && r.installed && a && typeof agExtras === "function") lines.push(agExtras(a));
   }
   if (r.kind === "app"){
     lines.push(`<span class="sub">Install opens New container with ${esc(r.label)} picked: its folders, the user, the time zone and the port are filled in, and Create makes it a container on the Containers page${r.port ? `, on port ${esc(String(r.port))}` : ""}.</span>`);
     if (r.secrets?.length) lines.push(`<span class="sub">Made for it when it is created: ${esc(r.secrets.join(", "))}.</span>`);
+    if (r.blanks?.length) lines.push(`<span class="sub">Its blanks, filled from what you type: ${r.blanks.map(b => `<code>${esc(b)}</code>`).join(", ")}.</span>`);
+    if (r.compose) lines.push(`<pre class="libcompose mono">${esc(r.compose.trim())}</pre>`);
   }
   if (r.kind === "companion"){
     lines.push(`<span class="sub">${typeof devHow === "function" ? devHow(r.name) : ""}</span>`);
@@ -277,6 +308,24 @@ function wireLibrary(root){
   const add = root.querySelector("[data-libadd]");
   if (add) add.onclick = () => libWithToolchains(() => tpOpen(""));
   root.querySelectorAll("[data-libact]").forEach(b => b.onclick = () => libAct(b, b.dataset.libact, b.dataset.libkind, b.dataset.libname));
+  root.querySelectorAll("[data-liblook]").forEach(b => b.onclick = () => libLook(b.dataset.liblook));
+  // The Toolchains page's own presses on its lines, wired the same.
+  root.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = async () => { await tcAct("sysdeps", [b.dataset.tcsys]); loadLibrary(); });
+  root.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = async () => { await tcAct("install", [b.dataset.tcneed]); loadLibrary(); });
+}
+
+// A pack's Look on its row: the manifest fetched at the commit it is pinned
+// to (an added pack at its own, a catalog offer at the catalog's, its archive
+// checked against the catalog's sha256), drawn as the dialog draws it.
+async function libLook(key){
+  const r = (lib?.rows || []).find(x => `${x.kind}:${x.name}` === key);
+  if (!r || libSeen[key] === "looking") return;
+  libSeen[key] = "looking"; libRev++; drawPanes();
+  const body = r.catalog ? {action: "preview", url: r.catalog.url, commit: r.catalog.commit, sha256: r.catalog.sha256}
+    : {action: "preview", url: r.pack.url, commit: r.pack.commit};
+  const j = await (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
+  libSeen[key] = j;
+  libRev++; drawPanes();
 }
 
 // The search keeps its caret through the redraw its own keystroke brings.

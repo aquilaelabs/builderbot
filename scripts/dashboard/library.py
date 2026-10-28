@@ -10,6 +10,8 @@ node (installed, version, latest, update due, a job in flight), and the
 one verb the row takes. The page draws the rows; each verb goes to the
 read's own endpoint, so nothing is installed two ways.
 """
+import re
+
 KINDS = ("toolchain", "agent", "pack", "app", "companion")
 TIER_WORDS = {"official": "Official", "vetted": "Vetted", "url": "Sideloaded", "here": "Sideloaded", "sideloaded": "Sideloaded"}
 
@@ -48,12 +50,17 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions):
                     "installed": bool(i.get("installed")), "unknown": bool(i.get("unknown")), "version": i.get("version") or "",
                     "latest": i.get("latest") or "", "update": i.get("state") == "update", "updatable": bool(i.get("updatable")),
                     "running": busy_on == i["name"], "doing": job.get("action") or "" if busy_on == i["name"] else "",
-                    "size": i.get("size") or "", "wrong_platform": i.get("wrong_platform") or "", "pinned": i.get("pinned") or [],
+                    "size": i.get("size") or "", "wrong_platform": i.get("wrong_platform") or "", "pinned": i.get("pinned_by") or i.get("pinned") or [],
+                    # The open row's lines, as the Toolchains page draws them (step 2).
+                    "tool": i.get("tool") or "", "system": i.get("system"), "needs": i.get("needs") or [], "needed_by": i.get("needed_by") or [],
+                    "needs_missing": i.get("needs_missing") or [], "path": i.get("path") or "", "verified": i.get("verified"), "reopen": i.get("reopen") or 0,
                     "pack": {k: pack.get(k) for k in ("url", "commit", "by", "at", "tier", "verbs", "here")} if pack else None,
                     "verb": "update" if i.get("state") == "update" else ("" if i.get("installed") else "install")})
     for a in apps or []:
         out.append({"kind": "app", "tier": "official", "name": a["id"], "label": a["name"], "about": a.get("what") or "", "platforms": ["linux/*"],
                     "port": a.get("port"), "media": bool(a.get("media")), "secrets": a.get("secrets") or [],
+                    # Its compose file as the catalog holds it, and the blanks New container fills (step 2).
+                    "compose": a.get("compose") or "", "blanks": sorted(set(re.findall(r"\$\{([A-Z_]+)\}", a.get("compose") or ""))),
                     "installed": False, "version": "", "latest": "", "update": False, "running": False, "verb": "install"})
     for e in (catalog_index or {}).get("packs") or []:
         # One added already is among the items with its pack; one the catalog
