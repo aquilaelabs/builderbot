@@ -1684,8 +1684,8 @@ case "$target" in
         # Installed on purpose, from the node's Agents page, never by the
         # provisioner (R145): without it there is nothing for a session to run.
         if ! command -v "$agent" >/dev/null 2>&1; then
-            bad "${agent_product} is not installed on ${BB_NODE:-this node}: its Agents page installs it." \
-                "Open the Agents page, pick ${BB_NODE:-this node}, and press Install under" \
+            bad "${agent_product} is not installed on ${BB_NODE:-this node}: the Library installs it there." \
+                "Open the Library, pick ${BB_NODE:-this node}, and press Install on" \
                 "${agent_name}; then open this again."
         fi
         if ! logged_in; then
@@ -1702,11 +1702,11 @@ case "$target" in
             fi
             if on_node; then
                 bad "This account is not signed in to ${agent_name} on ${BB_NODE:-this node}." \
-                    "Open the Agents page, pick ${BB_NODE:-this node}, and press Sign in under" \
-                    "${agent_name}; then open this again. A login on another node does not travel."
+                    "Open the Library, pick ${BB_NODE:-this node}, open ${agent_name}'s card and press Sign in" \
+                    "under Details; then open this again. A login on another node does not travel."
             fi
             bad "This container is not signed in to ${agent_name}, and carries no ${agent_product}:" \
-                "a session runs on a node, signed in from that node's Agents page."
+                "a session runs on a node, signed in from the Library with that node picked."
         fi
         if is_locked "$proj" "${account:-}"; then
             bad "'${proj}' is locked by its owner: only they start a ${agent_name}" \

@@ -96,7 +96,7 @@ for (const [where, vp] of [['at a desk', { viewport: { width: 1280, height: 900 
     if (card){
       // The coding agent's step sends a person where agents are managed.
       const step = await page.$eval('.doc.on .hstart', c => c.querySelector('[data-hstart="claude"]')?.textContent || '');
-      ok(step === '' || step === 'Agents page', `...its coding agent step opens the Agents page, not Toolchains (${step || 'done'})`);
+      ok(step === '' || step === 'Library', `...its coding agent step opens the Library, where agents are installed (${step || 'done'})`);
       await page.click('.doc.on .hstart [data-hstart="hide"]');
       await page.waitForFunction(() => !document.querySelector('.doc.on .hstart'), null, { timeout: 10000 });
       ok(true, '...and Put away takes the card off Home');

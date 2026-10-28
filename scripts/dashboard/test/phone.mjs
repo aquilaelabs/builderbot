@@ -92,7 +92,7 @@ ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
     state.areas = was;
     return { off, on };
   });
-  ok(link.off === 'Toolchains page' && /href="#\/build\/toolchains"/.test(link.on),
+  ok(link.off === 'Toolchains page' && /href="#\/build\/library"/.test(link.on),
      `a page link is a link only where the account may open the page (${JSON.stringify(link)})`);
 }
 

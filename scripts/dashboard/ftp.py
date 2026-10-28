@@ -67,7 +67,7 @@ def missing_why(node):
     n = _node(node)
     if n.get("has_ftp") is False:
         return (f"{n.get('name') or 'its node'} does not have the ftp toolchain: "
-                "install it on the Toolchains page")
+                "install it from the Library")
     return ""
 
 

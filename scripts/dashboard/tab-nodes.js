@@ -261,14 +261,14 @@ function nodeTools(n){
   const names = Object.keys(tc);
   if (n.kind !== "agent") return "";
   if (!names.length)
-    return `<div class="sub ndtools dim">no toolchains yet: install them from the ${pageLink("toolchains", "Toolchains page")}</div>`;
+    return `<div class="sub ndtools dim">no toolchains yet: install them from the ${pageLink("library", "Library")}</div>`;
   // Held recipes whose system libraries this machine lacks (roadmap R51),
   // said here rather than left for a build to fail on: the store is shared,
   // the libraries are each machine's own, and the Tools tab installs them.
   const unmet = Object.entries(n.reported?.sysdeps?.unmet || {});
   const sys = unmet.length
     ? `<div class="sub ndsys warn">System packages missing for ${unmet.map(([r, ps]) =>
-        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: install them from the ${pageLink("toolchains", "Toolchains page")}</div>` : "";
+        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: install them from the ${pageLink("library", "Library")}</div>` : "";
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
       esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>${sys}`;
@@ -2617,7 +2617,7 @@ function wireNodesTab(root){
   root.querySelectorAll(".ndrow").forEach(box => {
     const id = box.dataset.node;
     // The driver is the Toolchains tab's row (R102): this opens it on the node.
-    box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
+    box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openLibraryOn(b.dataset.ndtc));
     // The agent's journal in the dock (R133 step 12).
     box.querySelectorAll("[data-ndlog]").forEach(b => b.onclick = () =>
       openLogTab(`log:node:${b.dataset.ndlog}:agent`, `Log: ${b.dataset.ndlogname}'s agent`));

@@ -125,10 +125,11 @@ const OPENERS = {
   home: () => openHome(),
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
-  library: () => openLibrary(), toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
+  // The Toolchains, Agents and Apps pages are the Library since R170: their addresses and every door land there.
+  library: () => openLibrary(), toolchains: () => openLibrary(), agents: () => openLibrary(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), debug: () => openDebugTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), keys: () => openKeysTab(), profile: () => openProfileTab(),
-  apps: () => openAppsTab(),
+  apps: () => { libKind = "companion"; openLibrary(); },
   sessions: () => openSessionsTab(), help: () => openHelp(),
   // The pages of 0.9.0 (B410: an address with no opener landed on its
   // group's first page): Scanners, Audit, This machine and Network.
@@ -163,16 +164,16 @@ function shellPush(to){
 // The Jobs page has no node; its second segment is the chip it is narrowed
 // to (#/jobs/failed-today, which Home's "failed today" opens, B74).
 const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
-  toolchains: () => tcNode === "local" ? "" : tcNode, agents: () => agNode, library: () => libNode, emulator: () => emuNode, phone: () => phNode,
+  toolchains: () => libNode, agents: () => libNode, library: () => libNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
 // Toolchains' "local" (the controller's own store, for a shell and the
 // suite) is no node, so an address naming it opens on the node tcPick picks.
 // A page that keeps what it read for one node forgets it when Back names
 // another, or the other node's list showed under this one until the read.
 const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
-  toolchains: v => { const n = v === "local" ? "" : v;
-                     if (n !== tcNode){ tcNode = n; toolchains = null; tcTicked.clear(); tcDriverPick = ""; } },
-  agents: v => { if (v !== agNode){ agNode = v; agRows = null; } },
+  // ...and the old pages' addresses name the Library's node (R170 step 4).
+  toolchains: v => { const n = v === "local" ? "" : v; if (n && n !== libNode){ libNode = n; lib = null; } },
+  agents: v => { if (v && v !== libNode){ libNode = v; lib = null; } },
   library: v => { if (v !== libNode){ libNode = v; lib = null; } },
   emulator: v => { if (v !== emuNode){ emuNode = v; emu = null; emuTicked.clear(); } },
   phone: v => { if (v !== phNode){ phNode = v; phIp = ""; } },

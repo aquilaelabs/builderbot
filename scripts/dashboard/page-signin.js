@@ -141,7 +141,7 @@ function wireSignin(root){
 function openNodeClaude(nodeId, agent = "claude"){
   // The Agents page on that node (R95 step 15), the agent's section open.
   sectOpen[`agents:${agent}`] = true;
-  openAgentsOn(nodeId);
+  openLibraryOn(nodeId);
   const show = (tries) => {
     const s = document.querySelector(`.agentstab [data-agnode="${CSS.escape(nodeId)}"] [data-sect="agents:${CSS.escape(agent)}"]`);
     if (s) return s.scrollIntoView({block: "start", behavior: "smooth"});
