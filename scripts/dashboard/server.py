@@ -3791,6 +3791,7 @@ toolchains.configure(run=run, write_json=write_json, state=STATE,
 # /config, and carried to the nodes in the bundle beside the shipped one.
 import toolpacks                                                   # noqa: E402
 import catalogindex                                              # noqa: E402
+import library                                                   # noqa: E402
 
 catalogindex.configure(state=STATE, write_json=write_json)
 toolpacks.configure(state=STATE, write_json=write_json,
@@ -5730,6 +5731,7 @@ GET_ROUTES = (
     ("exact", "/api/extmounts", "_get_extmounts"),
     ("exact", "/api/nasapps", "_get_nasapps"),
     ("prefix", "/api/catalog", "_get_catalog"),
+    ("prefix", "/api/library", "_get_library"),
     ("exact", "/api/storebackups", "_get_storebackups"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
@@ -11259,6 +11261,37 @@ class Handler(BaseHTTPRequestHandler):
         if not r.get("error"):
             db.audit(by, "storebackup-" + act, field(req, "id") or (r.get("backup") or {}).get("id", ""), {"name": (r.get("backup") or {}).get("name", "")})
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _get_library(self):
+        """GET /api/library?node=ID (R170): everything a BuilderBot installs
+        or runs as one list for one node (library.rows): the toolchains and
+        packs with what the node's store holds, the coding agents, the apps
+        a NAS runs, the vetted catalog's offers and the companions a person
+        downloads. Read as the Toolchains page is read: for the nodes of
+        the person's own projects; never a session's. Each part comes only
+        to whoever its own page came to (Toolchains Read for the rows that
+        install on a node, a container's grant for the apps, an
+        administrator's for the catalog), so the list is what the person
+        may act on."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "the library is a person's to read here; a session has bb tool"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid, why = self._node_asked(q.get("node", [""])[0])
+        if why:
+            return self._json({"error": why, "rows": []})
+        on_node = bool(nid) and nid != "local" and not NODES_OK
+        tc = toolchains.payload_for_node(nid) if on_node else toolchains.payload()
+        n = nodes.node(nid) if on_node else None
+        may_install = not users.may(who, "toolchains-write")
+        may_apps = not users.may(who, "docker-write")
+        cat = catalogindex.index(settings.get("catalog_url") or None) if may_install else {}
+        return self._json({"node": nid, "name": tc.get("name") or (n or {}).get("name") or "", "live": bool(tc.get("live", (n or {}).get("live"))),
+                           "rows": library.rows(tc, agentcode.rows(n) if n else [], nasapps.catalog() if may_apps else [],
+                                                cat.get("index"), apps.view()),
+                           "job": tc.get("job") or {"running": False}, "catalog_error": cat.get("error", ""),
+                           "may": {"install": may_install, "apps": may_apps, "packs": users.is_admin(who)},
+                           "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb")}})
 
     def _get_catalog(self):
         """GET /api/catalog[?fresh=1] (R169 step 2): the vetted catalog's

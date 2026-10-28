@@ -2040,6 +2040,19 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
 /* An agent's section in parts, each under a small head in the gear's voice,
    a hairline between them. */
 .fsub{font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin:2px 0 8px}
+/* The Library (tab-library.js, R170): a row a fold (rows-you-open), its
+   description one ellipsized line until Details opens it; the search and
+   the two chip rows share one band. */
+.librarytab .lrow:not(.open) .ldetail{display:none}
+.librarytab .lrow .ldetail{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.librarytab .lrow .ldetail .agpart{margin-top:6px}
+.librarytab .lrow:not(.open) .labout{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.librarytab .lrow .lmore{font:var(--f-note);margin-left:6px;min-height:0;padding:0}
+.librarytab .lrow .acts{flex-wrap:wrap;justify-content:flex-end}
+.librarytab .libfilter .chips{flex:0 1 auto}
+@media (max-width:600px){
+  .librarytab .lrow:not(.open) .labout{white-space:normal}
+}
 .agentstab .agpart+.agpart{border-top:var(--hair) solid var(--line)}
 .agentstab .agpart>.actbar{margin-top:10px}
 .agentstab .sicode{font:var(--f-data);font-weight:600;letter-spacing:.12em;user-select:all}
@@ -7189,6 +7202,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-apps.js"></script>
 <script src="tab-toolchains.js"></script>
 <script src="tab-agents.js"></script>
+<script src="tab-library.js"></script>
 <script src="tab-emulator.js"></script>
 <script src="tab-docker.js"></script>
 <script src="page-welcome.js"></script>  <!-- a part of the page that is no tab: same rule -->
@@ -7949,6 +7963,8 @@ onRev("toolchains", () => {
   if (tabs.some(t => t.kind === "toolchains")) loadToolchains();
   // ...and the Agents page, whose rows are a node's toolchain rows (R95).
   if (shown("agents")) loadAgents();
+  // ...and the Library, which is both (R170).
+  if (shown("library")) loadLibrary();
 });
 // Google's image index landing, for the Emulator tab's picker.
 onRev("emulator", () => {
@@ -7986,6 +8002,7 @@ onRev("nodes", () => {
   if (shown("storage")) loadStorage();
   // ...and the Agents page, whose versions ride a node's census (R95).
   if (shown("agents")) loadAgents();
+  if (shown("library")) loadLibrary();
   if (shown("emulator") && emu?.nonode) loadEmulator();
   // ...and Home's Getting started, which says whether a node is online.
   if (shown("home") && homeStartReadsNodes()) loadNodes().then(() => drawPanes());

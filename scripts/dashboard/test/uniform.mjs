@@ -47,6 +47,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => openDocker()),
     readyWhen: '.dmtab .dmpick',
   },
+  // The Library (R170): a section per kind, or the empty band on a box
+  // with no agent node.
+  library: {
+    open: () => page.evaluate(() => openLibrary()),
+    readyWhen: '.librarytab details.sect[data-sect="library:toolchain"], .librarytab .empty',
+  },
   toolchains: {
     open: () => page.evaluate(() => openToolchains()),
     readyWhen: '.tctab .tc',

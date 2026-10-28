@@ -94,7 +94,10 @@ While one of yours runs, the button reads **Manage agent**.
 ## The Agents page
 
 **Build, then Agents**, beside Toolchains: one node at a time, picked in the
-bar, and a section per coding agent installed there.
+bar, and a section per coding agent installed there. The Library (the Build
+group's first page, docs/toolchains.md) lists the same agents as rows, with
+the same Install, Update and Remove and the sign-in under each row's
+Details.
 
 - **The version.** Each section says what the node's session account runs
   against the newest release: Claude Code's from Anthropic's download

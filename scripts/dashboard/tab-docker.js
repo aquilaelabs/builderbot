@@ -1444,6 +1444,13 @@ function cUnderPicked(){
 // Apps a NAS runs (R164 step 2): the catalog the dialog offers, read once,
 // and the pick that fills the name, the compose file and the environment.
 let cApps = null;
+let cAppWant = "";       // the app the Library asked New container to open on (R170)
+// The Library's Install on an app (R170): New container with that app
+// picked and its blanks shown, as if the person had chosen it in the list.
+function openNewContainerApp(id){
+  cAppWant = id;
+  openNewContainer();
+}
 async function loadNasApps(){
   if (cApps) return cApps;
   try{ cApps = (await (await fetch("/api/nasapps")).json()).apps || []; }
@@ -1483,7 +1490,12 @@ function openNewContainer(){
   cEditing = null;
   $("cApp").value = ""; $("cAppFields").hidden = true; $("cAppWhat").textContent = "";
   for (const id of ["cAppData", "cAppMedia", "cAppTz", "cAppPort"]) $(id).value = "";
-  loadNasApps().then(apps => { if (!$("cmodal").hidden) $("cApp").innerHTML = `<option value="">none: an image, or a compose file of your own</option>` + apps.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join(""); });
+  loadNasApps().then(apps => {
+    if ($("cmodal").hidden) return;
+    $("cApp").innerHTML = `<option value="">none: an image, or a compose file of your own</option>` + apps.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+    if (cAppWant && apps.some(a => a.id === cAppWant)){ $("cApp").value = cAppWant; cAppPicked(); }
+    cAppWant = "";
+  });
   $("cApp").onchange = cAppPicked;
   $("cAppFill").onclick = cAppFill;
   $("cTabForm").hidden = false;

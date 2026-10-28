@@ -35,7 +35,7 @@ const RAIL_ICONS = {
 const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
-  {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["agents", "Agents"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
+  {key: "build", label: "Build", icon: "toolchains", tools: [["library", "Library"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"]]},
   {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["vms", "VMs"], ["nginx", "nginx"], ["scanners", "Scanners"]]},
   // The controller, a group of its own (the operator, 22 Oct): how this
   // BuilderBot behaves, with room for the pages a bare-metal install and
@@ -82,6 +82,9 @@ function railAllows(kind){
     // The coding agents on a node (R95): installed as a toolchain is, and
     // signed in to by whoever works there, so either area draws it.
     case "agents": return !!a.toolchains || !!a.nodes;
+    // The Library (R170): the Toolchains and Agents pages as one, so either
+    // area draws it; what each row offers is the server's to gate.
+    case "library": return !!a.toolchains || !!a.nodes;
     case "jobs": return !!a.jobs;
     // An administrator's own cron (R117), its own area.
     case "schedules": return !!a.schedules;
@@ -122,7 +125,7 @@ const OPENERS = {
   home: () => openHome(),
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
-  toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
+  library: () => openLibrary(), toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), debug: () => openDebugTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), keys: () => openKeysTab(), profile: () => openProfileTab(),
   apps: () => openAppsTab(),
@@ -160,7 +163,7 @@ function shellPush(to){
 // The Jobs page has no node; its second segment is the chip it is narrowed
 // to (#/jobs/failed-today, which Home's "failed today" opens, B74).
 const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
-  toolchains: () => tcNode === "local" ? "" : tcNode, agents: () => agNode, emulator: () => emuNode, phone: () => phNode,
+  toolchains: () => tcNode === "local" ? "" : tcNode, agents: () => agNode, library: () => libNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
 // Toolchains' "local" (the controller's own store, for a shell and the
 // suite) is no node, so an address naming it opens on the node tcPick picks.
@@ -170,6 +173,7 @@ const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, sto
   toolchains: v => { const n = v === "local" ? "" : v;
                      if (n !== tcNode){ tcNode = n; toolchains = null; tcTicked.clear(); tcDriverPick = ""; } },
   agents: v => { if (v !== agNode){ agNode = v; agRows = null; } },
+  library: v => { if (v !== libNode){ libNode = v; lib = null; } },
   emulator: v => { if (v !== emuNode){ emuNode = v; emu = null; emuTicked.clear(); } },
   phone: v => { if (v !== phNode){ phNode = v; phIp = ""; } },
   runner: v => { runnerNode = v; },

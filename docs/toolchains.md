@@ -365,6 +365,35 @@ session.
 empty installs the Playwright browsers (~1.3GB) on first start. That happens
 once per share; from then on updates cost nothing.
 
+## The Library
+
+**Build** opens on the **Library**: everything a BuilderBot installs or
+runs as one list for one node, picked in the bar. A section per kind, in
+this order: the coding agents a session runs (Claude Code, Codex CLI,
+Copilot CLI, Grok Build), the toolchains a project builds with, the tool
+packs a person added, the apps a NAS runs as containers, and under **For
+you** the companions a person downloads for their own machines. Every row
+is one shape: its name, its tier (official, shipped with BuilderBot;
+vetted, from the catalog the maintainers sign; sideloaded, added by URL or
+made here), what is installed and what an update would move it to, one
+line saying what it is, and at its right the one verb it takes: Install,
+Update, Remove, Edit on a pack, Download on a companion. Details opens the
+row on the whole description: what it fetches and runs, its terms, its
+platforms, its size on the store, an agent's sign-in on this node, an app's
+port and the secrets made for it. A search box under the head matches a
+name, a description, a kind or a tier, and the chips beside it narrow the
+list by kind and by tier; nothing there is saved.
+
+Nothing installs a second way from here. A toolchain's Install is the
+toolchain job described below, with its agreements asked the same way; an
+agent's is the Agents verb; a pack's Install opens the Add tool pack dialog
+on the catalog's commit, with Look first; an app's Install opens New
+container with the app picked and its blanks shown, and Create makes it a
+container on the Containers page. **Check for updates** in the bar asks
+about every row that installs on the node, and **Add your own** is the
+sideload: a tool pack from a repository, a pasted manifest or an upload.
+The Toolchains and Agents pages below are what the Library reads.
+
 ## The Toolchains page
 
 **Build**: **Toolchains**, the installer as a page:

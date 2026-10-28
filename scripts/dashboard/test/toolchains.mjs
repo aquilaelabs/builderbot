@@ -12,7 +12,9 @@ await page.goto(URL);
 await ready(page);
 
 // ---- on the rail -------------------------------------------------------
-ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools.some(([k]) => k === 'toolchains')) && railAllows('toolchains')), 'Toolchains is a page under Build on the rail');
+// Since R170 the Build group opens on the Library, which reads this page's
+// rows; the page itself still opens by its address and from the bell.
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools.some(([k]) => k === 'library')) && railAllows('toolchains')), 'the Library is a page under Build on the rail, and Toolchains is allowed to whoever it allows');
 ok(await page.evaluate(() => railGroups().some(g => g.key === 'projects' && g.tools.some(([k]) => k === 'findings')) && railAllows('findings')), '...and the scanner report, Analysis, one under Projects');
 
 // ---- the tab -----------------------------------------------------------
