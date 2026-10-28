@@ -1,0 +1,15 @@
+[Unit]
+Description=BuilderBot OS: the slot marked good once the dashboard and the agent are up
+# Only on a BuilderBot OS boot (bbslot= on the kernel's command line); the
+# controller's own first boot runs first where there is one.
+ConditionKernelCommandLine=bbslot
+After=network-online.target builderbot-controller.service builderbot-os-firstboot.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/builderbot-os/health
+TimeoutStartSec=12min
+
+[Install]
+WantedBy=multi-user.target

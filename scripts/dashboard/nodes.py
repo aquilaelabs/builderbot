@@ -1411,6 +1411,8 @@ def _census(c):
     vm = fe.get("vmhost") if isinstance(fe.get("vmhost"), dict) else {}
     fw = fe.get("firewall") if isinstance(fe.get("firewall"), dict) else {}
     io = fe.get("iommu") if isinstance(fe.get("iommu"), dict) else {}
+    sto = fe.get("storage") if isinstance(fe.get("storage"), dict) else {}
+    sh = fe.get("shares") if isinstance(fe.get("shares"), dict) else {}
     out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
                                   "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20],
                                   # A kernel built without KVM (R97's walk, openSUSE).
@@ -1422,7 +1424,32 @@ def _census(c):
                        # The IOMMU on the kernel's command line (R116 step 4):
                        # put there by BuilderBot, and on now, which a restart
                        # and the firmware decide.
-                       "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True}}
+                       "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True},
+                       "storage": {k: sto.get(k) is True for k in ("installed", "zfs", "mergerfs", "snapraid", "smart")},
+                       "shares": {k: sh.get(k) is True for k in ("installed", "smb", "nfs")}}
+    # The machine's disks (R162 step 1), each to its shape: a name, a model,
+    # a serial, a size, what each partition holds, SMART's three facts.
+    if isinstance(c.get("disks"), list):
+        word = lambda v, n: re.sub(r"[^\w .,:/()+-]", "", str(v or ""))[:n]  # noqa: E731
+        out["disks"] = []
+        for dsk in c["disks"][:32]:
+            if not isinstance(dsk, dict) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,32}", str(dsk.get("name") or "")):
+                continue
+            sm = dsk.get("smart") if isinstance(dsk.get("smart"), dict) else {}
+            out["disks"].append({"name": dsk["name"], "model": word(dsk.get("model"), 64), "serial": word(dsk.get("serial"), 64),
+                                 "size_mb": int(dsk["size_mb"]) if isinstance(dsk.get("size_mb"), int) else 0,
+                                 "ssd": dsk.get("ssd") is True, "tran": word(dsk.get("tran"), 16), "removable": dsk.get("removable") is True,
+                                 "system": dsk.get("system") is True, "holds": word(dsk.get("holds"), 80),
+                                 "parts": [{"name": word(p.get("name"), 32), "size_mb": int(p["size_mb"]) if isinstance(p.get("size_mb"), int) else 0,
+                                            "holds": word(p.get("holds"), 80)}
+                                           for p in (dsk.get("parts") or [])[:16] if isinstance(p, dict)],
+                                 "smart": {k: v for k, v in (("health", sm.get("health") if sm.get("health") in ("ok", "failing") else None),
+                                                             ("temp_c", int(sm["temp_c"]) if isinstance(sm.get("temp_c"), int) else None),
+                                                             ("hours", int(sm["hours"]) if isinstance(sm.get("hours"), int) else None))
+                                           if v is not None}})
+    # The machine's time zone (R161 step 3), a name under zoneinfo.
+    if isinstance(c.get("timezone"), str):
+        out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
     # BuilderBot OS on the machine (R160 step 4): the image's version and
     # snapshot, the slot this boot came from and the one GRUB boots next.
     if isinstance(c.get("os_image"), dict) and c["os_image"].get("version"):
@@ -1431,7 +1458,10 @@ def _census(c):
                      "snapshot": re.sub(r"[^0-9TZ]", "", str(o.get("snapshot") or ""))[:20],
                      "built": re.sub(r"[^0-9TZ:-]", "", str(o.get("built") or ""))[:24],
                      "slot": o.get("slot") if o.get("slot") in ("a", "b") else "",
-                     "next": o.get("next") if o.get("next") in ("a", "b") else ""}
+                     "next": o.get("next") if o.get("next") in ("a", "b") else "",
+                     # On trial, and a fallback said (R161 step 2).
+                     "trial": o.get("trial") is True,
+                     "fell_back": re.sub(r"[^\w .,:;()'-]", "", str(o.get("fell_back") or ""))[:200]}
     # The domains its libvirt has that BuilderBot did not make (R165 step 1):
     # a name, a state and a size, read-only on the VMs page.
     if isinstance(c.get("vms_other"), list):
@@ -2950,8 +2980,11 @@ def lockdown_over(n):
 
 # The features a node's Features section installs and removes (R91), as
 # bb-sandbox's FEATURE_IDS and the agent's census name them.
-FEATURES = ("vmhost", "firewall")
-FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall"}
+FEATURES = ("vmhost", "firewall", "iommu", "storage", "shares")
+FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall", "iommu": "the IOMMU",
+                 "storage": "storage", "shares": "shares"}
+# The installed edition's own (R56 step 2): on the controller's own machine alone.
+OWN_FEATURES = ("storage", "shares")
 
 
 def node_feature(principal, node_id, fid, op):
@@ -2966,6 +2999,10 @@ def node_feature(principal, node_id, fid, op):
     if fid not in FEATURES or op not in ("install", "remove"):
         return {"error": f"no such feature verb: {op} {fid}"}
     name = FEATURE_NAMES[fid]
+    # The installed edition's parts (R56 step 2) are the controller's own
+    # machine's, before any other gate: another node is told whose they are.
+    if fid in OWN_FEATURES and not own_machine(n):
+        return {"error": f"{name} is the controller's own machine's (the installed edition's part): {n['name']} is another node"}
     # The controller's own machine takes VM host too (R165 step 1): there
     # the VMs run through the root agent and the jobs account stays out of
     # libvirt's group, which is root on that machine (R90 step 14).
@@ -3002,6 +3039,41 @@ def node_feature(principal, node_id, fid, op):
                 {"apply": "feature", "config": {"id": fid, "op": op}, "timeout": 1800})
     if r.get("ok"):
         audit(principal, "node-feature", node_id, {"job": r["job"], "id": fid, "op": op})
+    return r
+
+
+def node_machine(principal, node_id, hostname="", timezone=""):
+    """The controller's own machine's name and time zone (R161 step 3, R56
+    step 8): a system job on its node, whose root agent sets them through
+    hostnamectl and timedatectl; refused anywhere else, since another node's
+    name is its own administrator's."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": f"{n['name']}'s name and time zone are its own to set: This machine sets the controller's own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot set its name"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    host = str(hostname or "").strip().lower()
+    tz = str(timezone or "").strip()
+    if host and not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", host):
+        return {"error": "a hostname is letters, digits and hyphens, 63 at most"}
+    if tz and not re.fullmatch(r"[A-Za-z0-9_+-]{1,32}(/[A-Za-z0-9_+-]{1,32}){0,2}", tz):
+        return {"error": "a time zone is named as Region/City"}
+    if not host and not tz:
+        return {"error": "nothing to set"}
+    cfg = {k: v for k, v in (("hostname", host), ("timezone", tz)) if v}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "machine", "config": cfg, "timeout": 120})
+    if r.get("ok"):
+        audit(principal, "machine", node_id, {"job": r["job"], **cfg})
     return r
 
 
@@ -6050,6 +6122,7 @@ def verb(principal, req):
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
              "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
              "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
+             "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone")),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,

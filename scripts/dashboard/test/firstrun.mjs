@@ -229,6 +229,21 @@ await firstRun(false);
   await bmApi('/api/v1/nodes', { action: 'hold-next', on: false });
   const started = await bmApi('/api/v1/nodes', { action: 'start-held' });
   ok(started.ok && /not held/.test(started.note || ''), `Start with nothing held says so (${JSON.stringify(started)})`);
+  // Name and time (R161 step 3): the own machine's section, Apply asleep
+  // until a field moves, and the press a system job on its node.
+  const nt = await page.evaluate(() => {
+    const sect = document.querySelector('.machinetab details[data-sect="nodes:machine"]');
+    const b = sect?.querySelector('[data-nd="machine-apply"]'), tz = sect?.querySelector('[data-k="machinetz"]');
+    const before = b?.disabled;
+    if (tz){ tz.value = 'Europe/Paris'; tz.dispatchEvent(new Event('input')); }
+    return { there: !!sect, before, after: b?.disabled, zones: document.querySelectorAll('#ndZones option').length };
+  });
+  ok(nt.there && nt.before === true && nt.after === false && nt.zones > 100,
+     `This machine carries Name and time, Apply waking when the zone is typed, the browser's zones offered (${JSON.stringify(nt)})`);
+  const mj = await bmApi('/api/v1/nodes', { action: 'machine', id: (await bmApi('/api/status')).own_node, timezone: 'Europe/Paris' });
+  ok(mj.ok && mj.job, `the press queues the machine job on the own node (${JSON.stringify(mj)})`);
+  const mr = await bmApi('/api/v1/nodes', { action: 'machine', id: (await bmApi('/api/status')).own_node, hostname: 'bad name' });
+  ok(/letters, digits and hyphens/.test(mr.error || ''), `...and a name that is not one is refused (${mr.error})`);
   await page.evaluate(() => openNodesTab());
   await page.waitForFunction(() => document.querySelector('#ndPick'), null, { timeout: 15000 }).catch(() => {});
   const picks = await page.evaluate(() => [...document.querySelectorAll('#ndPick option')].map(o => o.textContent));

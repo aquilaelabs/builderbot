@@ -90,7 +90,8 @@ function drawSetup(){
       <p>BuilderBot works on nodes: machines you enroll, where projects are kept, built and worked on. One is all it needs to start.</p>
     </div>
     ${s.own ? card(1, "This machine", !!s.node, !s.node, s.node
-      ? `<p><b>${nodeName}</b>, the machine this controller runs on, is enrolled and answering: it is your first node.</p>`
+      ? `<p><b>${nodeName}</b>, the machine this controller runs on, is enrolled and answering: it is your first node${
+          s.node.agent?.addr ? `, at ${esc(s.node.agent.addr)}` : ""}${s.node.reported?.timezone ? `, its clock on ${esc(s.node.reported.timezone)}` : ""}. Its name and time zone are set on ${pageLink("machine", "This machine")}.</p>`
       : `<p>The machine this controller runs on is its first node, set up by the installer: ${
           s.own.state === "pending" ? "its agent is being installed and enrolled"
           : s.own.live === false ? "enrolled, and waiting for it to answer"

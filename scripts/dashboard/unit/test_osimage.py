@@ -51,9 +51,19 @@ class World:
             f.write(f"BUILDERBOT_OS_VERSION={version}\nDEBIAN_SNAPSHOT=20261020T000000Z\nBUILT=2026-10-20T00:00:00Z\n")
         self.nextf = os.path.join(self.d, "next")
         self.tool = os.path.join(self.d, "slot")
+        self.trialf = os.path.join(self.d, "trial")
         with open(self.tool, "w") as f:
             f.write(f'#!/usr/bin/env bash\ncase "$1" in current) echo {slot};; other) echo {"b" if slot == "a" else "a"};; '
-                    f'next) if [ -n "$2" ]; then echo "$2" > {self.nextf}; else cat {self.nextf} 2>/dev/null || echo a; fi;; esac\n')
+                    f'next) if [ -n "$2" ]; then echo "$2" > {self.nextf}; else cat {self.nextf} 2>/dev/null || echo a; fi;; '
+                    f'trial) echo "prev=$2 ver=$3" > {self.trialf};; good) rm -f {self.trialf};; '
+                    f'status) echo "booted: slot {slot}"; [ -f {self.trialf} ] && echo "trial: on";; fell-back) echo no;; esac\n')
+        self.state = os.path.join(self.d, "state", "config")
+        os.makedirs(self.state)
+        with open(os.path.join(self.state, "state.json"), "w") as f:
+            f.write("{}")
+        os.makedirs(os.path.join(self.state, "logs"))
+        with open(os.path.join(self.state, "logs", "big.log"), "w") as f:
+            f.write("x" * 1000)
         os.chmod(self.tool, stat.S_IRWXU)
         self.dev = {}
         for s in "ab":
@@ -64,7 +74,8 @@ class World:
         os.makedirs(os.path.join(self.esp, "builderbot", "a"))
         self.work = os.path.join(self.d, "work")
         self.env = {"BB_OS_RELEASE": self.release, "BB_OS_SLOT": self.tool, "BB_OS_DEV_A": self.dev["a"], "BB_OS_DEV_B": self.dev["b"],
-                    "BB_OS_ESP": self.esp, "BB_OS_WORK": self.work, "BB_OS_RELEASE_URL": "file://" + os.path.join(self.d, "rel")}
+                    "BB_OS_ESP": self.esp, "BB_OS_WORK": self.work, "BB_OS_RELEASE_URL": "file://" + os.path.join(self.d, "rel"),
+                    "BB_OS_STATE": self.state}
 
     def publish(self, version, bad=None):
         """The release's files under rel/vVERSION, each with its sha256; `bad`
@@ -136,8 +147,32 @@ class TheAgent(unittest.TestCase):
                 self.assertEqual(f.read(), files[piece])
         self.assertEqual(open(w.nextf).read().strip(), "b")
         self.assertIn("slot b holds BuilderBot OS 0.9.1", text)
+        # On trial (R161 step 2), going back to slot a; and the configuration
+        # as it was kept beside it, without its logs.
+        self.assertEqual(open(w.trialf).read().strip(), "prev=a ver=0.9.1")
+        kept = os.path.join(w.work, "before", "0.9.0.tar.gz")
+        self.assertTrue(os.path.isfile(kept), text)
+        names = subprocess.run(["tar", "-tzf", kept], capture_output=True, text=True, check=False).stdout
+        self.assertIn("config/state.json", names)
+        self.assertNotIn("big.log", names)
+        with mock.patch.dict(os.environ, w.env):
+            got = self.av.os_release()
+        self.assertTrue(got["trial"])
+        self.assertEqual(got["fell_back"], "")
         self.assertIn("no gh here", text)
         self.assertFalse(os.path.exists(os.path.join(w.work, "update")), "the working files are gone")
+
+    def test_a_fallback_the_health_check_recorded_is_said_until_the_next_update(self):
+        w = World(slot="a")
+        os.makedirs(w.work)
+        with open(os.path.join(w.work, "fell-back"), "w") as f:
+            f.write("the slot written by the last update did not come up healthy twice, so this boot is back on slot a as it was\n")
+        with mock.patch.dict(os.environ, w.env):
+            self.assertIn("back on slot a", self.av.os_release()["fell_back"])
+        w.publish("0.9.3")
+        state, code, text = self.run_update(w, {"release": "v0.9.3"})
+        self.assertEqual(state, "succeeded", text)
+        self.assertFalse(os.path.exists(os.path.join(w.work, "fell-back")))
 
     def test_a_file_that_does_not_match_its_sha256_writes_nothing(self):
         w = World(slot="a")
@@ -175,8 +210,10 @@ class TheAgent(unittest.TestCase):
 class TheController(unittest.TestCase):
     def test_the_census_keeps_the_image_to_its_shape(self):
         import nodes
-        got = nodes._census({"os_image": {"version": "0.9.1<b>", "snapshot": "20261020T000000Z", "built": "2026-10-20T00:00:00Z", "slot": "a", "next": "c"}})
-        self.assertEqual(got["os_image"], {"version": "0.9.1b", "snapshot": "20261020T000000Z", "built": "2026-10-20T00:00:00Z", "slot": "a", "next": ""})
+        got = nodes._census({"os_image": {"version": "0.9.1<b>", "snapshot": "20261020T000000Z", "built": "2026-10-20T00:00:00Z", "slot": "a", "next": "c",
+                                          "trial": True, "fell_back": "back on slot a <b>"}})
+        self.assertEqual(got["os_image"], {"version": "0.9.1b", "snapshot": "20261020T000000Z", "built": "2026-10-20T00:00:00Z", "slot": "a", "next": "",
+                                           "trial": True, "fell_back": "back on slot a b"})
         self.assertNotIn("os_image", nodes._census({"os_image": {}}))
 
     def test_the_update_window_applies_once_at_its_hour_and_never_by_default(self):

@@ -290,6 +290,23 @@ with every project this account may not see folded into one line. The
 numbers are the agent's hourly walk, said with their age; **Measure now**
 asks for a fresh one, which the node's next report brings.
 
+**Storage and shares as features.** On the controller's own machine its
+Features section offers two more: *Storage* (ZFS, mergerfs, SnapRAID and
+SMART, for the pools, the array and the disks' health) and *Shares*
+(Samba and NFS, serving what the Storage page makes), each installed with
+exactly its packages and removed with them, refused while a pool or a
+share still stands; on BuilderBot OS the packages are the image's. The
+row says which of each one's tools answer.
+
+**Disks** (R162): on the controller's own machine the page opens with the
+machine's disks as its agent lists them (`lsblk`, and `smartctl` where it
+is installed): each by name, model, size, serial, spinning or solid state,
+what each partition holds (a filesystem and where it is mounted, a ZFS
+pool's member, swap, nothing), the system disk marked, and SMART's health,
+temperature and hours. A failing disk is said in the bad tone. Nothing
+here writes to a disk: the pools and the shares made from them are the
+storage module's next pieces.
+
 ## This machine
 
 On a controller installed bare metal ([install.md](install.md#bare-metal)),

@@ -179,6 +179,22 @@ An offline machine takes the same files from a folder on it (a stick, a
 share): **Update from the folder** under Updates, the folder holding the
 release's four files with their `.sha256` beside them.
 
+**On trial.** The slot an update wrote boots on trial: GRUB counts each
+boot of it in its environment, and the health check
+(`builderbot-os-health.service`) marks it good once the dashboard answers
+and the node's agent runs; a second boot without that word goes back to
+the slot before by itself, and This machine says so until the next update.
+Before an update the controller's configuration is copied to
+`/var/lib/builderbot-os/before/` (the two newest kept), so the slot before
+boots the configuration it had; a patch carries no configuration change,
+so falling back on one boots the same configuration as it is.
+
+**The boot menu.** Each slot is named with its version, the slot that
+boots is the default after four seconds, and **Safe mode** boots the slot
+that runs now with the start held: the dashboard and the shares come up
+and nothing else starts (no container, VM or session) until Start is
+pressed on This machine.
+
 **Update window.** By default nothing is applied by itself. Under
 Controller settings, *Update window* names a day (daily, or one weekday)
 and an hour; in that hour a newer release is applied the way Update does
