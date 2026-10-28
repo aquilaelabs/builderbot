@@ -783,7 +783,18 @@ function nodeFeaturesSection(n){
         <div class="sub">${about}</div>${cant ? `<div class="sub dim">${cant}</div>` : ""}${fail}${more}</div>${btn}</div>`;
   };
   const vm = fe?.vmhost || {};
-  const rows = [row("vmhost", "VM host", !!vm.installed,
+  // The installed edition's parts (R56 step 2), on the controller's own
+  // machine alone: storage for the Storage page's pools and array, shares
+  // for the ones it makes; each says which of its tools answer.
+  const sto = fe?.storage || {}, sh = fe?.shares || {};
+  const ownRows = !n.config?.own ? [] : [
+    row("storage", "Storage", !!sto.installed,
+      `ZFS, mergerfs, SnapRAID and SMART, for the pools, the array and the disks' health on the ${pageLink("storage", "Storage page")}.`,
+      "", fe ? `<div class="sub dim">${["zfs", "mergerfs", "snapraid", "smart"].map(k => `${k}: ${sto[k] ? "here" : "not here"}`).join(" · ")}</div>` : ""),
+    row("shares", "Shares", !!sh.installed,
+      `Samba and NFS, serving the shares the ${pageLink("storage", "Storage page")} makes, given to accounts there.`,
+      "", fe ? `<div class="sub dim">${["smb", "nfs"].map(k => `${k}: ${sh[k] ? "here" : "not here"}`).join(" · ")}</div>` : "")];
+  const rows = [...ownRows, row("vmhost", "VM host", !!vm.installed,
       `Runs virtual machines here with KVM through libvirt${vm.libvirt ? ` (libvirt ${esc(vm.libvirt)})` : ""}, as the jobs account and never a session.`,
       fe && !vm.kvm && !vm.installed ? "No /dev/kvm here, so a VM would run in software. On a VM, its host passes virtualization through: CPU mode host-passthrough and nested KVM on." : "",
       // Where its VMs may go (R91 step 8): the internet, the controller and

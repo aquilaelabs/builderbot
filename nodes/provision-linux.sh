@@ -202,6 +202,8 @@ it, which is a paste rather than a questionnaire.
                        a whole USB controller given to a VM; the machine
                        restarts for it, which is yours to do
   --feature vmhost     a VM host: KVM through libvirt, for the VMs page
+  --feature storage    ZFS, mergerfs, SnapRAID and SMART, for the Storage page's pools and array (the controller's own machine)
+  --feature shares     Samba and NFS, for the shares the Storage page makes (the controller's own machine)
                        (needs /dev/kvm; on a VM, its host passes
                        virtualization through). Each feature is bb-sandbox
                        feature install ID, run once the node has enrolled,
@@ -3086,7 +3088,98 @@ grub_regen() {
     elif have grub-mkconfig; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1
     else return 1; fi
 }
-FEATURE_IDS="vmhost firewall iommu"
+# The installed edition's parts as the own node's features (R56 step 2):
+# storage (ZFS, mergerfs, SnapRAID and SMART for the Storage page's pools and
+# array) and shares (Samba and NFS), each installed with exactly its
+# packages and removed with them, their services the machine's own, run by
+# the root agent and never by the controller's account. On a BuilderBot OS
+# disk the packages are the image's (pkg says so when one is missing).
+storage_pkgs() {
+    case "$1" in
+        deb) echo "zfsutils-linux mergerfs snapraid smartmontools$([ "${ID:-}" = debian ] && echo ' zfs-dkms')" ;;
+        *) echo "" ;;
+    esac
+}
+shares_pkgs() {
+    case "$1" in
+        deb) echo "samba nfs-kernel-server" ;;
+        *) echo "" ;;
+    esac
+}
+# feature_pkgs ID OP PKGS WHAT: the install and remove every package feature
+# shares: the marker naming what it set out to add, the packages added,
+# the marker kept on a second run, exactly the added ones dropped.
+feature_pkgs() {
+    local id="${1:?}" op="$2" pkgs="$3" what="$4" fam added before
+    fam="$(os_family)"
+    case "$op" in
+        state) [ -f "$FEATURES_DIR/$id" ] && echo installed || echo absent ;;
+        install)
+            [ "$fam" = deb ] || die "$what is installed on the Debian family for now; this machine is $(os_family || echo 'none of them')"
+            [ -n "$pkgs" ] || die "no $what packages for this family"
+            # shellcheck disable=SC2086
+            added="$(pkgs_missing "$fam" $pkgs)"
+            say "$what"
+            before="$(pkgs_all "$fam")"
+            install -d -m 0755 "$FEATURES_DIR"
+            printf 'packages=%s\n' "$added" > "$FEATURES_DIR/$id.partial"
+            # shellcheck disable=SC2086
+            pkgs_add "$fam" $added || die "the packages did not install; the output above says why ($FEATURES_DIR/$id.partial names what it set out to add)"
+            added="$(LC_ALL=C comm -13 <(printf '%s\n' "$before") <(pkgs_all "$fam") | tr '\n' ' ')"
+            [ -f "$FEATURES_DIR/$id" ] && added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/$id") $added"
+            printf 'packages=%s\n' "$(printf '%s\n' $added | LC_ALL=C sort -u | tr '\n' ' ')" > "$FEATURES_DIR/$id"
+            rm -f "${FEATURES_DIR:?}/${id:?}.partial" ;;
+        remove)
+            [ -f "$FEATURES_DIR/$id.partial" ] && [ ! -f "$FEATURES_DIR/$id" ] && mv "$FEATURES_DIR/$id.partial" "$FEATURES_DIR/$id"
+            [ -f "$FEATURES_DIR/$id" ] || { say "$what was not installed by BuilderBot here; nothing to remove"; return 0; }
+            added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/$id")"
+            # shellcheck disable=SC2086
+            [ -z "${added// /}" ] || pkgs_drop "$fam" $added || warn "the packages did not all come off; the output above says why"
+            rm -f "${FEATURES_DIR:?}/${id:?}"
+            say "$what removed${added:+ ($(printf '%s' "$added" | wc -w) packages it had added)}; what was here before it stays" ;;
+    esac
+}
+feature_storage() {
+    case "$1" in
+        state) feature_pkgs storage state "" "" ;;
+        install)
+            feature_pkgs storage install "$(storage_pkgs "$(os_family)")" "storage: ZFS, mergerfs, SnapRAID and SMART"
+            # The pools found at boot and their datasets mounted, and the
+            # disks' SMART watched; nothing is made here, the Storage page does.
+            have systemctl && { systemctl enable --now zfs-import-cache.service zfs-mount.service zfs-zed.service >/dev/null 2>&1 || true
+                                systemctl enable --now smartmontools.service smartd.service >/dev/null 2>&1 || true; }
+            say "storage installed: pools, an array and the disks' health are the Storage page's" ;;
+        remove)
+            if have zpool && [ -n "$(zpool list -H -o name 2>/dev/null)" ]; then
+                die "a ZFS pool is on this machine ($(zpool list -H -o name 2>/dev/null | tr '\n' ' ')): export or destroy it on the Storage page first, then remove storage"
+            fi
+            have systemctl && systemctl disable --now smartd.service smartmontools.service >/dev/null 2>&1 || true
+            feature_pkgs storage remove "" "storage" ;;
+    esac
+}
+feature_shares() {
+    case "$1" in
+        state) feature_pkgs shares state "" "" ;;
+        install)
+            feature_pkgs shares install "$(shares_pkgs "$(os_family)")" "shares: Samba and NFS"
+            # Served the moment a share is made (the Storage page writes
+            # each), the daemons the machine's own units, never the controller's.
+            install -d -m 0755 /etc/samba/smb.conf.d /etc/exports.d
+            grep -q '^include = /etc/samba/smb.conf.d/builderbot.conf' /etc/samba/smb.conf 2>/dev/null \
+                || printf '\n# BuilderBot: the shares the Storage page makes.\ninclude = /etc/samba/smb.conf.d/builderbot.conf\n' >> /etc/samba/smb.conf
+            [ -f /etc/samba/smb.conf.d/builderbot.conf ] || : > /etc/samba/smb.conf.d/builderbot.conf
+            have systemctl && { systemctl enable --now smbd.service nmbd.service nfs-server.service >/dev/null 2>&1 || true; }
+            say "shares installed: each share is made on the Storage page, given to accounts there" ;;
+        remove)
+            if [ -s /etc/samba/smb.conf.d/builderbot.conf ] || ls /etc/exports.d/builderbot-*.exports >/dev/null 2>&1; then
+                die "shares are served from this machine: remove them on the Storage page first, then shares"
+            fi
+            have systemctl && systemctl disable --now smbd.service nmbd.service nfs-server.service >/dev/null 2>&1 || true
+            sed -i '/^# BuilderBot: the shares the Storage page makes.$/d; \#^include = /etc/samba/smb.conf.d/builderbot.conf$#d' /etc/samba/smb.conf 2>/dev/null || true
+            feature_pkgs shares remove "" "shares" ;;
+    esac
+}
+FEATURE_IDS="vmhost firewall iommu storage shares"
 cmd_feature() {
     local op="${1-}" id="${2-}"
     case "$op" in install|remove|state) ;; *) die "usage: bb-sandbox feature install|remove|state ID (one of: ${FEATURE_IDS})" ;; esac

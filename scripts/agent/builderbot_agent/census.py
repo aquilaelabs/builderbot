@@ -234,6 +234,14 @@ def features_now():
         # which a restart and the firmware's VT-d or AMD-Vi decide.
         "iommu": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "iommu")),
                   "on": bool(glob.glob("/sys/kernel/iommu_groups/*"))},
+        # The installed edition's parts (R56 step 2): storage (ZFS and the
+        # array's tools) and shares (Samba and NFS), with whether each tool
+        # answers, whichever put it here (the image carries them all).
+        "storage": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "storage")),
+                    "zfs": bool(shutil.which("zpool")), "mergerfs": bool(shutil.which("mergerfs")),
+                    "snapraid": bool(shutil.which("snapraid")), "smart": bool(shutil.which("smartctl"))},
+        "shares": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "shares")),
+                   "smb": bool(shutil.which("smbd")), "nfs": bool(shutil.which("exportfs"))},
     }
 
 

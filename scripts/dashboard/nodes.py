@@ -1411,6 +1411,8 @@ def _census(c):
     vm = fe.get("vmhost") if isinstance(fe.get("vmhost"), dict) else {}
     fw = fe.get("firewall") if isinstance(fe.get("firewall"), dict) else {}
     io = fe.get("iommu") if isinstance(fe.get("iommu"), dict) else {}
+    sto = fe.get("storage") if isinstance(fe.get("storage"), dict) else {}
+    sh = fe.get("shares") if isinstance(fe.get("shares"), dict) else {}
     out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
                                   "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20],
                                   # A kernel built without KVM (R97's walk, openSUSE).
@@ -1422,7 +1424,9 @@ def _census(c):
                        # The IOMMU on the kernel's command line (R116 step 4):
                        # put there by BuilderBot, and on now, which a restart
                        # and the firmware decide.
-                       "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True}}
+                       "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True},
+                       "storage": {k: sto.get(k) is True for k in ("installed", "zfs", "mergerfs", "snapraid", "smart")},
+                       "shares": {k: sh.get(k) is True for k in ("installed", "smb", "nfs")}}
     # The machine's disks (R162 step 1), each to its shape: a name, a model,
     # a serial, a size, what each partition holds, SMART's three facts.
     if isinstance(c.get("disks"), list):
@@ -2976,8 +2980,11 @@ def lockdown_over(n):
 
 # The features a node's Features section installs and removes (R91), as
 # bb-sandbox's FEATURE_IDS and the agent's census name them.
-FEATURES = ("vmhost", "firewall")
-FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall"}
+FEATURES = ("vmhost", "firewall", "iommu", "storage", "shares")
+FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall", "iommu": "the IOMMU",
+                 "storage": "storage", "shares": "shares"}
+# The installed edition's own (R56 step 2): on the controller's own machine alone.
+OWN_FEATURES = ("storage", "shares")
 
 
 def node_feature(principal, node_id, fid, op):
@@ -2992,6 +2999,10 @@ def node_feature(principal, node_id, fid, op):
     if fid not in FEATURES or op not in ("install", "remove"):
         return {"error": f"no such feature verb: {op} {fid}"}
     name = FEATURE_NAMES[fid]
+    # The installed edition's parts (R56 step 2) are the controller's own
+    # machine's, before any other gate: another node is told whose they are.
+    if fid in OWN_FEATURES and not own_machine(n):
+        return {"error": f"{name} is the controller's own machine's (the installed edition's part): {n['name']} is another node"}
     # The controller's own machine takes VM host too (R165 step 1): there
     # the VMs run through the root agent and the jobs account stays out of
     # libvirt's group, which is root on that machine (R90 step 14).

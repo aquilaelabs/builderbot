@@ -110,6 +110,18 @@ class TheNameAndTime(unittest.TestCase):
         self.nodes = nodes
         nodes.configure(state=self.state)
 
+    def test_storage_and_shares_are_the_own_machines_features(self):
+        # R56 step 2: another node is told the feature is the installed
+        # edition's; the own machine meets every node's gates after it.
+        mint(self.state, "other", "")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "other")
+        r = self.nodes.node_feature("user:t", n["id"], "storage", "install")
+        self.assertIn("controller's own machine's", r.get("error", ""))
+        mint(self.state, "nas", "--own")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "nas")
+        r = self.nodes.node_feature("user:t", n["id"], "shares", "install")
+        self.assertNotIn("own machine's", r.get("error", ""))
+
     def test_another_node_is_refused_and_the_own_machine_holds_the_shapes(self):
         mint(self.state, "other", "")
         n = next(x for x in self.nodes.node_list() if x["name"] == "other")
