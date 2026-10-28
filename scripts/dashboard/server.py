@@ -7135,7 +7135,9 @@ class Handler(BaseHTTPRequestHandler):
         if why := featuresoff.refused("GET", path):
             return self._json({"error": why, "off": True}, 403)
         for how, route, name in GET_ROUTES:
-            if (self.path == route) if how == "exact" else self.path.startswith(route):
+            if (path == route) if how == "exact" else self.path.startswith(route):
+        # An exact route is the path without its query (B409): /api/audit?n=50
+        # and /api/router?node=N are the exact routes' own reads.
                 return getattr(self, name)()
         self._json({"error": "not found"}, 404)
 
