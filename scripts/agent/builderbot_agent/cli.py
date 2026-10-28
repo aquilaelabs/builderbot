@@ -3,7 +3,7 @@ import json
 import sys
 import time
 from . import AGENT_VERSION
-from .base import DEFAULT_STORES, NODE_JSON, log, own_digest
+from .base import DEFAULT_STORES, NODE_JSON, harden, log, own_digest
 from .controller import Controller
 from .stores import load_state, make_store, save_state, store_path_ok
 from .census import Sampler, census
@@ -101,6 +101,7 @@ def cmd_enroll(args):
 
 
 def cmd_run():
+    harden()
     state = load_state()
     log(f"node {state.get('node_id')} → {state.get('controller')}, agent "
         f"{AGENT_VERSION} {own_digest()[:19]}…")

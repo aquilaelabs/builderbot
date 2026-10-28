@@ -475,6 +475,8 @@ Environment=BUILDERBOT_NODE_JSON=${node_json}
 Environment=BUILDERBOT_RUNNER_DIR=${foot}/runner
 Restart=always
 RestartSec=5
+LimitCORE=0
+LimitMEMLOCK=infinity
 StandardOutput=append:${foot}/log/agent.log
 StandardError=append:${foot}/log/agent.log
 
@@ -693,6 +695,8 @@ Wants=network-online.target
 ExecStart=${cmd}
 Restart=always
 RestartSec=5
+LimitCORE=0
+LimitMEMLOCK=infinity
 ${extra}
 
 [Install]

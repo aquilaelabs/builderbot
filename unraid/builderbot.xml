@@ -28,7 +28,7 @@ NOTES
        empty <Icon/> shows the question-mark placeholder however many PNGs
        are sitting on disk. -->
   <Icon>https://raw.githubusercontent.com/aquilaelabs/builderbot/main/config/icon.png</Icon>
-  <ExtraParams>--hostname=builderbot --log-opt max-size=20m --log-opt max-file=3</ExtraParams>
+  <ExtraParams>--hostname=builderbot --log-opt max-size=20m --log-opt max-file=3 --ulimit memlock=-1:-1 --ulimit core=0:0</ExtraParams>
   <PostArgs/>
   <DonateText/>
   <DonateLink/>

@@ -33,7 +33,7 @@ import time
 
 from . import tokenseal
 from .accounts import UID_RE, user_of
-from .base import log
+from .base import log, wipe
 
 SEAL_DIR = "/var/lib/builderbot/tokens"
 OPEN_DIR = "/run/bb-tokens"
@@ -363,9 +363,13 @@ class TokensMixin:
                 odir = odir or self._acct_open_dir(acct, pw)
                 of = os.path.join(odir, agent + ".json")
                 _write(of, data, 0o600, pw.pw_uid, pw.pw_gid)
+                wipe(data)
                 st = os.stat(of)
                 seen[(acct, agent)] = (st.st_ino, st.st_size, st.st_mtime_ns)
                 self._link(os.path.join(home, rel), of, pw)
+        # The keys the terminal brought are let go, zeroed (R158 step 6).
+        for k in keys.values():
+            wipe(k)
         if odir:
             live[acct] = time.time()
 

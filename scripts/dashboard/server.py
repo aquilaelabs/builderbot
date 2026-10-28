@@ -3735,6 +3735,10 @@ import workspace                                                 # noqa: E402
 # session_dir). The Git view and the Artifacts tab both read them.
 WORKTREES = Path(os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"))
 artifacts.configure(workspace=WORKSPACE, worktrees=WORKTREES, state=STATE, write_json=write_json)
+# This process is hardened before any key is loaded (R158 step 6): no
+# core dump, not dumpable, its memory kept from swap where the limit lets it.
+import hardening                                                 # noqa: E402
+HARDENED = hardening.apply()
 import signing                                                   # noqa: E402
 
 signing.configure(state=STATE, project_name=PROJECT_NAME)

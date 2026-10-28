@@ -215,6 +215,53 @@ IDLE_UNIT = float(os.environ.get("BUILDERBOT_IDLE_UNIT", "60"))
 AGENT_PREFIXES = tuple(f"{a}-" for a in AGENT_IDS)
 
 
+def harden():
+    """What this process does about the keys it holds (R158 step 6): the
+    boot secret a terminal's seal keys travel under and every opened
+    sign-in pass through here. Core dumps off and the process not dumpable
+    (so a process of the same user cannot read it through ptrace or
+    /proc/PID/mem either), its pages kept from swap where the memlock limit
+    allows (the unit sets it), and what held a key zeroed (wipe) once it is
+    let go. Never fails the agent: what it could not do is logged once."""
+    out = {"core": False, "dumpable": False, "mlock": False}
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        out["core"] = True
+    except (ImportError, ValueError, OSError):
+        pass
+    try:
+        import ctypes
+        import ctypes.util
+        libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
+        out["dumpable"] = libc.prctl(4, 0, 0, 0, 0) == 0
+        out["mlock"] = libc.mlockall(2 | 4) == 0 or libc.mlockall(2) == 0
+    except (OSError, AttributeError):
+        pass
+    missed = [k for k, v in out.items() if not v]
+    if missed:
+        log("hardening: could not " + ", ".join({"core": "turn core dumps off", "dumpable": "make the process undumpable",
+                                                 "mlock": "lock memory from swap (the memlock limit)"}[k] for k in missed))
+    return out
+
+
+def wipe(b):
+    """A bytes or bytearray value overwritten with zeros in place, for a key
+    or an opened sign-in let go (R158 step 6); CPython's layout alone."""
+    if isinstance(b, bytearray):
+        for i in range(len(b)):
+            b[i] = 0
+        return True
+    if isinstance(b, bytes) and b and sys.implementation.name == "cpython":
+        try:
+            import ctypes
+            ctypes.memset(id(b) + bytes.__basicsize__ - 1, 0, len(b))
+            return True
+        except (ValueError, OSError):
+            return False
+    return False
+
+
 def has_systemd():
     """Whether the runner can be a service here. A VM has systemd; a
     container (this image in the node role) and a guest machine without it

@@ -121,6 +121,25 @@ language allows, and keeps the processes that hold keys apart from the ones
 that run what sessions ask. R157 then takes the key itself out of the
 controller's hands.
 
+## Memory and process
+
+The dashboard and the node agent each do three things about the keys they
+hold (R158 step 6, `hardening.py` and `builderbot_agent.base.harden`): no
+core dump (the core limit is zero and the process is not dumpable, which
+also keeps another process of the same user from reading its memory
+through ptrace or `/proc/PID/mem`), no swap (the process locks its pages
+in memory where the memlock limit lets it; `docker-compose.yml` and the
+Unraid template raise that limit, and the Doctor says when it was too low),
+and zeroing (`wipe`) of a bytes value that held a key or an opened sign-in
+once it is let go. Root on the machine still reads a running process; what
+the step closes is a core file, a swap partition and a neighbor of the same
+user.
+
+What sessions ask for never runs in either process: the controller runs
+nothing, and on a node the agent that opens a seal is apart from the
+sessions, which run as their account's own user in a view of their own
+(R125, `bb-session`), so a session reaches no key the agent holds.
+
 ## The lines the hardening closes
 
 | Step of R158 | The line it closes |

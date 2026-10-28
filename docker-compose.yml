@@ -26,6 +26,12 @@ services:
         IMAGE_BUILT: ${BB_BUILD_AT:-}
         IMAGE_VERSION: ${BB_BUILD_VERSION:-}
     pull_policy: ${BUILDERBOT_PULL:-missing}
+    # The dashboard locks its memory from swap, where the keys it holds
+    # would otherwise be written (R158 step 6): the default limit is a few
+    # kilobytes, and the Doctor says when it was too low.
+    ulimits:
+      memlock: -1
+      core: 0
     # Same name the Unraid template uses, so every `docker exec -it
     # BuilderBot ...` command in the docs works under either install method.
     container_name: BuilderBot

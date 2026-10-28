@@ -5662,6 +5662,15 @@ PY
             self) printf '  [ok]   the dashboard is served over https with the install'"'"'s own certificate (pinned by its fingerprint on the Connection section)\n' ;;
             acme) printf '  [ok]   the dashboard is served over https with a Let'"'"'s Encrypt certificate\n' ;;
         esac
+        # What the dashboard's process does about the keys it holds (R158
+        # step 6), as it said at its start.
+        if [ -r /run/builderbot-hardening.json ]; then
+            case "$(python3 -c 'import json; d = json.load(open("/run/builderbot-hardening.json")); print("ok" if d.get("core") and d.get("dumpable") and d.get("mlock") else "mlock" if d.get("core") and d.get("dumpable") else "no")' 2>/dev/null)" in
+                ok) printf '  [ok]   the dashboard writes no core dump, cannot be read by another process of its user, and keeps its memory from swap\n' ;;
+                mlock) printf '  [warn] the dashboard writes no core dump and cannot be read by another process of its user, but its memory may be swapped: the memlock limit is too low (docker-compose.yml raises it with ulimits memlock -1; on Unraid --ulimit memlock=-1:-1 in Extra Parameters)\n' ;;
+                no) printf '  [warn] the dashboard could not turn core dumps off or make itself undumpable: a key it holds could land in a core file (docs/security.md)\n' ;;
+            esac
+        fi
         # What a browser refused under the page's policy (R158 step 4):
         # nothing the page ships trips it, so a report is something that
         # was not shipped, or a browser extension writing into the page.
