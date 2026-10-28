@@ -50,6 +50,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | GET | `/api/router` | exact | `_get_router` | GET /api/router?node=ID: a node's model router (router.status) and the projects it may be offered to, for an account that reads the Nodes page; never a session's. | refused: nodes |
 | GET | `/api/router-key` | exact | `_get_router_key` | GET /api/router-key?project=NAME: the router address and the project's own key, for a session of that project at its start (bb-tty's launcher) or a person who may work on it; {} where no router allows the project. |  |
 | GET | `/api/storage` | prefix | `_get_storage` | The Storage page (storage.view, R169): every node this account holds the Storage area on, what its disks hold, by project where the account sees the project and as one line otherwise. |  |
+| GET | `/api/history` | prefix | `_get_history` | GET /api/history?node=ID&span=6h\\|day\\|week\\|month (R164 step 4): the controller's own machine's CPU, memory, network, disk I/O and temperatures over the span, at the resolution kept for it (five minutes for a day, an hour  |  |
 | GET | `/api/schedules` | exact | `_get_schedules` | GET /api/schedules (R117): every schedule, its words, its next run and its last run's state, and the nodes it may run on. |  |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes page's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |

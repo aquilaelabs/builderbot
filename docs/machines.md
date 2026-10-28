@@ -319,6 +319,14 @@ the machine's root agent runs from its table (`zpool` on the disks'
 is never offered. Nothing here is on another node: pools are the controller's
 own machine's.
 
+**On the bell** (R164): a disk SMART calls failing, a disk at 55 °C or
+over, a pool not online and an array slot whose disk is gone are each a
+row on the bell (kind disk, which Where the bell reaches you can send by
+email or a push), read off the census on every poll so a row leaves the
+moment it stops being true, and keyed on what is wrong so a dismissal
+holds until that changes. Each links to the Storage page, where Replace
+and the rest are.
+
 **Array** (R162): an Unraid-style array beside the pools, for disks of
 mixed sizes: each data disk its own xfs or btrfs filesystem mounted at
 `/mnt/disks/dN`, pooled into one tree at `/mnt/array` by mergerfs (the
@@ -406,6 +414,42 @@ installed OS adds are held by their own modules until **Start** is pressed
 here. A band on every page says it is held and why. Safe mode at the boot
 menu and a disk the array names gone missing are the installed OS's own
 reasons to hold (R161, R162).
+
+Under Name and time, **Spin down disks** (R164) stops the spinning
+disks but the system's after the idle time picked (`hdparm -S`, five
+minutes to two hours, or never); a solid-state disk is left alone, and the
+agent sets it again after every boot, since the timer is the drive's own.
+
+**Reporting** (R164): a Reporting section on the controller's own
+machine's row keeps what every heartbeat samples (CPU, memory, the
+network's bytes in and out, the disks' bytes read and written, the CPU's
+temperature and the hottest disk's) for weeks at falling resolution:
+five-minute means for two days and hourly means for two months, one small
+file per node under the state (`history.py`), drawn over six hours, a day,
+a week or a month as the hour's charts are drawn, one measure each. The
+rates come from the agent's cumulative counters, so an agent restart is one
+skipped point, never a spike. The hour's charts above it are the samples
+themselves and are unchanged.
+
+**Power** (R164): with the UPS feature installed (NUT, for a USB UPS;
+the Features section installs it on the controller's own machine), a
+Power section shows the UPS as NUT reads it: on line or on battery, the
+charge as a meter, the minutes left and the load. The machine on its
+battery, a low battery, a battery to replace and a UPS that does not
+answer are rows on the bell (kind power), and NUT's monitor shuts the
+machine down cleanly when the UPS says the battery is low, which is the
+feature's own configuration (`/etc/nut`, written once and left alone where
+a person changed it).
+
+**The system's own updates** (R164): on a bare-metal install that is not
+BuilderBot OS, Updates under Controller settings also counts the system's
+own package updates (apt, once an hour as root), says how many are
+security ones and whether the last update asked for a restart, and Apply
+updates runs apt on the machine by its root agent with the configuration
+files kept as they are, restarting after when the box was ticked and the
+update asked for it; Restart now is there when one is needed. Security
+updates waiting and a restart needed are rows on the bell (kind host).
+BuilderBot OS has none of this: its updates are whole images.
 
 ## Network
 

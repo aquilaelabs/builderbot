@@ -204,6 +204,7 @@ it, which is a paste rather than a questionnaire.
   --feature vmhost     a VM host: KVM through libvirt, for the VMs page
   --feature storage    ZFS, mergerfs, SnapRAID and SMART, for the Storage page's pools and array (the controller's own machine)
   --feature shares     Samba and NFS, for the shares the Storage page makes (the controller's own machine)
+  --feature ups        a UPS through NUT on USB, read on This machine and the bell, the machine shut down cleanly on a low battery (the controller's own machine)
                        (needs /dev/kvm; on a VM, its host passes
                        virtualization through). Each feature is bb-sandbox
                        feature install ID, run once the node has enrolled,
@@ -3100,6 +3101,12 @@ storage_pkgs() {
         *) echo "" ;;
     esac
 }
+ups_pkgs() {
+    case "$1" in
+        deb) echo "nut" ;;
+        *) echo "" ;;
+    esac
+}
 shares_pkgs() {
     case "$1" in
         deb) echo "samba nfs-kernel-server" ;;
@@ -3179,7 +3186,39 @@ feature_shares() {
             feature_pkgs shares remove "" "shares" ;;
     esac
 }
-FEATURE_IDS="vmhost firewall iommu storage shares"
+# ups (R164 step 3): NUT in standalone mode on a USB UPS (usbhid-ups, the
+# driver nearly every one answers), its monitor shutting the machine down
+# cleanly on a low battery; the Power section reads it. The files are
+# written once, ours, and left alone where a person changed them.
+feature_ups() {
+    local f pw
+    case "$1" in
+        state) feature_pkgs ups state "" "" ;;
+        install)
+            feature_pkgs ups install "$(ups_pkgs "$(os_family)")" "ups: NUT"
+            install -d -m 0755 /etc/nut
+            if ! grep -qs '^# BuilderBot' /etc/nut/ups.conf; then
+                printf '# BuilderBot (the Features section): a USB UPS, standalone. Edit if yours needs another driver.\n[ups]\n    driver = usbhid-ups\n    port = auto\n    desc = "UPS"\n' > /etc/nut/ups.conf
+            fi
+            if ! grep -qs '^# BuilderBot' /etc/nut/upsd.users; then
+                pw="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 20)"
+                printf '# BuilderBot (the Features section)\n[monuser]\n    password = %s\n    upsmon primary\n' "$pw" > /etc/nut/upsd.users
+                printf '# BuilderBot (the Features section): the machine shuts down cleanly when the UPS says low battery.\nMONITOR ups@localhost 1 monuser %s primary\nSHUTDOWNCMD "/sbin/shutdown -h +0"\nMINSUPPLIES 1\nPOLLFREQ 5\nPOLLFREQALERT 5\nHOSTSYNC 15\nDEADTIME 15\nPOWERDOWNFLAG /etc/killpower\nRBWARNTIME 43200\nNOCOMMWARNTIME 300\nFINALDELAY 5\n' "$pw" > /etc/nut/upsmon.conf
+                chmod 0640 /etc/nut/upsd.users /etc/nut/upsmon.conf
+                chgrp nut /etc/nut/upsd.users /etc/nut/upsmon.conf 2>/dev/null || true
+            fi
+            printf '# BuilderBot (the Features section)\nMODE=standalone\n' > /etc/nut/nut.conf
+            have systemctl && { systemctl enable --now nut-driver-enumerator.service nut-server.service nut-monitor.service >/dev/null 2>&1 || true; }
+            say "ups installed: a USB UPS answers on This machine's Power section; the machine shuts down cleanly on a low battery" ;;
+        remove)
+            have systemctl && systemctl disable --now nut-monitor.service nut-server.service >/dev/null 2>&1 || true
+            for f in /etc/nut/ups.conf /etc/nut/upsd.users /etc/nut/upsmon.conf /etc/nut/nut.conf; do
+                grep -qs '^# BuilderBot' "$f" && rm -f "$f"
+            done
+            feature_pkgs ups remove "" "ups" ;;
+    esac
+}
+FEATURE_IDS="vmhost firewall iommu storage shares ups"
 cmd_feature() {
     local op="${1-}" id="${2-}"
     case "$op" in install|remove|state) ;; *) die "usage: bb-sandbox feature install|remove|state ID (one of: ${FEATURE_IDS})" ;; esac

@@ -33,11 +33,12 @@ from .osimage import OsImageMixin
 from .shares import SharesMixin
 from .pools import PoolsMixin
 from .array import ArrayMixin
+from .power import PowerMixin
 from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, AccountsMixin,
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, AccountsMixin,
             TokensMixin, ScanMixin):
     def __init__(self, state):
         self.state = state
@@ -643,6 +644,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             timed("firewall_check", self.session_firewall_check)
             timed("account_users", self.account_users_pass)
             timed("array", self.array_pass)
+            timed("spindown", self.spindown_pass)
             timed("tokens", self.token_pass)
             timed("idle_reap", self.session_idle_reap)
             timed("runner_check", self.runner_check)

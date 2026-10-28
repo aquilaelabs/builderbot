@@ -1426,7 +1426,8 @@ def _census(c):
                        # and the firmware decide.
                        "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True},
                        "storage": {k: sto.get(k) is True for k in ("installed", "zfs", "mergerfs", "snapraid", "smart")},
-                       "shares": {k: sh.get(k) is True for k in ("installed", "smb", "nfs")}}
+                       "shares": {k: sh.get(k) is True for k in ("installed", "smb", "nfs")},
+                       "ups": {k: (fe.get("ups") or {}).get(k) is True for k in ("installed", "nut")} if isinstance(fe.get("ups"), dict) else {}}
     # The machine's disks (R162 step 1), each to its shape: a name, a model,
     # a serial, a size, what each partition holds, SMART's three facts.
     if isinstance(c.get("disks"), list):
@@ -1508,6 +1509,20 @@ def _census(c):
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
+    # ...and its UPS (R164 step 3) and its own packages' updates, each to its shape.
+    if isinstance(c.get("ups"), dict) and c["ups"]:
+        up = c["ups"]
+        num = lambda k: int(up[k]) if isinstance(up.get(k), int) and not isinstance(up.get(k), bool) and 0 <= up[k] <= 10 ** 7 else None  # noqa: E731
+        out["ups"] = {"model": re.sub(r"[^\w .,()/+-]", "", str(up.get("model") or ""))[:64], "status": re.sub(r"[^A-Z ]", "", str(up.get("status") or ""))[:32],
+                      "words": re.sub(r"[^a-z ,]", "", str(up.get("words") or ""))[:80], "answers": up.get("answers") is True,
+                      "charge": num("charge"), "runtime_s": num("runtime_s"), "load": num("load")}
+    if isinstance(c.get("host_updates"), dict) and c["host_updates"]:
+        hu = c["host_updates"]
+        out["host_updates"] = {k: (int(hu[k]) if isinstance(hu.get(k), int) and not isinstance(hu.get(k), bool) and hu[k] >= 0 else 0)
+                               for k in ("pending", "security", "checked")} | {"reboot": hu.get("reboot") is True}
+    # ...and its disks' spin-down in minutes (R164 step 3), 0 for never.
+    if isinstance(c.get("spindown"), int) and not isinstance(c.get("spindown"), bool) and c["spindown"] in SPINDOWN_MINUTES:
+        out["spindown"] = c["spindown"]
     # BuilderBot OS on the machine (R160 step 4): the image's version and
     # snapshot, the slot this boot came from and the one GRUB boots next.
     if isinstance(c.get("os_image"), dict) and c["os_image"].get("version"):
@@ -2177,6 +2192,8 @@ token_pubs = None
 # 1): users.smb_users, and the resolver of a share's names (users.smb_resolve).
 smb_users = None
 smb_resolve = None
+# The reporting's intake (history.add), on the controller's own machine's samples (R164 step 4).
+history_add = None
 # ...and how many of a node's seals are under a key before today's.
 token_stale = None
 # ...and whether there is an install key to make any of it from.
@@ -3042,11 +3059,11 @@ def lockdown_over(n):
 
 # The features a node's Features section installs and removes (R91), as
 # bb-sandbox's FEATURE_IDS and the agent's census name them.
-FEATURES = ("vmhost", "firewall", "iommu", "storage", "shares")
+FEATURES = ("vmhost", "firewall", "iommu", "storage", "shares", "ups")
 FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall", "iommu": "the IOMMU",
-                 "storage": "storage", "shares": "shares"}
+                 "storage": "storage", "shares": "shares", "ups": "the UPS"}
 # The installed edition's own (R56 step 2): on the controller's own machine alone.
-OWN_FEATURES = ("storage", "shares")
+OWN_FEATURES = ("storage", "shares", "ups")
 
 
 def node_feature(principal, node_id, fid, op):
@@ -3403,7 +3420,114 @@ def node_storage_pool(principal, node_id, req):
     return r
 
 
-def node_machine(principal, node_id, hostname="", timezone=""):
+SPINDOWN_MINUTES = (0, 5, 10, 15, 20, 30, 60, 120)
+DISK_HOT_C = 55
+
+
+def storage_attention():
+    """The bell's rows (kind disk) for the controller's own machine's
+    storage (R164 step 3), from the census on every poll so each leaves
+    the moment it stops being true: a disk SMART calls failing (bad), a
+    disk at DISK_HOT_C or more, a pool not online (bad), an array slot not
+    mounted (bad). Keyed on what is wrong, so a dismissal holds until it
+    changes."""
+    out = []
+    for n in node_list():
+        if n.get("kind") != "agent" or not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        for d in rep.get("disks") or []:
+            sm = d.get("smart") or {}
+            who = f"{d.get('model') or 'a disk'} ({d.get('name')}, serial {d.get('serial') or 'none'})"
+            if sm.get("health") == "failing":
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "failing", "bad": True, "key": f"disk:failing:{n['id']}:{d.get('serial') or d.get('name')}",
+                            "said": f"SMART says {who} is failing: replace it before it goes"})
+            elif isinstance(sm.get("temp_c"), int) and sm["temp_c"] >= DISK_HOT_C:
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "hot", "bad": False, "key": f"disk:hot:{n['id']}:{d.get('serial') or d.get('name')}:{sm['temp_c'] // 5 * 5}",
+                            "said": f"{who} is at {sm['temp_c']} °C; {DISK_HOT_C} °C and over shortens its life"})
+        for pl in rep.get("pools") or []:
+            if pl.get("health") and pl["health"] not in ("online", ""):
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "pool", "bad": True, "key": f"pool:{n['id']}:{pl['name']}:{pl['health']}",
+                            "said": f"the pool {pl['name']} is {pl['health']}{': ' + pl['errors'] if pl.get('errors') and 'no known data errors' not in pl['errors'].lower() else ''}"})
+        ar = rep.get("array") if isinstance(rep.get("array"), dict) else {}
+        for kind, key in (("d", "data"), ("p", "parity")):
+            for x in ar.get(key) or []:
+                if not x.get("mounted"):
+                    out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "array", "bad": True, "key": f"array:{n['id']}:{kind}{x.get('slot')}",
+                                "said": f"the array's {kind}{x.get('slot')} ({x.get('id') or 'unknown disk'}) is not mounted: the disk is gone or failed; Replace on the Storage page rebuilds it"})
+    return out
+
+
+def power_attention():
+    """The bell's rows (kind power) for the controller's own machine (R164
+    step 3): on battery (bad, with the minutes left), a low battery (bad),
+    a battery to replace, a UPS that does not answer while its feature is
+    installed; and its own packages (kind host): security updates waiting,
+    and a restart the last update asked for. Keyed on the state, so a
+    dismissal holds until it changes."""
+    out = []
+    for n in node_list():
+        if n.get("kind") != "agent" or not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        up = rep.get("ups") or {}
+        fe = (rep.get("features") or {}).get("ups") or {}
+        if fe.get("installed") and up and not up.get("answers"):
+            out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "silent", "bad": False, "key": f"ups:silent:{n['id']}",
+                        "said": "the UPS does not answer: its USB cable, or NUT's driver (ups.conf names usbhid-ups)"})
+        elif up.get("answers"):
+            st = set((up.get("status") or "").split())
+            left = f", {up['runtime_s'] // 60} min left" if isinstance(up.get("runtime_s"), int) else ""
+            charge = f" at {up['charge']}%" if isinstance(up.get("charge"), int) else ""
+            if "LB" in st or "FSD" in st:
+                out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "low", "bad": True, "key": f"ups:low:{n['id']}",
+                            "said": f"the UPS battery is low{charge}{left}: the machine shuts down cleanly when NUT says so"})
+            elif "OB" in st:
+                out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "battery", "bad": True, "key": f"ups:battery:{n['id']}",
+                            "said": f"the machine runs on the UPS battery{charge}{left}"})
+            elif "RB" in st:
+                out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "replace", "bad": False, "key": f"ups:replace:{n['id']}",
+                            "said": "the UPS says its battery needs replacing"})
+        hu = rep.get("host_updates") or {}
+        if hu.get("security"):
+            out.append({"kind": "host", "id": n["id"], "node": n["name"], "what": "security", "bad": False, "key": f"host:security:{n['id']}:{hu['security']}",
+                        "said": f"{hu['security']} security update{'s' if hu['security'] != 1 else ''} to the system's own packages wait{'s' if hu['security'] == 1 else ''} ({hu.get('pending', 0)} in all)"})
+        if hu.get("reboot"):
+            out.append({"kind": "host", "id": n["id"], "node": n["name"], "what": "reboot", "bad": False, "key": f"host:reboot:{n['id']}",
+                        "said": "the last update of the system's packages needs a restart to run the new kernel or libraries"})
+    return out
+
+
+def node_host_update(principal, node_id, reboot=False):
+    """The controller's own machine's own packages updated (R164 step 3):
+    apt on its node by the root agent, a restart after when asked for;
+    refused anywhere else, on BuilderBot OS (whole images), and while a
+    system job is in flight."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": f"{n['name']}'s packages are its own administrator's: This machine updates the controller's own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot update its packages"}
+    if rep.get("os_image"):
+        return {"error": "BuilderBot OS updates as a whole image under Controller settings, never package by package"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    cfg = {"reboot": reboot is True}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "host-update", "config": cfg, "timeout": 7200})
+    if r.get("ok"):
+        audit(principal, "host-update", node_id, {"job": r["job"], **cfg})
+    return r
+
+
+def node_machine(principal, node_id, hostname="", timezone="", spindown=None):
     """The controller's own machine's name and time zone (R161 step 3, R56
     step 8): a system job on its node, whose root agent sets them through
     hostnamectl and timedatectl; refused anywhere else, since another node's
@@ -3429,11 +3553,21 @@ def node_machine(principal, node_id, hostname="", timezone=""):
         return {"error": "a hostname is letters, digits and hyphens, 63 at most"}
     if tz and not re.fullmatch(r"[A-Za-z0-9_+-]{1,32}(/[A-Za-z0-9_+-]{1,32}){0,2}", tz):
         return {"error": "a time zone is named as Region/City"}
-    if not host and not tz:
+    spin = None
+    if spindown is not None and spindown != "":
+        try:
+            spin = int(spindown)
+        except (TypeError, ValueError):
+            spin = -1
+        if spin not in SPINDOWN_MINUTES:
+            return {"error": f"a spin-down is one of {', '.join(str(m) for m in SPINDOWN_MINUTES)} minutes, 0 for never"}
+    if not host and not tz and spin is None:
         return {"error": "nothing to set"}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node; one at a time"}
     cfg = {k: v for k, v in (("hostname", host), ("timezone", tz)) if v}
+    if spin is not None:
+        cfg["spindown"] = spin
     r = job_add(principal, {"node": node_id}, "system", {"apply": "machine", "config": cfg, "timeout": 120})
     if r.get("ok"):
         audit(principal, "machine", node_id, {"job": r["job"], **cfg})
@@ -4271,6 +4405,14 @@ def heartbeat(nid, sample, addr, running=0):
         clean["gpu_mem_kinds"] = {k: max(0, min(10**7, int(v))) for k, v in list(s["gpu_mem_kinds"].items())[:16]
                                   if (k in PROC_KINDS or k == "other") and isinstance(v, (int, float))}
     clean["running"] = int(running or 0)
+    # The counters and the temperature the reporting takes its points from
+    # (R164 step 4): two non-negative integers each, a whole degree.
+    for k in ("net", "io"):
+        v = s.get(k)
+        if isinstance(v, list) and len(v) == 2 and all(isinstance(x, int) and not isinstance(x, bool) and x >= 0 for x in v):
+            clean[k] = [min(x, 10**15) for x in v]
+    if isinstance(s.get("temp_c"), int) and not isinstance(s.get("temp_c"), bool) and 0 < s["temp_c"] < 150:
+        clean["temp_c"] = s["temp_c"]
     # How long the agent's last turn spent before its poll, by part (B841):
     # a job queued meanwhile waited for it.
     if isinstance(s.get("turn_ms"), dict):
@@ -4368,6 +4510,11 @@ def heartbeat(nid, sample, addr, running=0):
     ring = _samples.setdefault(nid, [])
     ring.append(clean)
     _trim(ring, clean["at"])
+    # ...and into the weeks-long record (history.py, R164 step 4), on the
+    # controller's own machine, with the hottest disk's reading beside it.
+    if history_add and own_machine(n):
+        temps = [d["smart"]["temp_c"] for d in rep.get("disks") or [] if isinstance(d.get("smart"), dict) and isinstance(d["smart"].get("temp_c"), int)]
+        history_add(nid, clean, max(temps) if temps else None)
     # Each running container's use, once a minute (R218 step 9): name to
     # [cpu %, memory %], whitelisted like everything a node says.
     if isinstance(s.get("ctr_stats"), dict):
@@ -6489,11 +6636,12 @@ def verb(principal, req):
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
              "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
              "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
-             "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone")),
+             "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone"), req.get("spindown")),
              "storage-share": lambda: node_storage_share(principal, nid, req),
              "storage-pool": lambda: node_storage_pool(principal, nid, req),
              "storage-snapshot": lambda: node_storage_snapshot(principal, nid, req),
              "storage-array": lambda: node_storage_array(principal, nid, req),
+             "host-update": lambda: node_host_update(principal, nid, req.get("reboot") is True),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,

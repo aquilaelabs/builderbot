@@ -38,7 +38,8 @@ from .backends import net_backend
 from .toolchains import extract_sandbox_tool
 from .sessnet import session_conf, session_sudoers
 from .runners import runner_dirs, runner_slot
-from .census import FEATURES, _os_release, export_gaps, mounts_now, network_now, services_now
+from .census import FEATURES, _os_release, boot_id, export_gaps, mounts_now, network_now, services_now
+from .disks import disks_now
 from .jobs import Job, pump
 
 
@@ -48,6 +49,13 @@ from .jobs import Job, pump
 # The same bytes as provision-linux.sh's keep_journal writes.
 JOURNAL_DROPIN = ("# Written by BuilderBot (R185): keep the journal across boots, and at most 1G of it.\n"
                   "[Journal]\nStorage=persistent\nSystemMaxUse=1G\n")
+
+
+# The spin-downs This machine offers, in minutes (0 for never), and
+# hdparm -S's code for each: units of five seconds up to 20 minutes, then
+# 241 and up for half hours.
+SPINDOWN_MINUTES = (0, 5, 10, 15, 20, 30, 60, 120)
+SPINDOWN_CODE = {0: 0, 5: 60, 10: 120, 15: 180, 20: 240, 30: 241, 60: 242, 120: 244}
 
 
 class ConfigPlaneMixin:
@@ -105,6 +113,8 @@ class ConfigPlaneMixin:
             return self._apply_storage_snapshot(job, cfg)
         if what == "storage-array":
             return self._apply_storage_array(job, cfg)
+        if what == "host-update":
+            return self._apply_host_update(job, cfg)
         if what == "machine":
             return self._apply_machine(job, cfg)
         if what == "os-update":
@@ -297,8 +307,12 @@ class ConfigPlaneMixin:
             return "failed", 77
         host = str(cfg.get("hostname") or "").strip()
         tz = str(cfg.get("timezone") or "").strip()
-        if not host and not tz:
-            job.say("refused: nothing to set (a hostname, a time zone)\n")
+        spin = cfg.get("spindown") if isinstance(cfg.get("spindown"), int) and not isinstance(cfg.get("spindown"), bool) else None
+        if not host and not tz and spin is None:
+            job.say("refused: nothing to set (a hostname, a time zone, a spin-down)\n")
+            return "failed", 64
+        if spin is not None and spin not in SPINDOWN_MINUTES:
+            job.say(f"refused: a spin-down is one of {', '.join(str(m) for m in SPINDOWN_MINUTES)} minutes, 0 for never\n")
             return "failed", 64
         if host and not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", host.lower()):
             job.say(f"refused: {host!r} is not a hostname (letters, digits and hyphens, 63 at most)\n")
@@ -320,11 +334,50 @@ class ConfigPlaneMixin:
                 job.say("refused: no timedatectl here to set the time zone with\n")
                 return "failed", 78
             bad += self._sh(job, [tool, "set-timezone", tz], timeout=30) != 0
-        self.hello_again("the machine's name or time zone changed")
+        if spin is not None and not bad:
+            # The disks spun down when idle (R164 step 3): hdparm -S on every
+            # spinning disk but the system's, kept in node.json and put back
+            # after a boot by the minute pass (spindown_pass).
+            self.state["spindown"] = spin
+            self.state.pop("spindown_boot", None)
+            save_state(self.state)
+            bad += self.spindown_pass(job) != 0
+        self.hello_again("the machine's name, time zone or spin-down changed")
         if bad:
             return "failed", 1
-        job.say(f"set: {' '.join(x for x in (host and f'hostname {host.lower()}', tz and f'time zone {tz}') if x)}\n")
+        spun = "" if spin is None else f"spin-down {spin or 'never'}"
+        job.say(f"set: {' '.join(x for x in (host and f'hostname {host.lower()}', tz and f'time zone {tz}', spun) if x)}\n")
         return "succeeded", 0
+
+    def spindown_pass(self, job=None):
+        """Once a minute, and from the job: the spin-down kept in node.json
+        applied to every spinning disk but the system's once per boot
+        (hdparm's timer is the drive's and does not survive a power cycle).
+        0 from nothing to do or every disk set, else how many refused."""
+        spin = self.state.get("spindown")
+        if not isinstance(spin, int) or os.geteuid() != 0:
+            return 0
+        boot = boot_id()
+        if job is None and self.state.get("spindown_boot") == boot:
+            return 0
+        tool = shutil.which("hdparm")
+        if not tool:
+            if job:
+                job.say("refused: no hdparm here to set a spin-down with (the storage feature installs it)\n")
+            return 1
+        bad = 0
+        for d in disks_now(smart=False):
+            if d.get("ssd") or d.get("system") or d.get("removable") or not d.get("name", "").startswith("sd"):
+                continue
+            argv = [tool, "-S", str(SPINDOWN_CODE[spin]), f"/dev/{d['name']}"]
+            rc = self._sh(job, argv, timeout=30) if job else subprocess.run(argv, capture_output=True, timeout=30, check=False).returncode
+            bad += rc != 0
+        if not bad:
+            self.state["spindown_boot"] = boot
+            save_state(self.state)
+        if job:
+            job.say(f"spin-down {spin or 'never'}: {'set on every spinning disk' if not bad else f'{bad} disk(s) refused it'}\n")
+        return bad
 
     def _apply_power(self, job, what):
         """Reboot the machine or power it off, a few seconds out, so this

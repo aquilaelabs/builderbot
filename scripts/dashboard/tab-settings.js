@@ -202,9 +202,19 @@ function updatesSection(){
     : esc(r.running || "an unstamped build");
   const how = os ? `Update fetches the release's image (its root, kernel and initrd), checks each against its sha256 and the root against its build attestation, writes the slot not in use and names it for the next boot; the restart is yours, from This machine, and the slot running now stays to fall back to. An offline machine takes the same files from a folder here (a stick, a share).`
     : `Update fetches the release's bundle, checks its sha256 and its build attestation, holds the state to its version gate, switches to it and comes back by itself if the new build does not answer; the one before is kept, and Rollback on This machine's Updates takes it back.`;
+  // The machine's own packages (R164 step 3), on a bare-metal install
+  // that is not BuilderBot OS: how many wait, the security ones among
+  // them, and Apply updates, with a restart after when ticked.
+  const h = r.host && typeof r.host.pending === "number" ? r.host : null;
+  const host = !h ? "" : `<div class="sub">The system's own packages: ${h.pending ? `${h.pending} update${h.pending === 1 ? "" : "s"} waiting${h.security ? `, ${h.security} of them security` : ""}` : "up to date"}${h.checked ? ` (checked ${esc(ago(h.checked))})` : ""}${h.reboot ? `; <span class="warn">a restart is needed</span> to run the new kernel or libraries` : ""}.</div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="hostReboot"> restart after, if the update asks for it</label></div>
+      <div class="actbar"><span class="sp"></span>
+        ${h.reboot ? `<button type="button" data-hostreboot="${esc(r.node || "")}">Restart now</button>` : ""}
+        <button type="button" data-hostupdate="${esc(r.node || "")}"${r.node && h.pending ? "" : " disabled"}>Apply updates</button></div>`;
   return `<div class="row stack2" data-group="Updates"><div class="grow">
       <div class="sub">This install runs ${runs}; the newest release is ${r.latest ? esc(r.latest) : "not known yet"} (${when}${r.error ? `; ${esc(r.error)}` : ""}).</div>
       <div class="sub dim">${how}</div>
+      ${host}
       ${os ? `<div class="field"><label class="pick"><span class="pickw">From a folder here</span><input type="text" id="osFrom" placeholder="/mnt/stick/builderbot-os" autocomplete="off" spellcheck="false"></label></div>` : ""}
       <div class="actbar"><span class="sp"></span>
         <button type="button" data-relcheck>Check now</button>
@@ -305,6 +315,19 @@ function wireMove(root){
 }
 
 function wireUpdates(root){
+  root.querySelectorAll("[data-hostupdate]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const reboot = !!$("hostReboot")?.checked;
+    if (!await askYes(`Update the system's own packages?\n\napt brings every package to its newest with the configuration files kept as they are${reboot ? ", and the machine restarts after if the update asks for it" : "; a restart, if one is needed, is yours to press after"}. The log is on the Jobs page.`, {title: "Apply updates?", verb: "Update"})) return;
+    busy(b, "Updating");
+    const j = await (await postJSON("/api/v1/nodes", {action: "host-update", id: b.dataset.hostupdate, reboot})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "updating: the job runs on this machine; its log is on the Jobs page", !!j.error);
+  }));
+  root.querySelectorAll("[data-hostreboot]").forEach(b => b.onclick = () => pressing(b, async () => {
+    if (!await askYes("Restart this machine now? Every session and container on it stops until it is back.", {title: "Restart?", verb: "Restart", danger: true})) return;
+    busy(b, "Restarting");
+    const j = await (await postJSON("/api/v1/nodes", {action: "reboot", id: b.dataset.hostreboot})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "restarting: the page comes back when the machine does", !!j.error);
+  }));
   root.querySelectorAll("[data-relcheck]").forEach(b => b.onclick = () => pressing(b, async () => {
     busy(b, "Checking");
     const j = await (await postJSON("/api/v1/nodes", {action: "release-check"})).json().catch(() => ({error: "no answer"}));

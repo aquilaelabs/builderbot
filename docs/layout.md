@@ -154,6 +154,7 @@ scripts/
     prefs.py                     which model and effort a project's sessions run on, per agent
     settings.py                  controller settings, the things that used to be environment variables; switches, a text and two secrets never shown back
     storage.py                   the Storage page's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
+    history.py                   reporting for the controller's own machine (R164 step 4): the heartbeat's samples kept for weeks at falling resolution, one file per node under the state, read by /api/history
     schedules.py                 the Schedules page's scripts (R117): an administrator's cron in the state, its timetable in words, its timer and the built-in scan
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
@@ -317,6 +318,7 @@ scripts/
     shares.py                    the machine's SMB and NFS shares for the census and the storage-share job (R162 step 1): BuilderBot's own two files, read and written whole
     pools.py                     the machine's ZFS pools for the census and the storage-pool job (R162 step 1): made, grown, scrubbed, a member replaced, exported, destroyed, each disk held to the census
     array.py                     the machine's Unraid-style array for the census and the storage-array job (R162 step 2): the record, snapraid.conf and the fstab lines rendered from it, made, a disk added or replaced, synced, scrubbed, checked, destroyed
+    power.py                     the machine's UPS through NUT and its own packages' updates for the census, and the host-update job (R164 step 3)
     agent.py                     Agent: hello, the loop and self-update, made of the parts above
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only
