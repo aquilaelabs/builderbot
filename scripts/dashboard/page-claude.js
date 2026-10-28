@@ -494,8 +494,10 @@ function resumePicker(p, m, card, anchor, ns, several){
       <button type="button" class="${r.restart ? "danger" : "primary"}" data-start>${r.restart ? "Restart" : "Start"}</button></div>`;
   m.dataset.pick = p.name;
   card.appendChild(m);
-  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
+  const say = () => { if (r.agent === "open"){ const w = routerSays(p, r.model); const el = m.querySelector("#rmSay"); el.textContent = w; el.classList.toggle("warn", !!w); } };
+  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; say(); };
   m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
+  say();
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
   m.querySelector("[data-start]").onclick = async e => {
     const label = r.restart ? "Restart" : "Start";
@@ -539,11 +541,28 @@ function resumePicker(p, m, card, anchor, ns, several){
 // Any model's models (R144 step 3): the router's, as the project row
 // carries them, each said with its provider, its context and its price
 // where the router knows them; none when no router allows the project.
+// A model walked with the open agent and BuilderBot's tools is marked; the
+// rest say untested and are offered all the same. One whose context cannot
+// hold the briefing and the house rules says so here and under the picker.
 function routerModels(p){
   const rows = p?.router?.models || [];
   const price = m => m.in_cost ? ` $${(m.in_cost * 1e6).toFixed(2)}/$${(m.out_cost * 1e6).toFixed(2)} per M` : "";
   const ctx = m => m.context ? ` ${Math.round(m.context / 1000)}k` : "";
-  return {models: rows.map(m => [m.id, `${m.id}${ctx(m)}${price(m)}`]), efforts: []};
+  const mark = m => m.walked ? "" : routerTooSmall(p, m) ? " · too small for the briefing" : " · untested";
+  return {models: rows.map(m => [m.id, `${m.id}${ctx(m)}${price(m)}${mark(m)}`]), efforts: []};
+}
+// Whether a model's context is under what the briefing and the house rules
+// take (the server's count, bytes over four, with a quarter kept for the
+// conversation): the picker's mark and Start's sentence.
+function routerTooSmall(p, m){
+  const need = p?.router?.briefing_tokens || 0;
+  return !!(m?.context && need && m.context < need * 1.25);
+}
+function routerSays(p, id){
+  const m = (p?.router?.models || []).find(x => x.id === id);
+  if (!m || !routerTooSmall(p, m)) return "";
+  return `${id}'s context (${Math.round(m.context / 1000)}k) is under what the briefing and the house rules take (about ${
+    Math.round((p.router.briefing_tokens || 0) / 1000)}k): it starts without room for the conversation.`;
 }
 
 function agentPicker(p, m, card, anchor, n, several){
@@ -565,8 +584,10 @@ function agentPicker(p, m, card, anchor, n, several){
       <button type="button" class="${r.restart ? "danger" : "primary"}" data-start>${r.restart ? "Restart" : "Start"}</button></div>`;
   m.dataset.pick = p.name;
   card.appendChild(m);
-  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
+  const say = () => { if (r.agent === "open"){ const w = routerSays(p, r.model); const el = m.querySelector("#rmSay"); el.textContent = w; el.classList.toggle("warn", !!w); } };
+  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; say(); };
   m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
+  say();
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
   m.querySelector("[data-start]").onclick = async e => {
     const label = r.restart ? "Restart" : "Start";

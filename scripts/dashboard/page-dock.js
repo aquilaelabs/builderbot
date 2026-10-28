@@ -106,7 +106,7 @@ function dockBar(){
   const tabsHtml = terms.map(t => { const pc = colorAttrs(projectColor(tabProject(t)));
     return `<span class="dtab${t.id === cur ? " on" : ""}${pc.cls}"${pc.style} data-id="${esc(t.id)}">
       <button type="button" class="dlbl" data-dock="${esc(t.id)}" role="tab" aria-selected="${t.id === cur && dockUp}" title="${esc(tabTitle(t))}">${
-        isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${esc(names.get(t.id) || tabLabel(t))}</button>
+        isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${esc(names.get(t.id) || tabLabel(t))}${dockSpend(t)}</button>
       <button type="button" class="ic dx" data-min="${esc(t.id)}" aria-label="minimize ${esc(names.get(t.id) || tabLabel(t))}"
         title="minimize: it keeps running, and Sessions reopens it">−</button>
       <button type="button" class="ic dx dclose" data-close="${esc(t.id)}" aria-label="close ${esc(names.get(t.id) || tabLabel(t))}"
@@ -125,6 +125,22 @@ function dockBar(){
         ? "reattach: bring the terminal back into this page" : "open in its own window"}">${t.popped ? "⧈" : "⧉"}</button>` : ""}
     <button type="button" class="ic dtoggle" data-dtoggle aria-expanded="${dockUp && !!t}"
       aria-label="${dockUp ? "put the dock down" : "pull the dock up"}">${dockUp && t ? "▾" : "▴"}</button>`;
+}
+
+// An Any model session's tab says what its project has spent through the
+// router so far (the key is the project's, so the spend is), and for a
+// local model its tokens per second, as the router's log last measured it
+// (R144 step 3); nothing for the other agents, whose spend is their own.
+function dockSpend(t){
+  const a = t.kind === "term" ? agentOfArg(String(t.arg)) : null;
+  if (!a || a.agent.id !== "open") return "";
+  const p = (state?.projects || []).find(x => x.name === a.project);
+  const r = p?.router;
+  if (!r) return "";
+  const model = p.yours?.open_model || "";
+  const tps = model && r.rate?.[model];
+  const bits = [r.spend !== null && r.spend !== undefined ? `$${Number(r.spend).toFixed(2)}` : "", tps ? `${tps} tok/s` : ""].filter(Boolean);
+  return bits.length ? ` <span class="dim dspend" title="${esc(`the project's spend through the router so far${tps ? `, and ${model}'s speed on the node` : ""}`)}">${esc(bits.join(" · "))}</span>` : "";
 }
 
 function wireDockBar(bar){

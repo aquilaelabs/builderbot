@@ -525,19 +525,69 @@ def refresh_models(nid):
     return {"ok": True, "models": models}
 
 
+# The models walked with the open agent and BuilderBot's tools (R144 step
+# 3): a session on one ran the briefing, bb, the hooks and a transcript
+# end to end. One goes here when that walk is done; the picker marks the
+# rest untested rather than hiding them, since the router routes to any.
+WALKED_MODELS = ()
+
+
 def refresh_spend(nid):
-    """What each allowed project has spent through its key (/key/info)."""
+    """What each allowed project has spent through its key (/key/info), and
+    for a local model its tokens per second, read off the router's log of
+    the key's last requests (/spend/logs: completion tokens over the call's
+    time), kept per project and model."""
     rec = record(nid)
-    out = {}
+    out, rate = {}, {}
     for project, p in (rec.get("projects") or {}).items():
+        key = _open(p.get("key"))
         with contextlib.suppress(Exception):
-            got = _api(nid, "/key/info?key=" + urllib.parse.quote(_open(p.get("key"))))
+            got = _api(nid, "/key/info?key=" + urllib.parse.quote(key))
             out[project] = float((got.get("info") or got).get("spend") or 0)
+        with contextlib.suppress(Exception):
+            rate[project] = tokens_per_second(_api(nid, "/spend/logs?api_key=" + urllib.parse.quote(key)))
     with _lock:
         d = _load()
-        d.setdefault(str(nid), {})["spend"] = out
+        d.setdefault(str(nid), {}).update(spend=out, rate=rate)
         _save(d)
     return out
+
+
+def tokens_per_second(logs):
+    """{model: tokens per second} for the local models (ollama/...) among a
+    key's last requests: the completion tokens of each over its wall time,
+    averaged over the last twenty of each model. A hosted model is left
+    out: its speed is the provider's, not this machine's."""
+    rows = logs if isinstance(logs, list) else (logs or {}).get("data") or []
+    per = {}
+    for r in rows[-200:]:
+        if not isinstance(r, dict) or not str(r.get("model") or "").startswith("ollama/"):
+            continue
+        try:
+            toks = int(r.get("completion_tokens") or 0)
+            t0, t1 = (_ts(r.get("startTime")), _ts(r.get("endTime")))
+        except (TypeError, ValueError):
+            continue
+        if toks > 0 and t1 > t0:
+            per.setdefault(str(r["model"]), []).append(toks / (t1 - t0))
+    return {m: round(sum(v[-20:]) / len(v[-20:]), 1) for m, v in per.items()}
+
+
+def _ts(x):
+    """A log's time as seconds: ISO text, or a number."""
+    if isinstance(x, (int, float)):
+        return float(x)
+    import datetime
+    return datetime.datetime.fromisoformat(str(x).replace("Z", "+00:00")).timestamp()
+
+
+def rate_for(project):
+    """{model: tokens per second} for the project's local models, from the
+    first router that allows it."""
+    for rec in _load().values():
+        if str(project) in (rec.get("projects") or {}) and rec.get("deployed"):
+            return (rec.get("rate") or {}).get(str(project)) or {}
+    return {}
 
 
 def models_for(project):
@@ -545,7 +595,7 @@ def models_for(project):
     router that allows it: [{id, provider, context, in_cost, out_cost}]."""
     for rec in _load().values():
         if str(project) in (rec.get("projects") or {}) and rec.get("deployed"):
-            return [m for m in (rec.get("models") or []) if not m.get("wild")]
+            return [dict(m, walked=m["id"] in WALKED_MODELS) for m in (rec.get("models") or []) if not m.get("wild")]
     return []
 
 

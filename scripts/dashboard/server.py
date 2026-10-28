@@ -1941,15 +1941,33 @@ def _givers_said(project, me):
     return out
 
 
+_BRIEF_TOKENS = {}      # project -> (at, tokens): what the briefing takes, for the picker
+
+
+def _briefing_tokens(name):
+    """About how many tokens the block a session is handed takes (bytes over
+    four), assembled at most every two minutes per project: the chooser
+    says when a model's context cannot hold it (R144 step 3)."""
+    at, n = _BRIEF_TOKENS.get(name) or (0, 0)
+    if time.time() - at > 120:
+        try:
+            n = len(preamble.block(name).encode("utf-8")) // 4
+        except Exception:                                          # noqa: BLE001 (a guess, said as one)
+            n = 0
+        _BRIEF_TOKENS[name] = (time.time(), n)
+    return n
+
+
 def _router_row(name):
-    """{models, spend} for a project a router allows, or None; cheap, since
-    the record is one small file read on every poll."""
+    """{models, spend, rate, briefing_tokens} for a project a router allows,
+    or None; cheap, since the record is one small file read on every poll
+    and the briefing's size is kept for two minutes."""
     models = router.models_for(name)
     if not models:
         return None
     return {"models": [{"id": m["id"], "provider": m.get("provider", ""), "context": m.get("context", 0),
-                        "in_cost": m.get("in_cost", 0), "out_cost": m.get("out_cost", 0)} for m in models],
-            "spend": router.spend_for(name)}
+                        "in_cost": m.get("in_cost", 0), "out_cost": m.get("out_cost", 0), "walked": bool(m.get("walked"))} for m in models],
+            "spend": router.spend_for(name), "rate": router.rate_for(name), "briefing_tokens": _briefing_tokens(name)}
 
 
 def _name_of_uid(uid):

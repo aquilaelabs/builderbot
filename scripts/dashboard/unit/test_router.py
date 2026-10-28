@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -49,6 +50,11 @@ class FakeLiteLLM(BaseHTTPRequestHandler):
             return self._send({"data": [{"id": "openai/gpt-6-luna"}]})
         if self.path.startswith("/key/info"):
             return self._send({"info": {"spend": 1.25}})
+        if self.path.startswith("/spend/logs"):
+            return self._send([{"model": "ollama/qwen2.5-coder:7b", "completion_tokens": 120, "startTime": "2026-10-28T10:00:00Z", "endTime": "2026-10-28T10:00:05Z"},
+                               {"model": "ollama/qwen2.5-coder:7b", "completion_tokens": 60, "startTime": 1000.0, "endTime": 1002.0},
+                               {"model": "anthropic/claude-sonnet-5-5", "completion_tokens": 500, "startTime": 1000.0, "endTime": 1001.0},
+                               {"model": "ollama/qwen2.5-coder:7b", "completion_tokens": 0, "startTime": 1000.0, "endTime": 1001.0}])
         return self._send({"error": "no"}, 404)
 
     def log_message(self, format, *args):
@@ -191,6 +197,14 @@ class Router(unittest.TestCase):
         self.assertEqual(router.refresh_spend("n1"), {"web": 1.25})
         self.assertEqual(router.spend_for("web"), 1.25)
         self.assertIsNone(router.spend_for("app"))
+        # A local model's tokens per second off the key's log (R144 step 3):
+        # the two ollama calls averaged (24 and 30), the hosted one left
+        # out, a call with no tokens left out; and the walked mark.
+        self.assertEqual(router.rate_for("web"), {"ollama/qwen2.5-coder:7b": 27.0})
+        self.assertEqual(router.rate_for("app"), {})
+        self.assertFalse(any(m["walked"] for m in router.models_for("web")), "nothing walked yet")
+        with mock.patch.object(router, "WALKED_MODELS", ("anthropic/claude-sonnet-5-5",)):
+            self.assertTrue(next(m for m in router.models_for("web") if m["id"] == "anthropic/claude-sonnet-5-5")["walked"])
         # Ollama's models, pulled and removed as exec jobs on the node.
         self.assertIn("not on", router.ollama_pull("n1", "qwen2.5-coder:7b")["error"])
         router.set_keys("n1", {"ollama": True})

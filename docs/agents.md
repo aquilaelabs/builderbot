@@ -204,7 +204,16 @@ offers the router's models with their context and price where the router
 knows them (`Read the models` on the section reads them), and bb-tty
 starts OpenCode with a config written for the session: the router as its
 one provider, the briefing as an instructions file, and its permissions.
-Its guards are a plugin of BuilderBot's that bb-tty writes into the
+Each model is marked: one walked with OpenCode and BuilderBot's tools
+(`router.WALKED_MODELS`) plain, the rest **untested** and offered all the
+same, and one whose context cannot hold the briefing and the house rules
+(the block a session is handed, counted by the server) says **too small
+for the briefing**, with Start's line under the picker saying by how much.
+While an Any model session runs, its tab on the dock says what its project
+has spent through the router so far (the key is the project's, so the
+spend is) and, for a model Ollama runs on the node, its tokens per second
+as the router's log last measured it (**Read the spend** on the section
+reads both). Its guards are a plugin of BuilderBot's that bb-tty writes into the
 account's OpenCode plugins folder, calling `bb-agent-hook open` before a
 tool (a refusal throws, so the tool does not run), on a prompt, at a
 permission ask, at the turn's end and after a summary, and exporting the
