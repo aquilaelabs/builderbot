@@ -496,8 +496,8 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // while the file passed alone.
   ok(/not a BuilderBot sandbox|does not answer|will not say what it is/.test(emptyWhy),
      `an unreachable node shows its reason, not a spinner (${emptyWhy.slice(0, 50)})`);
-  await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
-  ok(await page.$eval('.dmtab .dmpick select', s => !s.disabled),
+  await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
+  ok(await page.$eval('.pane .bar #ndPick', s => !s.disabled),
      '...with the picker still live: the way back is the way in');
   // and back: the sandbox's last-known answer paints instantly from cache.
   // Waited for at the point of USE, not at the assertion above: the picker

@@ -94,7 +94,7 @@ ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, rou
    '...and a certificate that is not one');
 
 // Deploy: the container is written from the routes and built on the node.
-await page.click('.nginxtab .docbarrow [data-ngdeploy]');
+await page.click('.nginxtab .pghead [data-ngdeploy]');
 await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.deployed, sandbox.node, { timeout: 20000 });
 const rec = JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['nginx-sandbox'];
 const written = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });

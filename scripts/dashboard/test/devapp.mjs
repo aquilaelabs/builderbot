@@ -3399,7 +3399,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   for (const w of [360, 344]){
     await page.setViewportSize({ width: w, height: 780 });
     await page.evaluate(() => { dockerRev++; drawPanes(); });
-    await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
+    await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
     const bar = await page.evaluate(() => {
       const b = document.querySelector('.pane .doc.on .docbarrow.dmpick');
       const sel = b.querySelector('label.pick select');
