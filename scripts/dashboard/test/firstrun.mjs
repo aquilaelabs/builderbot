@@ -156,7 +156,10 @@ await firstRun(false);
                                            ...(own ? ['--own'] : [])], { encoding: 'utf8', env }).trim();
       // The own machine's agent is root on a managed machine (the installer
       // provisions it so), which its name and time zone job asks of it.
-      return { tok, go: () => post('/api/v1/agent/enroll', { user: 'bb', version: '1', digest: 'sha256:' + '1'.repeat(64),
+      // ...and current, as the installer's is: a job this controller sends
+      // is refused for an agent behind the one it ships.
+      const shipped = async () => own ? (await (await fetch(base + '/api/v1/nodes', { headers: H })).json()).agent || {} : {};
+      return { tok, go: async () => post('/api/v1/agent/enroll', { user: 'bb', version: (await shipped()).version || '1', digest: (await shipped()).digest || 'sha256:' + '1'.repeat(64),
         census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', ...(own ? { administers: true, sandbox: true } : {}) } },
         { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }) };
     };
