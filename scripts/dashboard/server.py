@@ -5188,7 +5188,6 @@ move.configure(state=STATE, workspace=WORKSPACE, secrets_dir=os.environ.get("BB_
                install_key_fn=lambda: signing.MASTER or b"", store_paths_fn=lambda: {k: str(paths.of(k)) for k in paths.KINDS},
                page_url_fn=_page_url, node_ids_fn=lambda: [n["id"] for n in nodes.node_list() if n.get("kind") == "agent" and n.get("state") != "retired"],
                bare_metal_fn=lambda: BARE_METAL,
-               node_seen_fn=lambda: {n["id"]: int((n.get("agent") or {}).get("last_seen") or 0) for n in nodes.node_list()},
                node_name_fn=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
                audit_fn=lambda who, what, detail: db.audit(who, what, "", detail))
 
@@ -5221,6 +5220,7 @@ backup.configure(state=STATE, pack_fn=move.pack, seal_fn=signing.seal, restore_f
                  version_fn=lambda: image_stamp().get("version") or "", state_version_fn=stateversion.current, write_json_fn=write_json,
                  host_fn=lambda: socket.gethostname())
 nodes.move_for_node = move.for_node
+nodes.move_here = move.node_here
 channel.moved_answer = lambda nid: {"answer": move.answer_for(nid), "url": _page_url(), "pin": tls._loaded or ""}
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
                setting=settings.get, write_json=write_json, audit=db.audit)

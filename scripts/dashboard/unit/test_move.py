@@ -40,13 +40,13 @@ class Move(unittest.TestCase):
         (self.store / "alpha.git" / "HEAD").write_text("bare\n")
         self.configure(self.state, bare=False)
 
-    def configure(self, state, bare, seen=None, url="https://old.example/"):
+    def configure(self, state, bare, url="https://old.example/"):
         self.audits = []
         move.configure(state=state, workspace=self.ws, secrets_dir=str(self.secrets), write_json_fn=write_json,
                        seal_fn=signing.seal, open_fn=signing.open_with, state_version_fn=lambda: 16, build_version_fn=lambda: "0.9.0",
                        install_key_fn=lambda: b"k" * 32, store_paths_fn=lambda: {"gitrelay": str(self.store), "logs": str(self.tmp / "logs")},
                        page_url_fn=lambda: url, node_ids_fn=lambda: ["n_1", "n_2"], bare_metal_fn=lambda: bare,
-                       node_seen_fn=lambda: dict(seen or {}), node_name_fn=lambda nid: {"n_1": "alpha", "n_2": "beta"}.get(nid, nid),
+                       node_name_fn=lambda nid: {"n_1": "alpha", "n_2": "beta"}.get(nid, nid),
                        audit_fn=lambda who, what, detail: self.audits.append((what, detail)))
 
     def test_the_bundle_moves_the_state_and_the_nodes_follow(self):
@@ -58,6 +58,8 @@ class Move(unittest.TestCase):
         st = move.status()
         self.assertTrue(st["prepared"] and st["to"] == "https://new.example" and st["carries_key"] and st["repos"])
         self.assertEqual((st["heard"], st["nodes"], st["stores"]), (0, 2, ["gitrelay"]), "nobody has heard it yet; the logs store is off by default")
+        move.for_node("n_1")
+        self.assertEqual(move.status()["heard"], 1, "a node whose hello carried the move has heard it")
         self.assertTrue(move.bundle_path().is_file())
         raw = move.bundle_path().read_bytes()
         self.assertNotIn(b'"users"', raw, "the state is sealed, not readable")
@@ -93,13 +95,13 @@ class Move(unittest.TestCase):
         self.assertEqual(move.for_node("n_1"), {}, "the new home tells its nodes of no move: the record came with the bundle")
         # The nodes not yet here (R175 step 3): both, until each says hello
         # after the landing; each with its follow line.
-        self.configure(new_state, bare=True, seen={"n_1": 1}, url="https://new.example/")
+        self.configure(new_state, bare=True, url="https://new.example/")
         nh = move.not_yet_here()
         self.assertEqual([x["name"] for x in nh], ["alpha", "beta"])
         self.assertEqual(nh[0]["line"], f"builderbot-agent follow https://new.example/ {fn['expect']}")
-        import time as _t
-        self.configure(new_state, bare=True, seen={"n_1": int(_t.time()) + 5}, url="https://new.example/")
-        self.assertEqual([x["id"] for x in move.not_yet_here()], ["n_2"])
+        move.node_here("n_1")
+        move.node_here("n_9")
+        self.assertEqual([x["id"] for x in move.not_yet_here()], ["n_2"], "a hello here takes a node off the list; a stranger is nobody's")
         # The old home, marked moved: read-only, saying where; and a late
         # node still hears the move with its challenge (R175 step 2).
         self.configure(self.state, bare=False)

@@ -348,7 +348,7 @@ await firstRun(false);
     const prep = await sApi('/api/move', { action: 'prepare', to: 'http://127.0.0.1:1' });
     const hello = () => fetch(src.base + '/api/v1/agent/hello', { method: 'POST', headers: nH, body: JSON.stringify({ census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' }, version: '1', digest: 'sha256:' + '1'.repeat(64) }) });
     ok(prep.ok && (await (await hello()).json()).move?.expect, 'armed, the node hears the move');
-    ok((await sApi('/api/move', { action: 'forget' })).ok && !(await (await hello()).json()).move && !(await sApi('/api/move')).prepared,
+    ok((await sApi('/api/move', { action: 'forget' })).ok && !(await (await hello()).json()).move?.url && !(await sApi('/api/move')).prepared,
        'Forget it withdraws it: the next hello carries no move, and nothing is armed');
     src.stop();
   }

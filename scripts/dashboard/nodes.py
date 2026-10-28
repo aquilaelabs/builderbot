@@ -4307,6 +4307,8 @@ def token_attention():
 
 # A move prepared, per node (move.for_node), set by the server; {} when none.
 move_for_node = lambda nid: {}  # noqa: E731
+# ...and the node's hello on the controller a move landed on (R175 step 3).
+move_here = lambda nid: None  # noqa: E731
 
 
 def hello(nid, census, addr, version="", digest="", running=None, keep=None, rotates=False):
@@ -4369,6 +4371,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
     if not was_live:
         _revived(nid)
     ours = agent_file()
+    # A node here after a move landed (R175 step 3): off the not-yet-here list.
+    move_here(nid)
     return {"ok": True, "transports": ["longpoll"],
             "poll": POLL_S, "node": {"id": nid, "name": n["name"],
                                      "state": n["state"],

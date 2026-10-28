@@ -72,9 +72,6 @@ store_paths = lambda: {}            # noqa: E731
 page_url = lambda: ""               # noqa: E731
 node_ids = lambda: []               # noqa: E731
 bare_metal = lambda: False          # noqa: E731
-# Each node's last hello, {nid: epoch}: how many have heard an armed move,
-# and which have not knocked since a move landed here (R175).
-node_seen = lambda: {}              # noqa: E731
 node_name = lambda nid: nid         # noqa: E731
 audit = lambda who, what, detail: None    # noqa: E731
 # The other controller, asked over HTTP(S): a wait of this many seconds.
@@ -86,12 +83,11 @@ NONCE_LIFE = 600
 
 
 def configure(*, state, workspace, secrets_dir, write_json_fn, seal_fn, open_fn, state_version_fn, build_version_fn,
-              install_key_fn, store_paths_fn, page_url_fn, node_ids_fn, bare_metal_fn, node_seen_fn=None, node_name_fn=None,
-              audit_fn=None):
+              install_key_fn, store_paths_fn, page_url_fn, node_ids_fn, bare_metal_fn, node_name_fn=None, audit_fn=None):
     globals().update(STATE=Path(state), WORKSPACE=Path(workspace), SECRETS=secrets_dir or "", write_json=write_json_fn,
                      seal=seal_fn, open_with=open_fn, state_version=state_version_fn, build_version=build_version_fn,
                      install_key=install_key_fn, store_paths=store_paths_fn, page_url=page_url_fn, node_ids=node_ids_fn,
-                     bare_metal=bare_metal_fn, node_seen=node_seen_fn or (lambda: {}), node_name=node_name_fn or (lambda nid: nid),
+                     bare_metal=bare_metal_fn, node_name=node_name_fn or (lambda nid: nid),
                      audit=audit_fn or (lambda who, what, detail: None))
 
 
@@ -176,9 +172,9 @@ def status():
         out.update(moved=True, to=d["moved_to"], at=d.get("moved_at", 0), how=d.get("moved_how", "pressed"),
                    landed_at=int(d.get("landed_at") or 0))
     if d.get("made_at") and not d.get("used") and not d.get("restored_at"):
-        seen = node_seen() or {}
-        heard = [nid for nid in node_ids() if int(seen.get(nid) or 0) >= int(d["made_at"])]
-        out.update(prepared=True, to=d.get("to", ""), made_at=d["made_at"], heard=len(heard), nodes=len(list(node_ids())),
+        ids = list(node_ids())
+        heard = [nid for nid in ids if nid in (d.get("told") or [])]
+        out.update(prepared=True, to=d.get("to", ""), made_at=d["made_at"], heard=len(heard), nodes=len(ids),
                    bundle=d.get("bundle", ""), packed_at=int(d.get("packed_at") or 0), size=int(d.get("size") or 0),
                    repos=bool(d.get("repos")), carries_key=bool(d.get("carries_key")),
                    stores=d.get("stores") if isinstance(d.get("stores"), list) else sorted(k for k in (store_paths() or {}) if k not in STORES_OFF),
@@ -323,7 +319,8 @@ def pack_bundle():
         return {"error": "no move is prepared"}
     out_dir = STATE / "move"
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    # Named to the millisecond: two packs in one second are two bundles.
+    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
     name = f"builderbot-move-{stamp}.bbmove"
     raw, counts = pack(repos=bool(d.get("repos")), carry_key=bool(d.get("carries_key")),
                        stores=set(d["stores"]) if isinstance(d.get("stores"), list) else None)
@@ -375,6 +372,15 @@ def for_node(nid):
     key = _key()
     if not key:
         return {}
+    if nid not in (d.get("told") or []):
+        # Which nodes have heard it, for the section's count: written once
+        # per node, not on every hello.
+        with _lock:
+            d = _load()
+            told = [x for x in (d.get("told") or []) if isinstance(x, str)]
+            if nid not in told and d.get("made_at"):
+                d["told"] = told + [str(nid)]
+                _save(d)
     return {"url": d.get("moved_to") or d["to"], "expect": challenge(key, nid)}
 
 
@@ -612,18 +618,29 @@ def follow_line(nid):
     return f"builderbot-agent follow {page_url() or d.get('to', '')} {challenge(key, nid)}"
 
 
+def node_here(nid):
+    """A node's hello on the controller a move landed on (nodes.hello): the
+    node is here now, written once; nothing elsewhere."""
+    d = _load()
+    if not d.get("restored_at") or nid not in (d.get("nodes") or []) or nid in (d.get("here") or []):
+        return
+    with _lock:
+        d = _load()
+        here = [x for x in (d.get("here") or []) if isinstance(x, str)]
+        if nid not in here:
+            d["here"] = here + [str(nid)]
+            _save(d)
+
+
 def not_yet_here():
     """On the controller a move landed on: the nodes the bundle named that
-    have not said hello since, each with its follow line; [] elsewhere."""
+    have not said hello here since (node_here), each with its follow line;
+    [] elsewhere."""
     d = _load()
     if not d.get("restored_at"):
         return []
-    seen = node_seen() or {}
-    out = []
-    for nid in d.get("nodes") or []:
-        if int(seen.get(nid) or 0) < int(d["restored_at"]):
-            out.append({"id": nid, "name": node_name(nid), "line": follow_line(nid)})
-    return out
+    here = set(d.get("here") or [])
+    return [{"id": nid, "name": node_name(nid), "line": follow_line(nid)} for nid in d.get("nodes") or [] if nid not in here]
 
 
 def read_manifest(path):
@@ -729,7 +746,7 @@ def restore(path, token="", state_dir=None, workspace_dir=None, secrets_dir=None
         if m.get("kind") == "backup":
             rec["came_from_backup"] = True
         for k in ("moved_to", "moved_at", "moved_how", "landed_at", "asked_at", "asked_error", "fetch_nonces", "told_at", "tell_tried_at",
-                  "tell_error", "told_how"):
+                  "tell_error", "told_how", "told", "here"):
             rec.pop(k, None)
         with open(rec_path, "w") as f:
             json.dump(rec, f)
