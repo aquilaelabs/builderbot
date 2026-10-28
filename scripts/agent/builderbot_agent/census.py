@@ -47,7 +47,7 @@ from . import vmhw
 from .disks import disks_now
 from .osimage import os_release
 from .shares import shares_now
-from .pools import pools_now
+from .pools import pools_now, snapshots_now
 from .vms import isos_now, vm_memory, vm_pool, vms_now, vms_other
 
 
@@ -367,6 +367,8 @@ def census(state):
         "shares": shares_now(),
         # ...and its ZFS pools (R162 step 1), as zpool says them.
         "pools": pools_now(),
+        # ...and each pool's snapshots (R162 step 5), counted by kind, the newest named.
+        "snapshots": snapshots_now(),
         # Whether a session here sees only its own project (R35).
         "isolation": isolation_now(),
         # ...and reaches only its own project's containers (R79), as the

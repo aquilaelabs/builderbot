@@ -268,7 +268,7 @@ function storagePools(n){
         <option value="raidz2">raidz2: four or more disks, any two may fail</option>
         <option value="raidz1">raidz1: three or more disks, one may fail</option>
         <option value="single">single: one disk, nothing protects it</option></select></label></div>
-      <div class="field"><div class="lbox" id="stPoolDisks">${[...free, ...used].map(d => `<label class="ndcap"><input type="checkbox" data-stdiskpick="${esc(d.name)}"${used.includes(d) ? ' data-held="1"' : ""}> ${diskLine(d)}${used.includes(d) ? ` <span class="pill warn">holds ${esc((d.parts || []).find(p => p.holds && p.holds !== "nothing")?.holds || d.holds)}</span>` : ""}</label>`).join("") || `<div class="sub dim">no disk to make a pool from</div>`}</div></div>
+      <div class="field"><div class="lbox" id="stPoolDisks">${[...free, ...used].map(d => `<label class="ndcap"><input type="checkbox" data-stdiskpick="${esc(d.name)}"${used.includes(d) ? ' data-held="1"' : ""}> ${diskLine(d)}${used.includes(d) ? ` <span class="pill warn">holds ${esc((d.parts || []).find(p => p.holds && p.holds !== "nothing")?.holds || d.holds)}</span>` : ""}</label>`).join("") || `<div class="empty">No disk to make a pool from.</div>`}</div></div>
       <div class="field"><label class="ndcap"><input type="checkbox" id="stPoolWipe"> wipe disks that hold something (what is on them is gone)</label></div>
       <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stpool="create">Make the pool</button></div></div>`;
   const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No pool yet${n.zfs ? ": the form below makes one" : ""}.</div>`}${form}`;
@@ -297,6 +297,86 @@ function wireStoragePools(root, n){
     busy(b, act === "scrub" ? "Scrubbing" : "Working");
     const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
     notify(j.error || `${act}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+}
+
+// Snapshots (R162 step 5): each pool's bb- snapshots as the census counts
+// them, the pool's hourly, daily and weekly schedules (the Schedules
+// page's rows, made here as system jobs on the machine), Snapshot now, and
+// the newest ten with Roll back (the name typed again) and Delete.
+const SNAP_KINDS = [["hourly", "Hourly", "0 * * * *"], ["daily", "Daily, at 4:00", "0 4 * * *"], ["weekly", "Weekly, Sundays at 4:00", "0 4 * * 0"]];
+function storageSnapshots(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.zfs ? `No zfs on this machine yet: Storage on its ${pageLink("machine", "Features section")} installs it.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const pools = n.pools || [], snaps = n.snapshots || {}, scheds = n.snapshot_schedules || [];
+  const when = at => at ? new Date(at * 1000).toLocaleString() : "";
+  const rows = pools.map(p => {
+    const v = snaps[p.name] || {count: 0, used_mb: 0, kinds: {}, newest: []};
+    const mine = scheds.filter(x => x.pool === p.name);
+    const kinds = SNAP_KINDS.map(([k, label]) => {
+      const sch = mine.find(x => x.kind === k);
+      return `<span class="pill${sch?.on ? " ok" : ""}" data-snapkind="${k}">${esc(label.split(",")[0].toLowerCase())}: ${sch ? `${sch.keep} kept${sch.on ? "" : ", off"}` : "none"}</span>`;
+    }).join(" ");
+    const newest = (v.newest || []).map(x => `<div class="row stsnap" data-snap="${esc(x.name)}"><div class="grow"><code>${esc(x.name)}</code> <span class="dim">${esc(when(x.at))}</span></div>${
+      admin && !why ? `<span class="acts">${actMore([
+        `<button type="button" data-stsnap="rollback" data-pool="${esc(p.name)}" data-name="${esc(x.name)}" title="the pool as it was then; everything since is gone">Roll back</button>`,
+        `<button type="button" class="danger" data-stsnap="destroy" data-pool="${esc(p.name)}" data-name="${esc(x.name)}">Delete</button>`], true)}</span>` : ""}</div>`).join("");
+    return `<div class="row stack2 stpoolsnaps" data-pool="${esc(p.name)}"><div class="grow">
+      <div class="name">${esc(p.name)} <span class="pill">${v.count} snapshot${v.count === 1 ? "" : "s"}${v.used_mb ? `, ${esc(humanBytes(v.used_mb * 1048576))}` : ""}</span></div>
+      <div class="sub">${kinds}</div>
+      ${newest ? `<div class="rows">${newest}</div>` : `<div class="empty">No snapshot of ${esc(p.name)} yet.</div>`}
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-stsnap="take" data-pool="${esc(p.name)}" title="one of every dataset, kept beside the manual ones">Snapshot now</button></span>` : ""}</div>`;
+  }).join("");
+  const form = !admin || why || !pools.length ? "" : `<div class="field stsnapform"><div class="hint">A schedule: the pool, how often, and how many of that kind to keep; the oldest past that goes when the next is taken.</div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Pool</span><select id="stSnapPool">${optionList(pools.map(p => [p.name, p.name]), pools[0].name)}</select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">How often</span><select id="stSnapKind">${optionList(SNAP_KINDS.map(([k, label]) => [k, label]), "daily")}</select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Keep</span><input type="number" id="stSnapKeep" min="1" max="200" value="7"></label></div>
+      </div>
+      <div class="actbar"><span class="sp"></span>${scheds.length ? actMore(scheds.map(x => `<button type="button" class="danger" data-stsnapsched="${esc(x.id)}">Remove ${esc(x.pool)} ${esc(x.kind)}</button>`), true) : ""}<button type="button" class="primary" data-stsnap="schedule">Save the schedule</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No pool yet: snapshots are a pool's.</div>`}${form}`;
+  const total = pools.reduce((a, p) => a + ((snaps[p.name] || {}).count || 0), 0);
+  return docSection("storage", "snapshots", "Snapshots", pools.length ? `${total}${scheds.length ? `, ${scheds.filter(x => x.on).length} scheduled` : ""}` : "", body);
+}
+function wireStorageSnapshots(root, n){
+  root.querySelectorAll("[data-stsnap]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stsnap;
+    if (act === "schedule"){
+      const pool = $("stSnapPool")?.value || "", kind = $("stSnapKind")?.value || "daily", keep = parseInt($("stSnapKeep")?.value || "0", 10);
+      if (!pool || !(keep >= 1 && keep <= 200)){ notify("a schedule takes a pool and keeps 1 to 200 snapshots", true); return; }
+      const was = (n.snapshot_schedules || []).find(x => x.pool === pool && x.kind === kind);
+      const body = {action: "save", ...(was ? {id: was.id} : {}), name: `Snapshots of ${pool}, ${kind}`, cron: SNAP_KINDS.find(k => k[0] === kind)[2],
+                    node: n.node, on: true, system: {apply: "storage-snapshot", config: {pool, kind, keep}}};
+      busy(b, "Saving");
+      const j = await (await postJSON("/api/schedules", body)).json().catch(() => ({error: "no answer"}));
+      notify(j.error || `${pool}: ${kind} snapshots, ${keep} kept (${j.schedule?.words || ""}); the row is on the Schedules page too`, !!j.error);
+      await refresh();
+      return;
+    }
+    const body = {action: "storage-snapshot", id: n.node, snapshot: act, pool: b.dataset.pool || "", name: b.dataset.name || "", dataset: b.dataset.pool || ""};
+    if (act === "rollback"){
+      const typed = await askText(`Roll ${body.pool} back to ${body.name}?\n\nEverything written to the pool since then is gone, and every snapshot since it with it.`, {verb: "Roll back", label: "The snapshot's name, typed again"});
+      if (typed === null || typed === undefined) return;
+      if (String(typed).trim() !== body.name){ notify("the name typed is not the snapshot's; nothing rolled back", true); return; }
+      body.confirm = body.name;
+    } else if (act === "destroy"){
+      if (!await askYes(`Delete the snapshot ${body.name} of ${body.pool}?`, {title: "Delete the snapshot?", verb: "Delete it", danger: true})) return;
+    } else {
+      body.kind = "manual"; body.keep = 50;
+    }
+    busy(b, act === "take" ? "Taking" : "Working");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+  root.querySelectorAll("[data-stsnapsched]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const x = (n.snapshot_schedules || []).find(y => y.id === b.dataset.stsnapsched);
+    if (!await askYes(`Remove the ${x?.kind || ""} schedule of ${x?.pool || "the pool"}? The snapshots it took stay.`, {title: "Remove the schedule?", verb: "Remove"})) return;
+    const j = await (await postJSON("/api/schedules", {action: "remove", id: b.dataset.stsnapsched})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "the schedule is gone", !!j.error);
     await refresh();
   }));
 }
@@ -380,6 +460,7 @@ function storageBody(n, where){
     ${head}
     ${storageMachineDisks(n)}
     ${storagePools(n)}
+    ${storageSnapshots(n)}
     ${storageShares(n)}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
@@ -413,6 +494,7 @@ function renderStorageInto(i){
   wireStorageTab(d.el);
   if (n) wireStorageShares(d.el, n);
   if (n) wireStoragePools(d.el, n);
+  if (n) wireStorageSnapshots(d.el, n);
 }
 
 function wireStorageTab(root){

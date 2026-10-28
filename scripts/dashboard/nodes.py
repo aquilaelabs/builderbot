@@ -1477,6 +1477,19 @@ def _census(c):
                                             "disks": [{"id": pw(d.get("id"), 120), "state": pw(d.get("state"), 12)}
                                                       for d in (v.get("disks") or [])[:64] if isinstance(d, dict)]}
                                            for v in (pl.get("vdevs") or [])[:32] if isinstance(v, dict)]})
+    # ...and its snapshots per pool (R162 step 5): counts by kind, the newest.
+    if isinstance(c.get("snapshots"), dict):
+        out["snapshots"] = {}
+        for pool, v in list(c["snapshots"].items())[:32]:
+            if not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", str(pool)) or not isinstance(v, dict):
+                continue
+            kinds = v.get("kinds") if isinstance(v.get("kinds"), dict) else {}
+            out["snapshots"][pool] = {"count": int(v["count"]) if isinstance(v.get("count"), int) else 0,
+                                      "used_mb": int(v["used_mb"]) if isinstance(v.get("used_mb"), int) else 0,
+                                      "kinds": {k: int(kinds[k]) if isinstance(kinds.get(k), int) else 0 for k in ("hourly", "daily", "weekly", "manual")},
+                                      "newest": [{"name": str(x["name"]), "at": int(x["at"]) if isinstance(x.get("at"), int) else 0}
+                                                 for x in (v.get("newest") or [])[:10]
+                                                 if isinstance(x, dict) and re.fullmatch(r"bb-(hourly|daily|weekly|manual)-\d{8}-\d{4}", str(x.get("name") or ""))]}
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
@@ -3072,22 +3085,68 @@ def node_feature(principal, node_id, fid, op):
     return r
 
 
+def node_storage_snapshot(principal, node_id, req):
+    """A snapshot of a pool on the controller's own machine (R162 step 5):
+    taken now (and the oldest of its kind pruned past what is kept), a
+    dataset rolled back to one (its name typed again), or one destroyed;
+    a system job on its node. The schedules are the Schedules page's, made
+    from the Storage page."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "snapshots are taken on the controller's own machine (the installed edition's Storage page)"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot take a snapshot"}
+    if not ((rep.get("features") or {}).get("storage") or {}).get("zfs"):
+        return {"error": "no zfs on the machine yet: install Storage on its Features section first"}
+    action = str(req.get("snapshot") or "")
+    pool = str(req.get("pool") or "").strip()
+    if action not in ("take", "rollback", "destroy"):
+        return {"error": "a snapshot action is take, rollback or destroy"}
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", pool) or pool not in {p.get("name") for p in rep.get("pools") or [] if isinstance(p, dict)}:
+        return {"error": f"{pool or 'nothing'} is not a pool {n['name']} lists"}
+    cfg = {"snapshot": action, "pool": pool}
+    if action == "take":
+        kind = str(req.get("kind") or "manual")
+        try:
+            keep = int(req.get("keep") if req.get("keep") is not None else 10)
+        except (TypeError, ValueError):
+            keep = 0
+        if kind not in ("hourly", "daily", "weekly", "manual") or not 1 <= keep <= 200:
+            return {"error": "a snapshot has a kind (hourly, daily, weekly, manual) and keeps 1 to 200 of it"}
+        cfg.update(kind=kind, keep=keep)
+    else:
+        name = str(req.get("name") or "")
+        dataset = str(req.get("dataset") or pool)
+        if not re.fullmatch(r"bb-(hourly|daily|weekly|manual)-\d{8}-\d{4}", name) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}(/[A-Za-z0-9_.-]{1,64}){0,8}", dataset) \
+                or dataset.split("/", 1)[0] != pool:
+            return {"error": "a snapshot is named bb-KIND-DATE-TIME on a dataset of the pool"}
+        cfg.update(name=name, dataset=dataset)
+        if action == "rollback":
+            if str(req.get("confirm") or "") != name:
+                return {"error": "rolling back takes the snapshot's name typed again: everything since it is gone"}
+            cfg["confirm"] = name
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-snapshot", "config": cfg, "timeout": 900})
+    if r.get("ok"):
+        audit(principal, "storage-snapshot", node_id, {"job": r["job"], **cfg})
+    return r
+
+
 def node_storage_share(principal, node_id, req):
     """A share on the controller's own machine (R162 step 1): set (SMB,
     NFS or both, on a folder under a pool's mount) or removed, a system job
     on its node whose root agent writes BuilderBot's own two files whole and
     tells Samba and NFS to read again. Refused anywhere else, and without
     the shares feature's daemons."""
-POOL_ACTIONS = ("create", "add", "scrub", "replace", "export", "destroy")
-POOL_LAYOUTS = {"single": 1, "mirror": 2, "raidz1": 3, "raidz2": 4}
-
-
-def node_storage_pool(principal, node_id, req):
-    """A ZFS pool on the controller's own machine (R162 step 1): a system
-    job on its node, whose root agent runs zpool from its table with each
-    argument checked here first and again there; the disks named must be
-    ones the machine's census lists and none the system's. Refused anywhere
-    else, and without the storage feature's zpool."""
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
@@ -3130,6 +3189,33 @@ def node_storage_pool(principal, node_id, req):
                 return {"error": f"{c!r} is not a client (an address, a network like 192.168.1.0/24, a name, or *)"}
         cfg.update(path=path, smb={"on": bool(smb.get("on")), "guest": bool(smb.get("guest")), "ro": bool(smb.get("ro")), "users": users[:64]},
                    nfs={"on": bool(nfs.get("on")), "ro": bool(nfs.get("ro")), "clients": clients[:64]})
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-share", "config": cfg, "timeout": 120})
+    if r.get("ok"):
+        audit(principal, "storage-share", node_id, {"job": r["job"], **cfg})
+    return r
+
+
+POOL_ACTIONS = ("create", "add", "scrub", "replace", "export", "destroy")
+POOL_LAYOUTS = {"single": 1, "mirror": 2, "raidz1": 3, "raidz2": 4}
+
+
+def node_storage_pool(principal, node_id, req):
+    """A ZFS pool on the controller's own machine (R162 step 1): a system
+    job on its node, whose root agent runs zpool from its table with each
+    argument checked here first and again there; the disks named must be
+    ones the machine's census lists and none the system's. Refused anywhere
+    else, and without the storage feature's zpool."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
         return {"error": "pools are made on the controller's own machine (the installed edition's Storage page); another node's disks are its own"}
     rep = n.get("reported") or {}
     if n.get("kind") != "agent" or not rep.get("administers"):
@@ -3141,11 +3227,6 @@ def node_storage_pool(principal, node_id, req):
         return {"error": why}
     if not n.get("live"):
         return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
-    if system_job_for(node_id):
-        return {"error": "a system job is already in flight on this node; one at a time"}
-    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-share", "config": cfg, "timeout": 120})
-    if r.get("ok"):
-        audit(principal, "storage-share", node_id, {"job": r["job"], **cfg})
     action = str(req.get("pool") or "")
     name = str(req.get("name") or "").strip()
     if action not in POOL_ACTIONS:
@@ -6269,6 +6350,7 @@ def verb(principal, req):
              "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone")),
              "storage-share": lambda: node_storage_share(principal, nid, req),
              "storage-pool": lambda: node_storage_pool(principal, nid, req),
+             "storage-snapshot": lambda: node_storage_snapshot(principal, nid, req),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,

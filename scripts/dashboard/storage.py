@@ -37,6 +37,7 @@ def node_view(n, may_see):
             "own": bool((n.get("config") or {}).get("own")),
             "disks": (n.get("reported") or {}).get("disks") or [],
             "shares": (n.get("reported") or {}).get("shares") or [],
+            "snapshots": (n.get("reported") or {}).get("snapshots") or {},
             "smb": bool((((n.get("reported") or {}).get("features") or {}).get("shares") or {}).get("smb")),
             "nfs": bool((((n.get("reported") or {}).get("features") or {}).get("shares") or {}).get("nfs")),
             "pools": (n.get("reported") or {}).get("pools") or [],

@@ -6,11 +6,16 @@ held to its shape and each disk to the census's list before zpool runs.
 Disks are named to zpool by their /dev/disk/by-id links, so a pool follows
 its disks across ports and reboots; a disk that holds anything is refused
 unless the job says to wipe it, and nothing is ever made on the system disk.
+Snapshots (R162 step 5): each pool's bb-KIND-DATE-TIME snapshots counted by
+kind for the census, and the storage-snapshot job: one taken of the pool's
+every dataset (the oldest of its kind pruned past what is kept), a dataset
+rolled back to one, or one destroyed.
 """
 import os
 import re
 import shutil
 import subprocess
+import time
 
 from .disks import disks_now
 
@@ -18,6 +23,9 @@ POOL_RE = re.compile(r"[a-z][a-z0-9_-]{0,30}")
 LAYOUTS = {"single": 1, "mirror": 2, "raidz1": 3, "raidz2": 4}
 ACTIONS = ("create", "add", "scrub", "replace", "export", "destroy")
 MOUNT_ROOT = "/mnt"
+SNAP_KINDS = ("hourly", "daily", "weekly", "manual")
+SNAP_RE = re.compile(r"bb-(hourly|daily|weekly|manual)-(\d{8})-(\d{4})")
+DATASET_RE = re.compile(r"[a-z][a-z0-9_-]{0,30}(/[A-Za-z0-9_.-]{1,64}){0,8}")
 
 
 def _out(argv, timeout=60):
@@ -99,8 +107,107 @@ def pools_now():
     return out
 
 
+def _snapshots():
+    """[(dataset, name, kind, at, used_bytes)] for every bb- snapshot zfs
+    lists, oldest first; [] without zfs."""
+    zfs = shutil.which("zfs")
+    if not zfs:
+        return []
+    out = []
+    for line in _out([zfs, "list", "-H", "-p", "-t", "snapshot", "-o", "name,creation,used", "-s", "creation"]).splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3 or "@" not in parts[0]:
+            continue
+        dataset, name = parts[0].split("@", 1)
+        m = SNAP_RE.fullmatch(name)
+        if not m:
+            continue
+        try:
+            out.append((dataset, name, m.group(1), int(parts[1]), int(parts[2])))
+        except ValueError:
+            continue
+    return out
+
+
+def snapshots_now():
+    """{pool: {count, used_mb, kinds: {kind: n}, newest: [{name, at}]}} for
+    the census, the pool's datasets folded together (one snapshot name
+    counted once across them); {} without zfs."""
+    out = {}
+    for dataset, name, kind, at, used in _snapshots():
+        pool = dataset.split("/", 1)[0]
+        v = out.setdefault(pool, {"count": 0, "used_mb": 0, "kinds": {k: 0 for k in SNAP_KINDS}, "_names": {}})
+        v["used_mb"] += used // (1024 * 1024)
+        if name not in v["_names"]:
+            v["count"] += 1
+            v["kinds"][kind] += 1
+        v["_names"][name] = max(at, v["_names"].get(name, 0))
+    for v in out.values():
+        names = v.pop("_names")
+        v["newest"] = [{"name": n, "at": names[n]} for n in sorted(names, key=lambda n: names[n], reverse=True)[:10]]
+    return out
+
+
 class PoolsMixin:
     """Agent's pool jobs: one of the parts class Agent (agent.py) is made of."""
+
+    def _apply_storage_snapshot(self, job, cfg):
+        say = job.say
+        zfs = shutil.which("zfs")
+        if not zfs or os.geteuid() != 0:
+            say("refused: snapshots are taken by zfs as root, and this agent has no zfs or is not root (the storage feature installs it)\n")
+            return "failed", 77
+        action = str(cfg.get("snapshot") or "")
+        pool = str(cfg.get("pool") or "").strip()
+        if action not in ("take", "rollback", "destroy"):
+            say(f"refused: {action or 'no action'} is not a snapshot action (take, rollback or destroy)\n")
+            return "failed", 64
+        if not POOL_RE.fullmatch(pool) or pool not in {p["name"] for p in pools_now()}:
+            say(f"refused: {pool or 'nothing'} is not a pool here\n")
+            return "failed", 66
+        have = _snapshots()
+        if action == "take":
+            kind = str(cfg.get("kind") or "manual")
+            keep = cfg.get("keep") if isinstance(cfg.get("keep"), int) and not isinstance(cfg.get("keep"), bool) else 10
+            if kind not in SNAP_KINDS or not 1 <= keep <= 200:
+                say(f"refused: a snapshot's kind is one of {', '.join(SNAP_KINDS)} and 1 to 200 are kept\n")
+                return "failed", 64
+            name = time.strftime(f"bb-{kind}-%Y%m%d-%H%M")
+            if any(n == name and d.split("/", 1)[0] == pool for d, n, _k, _a, _u in have):
+                say(f"a {kind} snapshot of {pool} was taken this minute already: {name}\n")
+                return "succeeded", 0
+            say(f"snapshot {pool}@{name}: every dataset of the pool\n")
+            rc = self._sh(job, [zfs, "snapshot", "-r", f"{pool}@{name}"], timeout=120)
+            if rc == 0:
+                # The oldest of this kind past what is kept, on each dataset.
+                mine = {}
+                for d, n, k, at, _u in have:
+                    if k == kind and d.split("/", 1)[0] == pool:
+                        mine.setdefault(n, at)
+                old = sorted(mine, key=lambda n: mine[n])
+                for n in old[:max(0, len(old) + 1 - keep)]:
+                    say(f"pruned {pool}@{n}: past the {keep} {kind} kept\n")
+                    self._sh(job, [zfs, "destroy", "-r", f"{pool}@{n}"], timeout=120)
+        else:
+            name = str(cfg.get("name") or "")
+            dataset = str(cfg.get("dataset") or pool)
+            if not SNAP_RE.fullmatch(name) or not DATASET_RE.fullmatch(dataset) or dataset.split("/", 1)[0] != pool:
+                say("refused: a snapshot is named bb-KIND-DATE-TIME on a dataset of the pool\n")
+                return "failed", 64
+            if not any(d == dataset and n == name for d, n, _k, _a, _u in have):
+                say(f"refused: no snapshot {dataset}@{name} here\n")
+                return "failed", 66
+            if action == "rollback":
+                if str(cfg.get("confirm") or "") != name:
+                    say("refused: rolling back takes the snapshot's name again as the confirmation\n")
+                    return "failed", 64
+                say(f"rollback {dataset} to {name}: everything written to it since is gone\n")
+                rc = self._sh(job, [zfs, "rollback", "-r", f"{dataset}@{name}"], timeout=600)
+            else:
+                say(f"destroy {dataset}@{name}\n")
+                rc = self._sh(job, [zfs, "destroy", f"{dataset}@{name}"], timeout=120)
+        self.hello_again(f"the pool {pool}: snapshot {action}")
+        return ("succeeded", 0) if rc == 0 else ("failed", rc)
 
     def _apply_storage_pool(self, job, cfg):
         say = job.say

@@ -1827,7 +1827,16 @@ def schedule_queue(s, argv, by):
         return {"error": "its node is not enrolled any more: pick another"}
     t = int(s.get("timeout") or schedules.TIMEOUT_DEFAULT)
     principal = "schedule:" + str(s.get("id") or "")
-    if s.get("as") == "root":
+    if s.get("system"):
+        # One of the root agent's table (R162 step 5), on the controller's
+        # own machine alone, as the page that made it may queue it by hand.
+        if not nodes.own_machine(n):
+            return {"error": f"{n['name']} is not the controller's own machine, where the table's jobs run"}
+        if nodes.system_job_for(nid):
+            return {"error": f"a system job is already running on {n['name']}; one at a time"}
+        r = nodes.job_add(principal, {"node": nid}, "system",
+                          {"apply": s["system"]["apply"], "config": dict(s["system"].get("config") or {}), "timeout": min(t, 900)})
+    elif s.get("as") == "root":
         if not (n.get("reported") or {}).get("sandbox"):
             return {"error": f"{n['name']} was not provisioned as a BuilderBot sandbox, so root there is its owner's: "
                              "run it as the jobs account, or on a sandbox node"}
@@ -11166,9 +11175,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "a node's disks are a person's to read here"}, 403)
         if NODES_OK:
             return self._json({"error": "the node store did not open: " + NODES_OK}, 500)
-        return self._json(*storage.view(nodes.node_list(), who, is_admin=users.is_admin,
-                                        nodes_for=roles.nodes_for, may_see=users.may_see,
-                                        level_of=roles.level_of))
+        payload, status = storage.view(nodes.node_list(), who, is_admin=users.is_admin,
+                                       nodes_for=roles.nodes_for, may_see=users.may_see,
+                                       level_of=roles.level_of)
+        # The own machine's snapshot schedules (R162 step 5), the Schedules
+        # page's rows the Storage page makes and lists beside its pools.
+        for row in payload.get("nodes") or []:
+            if row.get("own"):
+                row["snapshot_schedules"] = schedules.snapshot_schedules(row["node"])
+        return self._json(payload, status)
 
     def _storage(self, req):
         """Measure now on the Storage page: a node's disks walked at once

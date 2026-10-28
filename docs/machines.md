@@ -319,6 +319,20 @@ the machine's root agent runs from its table (`zpool` on the disks'
 is never offered. Nothing here is on another node: pools are the controller's
 own machine's.
 
+**Snapshots** (R162): under the pools, each pool's snapshots as `zfs`
+lists them, counted by kind (hourly, daily, weekly, manual) with the
+newest ten named, and Snapshot now, which takes one of every dataset at
+once. Each named one has Roll back (the pool as it was then; the name is
+typed again, since everything written since is gone, and every later
+snapshot with it) and Delete. A schedule per pool and kind, saved from the
+form (the pool, how often, how many of that kind to keep), is a row on the
+Schedules page like any other, its timetable in words and its last run's
+log on the Jobs page, except that it runs one of the machine's own jobs
+from the root agent's table rather than a script: when it runs, the
+oldest of its kind past what is kept goes. Snapshots are named
+`bb-KIND-DATE-TIME`; ones made by hand with other names are left alone and
+not counted.
+
 **Disks** (R162): on the controller's own machine the page opens with the
 machine's disks as its agent lists them (`lsblk`, and `smartctl` where it
 is installed): each by name, model, size, serial, spinning or solid state,
