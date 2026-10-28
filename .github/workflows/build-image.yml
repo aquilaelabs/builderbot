@@ -414,18 +414,17 @@ jobs:
   # The appliance image (R160 step 1): BuilderBot OS, built by image/build.sh
   # on a hosted runner, since mkosi installs packages and the disk is laid
   # out on a loop device, neither of which the self-hosted node's container
-  # has. On a tag, and on a dispatch with its box ticked; the files go on the
-  # release beside the controller bundle, with a build attestation on the
-  # two an install reads (the disk and a slot). What a release waits on, a
-  # boot of the image in a VM and the lab suite against it, is R160 step 5.
+  # has. On a tag, on a dispatch with its box ticked, and on the weekly
+  # schedule (step 6: rebuilt from the day's snapshot, its package diff
+  # against the last release kept as an artifact and said in the run's
+  # summary; a patch release from it is a press, never this job's). The
+  # files go on the release only once appliance-boot has booted the image
+  # and seen the dashboard answer (step 5), beside the controller bundle,
+  # with a build attestation on each an install reads.
   appliance:
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.appliance)
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.appliance) || github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -447,16 +446,103 @@ jobs:
           pin="$(grep -oE 'MKOSI_PIN:-[0-9.]+' image/build.sh | head -1 | cut -d- -f2)"
           sudo pip install --break-system-packages "mkosi==${pin}"
           mkosi --version
+      - name: The weekly rebuild takes yesterday's snapshot
+        if: github.event_name == 'schedule'
+        shell: bash
+        run: |
+          # Yesterday, so the day's snapshot is whole; image/SNAPSHOT in the
+          # tree is unchanged (a release moves it by a commit).
+          date -u -d 'yesterday 00:00' +%Y%m%dT%H%M%SZ > image/SNAPSHOT
+          echo "snapshot: $(cat image/SNAPSHOT)"
       - name: Build the image
         shell: bash
         run: sudo -E image/build.sh --out out
+      - name: What moved since the last release
+        if: github.event_name == 'schedule'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName' || true)"
+          now="$(find out -maxdepth 1 -name 'builderbot-os-*.packages' | head -1)"
+          if [ -z "$tag" ] || ! gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'builderbot-os-*.packages' --dir last 2>/dev/null; then
+            echo "no release carries a package list yet: nothing to compare against" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          last="$(find last -maxdepth 1 -name 'builderbot-os-*.packages' | head -1)"
+          { echo "## System packages moved since ${tag}"; echo; echo '```'; diff <(sort "$last") <(sort "$now") | grep '^[<>]' || echo "none"; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+          diff <(sort "$last") <(sort "$now") > out/packages-moved.diff || true
       - uses: actions/upload-artifact@v4
         with:
           name: builderbot-os
-          path: out/builderbot-os-*
+          path: |
+            out/builderbot-os-*
+            out/packages-moved.diff
           if-no-files-found: error
-      - name: Attest the disk and the slot
-        if: startsWith(github.ref, 'refs/tags/v')
+
+  # The image booted before anything of it is published (R160 step 5): the
+  # VM disk under QEMU with KVM, the dashboard's port forwarded, and a run
+  # that does not see the setup page answer within ten minutes fails here,
+  # so appliance-publish never runs. What the lab suite adds (a pool and an
+  # array on virtual disks, a share over SMB, a node and a container) lands
+  # with the storage work, and the canary on the dev pair with it.
+  appliance-boot:
+    needs: appliance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: builderbot-os
+          path: out
+      - name: QEMU
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 ovmf
+          sudo chmod a+rw /dev/kvm 2>/dev/null || true
+      - name: Boot the image and wait for the dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          disk="$(find out -maxdepth 1 -name 'builderbot-os-*.qcow2' | head -1)"
+          kvm=""; [ -w /dev/kvm ] && kvm="-enable-kvm -cpu host"
+          # shellcheck disable=SC2086
+          qemu-system-x86_64 $kvm -m 4096 -smp 2 -machine q35 \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive file="$disk",format=qcow2,if=virtio \
+            -netdev user,id=n0,hostfwd=tcp:127.0.0.1:7680-:7680 -device virtio-net-pci,netdev=n0 \
+            -display none -serial file:serial.log -daemonize -pidfile qemu.pid
+          for i in $(seq 1 120); do
+            code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' http://127.0.0.1:7680/ || true)"
+            case "$code" in 200|302|303) echo "the dashboard answered $code after $((i * 5)) s"; kill "$(cat qemu.pid)" || true; exit 0 ;; esac
+            sleep 5
+          done
+          echo "the dashboard did not answer within ten minutes; the serial log is the artifact"
+          kill "$(cat qemu.pid)" || true
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: builderbot-os-boot
+          path: serial.log
+          if-no-files-found: ignore
+
+  appliance-publish:
+    needs: appliance-boot
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: builderbot-os
+          path: out
+      - name: Attest the disk, the ISO, the VM disks and the slot
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
@@ -466,7 +552,6 @@ jobs:
             out/builderbot-os-*.ova
             out/builderbot-os-*.root.squashfs
       - name: Put it on the release
-        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

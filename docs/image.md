@@ -123,10 +123,16 @@ edition's boot work (R161 step 2), on top of this.
 ## Building it
 
 CI builds the image on a hosted runner (`appliance` in
-`.github/workflows/build-image.yml`): on every release tag, and from the
-Actions page's *Run workflow* with its *appliance* box ticked. The files land
-on the release beside the controller bundle, the disk and the slot with a
-build attestation.
+`.github/workflows/build-image.yml`): on every release tag, from the
+Actions page's *Run workflow* with its *appliance* box ticked, and weekly.
+Before anything of it is published, `appliance-boot` boots the VM disk
+under QEMU and waits for the dashboard to answer; a release's files land
+only after that (`appliance-publish`), beside the controller bundle, each
+of the disk, the ISO, the VM disks and the slot with a build attestation.
+The weekly run takes the day before's snapshot, builds, and says in its
+summary which system packages moved since the last release (each image
+carries its package list, `.packages`); a patch release from it is a press
+on a tag, never the run's own doing.
 
 By hand, on a Debian or Ubuntu machine with root (mkosi installs packages,
 and the disk is assembled on a loop device):
@@ -167,7 +173,9 @@ it, once per release, and the restart still waits for you.
 
 ## What is not here yet
 
-The boot of each image in CI before it ships (R160 step 5), the weekly
-rebuild (step 6), and the USB edition with its boot counting, Safe mode and
-the slot kept only once it says it is healthy (R161) each build on this
-image.
+What the boot in CI does not yet try (a ZFS pool and an array on virtual
+disks, a share over SMB, a node enrolled and a container started, the
+browser suites against the booted system) lands with the storage work
+(R162), the canary on the dev pair with it; the USB edition with its boot
+counting, Safe mode and the slot kept only once it says it is healthy
+(R161) builds on this image.

@@ -15,6 +15,7 @@
 #   builderbot-os-VERSION.vmlinuz        the slot's kernel and initrd, kept on the ESP beside it
 #   builderbot-os-VERSION.initrd
 #   builderbot-os-VERSION.release        the stamp the image carries at /usr/lib/builderbot-os/release
+#   builderbot-os-VERSION.packages       every package in it with its version, for the weekly rebuild's diff
 #
 # --tree-only stops after mkosi (the tree under DIR/mkosi/tree, for a look);
 # --from-tree DIR assembles the disk from a tree built before. The disk is
@@ -103,6 +104,9 @@ DEBIAN_SNAPSHOT=${SNAPSHOT}
 BUILT=$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ)
 REL
 cp "$TREE/usr/lib/builderbot-os/release" "$OUT/$NAME.release"
+# Every package in the image with its version (R160 step 6): what the weekly
+# rebuild compares against the last release's to say what moved.
+awk '/^Package: /{p=$2} /^Version: /{v=$2} /^$/{if(p!=""&&v!="")print p" "v; p="";v=""}' "$TREE/var/lib/dpkg/status" | sort > "$OUT/$NAME.packages"
 if [ "$TREE_ONLY" = 1 ]; then say "tree at $TREE"; exit 0; fi
 
 # ---- the slot: a squashfs, its kernel and initrd ----------------------------
@@ -171,6 +175,6 @@ say "compressing"
 zstd -q -T0 -19 --rm "$RAW" -o "$RAW.zst"
 
 # ---- the stamps -------------------------------------------------------------
-( cd "$OUT" && for f in "$NAME.raw.zst" "$NAME.iso" "$NAME.qcow2" "$NAME.ova" "$NAME.root.squashfs" "$NAME.vmlinuz" "$NAME.initrd" "$NAME.release"; do sha256sum "$f" > "$f.sha256"; done )
+( cd "$OUT" && for f in "$NAME.raw.zst" "$NAME.iso" "$NAME.qcow2" "$NAME.ova" "$NAME.root.squashfs" "$NAME.vmlinuz" "$NAME.initrd" "$NAME.release" "$NAME.packages"; do sha256sum "$f" > "$f.sha256"; done )
 say "done"
 for f in "$OUT/$NAME".*; do printf '   %s  %s\n' "$(stat -c %s "$f")" "$(basename "$f")"; done

@@ -243,6 +243,18 @@ class Workflow(unittest.TestCase):
         self.assertIn('"${OS_FEATURES[@]}"', inst)
         self.assertIn("vmhost|firewall|iommu) OS_FEATURES+=(--feature", inst)
 
+    def test_nothing_is_published_before_the_image_boots(self):
+        # R160 step 5: the publish job waits on the boot job, which waits
+        # on the build; step 6: the weekly schedule builds with the day's
+        # snapshot and keeps the package diff.
+        wf = read(ROOT, ".github", "workflows", "build-image.yml")
+        self.assertRegex(wf, r"appliance-boot:\n    needs: appliance\n")
+        self.assertRegex(wf, r"appliance-publish:\n    needs: appliance-boot\n")
+        self.assertIn("hostfwd=tcp:127.0.0.1:7680-:7680", wf)
+        self.assertIn("github.event_name == 'schedule'", wf)
+        self.assertIn("builderbot-os-*.packages", wf)
+        self.assertIn('"$OUT/$NAME.packages"', read(IMG, "build.sh"))
+
     def test_build_sh_says_how_without_root(self):
         r = sh("bash image/build.sh --help")
         self.assertEqual(r.returncode, 0, r.stderr)
