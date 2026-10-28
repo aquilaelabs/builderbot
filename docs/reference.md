@@ -501,6 +501,11 @@ bb tests run [ARGS]  run the project's test command, time it, and record the run
                    and the fact that nothing after it ran. A crash prints no `FAIL` line and no totals, so a
                    run that only said "failures above" cost four whole runs to read once. ARGS go to the
                    command, so `bb tests run auth cards` times and records those two files and nothing else
+                   else. On the test node the project's settings name (Test node, beside its
+                   nodes; R151) the suites run there as a job, this tree snapshotted, with as
+                   many workers as its cores and memory allow, the lines streamed here and the
+                   run recorded as a local one; bb dashboard test and the gate go there too
+
 bb tests last      that verdict again off the last run's log, running nothing
 bb tests log [-f]  the last run's output, whole; -f follows a run still going. The
                    Tests view's Open the run's output sends this into the project's shell

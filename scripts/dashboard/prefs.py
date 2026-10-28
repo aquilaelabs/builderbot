@@ -146,7 +146,7 @@ def configure(*, write_json, state):
 # repository split out is back to them. The rest (its build and test, its
 # outputs, its captures and snapshots, its tests' place, its gate on what a
 # session enters into its notebook) stays the repository's.
-GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", "packs_on",
+GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", "packs_on", "test_node",
                 "agents_off", "agent_default", "agent_slots", "gitpol", "color", "devbuild", "makevms", "vm_caps",
                 "test_change", "gpu", "report", "sign", "keys", "release", "pc", "log_from", "diag")
 # repos.py's answers, handed over by the server: (project_of, members,
@@ -412,6 +412,10 @@ def _clean(rec):
             # worked on from either. Everything that reads one node keeps
             # reading `node`; containers may live on any of these.
             "nodes": _nodes_of(rec),
+            # The node its test suites run on (R151): one of its nodes, or
+            # "" for the session's own node, which is what bb tests run and
+            # the gate used before there was a choice.
+            "test_node": str(rec.get("test_node") or "")[:40],
             # The nodes outside that set its containers may also run on: a
             # hosting-only node (nodes.host_only) holds no code and no
             # session, and a container of this project there is built on
@@ -873,7 +877,7 @@ def set_prefs(project, **kw):
 
 def _set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
+              devbuild=None, tests_in=None, test_node=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None, snapshots_on=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
@@ -1028,6 +1032,13 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
             if tests_in not in TESTS_IN:
                 return {"error": f"tests_in is one of {', '.join(TESTS_IN)}, not {tests_in}"}
             cur["tests_in"] = tests_in
+        if test_node is not None:
+            # One of the project's own nodes (R151), where its tree is synced
+            # and its session may run a job; "" is the session's own node.
+            tn = str(test_node or "").strip()[:40]
+            if tn and tn not in _nodes_of(cur) and tn != cur.get("node"):
+                return {"error": "the test node is one of the project's nodes: add it under Node first"}
+            cur["test_node"] = tn
         if test_change is not None:
             if test_change not in TEST_CHANGE:
                 return {"error": f"test_change is one of {', '.join(TEST_CHANGE)}, not {test_change}"}
@@ -1080,7 +1091,7 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
-                or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
+                or cur["devbuild"] != "deny" or cur["tests_in"] != "node" or cur["test_node"]
                 or cur["test_change"] != "wait" or cur["gpu"] != "on"
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
                 or cur["snapshot_days"] != SNAPSHOT_DAYS or not cur["snapshots_on"]
@@ -1104,6 +1115,8 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("vm_caps", None)
             if cur["tests_in"] == "node":
                 rec.pop("tests_in", None)
+            if not cur["test_node"]:
+                rec.pop("test_node", None)
             if cur["report"] == "auto":
                 rec.pop("report", None)
             if cur["sign"] == "ask":
@@ -1277,7 +1290,7 @@ def dialog_save(name, req, uid):
                   gate=req.get("gate"), gitpol=req.get("gitpol"),
                   devbuild=req.get("devbuild"),
                   makevms=req.get("makevms"), vm_caps=req.get("vm_caps"),
-                  tests_in=req.get("tests_in"),
+                  tests_in=req.get("tests_in"), test_node=req.get("test_node"),
                   test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
                   snapshot_days=req.get("snapshot_days"), snapshots_on=req.get("snapshots_on"),

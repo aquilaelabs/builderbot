@@ -209,17 +209,26 @@ cmd_tests_preflight() {
     printf '[builderbot] preflight over %s, %s: %s\n' "$base" "$(date '+%d %b %H:%M')" "${suites[*]:-nothing}" > "$rl" 2>/dev/null || rl=/dev/null
     # As conditions, so set -e and pipefail read a failed suite as rc=1
     # rather than ending this verb before its checks.
+    # The suites on the project's test node when its settings name one
+    # (R151): the plan is this tree's (git here), the run is there.
+    local tproj away=""
+    tproj="$(project_here 2>/dev/null || true)"
+    [ -z "$tproj" ] || away="$(tests_away_node "$tproj" 2>/dev/null | head -1)"
     if [ "${suites[*]:-}" = ALL ]; then
         # A whole run is run with the counters in and merged after, so the
         # covered run the next preflight measures by is never older than
         # the last whole gate.
-        if BB_COVERAGE=1 BB_TEST_WAIT_LOCK="${BB_TEST_WAIT_LOCK:-1200}" bash "$here" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+        if [ -n "$away" ]; then
+            if BB_COVERAGE=1 tests_away_run "$tproj" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+        elif BB_COVERAGE=1 BB_TEST_WAIT_LOCK="${BB_TEST_WAIT_LOCK:-1200}" bash "$here" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
         cmd_map coverage 2>&1 | head -1 | tee -a "$rl"
     elif [ "${#suites[@]}" -gt 0 ]; then
         # A run that holds the lock (the hand-back hook's own check) is
         # waited for, twenty minutes at most, rather than ending this gate
         # having run nothing (B572).
-        if BB_TEST_WAIT_LOCK="${BB_TEST_WAIT_LOCK:-1200}" bash "$here" "${suites[@]}" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+        if [ -n "$away" ]; then
+            if tests_away_run "$tproj" "${suites[@]}" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+        elif BB_TEST_WAIT_LOCK="${BB_TEST_WAIT_LOCK:-1200}" bash "$here" "${suites[@]}" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
     fi
     [ "${#unplaced[@]}" -eq 0 ] || rc=1
     local c

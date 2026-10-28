@@ -111,7 +111,7 @@ function rnPrefsOf(p){
                snapshots_on: p?.prefs?.snapshots_on === false ? "0" : "1",
                dev_keep: String(p?.prefs?.dev_keep ?? 3),
                gate: gateKey(p?.prefs?.gate),
-               tests_in: p?.prefs?.tests_in || "node",
+               tests_in: p?.prefs?.tests_in || "node", test_node: p?.prefs?.test_node || "",
                test_change: p?.prefs?.test_change || "wait",
                gpu: p?.prefs?.gpu || "on",
                reply: p?.yours?.reply || "", asks: p?.yours?.asks || "", term_scheme: p?.yours?.term_scheme || "",
@@ -452,6 +452,18 @@ function rnTermPreview(){
   box.innerHTML = termPreview(termPalette(scheme, (look.colors || {})[scheme]), look);
 }
 
+// The test node picker (R151): the session's own node, then each of the
+// project's nodes by name as the Node picker names them; the field is
+// drawn only when the project has a node to pick.
+function rnFillTestNode(p){
+  const sel = $("rnTestNode"), f = $("rnTestNodeF");
+  if (!sel || !f) return;
+  const names = new Map([...($("rnNode")?.options || [])].map(o => [o.value, o.textContent]));
+  const ids = [...new Set([p?.prefs?.node, ...(p?.prefs?.nodes || [])].filter(Boolean))];
+  sel.innerHTML = `<option value="">the session's own node</option>` + ids.map(id => `<option value="${esc(id)}">${esc(names.get(id) || id)}</option>`).join("");
+  sel.value = ids.includes(p?.prefs?.test_node) ? p.prefs.test_node : "";
+  f.hidden = ids.length === 0;
+}
 function rnFillPrefsRest(p){
   $("rnBuildCmd").value = p?.prefs?.build || "";
   $("rnTestCmd").value = p?.prefs?.test || "";
@@ -461,6 +473,7 @@ function rnFillPrefsRest(p){
   const canDevTest = !!(p?.has_compose || (p?.prefs?.tests_in || "node") !== "node");
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.tests_in || "node";
+  rnFillTestNode(p);
   $("rnTestChange").value = p?.prefs?.test_change || "wait";
   $("rnGpu").value = p?.prefs?.gpu || "on";
   $("rnReply").value = p?.yours?.reply || "";
@@ -1404,7 +1417,7 @@ function rnEnc(){
           capture_days: $("rnCaptureDays").value.trim(), snapshot_days: $("rnSnapDays").value.trim(),
           snapshots_on: $("rnSnapOn").checked ? "1" : "0",
           dev_keep: $("rnDevKeep").value.trim(), gate: gateKey(rnGateNow()),
-          tests_in: $("rnDevTest").value || "node", test_change: $("rnTestChange").value || "wait",
+          tests_in: $("rnDevTest").value || "node", test_node: $("rnTestNode")?.value || "", test_change: $("rnTestChange").value || "wait",
           gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
           term_scheme: $("rnTermScheme").value || "",
           devbuild: $("rnGateDocker").value || "deny", makevms: $("rnGateVms").value || "deny", vm_caps: rnVmCapsNow(), report: $("rnGateReport").value || "auto",
@@ -1493,7 +1506,7 @@ function rnRevertSect(sect){
   } else if (sect === "runs"){
     delete $("rnNodesMore").dataset.drawn;
     rnFillNode();
-    $("rnGpu").value = w.gpu; $("rnDevTest").value = w.tests_in;
+    $("rnGpu").value = w.gpu; $("rnDevTest").value = w.tests_in; if ($("rnTestNode")) $("rnTestNode").value = w.test_node || "";
   } else if (sect === "files"){
     rnFtpDraft = {}; rnDrawFtp();
   } else if (sect === "tools"){

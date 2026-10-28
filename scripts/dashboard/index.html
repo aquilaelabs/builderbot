@@ -6352,6 +6352,12 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           <option value="only">only in its dev instance, never on the node</option>
         </select>
       </div>
+      <!-- The node its suites run on (R151): one of the project's, or the
+           session's own, which is the default and was the only way. -->
+      <div id="rnTestNodeF">
+        <label for="rnTestNode">Test node<span class="help" data-help="where bb tests run, bb dashboard test and the gate run the suites: this session's own node unless one of the project's is picked here; the tree goes there as a job's snapshot and the lines stream back; it needs the playwright toolchain" tabindex="0">?</span></label>
+        <select id="rnTestNode"><option value="">the session's own node</option></select>
+      </div>
     </div>
     </div></details>
     <details class="sect rngroup" data-sect="rn:build"><summary><span class="t">Build and test</span></summary><div class="body">

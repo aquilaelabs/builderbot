@@ -7,7 +7,7 @@
 // offers Take back, the controllers are listed with what hangs off each and
 // what shares their IOMMU group, the Features section offers the IOMMU with
 // Install, and a session's bb vm usb is held for a person whatever the dial.
-import { URL, launch, newPage, ok, done, ready, sleep, openSection, DIR } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, openSection, DIR, saveDialog, refreshUntil } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -160,5 +160,22 @@ const row = (bell.asks || []).find(a => a.id === asked.id);
 ok(row && new RegExp(`vm usb ${VMN} give 0781:5583:4C53`).test((row.argv || row.cmd || []).join ? (row.argv || row.cmd).join(' ') : JSON.stringify(row)),
    `the bell shows it as bb vm usb would say it (${JSON.stringify(row?.argv || row?.cmd || row).slice(0, 80)})`);
 await call('/api/prefs', { project: 'alpha', makevms: 'deny' });
+// The project's Test node (R151 step 1): the settings dialog offers the
+// project's nodes beside the session's own, and saving one writes it.
+await page.evaluate(() => { document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }); openProjectsTab(); });
+await page.evaluate(n => renameProject(n), 'alpha');
+await page.waitForSelector('#rnmodal:not([hidden]) #rnTestNode', { timeout: 10000 });
+const tn = await page.$eval('#rnTestNode', e => ({ hidden: e.closest('#rnTestNodeF').hidden, opts: [...e.options].map(o => o.value), words: [...e.options].map(o => o.textContent) }));
+ok(!tn.hidden && tn.opts.includes(minted.id) && tn.words.some(w => /usbbox/.test(w)) && tn.opts[0] === '',
+   `the settings dialog offers the project's nodes as its test node, the session's own first (${tn.words.join(' | ')})`);
+await page.selectOption('#rnTestNode', minted.id);
+await saveDialog(page);
+await refreshUntil(page, new Function(`return ((state.projects || []).find(p => p.name === 'alpha') || {}).prefs?.test_node === ${JSON.stringify(minted.id)}`), { timeout: 20000 }).catch(() => {});
+const kept = await page.evaluate(() => ((state.projects || []).find(p => p.name === 'alpha') || {}).prefs?.test_node || '');
+ok(kept === minted.id, `...and saving it writes the setting (${kept || 'nothing'})`);
+const refused = await call('/api/prefs', { project: 'alpha', test_node: 'n_00000000' });
+ok(/one of the project's nodes/.test(refused.error || ''), `a node outside the project's set is refused (${refused.error})`);
+await call('/api/prefs', { project: 'alpha', test_node: '' });
+await page.evaluate(() => { document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }); });
 await call('/api/v1/nodes', { action: 'retire', id: minted.id });
 await done(browser);
