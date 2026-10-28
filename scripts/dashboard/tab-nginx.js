@@ -27,6 +27,7 @@ let nginxNode = "";               // the node the tab shows
 let nginxWant = "";               // a node asked for that the last read did not list yet
 let nginxLatest = {};             // the registry's newest line, from the same answer
 let nginxCertOpen = false;        // Add a certificate pressed: its form unrolled
+let nginxAcmeOpen = false;  // the Let's Encrypt form unrolled (R150)
 let nginxHostnames = [];          // every node's hostnames: [{name, used: [{node, path, port}]}]
 // The routes being edited, per node, until Save or Revert; absent while a
 // node shows what is saved.
@@ -253,6 +254,15 @@ function nginxDraftOf(n){
 // subject and names, when it ends, and a way to take it off. A pair a
 // route picked is said to be in use; taking one off leaves its routes to
 // what their hostnames resolve to, or 80 alone.
+// What is being asked for from Let's Encrypt (R150), per hostname: its
+// state as it goes, or why it stopped.
+function nginxAcmeLines(n){
+  const pend = Object.entries(n.acme?.pending || {});
+  if (!pend.length) return "";
+  return pend.map(([h, p]) => `<div class="field"><div class="sub${p.state === "failed" ? " bad" : ""}">${esc(h)}: ${
+    p.state === "failed" ? `no certificate: ${esc(p.error || "it failed")}` : `${esc(p.state || "asking")} (${esc(p.method || "http-01")}, ${esc(ago(p.at))})`}</div></div>`).join("");
+}
+
 function nginxCertLines(n, d){
   const own = Object.entries(n.certs || {}).filter(([, c]) => c?.set).sort(([a], [b]) => a.localeCompare(b));
   if (!own.length) return `<div class="hint">none yet: every route answers on 80 only</div>`;
@@ -262,7 +272,8 @@ function nginxCertLines(n, d){
     const used = routes.filter(r => r.tls !== false && (r.cert === k || (!r.cert && nginxResolve(n, r.host) === k))).length;
     return `<div class="row ngcert"><div class="grow"><div class="name">${esc(k)}</div>
       <div class="sub">${esc(c.subject || "")}${c.names ? ` (${esc(c.names)})` : ""}${when ? `, until ${esc(when)}` : ""}${
-        used ? `; ${used} route${used === 1 ? "" : "s"}` : "; no route"}</div>${
+        used ? `; ${used} route${used === 1 ? "" : "s"}` : "; no route"}${
+        c.acme ? `; from Let's Encrypt by ${esc(c.acme.method)}, renewed thirty days before it ends` : ""}</div>${
       // On a public box (R93) its key lives there: a pair wider than the
       // box's own routes lends every other name to whoever takes the box.
       n.wide?.[k]?.length ? `<div class="sub warn ngwide">Its key sits on this public box and also answers for ${esc(n.wide[k].join(", "))}: a box taken over could pass as ${n.wide[k].length === 1 ? "it" : "them"}. A pair for this box's own names alone keeps the rest safe.</div>` : ""}</div>
@@ -352,8 +363,32 @@ function nginxBody(n){
     `<div class="field"><div class="hint">The pairs this node holds, each known by its domain.${helpIcon(
       "A pair is known by the domain its names say: a wildcard pair for *.example.com is example.com's, and the same again is a renewal. A key is kept on the controller and never shown.")}</div>
       ${nginxCertLines(n, d)}</div>
+    ${nginxAcmeLines(n)}
     <div class="field ngcertadd"${open ? " hidden" : ""}><div class="actbar"><span class="sp"></span>
+      <button type="button" data-ngacmeopen${nginxAcmeOpen ? " disabled" : ""}>Get one from Let's Encrypt</button>
       <button type="button" data-ngcertopen>Add a certificate</button></div></div>
+    <div class="ngacmeform"${nginxAcmeOpen ? "" : " hidden"}>
+      <div class="field"><div class="hint">A certificate for one public name, from Let's Encrypt (or the directory BB_ACME_DIRECTORY names), kept here like a pasted pair and renewed thirty days before it ends.${helpIcon(
+        "HTTP-01: Let's Encrypt fetches a token from port 80 at the name, so the name must reach this node and 80 be open to the internet; this node's nginx answers it. DNS-01: a TXT record is written through the Cloudflare API token under Controller settings, so the node need not be reachable at all; the domain must be on that Cloudflare account.")}</div></div>
+      <div class="field">
+        ${lbl("ngAcmeHost", "Hostname")}
+        <input id="ngAcmeHost" data-ng="acmehost" placeholder="www.example.com" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        ${lbl("ngAcmeMethod", "Challenge")}
+        <select id="ngAcmeMethod" data-ng="acmemethod">
+          <option value="http-01">HTTP-01: port 80 of this node is reachable at the name</option>
+          <option value="dns-01"${n.acme?.cf ? "" : " disabled"}>DNS-01: a record through the Cloudflare API token${n.acme?.cf ? "" : " (none set under Controller settings)"}</option>
+        </select>
+      </div>
+      <div class="field">
+        ${lbl("ngAcmeEmail", "Email", "Where Let's Encrypt writes about this certificate (an expiry it could not renew). Optional, and kept for the renewals.")}
+        <input id="ngAcmeEmail" data-ng="acmeemail" type="email" value="${esc(n.acme?.email || "")}" placeholder="you@example.com" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field"><div class="actbar"><span class="state"></span><span class="sp"></span>
+        <button type="button" class="primary" data-ngacmego>Request</button>
+        <button type="button" data-ngacmecancel>Cancel</button></div></div>
+    </div>
     <div class="ngcertform"${open ? "" : " hidden"}>
       <div class="field">
         ${lbl("ngCert", "Certificate")}
@@ -555,6 +590,23 @@ function wireNginxTab(root){
     certOpen.closest(".ngcertadd").hidden = true;
     const form = sect.querySelector(".ngcertform");
     slideHidden(form, true, () => form.querySelector("#ngCert")?.focus());
+  };
+  // A certificate from Let's Encrypt (R150): the form unrolls, Request
+  // starts it in the background, and the row follows it.
+  const acmeOpen = sect.querySelector("[data-ngacmeopen]");
+  if (acmeOpen) acmeOpen.onclick = () => { nginxAcmeOpen = true; nginxRedraw(); setTimeout(() => $("ngAcmeHost")?.focus(), 50); };
+  const acmeCancel = sect.querySelector("[data-ngacmecancel]");
+  if (acmeCancel) acmeCancel.onclick = () => { nginxAcmeOpen = false; nginxRedraw(); };
+  const acmeGo = sect.querySelector("[data-ngacmego]");
+  if (acmeGo) acmeGo.onclick = async () => {
+    const host = (sect.querySelector('[data-ng="acmehost"]')?.value || "").trim().toLowerCase();
+    const method = sect.querySelector('[data-ng="acmemethod"]')?.value || "http-01";
+    const email = (sect.querySelector('[data-ng="acmeemail"]')?.value || "").trim();
+    if (!host){ notify("which hostname? a public name like www.example.com", true); return; }
+    busy(acmeGo, "Asking");
+    const j = await nginxAct({action: "acme", node: nid, host, method, email});
+    if (!j.error){ notify(`asking Let's Encrypt for ${host}: the row says how it goes, and the bell when it comes`); nginxAcmeOpen = false; }
+    nginxRedraw();
   };
   const certSave = sect.querySelector("[data-ngcertsave]");
   if (certSave) certSave.onclick = async () => {

@@ -328,6 +328,16 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bnode="${esc(a.id)}" data-bwhat="node">Nodes page</a></span></div></div>`;
   }
+  // A certificate from Let's Encrypt (R150): came, or could not; the nginx
+  // page on that node says the rest.
+  if (a.kind === "acme"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${a.bad ? `no certificate for ${esc(a.host)} on ${esc(a.node)}` : `a certificate for ${esc(a.host)} on ${esc(a.node)}`}</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : ""}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bnginx="${esc(a.nid)}">nginx page</a></span></div></div>`;
+  }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
   if (a.kind === "nginx"){

@@ -375,6 +375,24 @@ digest, so Dismiss holds until the registry moves the line again. One
 deployed before any check had read the registry is unpinned, and behind
 whatever is newest until its first Update.
 
+### Certificates from Let's Encrypt
+
+A pair can be asked for rather than pasted (R150): **Get one from Let's
+Encrypt** on a node's Certificates section takes a public hostname, the
+challenge and an email, and asks in the background; the row says how it
+goes and the bell says when it came, or why it could not. **HTTP-01** has
+Let's Encrypt fetch a token from port 80 at the name, which the node's own
+nginx answers (the token's line is written into its config for the minutes
+it takes and taken out again), so the name must reach the node and 80 be
+open to the internet. **DNS-01** writes a `_acme-challenge` TXT record
+through the Cloudflare API token under Controller settings, so the node
+need not be reachable at all; the domain must be on that account. The pair
+is kept like a pasted one, filed under its hostname, and renewed thirty
+days before it ends, the way it was first got; a renewal that fails is on
+the bell and tried again a few hours later. The client is `acme.py`,
+BuilderBot's own on the `cryptography` library; `BB_ACME_DIRECTORY` points
+it at another ACME directory (a staging one, or a private CA).
+
 ## Each project's containers on their own network
 
 **Each project's containers on their own network (R178, the operator, 11

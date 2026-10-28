@@ -1830,7 +1830,7 @@ def _attention(who):
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
             # R192), for whoever may act on the Docker tab, which Update is.
             + ([] if users.may(who, "docker-write")
-               else nginxproxy.attention(lambda nid: nginxproxy.deployed(devapp, nid))
+               else nginxproxy.attention(lambda nid: nginxproxy.deployed(devapp, nid)) + nginxproxy.acme_rows()
                # ...and a container whose registry image moved (imagecheck, R195).
                + imagecheck.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid,
                                       allowed=lambda p: users.may(who, "docker-write", p) == ""
@@ -4249,6 +4249,9 @@ def _vm_do(principal, project, req, session):
 nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
                      node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
                      taken_ports=devapp.taken_ports)
+# A DNS-01 challenge's record goes through the Cloudflare API token Settings
+# holds (R150).
+nginxproxy.cf_token = lambda: settings.secret("cf_api_token")
 # ...and put on a node the moment it enrolls when the Enroll dialog asked
 # for it (config.nginx), so a box runs the script and nginx appears.
 # The home tunnel the controller runs itself (R176, tunnel.py): from the
@@ -10576,6 +10579,11 @@ class Handler(BaseHTTPRequestHandler):
             r = {"error": lt["error"]} if lt.get("error") else {"ok": True, "latest": lt}
         elif act == "update":
             r = nginxproxy.update(nid, containers, devactions, devapp)
+        elif act == "acme":
+            # A certificate from Let's Encrypt (R150), asked for in the
+            # background; the page follows it on the node's row.
+            r = nginxproxy.acme_request(nid, field(req, "host"), field(req, "method"), field(req, "email"),
+                                        containers, devactions, devapp)
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         return self._result(r)
@@ -11346,6 +11354,9 @@ def main():
         threading.Thread(target=imagecheck.check_loop, name="image-check", daemon=True).start()
     if nginxproxy.AUTOCHECK and "image-updates" not in featuresoff.off():  # the nginx image, weekly (R192)
         threading.Thread(target=nginxproxy.check_loop, name="nginx-check", daemon=True).start()
+        # ...and the ACME renewals (R150), thirty days before a pair ends.
+        threading.Thread(target=nginxproxy.renew_loop, args=(containers, devactions, devapp),
+                         name="nginx-acme", daemon=True).start()
     Server(("0.0.0.0", PORT), Handler).serve_forever()
 
 
