@@ -59,7 +59,7 @@ class TheController(unittest.TestCase):
         got = nodes._census({"disks": [{"name": "sda", "model": "WD <b>Red</b>", "serial": "X1", "size_mb": 1000, "ssd": "yes", "tran": "sata", "system": True,
                                         "parts": [{"name": "sda1", "size_mb": "9", "holds": "ZFS pool tank"}], "smart": {"health": "meh", "temp_c": 40, "hours": "1"}},
                                        {"name": "bad name"}, "junk"]})
-        self.assertEqual(got["disks"], [{"name": "sda", "model": "WD bRed/b", "serial": "X1", "size_mb": 1000, "ssd": False, "tran": "sata", "removable": False,
+        self.assertEqual(got["disks"], [{"name": "sda", "model": "WD bRed/b", "serial": "X1", "size_mb": 1000, "ssd": False, "tran": "sata", "removable": False, "by_id": "",
                                          "system": True, "holds": "", "parts": [{"name": "sda1", "size_mb": 0, "holds": "ZFS pool tank"}], "smart": {"temp_c": 40}}])
 
 

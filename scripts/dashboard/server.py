@@ -4237,6 +4237,7 @@ import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import history                                                   # noqa: E402
+import extmounts                                                 # noqa: E402
 import termws                                                    # noqa: E402
 termws.configure(agent_dir=nodes.AGENT_DIR)
 import tokenkeys                                                 # noqa: E402
@@ -4267,6 +4268,12 @@ try:
     # ...and the weeks-long record of the own machine's samples (R164 step 4).
     history.configure(state=STATE)
     nodes.history_add = history.add
+    # ...and the other disks and shares it mounts (R162 step 4).
+    extmounts.configure(state=STATE, write_json=write_json, seal=signing.seal, unseal=signing.unseal,
+                        sealing=lambda: signing.MASTER is not None)
+    nodes.ext_mounts = extmounts.wanted
+    if (_sealed := extmounts.seal_all()):
+        print(f"dashboard: sealed {_sealed} share password(s) under the install's key", flush=True)
     # ...and the digest of the bb bundle, so a node can tell from hello alone
     # whether the bb its sessions run is the one this controller ships.
     nodes.bundle_digest = lambda: workspace.bundle()["digest"]
@@ -5697,6 +5704,7 @@ GET_ROUTES = (
     ("prefix", "/api/storage", "_get_storage"),
     ("prefix", "/api/history", "_get_history"),
     ("exact", "/api/schedules", "_get_schedules"),
+    ("exact", "/api/extmounts", "_get_extmounts"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
     ("prefix", "/api/home", "_get_home"),
@@ -5774,6 +5782,7 @@ POST_ROUTES = (
     ("exact", "/api/images", "_images"),
     ("exact", "/api/storage", "_storage"),
     ("exact", "/api/schedules", "_schedules"),
+    ("exact", "/api/extmounts", "_extmounts"),
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
     ("exact", "/api/move", "_move"),
@@ -11189,6 +11198,35 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "action is save, remove or run"}, 400)
         return self._json(r, 400 if r.get("error") else 200)
 
+    def _get_extmounts(self):
+        """GET /api/extmounts (R162 step 4): the other disks and shares the
+        controller's own machine mounts, as recorded, never a password.
+        An administrator's."""
+        who = self._who() or {}
+        if who.get("session") or not users.is_admin(who):
+            return self._json({"error": "the machine's other disks and shares are an administrator's"}, 403)
+        return self._json({"mounts": extmounts.rows()})
+
+    def _extmounts(self, req):
+        """POST /api/extmounts (R162 step 4): set (add or change), remove,
+        or on and off (Eject is off: the agent unmounts within a minute).
+        An administrator's; the own machine's agent follows at its hello."""
+        who = self._who() or {}
+        if who.get("session") or not users.is_admin(who):
+            return self._json({"error": "the machine's other disks and shares are an administrator's"}, 403)
+        act, by = field(req, "action"), self._principal()
+        if act == "set":
+            r = extmounts.set_mount(req)
+        elif act == "remove":
+            r = extmounts.remove(field(req, "id"))
+        elif act in ("on", "off"):
+            r = extmounts.turn(field(req, "id"), act == "on")
+        else:
+            return self._json({"error": "action is set, remove, on or off"}, 400)
+        if not r.get("error"):
+            db.audit(by, "extmount-" + act, field(req, "id") or (r.get("mount") or {}).get("id", ""), {"name": (r.get("mount") or {}).get("name", "")})
+        return self._json(r, 400 if r.get("error") else 200)
+
     def _get_storage(self):
         """The Storage page (storage.view, R169): every node this account
         holds the Storage area on, what its disks hold, by project where
@@ -11212,6 +11250,7 @@ class Handler(BaseHTTPRequestHandler):
                 for sh in row.get("shares") or []:
                     sh["accounts"] = [names.get(u, u) for u in (sh.get("smb") or {}).get("users") or []]
                 if users.is_admin(who):
+                    row["extmounts"] = extmounts.rows()
                     row["accounts"] = sorted(names.values(), key=str.lower)
                     row["roles"] = sorted({r for u in users.all_users() for r in u.get("roles") or [] if not r.startswith("Owner of ")})
         return self._json(payload, status)

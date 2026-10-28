@@ -52,6 +52,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | GET | `/api/storage` | prefix | `_get_storage` | The Storage page (storage.view, R169): every node this account holds the Storage area on, what its disks hold, by project where the account sees the project and as one line otherwise. |  |
 | GET | `/api/history` | prefix | `_get_history` | GET /api/history?node=ID&span=6h\\|day\\|week\\|month (R164 step 4): the controller's own machine's CPU, memory, network, disk I/O and temperatures over the span, at the resolution kept for it (five minutes for a day, an hour  |  |
 | GET | `/api/schedules` | exact | `_get_schedules` | GET /api/schedules (R117): every schedule, its words, its next run and its last run's state, and the nodes it may run on. |  |
+| GET | `/api/extmounts` | exact | `_get_extmounts` | GET /api/extmounts (R162 step 4): the other disks and shares the controller's own machine mounts, as recorded, never a password. |  |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes page's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
 | GET | `/api/home` | prefix | `_get_home` | GET /api/home: home.read, the overview's numbers (R218 step 5). |  |
@@ -116,6 +117,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | POST | `/api/images` | exact | `_images` | Check for updates on the Containers page (imagecheck.py, R195): every container's registry images on one node, or all, asked now. | refused: docker-write |
 | POST | `/api/storage` | exact | `_storage` | Measure now on the Storage page: a node's disks walked at once (nodes.node_storage_measure). |  |
 | POST | `/api/schedules` | exact | `_schedules` | POST /api/schedules (R117): save (add or change, turning one on or off among them), remove, or run now. |  |
+| POST | `/api/extmounts` | exact | `_extmounts` | POST /api/extmounts (R162 step 4): set (add or change), remove, or on and off (Eject is off: the agent unmounts within a minute). |  |
 | POST | `/api/pin` | prefix | `_pin` | Pin or unpin a command: macros.pin. | refused: command-pin |
 | POST | `/api/reset` | exact | `_reset` | POST /api/reset: start over at onboarding (settings.reset), and the dashboard re-executes itself so the next page is Create the owner. | refused: controller |
 | POST | `/api/move` | exact | `_move` | POST /api/move (R90 step 12): prepare (the bundle written, the token answered once), forget (withdrawn), moved (this controller marked moved to the new one, read-only from here on). |  |

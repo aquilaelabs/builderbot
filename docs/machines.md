@@ -349,6 +349,18 @@ data disk keeps its files, readable on any Linux. The cache tier and the
 mover the step's details describe wait on pools by purpose (R162 step 6),
 where write landing is a share's opt-in.
 
+**Other disks and shares** (R162): under the shares, a disk plugged into
+the machine (USB, eSATA) or a remote SMB share or NFS export, mounted at
+`/mnt/other/NAME` by itself as a backup target or a source to copy in,
+never pooled and never written to by anything but what a person does with
+it. The record is the controller's (`extmounts.json`, an SMB share's
+password sealed under the install key as every secret is) and goes to the
+own machine's agent in its hello, which mounts what the record says and
+unmounts what it no longer says, within a minute; a disk's row says when
+it is not plugged in. Eject (Unmount, for a share) turns the row off: the
+agent unmounts it and the row says the disk is safe to pull; Remove
+forgets it, nothing on it touched.
+
 **People on shares** (R164): an SMB share's users are BuilderBot's own
 accounts, named on the share by account name (each becomes its own Unix
 user on the machine, `bbu-` and the account's id, made when first named)

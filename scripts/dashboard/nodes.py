@@ -1440,6 +1440,7 @@ def _census(c):
             out["disks"].append({"name": dsk["name"], "model": word(dsk.get("model"), 64), "serial": word(dsk.get("serial"), 64),
                                  "size_mb": int(dsk["size_mb"]) if isinstance(dsk.get("size_mb"), int) else 0,
                                  "ssd": dsk.get("ssd") is True, "tran": word(dsk.get("tran"), 16), "removable": dsk.get("removable") is True,
+                                 "by_id": re.sub(r"[^A-Za-z0-9_.:-]", "", str(dsk.get("by_id") or ""))[:120],
                                  "system": dsk.get("system") is True, "holds": word(dsk.get("holds"), 80),
                                  "parts": [{"name": word(p.get("name"), 32), "size_mb": int(p["size_mb"]) if isinstance(p.get("size_mb"), int) else 0,
                                             "holds": word(p.get("holds"), 80)}
@@ -1509,6 +1510,13 @@ def _census(c):
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
+    # ...and its other disks and shares (R162 step 4), each to its shape.
+    if isinstance(c.get("ext_mounts"), list):
+        out["ext_mounts"] = [{"id": re.sub(r"[^a-z0-9_]", "", str(m.get("id") or ""))[:16], "name": str(m["name"]), "kind": str(m.get("kind") or "")[:4],
+                              "mounted": m.get("mounted") is True, "present": m.get("present") is True,
+                              "size_mb": int(m["size_mb"]) if isinstance(m.get("size_mb"), int) else 0, "used_mb": int(m["used_mb"]) if isinstance(m.get("used_mb"), int) else 0,
+                              "error": re.sub(r"[^\w .,:;/()'@%+-]", "", str(m.get("error") or ""))[:200]}
+                             for m in c["ext_mounts"][:32] if isinstance(m, dict) and re.fullmatch(r"[a-z][a-z0-9-]{0,30}", str(m.get("name") or ""))]
     # ...and its UPS (R164 step 3) and its own packages' updates, each to its shape.
     if isinstance(c.get("ups"), dict) and c["ups"]:
         up = c["ups"]
@@ -2194,6 +2202,8 @@ smb_users = None
 smb_resolve = None
 # The reporting's intake (history.add), on the controller's own machine's samples (R164 step 4).
 history_add = None
+# The other disks and shares the own machine mounts (extmounts.wanted, R162 step 4).
+ext_mounts = None
 # ...and how many of a node's seals are under a key before today's.
 token_stale = None
 # ...and whether there is an install key to make any of it from.
@@ -4275,6 +4285,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             # passwords as Samba keeps them (R164 step 1): its agent imports
             # them and removes the ones gone.
             "smb_users": (smb_users() if smb_users and own_machine(n) else []),
+            # ...and the other disks and shares it mounts (R162 step 4).
+            "ext_mounts": (ext_mounts() if ext_mounts and own_machine(n) else []),
             # ...and its coding agents' sign-ins sealed there (R126), with
             # each account's public key to seal them with.
             "token_seal": token_seal_on(nid),

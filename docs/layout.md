@@ -155,6 +155,7 @@ scripts/
     settings.py                  controller settings, the things that used to be environment variables; switches, a text and two secrets never shown back
     storage.py                   the Storage page's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
     history.py                   reporting for the controller's own machine (R164 step 4): the heartbeat's samples kept for weeks at falling resolution, one file per node under the state, read by /api/history
+    extmounts.py                 the other disks and shares the controller's own machine mounts (R162 step 4): the record, a share's password sealed, what the hello hands the agent
     schedules.py                 the Schedules page's scripts (R117): an administrator's cron in the state, its timetable in words, its timer and the built-in scan
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
@@ -319,6 +320,7 @@ scripts/
     pools.py                     the machine's ZFS pools for the census and the storage-pool job (R162 step 1): made, grown, scrubbed, a member replaced, exported, destroyed, each disk held to the census
     array.py                     the machine's Unraid-style array for the census and the storage-array job (R162 step 2): the record, snapraid.conf and the fstab lines rendered from it, made, a disk added or replaced, synced, scrubbed, checked, destroyed
     power.py                     the machine's UPS through NUT and its own packages' updates for the census, and the host-update job (R164 step 3)
+    extmounts.py                 the other disks and shares the hello names (R162 step 4): each mounted at /mnt/other/NAME or unmounted as the record says, an SMB share's credentials root's alone, the census's rows
     agent.py                     Agent: hello, the loop and self-update, made of the parts above
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only
