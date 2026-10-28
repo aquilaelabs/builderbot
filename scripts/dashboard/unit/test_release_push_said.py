@@ -37,6 +37,25 @@ class PushSaid(unittest.TestCase):
         self.assertIn("git push origin v1.2.3", r["note"])
 
 
+class DevTag(unittest.TestCase):
+    def test_a_dev_release_tags_the_dev_build_and_skips_the_gates(self):
+        # R179: the dev build's tag, vX.Y.Z-dev.N, no snapshot gate, no bump.
+        ws = Path(tempfile.mkdtemp())
+        d = ws / "app"
+        d.mkdir()
+        git(d, "init", "-q", "-b", "main")
+        (d / "VERSION").write_text("1.2.3\n")
+        git(d, "add", "VERSION")
+        git(d, "commit", "-q", "-m", "one")
+        version.configure(workspace=str(ws), state=str(ws / "state"), write_json=lambda *a, **k: None)
+        r = version.release("app", push=False, dev=True)
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual((r["tag"], r["target"]), ("v1.2.3-dev.1", "1.2.3-dev.1"))
+        tags = subprocess.run(["git", "-C", str(d), "tag"], capture_output=True, text=True).stdout.split()
+        self.assertEqual(tags, ["v1.2.3-dev.1"])
+        self.assertIn("already exists", version.release("app", push=False, dev=True).get("error", ""))
+
+
 class Finish(unittest.TestCase):
     def test_a_tag_pushed_by_hand_finishes_the_release(self):
         """B399: the release's push failed and the tag went up by hand; the

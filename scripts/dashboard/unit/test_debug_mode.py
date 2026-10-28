@@ -61,5 +61,24 @@ class DebugMode(unittest.TestCase):
         self.assertEqual(a, {"node": "n_1"}, "the grants went, the rest stayed")
 
 
+
+    def test_the_dev_channel_is_offered_only_with_debug_and_the_dev_switch(self):
+        # R179: refused without debug mode, refused with it until the dev
+        # switch is on, back to normal at a start without debug mode.
+        os.environ.pop("DEBUG_MODE", None)
+        self.assertIn("dev channel", settings.set_many({"release_channel": "dev"}).get("error", ""))
+        self.assertTrue(settings.set_many({"release_channel": "normal"}).get("ok"), "normal may always be picked")
+        os.environ["DEBUG_MODE"] = "1"
+        self.assertIn("dev channel", settings.set_many({"release_channel": "dev"}).get("error", ""), "debug alone is not enough")
+        settings.set_many({"offer_unvetted": True})
+        self.assertTrue(settings.dev_channel_ok())
+        self.assertTrue(settings.set_many({"release_channel": "dev"}).get("ok"))
+        self.assertEqual(settings.get("release_channel"), "dev")
+        os.environ.pop("DEBUG_MODE")
+        self.assertTrue(settings.reset_debug())
+        self.assertEqual(settings.get("release_channel"), "normal", "a start without debug mode puts the channel back")
+        self.assertFalse(settings.dev_channel_ok())
+
+
 if __name__ == "__main__":
     unittest.main()
