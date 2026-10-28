@@ -96,9 +96,9 @@ ok(await page.$eval('#agNodeSel', s => s.selectedOptions[0].textContent).then(t 
 // saying where it stands on this node (R95 step 15).
 const secs = await page.$$eval(`.agentstab [data-agnode="${box.id}"] details.sect`, ds => ds.map(d =>
   [d.dataset.sect, d.querySelector('summary .sst')?.textContent.trim() || '']));
-ok(secs.map(s => s[0]).join() === 'agents:claude,agents:codex,agents:copilot,agents:grok'
+ok(secs.map(s => s[0]).join() === 'agents:claude,agents:codex,agents:copilot,agents:grok,agents:open'
    && /^1\.0\.0/.test(secs[0][1]) && /not signed in/.test(secs[0][1]) && /^0\.163\.0, not signed in/.test(secs[1][1])
-   && secs[2][1] === 'not installed' && secs[3][1] === 'not installed',
+   && secs[2][1] === 'not installed' && secs[3][1] === 'not installed' && secs[4][1] === 'not installed',
    `the Agents page has a section per coding agent, Claude first, each with where it stands here (${JSON.stringify(secs)})`);
 await page.evaluate(() => startClaude('beta', null, ''));
 ok(/sign in to Claude on signbox first/.test(await page.$eval('#toast', e => e.textContent)) && await terms() === before,
@@ -247,7 +247,9 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
   await refreshUntil(page, () => (b => !!b && /^ChatGPT:/.test(saidOf(b)))(document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')));
   ok(!set.error && await page.$eval(PC, b => b.textContent.trim() === 'Start agent' && /^ChatGPT:/.test(saidOf(b))),
      `a project whose settings name ChatGPT says Start agent on its card, its title naming ChatGPT (${set.error || 'saved'})`);
-  const refused = await call('/api/prefs', { project: 'beta', agent_default: 'open' });
+  // Every agent in the table starts a session now (Any model since R144), so
+  // the one that cannot is one the table does not have.
+  const refused = await call('/api/prefs', { project: 'beta', agent_default: 'nope' });
   ok(refused.status === 400 || /agent_default is one of/.test(refused.error || ''),
      `...and an agent that cannot start a session is refused as the one Start opens (${refused.error})`);
   await call('/api/prefs', { project: 'beta', agent_default: 'claude' });

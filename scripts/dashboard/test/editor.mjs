@@ -225,7 +225,7 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   ext.activate({ subscriptions: [], secrets: { get: async k => secrets.get(k), store: async (k, v) => secrets.set(k, v),
                                                 delete: async k => secrets.delete(k) } });
   // Any coding agent's session terminal (R128): its argument is the page's.
-  ok(ext.AGENTS.map(a => a.id).join() === 'claude,codex,copilot,grok' && ext.sessionArg('codex', 'alpha') === 'codex:alpha'
+  ok(ext.AGENTS.map(a => a.id).join() === 'claude,codex,copilot,grok,open' && ext.sessionArg('codex', 'alpha') === 'codex:alpha'
      && ext.sessionArg('grok', 'alpha') === 'grok:alpha'
      && ext.sessionArg('copilot', 'alpha') === 'copilot:alpha' && ext.sessionArg('nope', 'alpha') === 'claude:alpha'
      && ext.sessionArg('codex', 'alpha', '17.5') === 'codex:alpha:b:17.5',

@@ -22,6 +22,10 @@ await page.waitForSelector('.scannerstab details[data-sect="scanners:schedule"]'
 await settled(page);
 ok(await page.evaluate(() => location.hash) === '#/containers/scanners' && await page.evaluate(() => groupOf('scanners')?.key) === 'containers',
    'it is a page of the Containers group, at its own address');
+// A node that holds a project: the fixture's stub node, given one here,
+// since the page lists only the nodes projects are bound to.
+const stub = ((await api('/api/v1/nodes')).nodes || []).find(n => n.kind === 'agent' && n.state === 'online' && !n.host_only);
+if (stub) await api('/api/prefs', { project: 'beta', nodes: [stub.id], node: stub.id });
 const first = await api('/api/scanners');
 const node = (first.nodes || []).find(n => !n.host_only && (n.projects || []).length);
 ok(!!node && !node.deployed, `a node holds projects and has no scanners yet (${node ? node.name + ': ' + node.projects.join(', ') : 'none'})`);

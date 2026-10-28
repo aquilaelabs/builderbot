@@ -101,7 +101,7 @@ const TOUR_STEPS = {
   ],
   machine: [
     {say: "This machine: the computer this BuilderBot runs on, installed bare metal. What it is, the release it runs and its updates, and what it runs as a node."},
-    {at: TOUR_FIRST, say: "Its sections are a node's: health, the projects on it, its sessions, its features, storage and network, and the verbs at the end, reboot and power off among them."},
+    {at: `${TOUR_FIRST}, ${TOUR_PANE} .empty`, say: "Its sections are a node's: health, the projects on it, its sessions, its features, storage and network, and the verbs at the end, reboot and power off among them."},
   ],
   audit: [
     {say: "Audit: who did what to this BuilderBot, every change since the first day, newest first. Pick a person or a machine in the bar to read theirs alone."},

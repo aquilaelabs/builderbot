@@ -132,7 +132,7 @@ const DRIVERS = {
   // The Schedules page (R117): the built-in scan's row is always there.
   schedules: {
     open: () => page.evaluate(() => openSchedulesTab()),
-    readyWhen: '.schedulestab .schedrow',
+    readyWhen: '.schedulestab .schedrow, .schedulestab .empty',
   },
   // The Keys page (R154): the install key's section and what is kept under
   // it, drawn whether the box has a key or none.

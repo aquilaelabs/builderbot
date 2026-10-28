@@ -222,7 +222,10 @@ function renderSchedulesInto(i){
   d.list.innerHTML = pageHead({facts: [["Schedules", String(rows.length)], ["Turned on", String(on.length)],
                                        ["Next run", next ? `${next.name}, ${schedWhen(next.next_at)}` : "none"]]})
     + docSection("schedules", "list", "Schedules", `${rows.length}`,
-        `<div class="schedrows">${rows.map(s => schedRow(s, may)).join("")}</div>`);
+        rows.length ? `<div class="schedrows">${rows.map(s => schedRow(s, may)).join("")}</div>`
+          // Nothing yet, said in words (the scan that used to stand here is
+          // the Scanners page's own since R145).
+          : `<div class="empty">No schedule yet. New schedule runs a command on a node at the times you set, as cron runs one; the static analysis scan has a schedule of its own on the Scanners page.</div>`);
   wireSchedules(d.el);
 }
 

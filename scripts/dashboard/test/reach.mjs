@@ -20,6 +20,10 @@ const page = await newPage(browser);
 await page.goto(BASE);
 await page.waitForFunction(() => typeof state !== 'undefined' && state && state.repos);
 await page.evaluate(() => openProfileTab());
+// The Profile is a list of its sections beside the one picked (the
+// operator, 16 Oct): the reach section is picked first, then drawn.
+await page.waitForSelector('.profiletab .snav [data-spick="reach"]', { timeout: patience(20000) });
+await page.click('.profiletab .snav [data-spick="reach"]');
 await page.waitForSelector('.doc details[data-sect="profile:reach"]', { timeout: patience(20000) });
 await page.waitForFunction(() => document.querySelector('#pfReachKind'), null, { timeout: patience(15000) });
 await settled(page);

@@ -3406,43 +3406,21 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
     // node.json with what each project owns there, and says whether it can,
     // which this agent, not root, cannot: said under the switch in red.
     {
+      // Every session is kept to its own project's network on every node,
+      // with no switch since R146 (the operator, 26 Oct): the row's
+      // Sessions section carries no session-network checkbox, and the
+      // node's census says whether it can keep them, and why not here.
       const sw = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="sessnet"]`;
       const save = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd="sess-save"]`;
       await openSection(page, 'nodes:sessions', `.nodestab .ndrow[data-node="${minted.id}"]`);
-      await page.waitForSelector(sw, { timeout: 15000 });
-      // On to begin with: every node keeps each session to its own network
-      // unless switched off (the operator, 26 Oct; the switch goes in 0.9.0).
-      ok(await page.$eval(sw, e => e.checked), 'the Sessions section offers the switch, on to begin with');
-      await page.click(sw);
-      await sleep(1500);
-      ok(!('session_net' in ((await nodeById(minted.id)).config || {})) && !(await page.$eval(sw, e => e.checked)),
-         'unticking it writes nothing by itself, and the untick survives a repaint');
-      await page.click(sw);
-      await page.click(save);
-      const kept = await until(() => {
-        const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
-        return st.session_net?.on === true ? st : null;
-      }, 30000, 500);
-      ok(kept && kept.session_net.own && typeof kept.session_net.own === 'object',
-         `the node hears it on its next poll and keeps it in node.json, with what each project owns there (${JSON.stringify(kept?.session_net).slice(0, 90)})`);
-      // The census that has heard the switch: the one before it already
-      // carries a reason, from the agent's first look, with wanted false.
-      // Said at the agent's next turn rather than its next ten-minute hello.
+      await page.waitForSelector(save, { timeout: 15000 });
+      ok(!(await page.$(sw)), 'the Sessions section offers no session-network switch: every session is kept to its own network (R146)');
       const said = await until(async () => {
         const n = await nodeById(minted.id);
-        return n?.reported?.session_net?.wanted === true ? n.reported.session_net : null;
+        return n?.reported?.session_net && 'can' in n.reported.session_net ? n.reported.session_net : null;
       }, 45000, 500);
-      ok(said && said.can === false && said.wanted === true && /root/.test(said.why),
-         `...and says whether it can keep sessions there, and why not (${said?.why})`);
-      await page.waitForFunction(id => /Not in force: the agent does not run as root here/.test(
-        document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''), minted.id, { timeout: 30000 });
-      ok(await page.$$eval(`.nodestab .ndrow[data-node="${minted.id}"] .sub.bad`, es => es.some(e => /Not in force/.test(e.textContent))),
-         '...which the row says under the switch, in red');
-      await page.click(sw);
-      await page.click(save);
-      const cleared = await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).session_net?.on === false ? true : null,
-                                  30000, 500);
-      ok(cleared, '...and off, saved the same way, reaches the node the same way');
+      ok(said && said.can === false && /root/.test(said.why || ''),
+         `...and the node says whether it can keep sessions there, and why not (${said?.why})`);
       // The same Save carries whether a session here may ask for root.
       const ra = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="rootasks"]`;
       ok(await page.$eval(ra, e => e.checked), 'root asks are on by default, beside it');
