@@ -56,11 +56,11 @@ class PerPerson(unittest.TestCase):
     def test_a_token_is_used_only_while_its_person_is_signed_in(self):
         gitcreds.link_account("web", ADA, self.ada)
         self.assertEqual(gitcreds.read_line("web", uid=ADA), "", "signed out everywhere: nothing")
-        self.assertEqual(gitcreds.helpers("web", ADA), [gitcreds.helper("web")], "no helper of their own while signed out")
+        self.assertEqual(gitcreds.helpers("web", ADA), [], "no handout of their own while signed out, and the project keeps no line")
         lid = logins.mint(ADA, "a browser")
         self.assertTrue(logins.live(ADA))
         self.assertEqual(gitcreds.read_line("web", uid=ADA), ADA_LINE)
-        self.assertEqual(len(gitcreds.helpers("web", ADA)), 2)
+        self.assertEqual(len(gitcreds.helpers("web", ADA)), 1, "their handout; the project keeps no line of its own")
         logins.drop(ADA, lid)
         self.assertFalse(logins.live(ADA))
         self.assertEqual(gitcreds.read_line("web", uid=ADA), "")

@@ -231,7 +231,14 @@ account's own page, in sections. **Who you are** holds the account name,
 their name and email, and the name and email their commits carry (blank means
 the ones above); **What you may do** is what their roles add up to;
 **Password** is a change that asks for the current one first;
-**Two-factor sign-in** is described below; and **Signed in as you**, last, is
+**Two-factor sign-in** is described below; **Your key store** is the key
+the person's agent sign-ins and tokens are sealed under, who holds it (this
+BuilderBot, their passkey, or a key they keep: *Hold the key yourself*
+moves it, *Give the key back* moves it back), the tokens they gave
+repositories with the projects that use them, *Unlock for* with the window
+a token stays opened (a quarter of an hour, an hour, eight hours, or while
+signed in), *Lock*, and *Purge*; **Uses of your tokens** lists each time
+one was opened and for what; and **Signed in as you**, last, is
 the browsers signed in as this account (a line a browser, named with its
 system and the address it came from, this one first, each with **Sign out**,
 which ends that one's sign-in) and the devices (a line a device, with when it

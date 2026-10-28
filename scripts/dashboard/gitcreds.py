@@ -33,6 +33,8 @@ import shlex
 import urllib.parse
 from pathlib import Path
 
+import unlocks            # the opened tokens and their handouts (R158 step 5)
+
 STATE = None
 # Whose work a git command is (R159): the server sets it for a person's
 # request, so a call that names no account (version.release, the wiki's
@@ -66,14 +68,16 @@ def path(project):
 def open_text(text):
     """A file's content as its plain line: opened if sealed, "" when it
     cannot be (another install key, or none)."""
-    text = (text or "").strip()
+    # The project's own line is the first that is not a giver's (R157: a
+    # token moved to the project sits beside the `account:` lines).
+    lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.startswith(LINKED)]
+    text = lines[0].strip() if lines else ""
     if text.startswith(SEALED):
         try:
             text = unseal(base64.b64decode(text[len(SEALED):])).decode() if unseal else ""
         except Exception:                                   # noqa: BLE001 (Locked, or damaged: no token)
             return ""
-    lines = text.splitlines()
-    return lines[0] if lines else ""
+    return text.splitlines()[0] if text else ""
 
 
 def _accounts():
@@ -130,26 +134,62 @@ def acting():
     return ACTING.get() or ""
 
 
-def read_line(project, uid=None, live_only=True):
+def read_line(project, uid=None, live_only=True, why="read"):
     """The credential line git work on this project is handed, plain, or
     "" for none: the acting person's own (`uid`, else ACTING) when they
     gave one and are signed in, else any giver's who is signed in now,
-    else a line kept as the project's own from before."""
+    else a line kept as the project's own from before. Each opening is a
+    use the person reads on their Profile (`why` says what for)."""
     uid = acting() if uid is None else uid
     g = givers(project)
     if uid and any(u == uid for u, _ in g) and (not live_only or _live(uid)):
-        return _accounts().forge_line(uid, given_by(project, uid))
+        line = _accounts().forge_line(uid, given_by(project, uid), why=why, project=project, by=uid)
+        if line or _locked(uid):
+            return line
     for u, fid in g:
-        if not live_only or _live(u):
-            line = _accounts().forge_line(u, fid)
+        if (not live_only or _live(u)) and not _locked(u):
+            line = _accounts().forge_line(u, fid, why=why, project=project, by=uid or "")
             if line:
                 return line
-    if g:
-        return ""
     try:
         return open_text(path(project).read_text())
     except OSError:
         return ""
+
+
+def own_line(project):
+    """Whether the project keeps a line of its own (from before accounts,
+    or moved to it when its giver took their key, R157)."""
+    try:
+        return bool(open_text(path(project).read_text()))
+    except OSError:
+        return False
+
+
+def keep_as_own(project, line):
+    """`line` kept as the project's own, sealed, before its givers' lines:
+    what a project's background work runs with when the person whose token
+    it was holds their own key (R157)."""
+    if not line or "\n" in line:
+        return False
+    _settled(project)
+    d = STATE / "gitcreds"
+    d.mkdir(parents=True, exist_ok=True)
+    os.chmod(d, 0o700)
+    rows = givers(project)
+    fd = os.open(path(project), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(_kept(line) + "\n" + "".join(f"{LINKED}{u}:{f}\n" for u, f in rows))
+    return True
+
+
+def _locked(uid):
+    """Whether the account's store is under a key of its own and shut
+    (unlocks), so its tokens open for nobody now."""
+    try:
+        return bool(unlocks.locked(uid))
+    except Exception:                                       # noqa: BLE001
+        return False
 
 
 def usable(project, uid):
@@ -160,35 +200,46 @@ def usable(project, uid):
     g = givers(project)
     mine = given_by(project, uid) if uid else ""
     if mine:
+        if _locked(uid):
+            return {"by": uid, "mine": True, "live": _live(uid), "given": True, "locked": True,
+                    "why": "your key store is locked: unlock it on your Profile (Your key store), and your "
+                           "pushes and pulls run with your token"}
         if _live(uid):
             return {"by": uid, "mine": True, "live": True, "given": True, "why": ""}
         return {"by": uid, "mine": True, "live": False, "given": True,
                 "why": "your token for this project is used only while you are signed in, and you are "
                        "signed out everywhere: bb git waits for you to sign in to the dashboard"}
-    other = next((u for u, _ in g if _live(u)), "")
+    other = next((u for u, _ in g if _live(u) and not _locked(u)), "")
     if other:
         return {"by": other, "mine": False, "live": True, "given": False, "why": ""}
-    if g:
+    if g and not own_line(project):
+        shut = [u for u, _ in g if _live(u) and _locked(u)]
         return {"by": "", "mine": False, "live": False, "given": False,
-                "why": "nobody who gave this project a token is signed in: give yours in the project's "
+                "why": ("everyone signed in who gave this project a token has their key store locked: one of them "
+                        "unlocks it on their Profile, or give yours in the project's settings") if shut else
+                       "nobody who gave this project a token is signed in: give yours in the project's "
                        "settings, or wait for one of them"}
-    if helper(project):
+    if own_line(project):
         return {"by": "", "mine": False, "live": True, "given": False, "why": ""}
     return {"by": "", "mine": False, "live": False, "given": False,
             "why": "this project has no git token: give yours in the project's settings"}
 
 
-def _write_givers(project, rows):
+def _write_givers(project, rows, keep_own=True):
     _settled(project)
     d = STATE / "gitcreds"
     d.mkdir(parents=True, exist_ok=True)
     os.chmod(d, 0o700)
-    if not rows:
+    if not rows and not (keep_own and own_line(project)):
         forget(project)
         return
+    try:
+        own = [ln for ln in path(project).read_text().splitlines() if ln.strip() and not ln.startswith(LINKED)][:1] if keep_own else []
+    except OSError:
+        own = []
     fd = os.open(path(project), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
-        fh.write("".join(f"{LINKED}{u}:{f}\n" for u, f in rows))
+        fh.write("".join(x + "\n" for x in own) + "".join(f"{LINKED}{u}:{f}\n" for u, f in rows))
 
 
 def link_account(project, uid, fid):
@@ -240,7 +291,7 @@ def adopt(owner_of):
             text = f.read_text().strip()
         except OSError:
             continue
-        if not text or text.startswith(LINKED):
+        if not text or givers(f.name):
             continue
         line = open_text(text)
         uid = owner_of(f.name) if line else ""
@@ -249,7 +300,8 @@ def adopt(owner_of):
             continue
         got, _code = _accounts().link_forge(uid, line.rsplit("@", 1)[-1], line, urllib.parse.unquote(m.group(1)))
         if got.get("ok"):
-            link_account(f.name, uid, got["id"])
+            # The owner's now, in their store: the project's own line goes.
+            _write_givers(f.name, [(uid, got["id"])], keep_own=False)
             n += 1
     return n
 
@@ -315,30 +367,44 @@ def _settled(project):
             _gone_save(d)
 
 
-def helpers(project, uid=None):
+def helpers(project, uid=None, why="git"):
     """The credential helpers for git work on this project, in the order
-    git asks them (R159): the acting person's own store, when they gave
-    this project a token or keep one for its host and are signed in now;
-    then the project's helper, which answers with any signed-in giver's
-    token, or with a line kept as the project's own from before."""
+    git asks them (R159): a handout of the acting person's own token, when
+    they gave this project one and are signed in with their store open;
+    else a handout of any signed-in giver's whose store is open; then the
+    project's helper for a line kept as the project's own from before. A
+    handout (unlocks.handout) is the opened line in a file of its own for
+    the window, so the helper opens nothing itself and each opening is a
+    use on the person's Profile (R158 step 5)."""
     uid = acting() if uid is None else uid
     out = []
-    if uid and _accounts().forges_of(uid) and _live(uid):
-        out.append(f"!{shlex.quote(str(HELPER))} --account {shlex.quote(str(STATE))} {shlex.quote(uid)} "
-                   f"{shlex.quote(project)}")
-    h = helper(project)
-    if h:
-        out.append(h)
+    g = givers(project)
+    handed = ""
+    for u, fid in ([(uid, given_by(project, uid))] if uid and given_by(project, uid) else []) + [x for x in g if x[0] != uid]:
+        if not _live(u) or _locked(u):
+            continue
+        e = _accounts().entry_for(u, fid)
+        if not e:
+            continue
+        handed = unlocks.handout(u, project, fid, why=why, by=uid or "", host=e["host"], login=e["login"])
+        if handed:
+            break
+    if handed:
+        out.append(f"!{shlex.quote(str(HELPER))} {shlex.quote(handed)}")
+    if not g or own_line(project):
+        h = helper(project)
+        if h:
+            out.append(h)
     return out
 
 
-def git_c(project, uid=None):
+def git_c(project, uid=None, why="git"):
     """git's -c arguments that hand a command BuilderBot's credential for this
     project, wherever it is kept (the account's own store, the project's),
     whatever the tree's own config names: every git that reaches a remote
     for BuilderBot goes through these or through helpers() written into a
     config of its own (the operator, 27 Oct). [] where there is none."""
-    hs = helpers(project, uid)
+    hs = helpers(project, uid, why)
     return ["-c", "credential.helper=", *[x for h in hs for x in ("-c", f"credential.helper={h}")]] if hs else []
 
 

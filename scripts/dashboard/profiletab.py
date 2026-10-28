@@ -103,7 +103,7 @@ def two_factor(me, act, req, origin):
         return {"challenge": mfa.challenge(uid, "create"), "user": mfa.b64u(uid.encode()), "name": name,
                 "exclude": mfa.passkey_ids(uid)}, 200
     if act == "2fa-passkey-add":
-        r = mfa.passkey_add(uid, origin, req.get("name"), req.get("client"), req.get("att"))
+        r = mfa.passkey_add(uid, origin, req.get("name"), req.get("client"), req.get("att"), prf=req.get("prf") is True)
         if r.get("error"):
             return r, 400
         audit(who, "2fa-add", name, {"what": "passkey", "name": r.get("name")})

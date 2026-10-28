@@ -65,9 +65,12 @@ that is nobody's (watching CI) takes any signed-in giver's.
   pushing as somebody who is not there; a project carrying a token nobody
   gave it; a session reading the token (it never sees it: the helper hands
   it to git on the controller).
-- Does not protect against: the controller itself while a person is signed
-  in, which opens the token to hand it over. Step 5 makes that an unlock per
-  token for a time the person picks, with each use logged.
+- Does not protect against: the controller itself while a person's store
+  is open, which opens the token to hand it over. Step 5 bounds that: a
+  token is opened per use for the window the person picks, the opened line
+  is what the controller keeps (in memory, and in a handout file for git
+  under `/run` for the window), and each use is on their Profile. With a
+  key of their own (R157) the store opens only while they have unlocked it.
 
 **The agent sign-ins on a node** (sealed by the node under a public key
 whose secret only the controller derives; `tokenseal.py`). The node seals
@@ -104,22 +107,45 @@ release; step 7 is the outside review.
 ## What an unlock gives up
 
 A store is opened to be used. Each opening is a moment the controller holds
-the plain token:
+the plain token, and R158 step 5 makes each one a choice the person made:
 
-- A person's git token is opened when git asks for it, for that one
-  command, while they are signed in. Nothing is kept open between commands.
+- A person's git token is opened the first time git asks for it in a
+  window, for the window they picked on their Profile (a quarter of an
+  hour, an hour, eight hours, or while they are signed in), and the opened
+  line is what the controller keeps: in its memory, and in a handout file
+  of one line under `/run/bb-git` that `git-credential-bb` reads for that
+  window, shredded when the window ends, the store is locked or the person
+  signs out everywhere. The seal is opened once per window, not per use,
+  and every opening is a line on their Profile: when, which token, on which
+  project, for what (a push, a pull, CI watching, a release) and by whom.
+  Lock on the Profile lets go of all of it at once.
 - An agent sign-in is opened into the terminal that starts the session, on
   the node, and lives in that process for the session's life.
 - The install key is in the controller's memory for as long as it runs:
   what root on the controller reads.
 
-Step 5 narrows the first: a store opened per token, for a time the person
-picks, the controller holding the opened tokens it needs and never the key
-that opens the rest, every use logged where the person reads it. Step 6
-keeps what is held in memory from core dumps and swap, zeroes it where the
-language allows, and keeps the processes that hold keys apart from the ones
-that run what sessions ask. R157 then takes the key itself out of the
-controller's hands.
+**A key of the person's own (R157).** Under the install key, the unlock
+bounds how long an opened token stays in memory; the controller could open
+the store at any time, since it holds the key. *Hold the key yourself* on
+the Profile moves the store under a key the controller never holds: a
+passkey's PRF secret (the authenticator derives it and the page only relays
+it to the controller, over https and under the page's policy, for the one
+request that unlocks), or a key the person keeps (64 hex characters shown
+once; the Windows companion or a password manager holds it, and a device
+signed in as them may unlock with it through the device door). The
+controller keeps the X25519 public half of what the person holds and the
+account key sealed to it; the account key is in its memory only while the
+person has unlocked, and `Lock`, a restart or the window's end forgets it.
+While it is shut: their pushes and pulls wait and the Git view says so, a
+terminal they open on a node asks for the unlock first (that terminal is
+what opens their sealed sign-ins there), and a login made on a node is
+still sealed, to the node public halves the controller remembered while
+the store was open. What it costs: a forgotten passkey or key means signing
+in to every agent again and giving each project a token again; Purge
+still works without it, an administrator's too. The tokens a project runs
+background work with (CI watching, releases) go to the project's own
+keeping at the move, listed before the person chooses, unless they keep
+them under their key and accept that this work waits for their unlock.
 
 ## Memory and process
 

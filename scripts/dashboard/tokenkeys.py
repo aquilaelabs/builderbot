@@ -79,9 +79,16 @@ def _secret_for(k, node, uid, R):
 def public(node, uid, old=False):
     """The account's public key on this node, hex, made from its own key,
     or "" with no install key: an install with none has nothing to seal
-    with, and keeps its sign-ins as plain files."""
+    with, and keeps its sign-ins as plain files. For an account whose store
+    is under a key of its own and shut (R157), the half remembered from
+    when it was open: a public half is nothing secret, and the node needs
+    it to seal a login made while the person works."""
     k = accountkeys.key_of(uid)
-    return _pub(k, node, uid, old) if k else ""
+    if k:
+        pub = _pub(k, node, uid, old)
+        accountkeys.remember_pub(uid, node, old, pub)
+        return pub
+    return accountkeys.pub_remembered(uid, node, old)
 
 
 def _candidates(uid):

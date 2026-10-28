@@ -96,7 +96,7 @@ def summary(uid):
     return {"on": enabled(uid),
             "totp": {"on": bool(t.get("on")), "added": t.get("added", 0)},
             "passkeys": [{"id": p["id"], "name": p.get("name", ""), "added": p.get("added", 0),
-                          "used": p.get("used", 0)} for p in r.get("passkeys") or []],
+                          "used": p.get("used", 0), "prf": bool(p.get("prf"))} for p in r.get("passkeys") or []],
             "recovery_left": len(r.get("recovery") or []),
             "trusted": [{"id": t2["id"], "name": t2.get("name", ""), "added": t2.get("added", 0),
                          "until": t2.get("until", 0)} for t2 in r.get("trusted") or []
@@ -411,7 +411,7 @@ def _rp_hash(origin):
     return hashlib.sha256((urllib.parse.urlsplit(origin).hostname or "").encode()).digest()
 
 
-def passkey_add(uid, origin, name, client_b64, att_b64):
+def passkey_add(uid, origin, name, client_b64, att_b64, prf=False):
     """Register a passkey from navigator.credentials.create's answer."""
     chal = _take_challenge(uid, "create")
     try:
@@ -442,7 +442,10 @@ def passkey_add(uid, origin, name, client_b64, att_b64):
     def put(r):
         keys = [p for p in r.get("passkeys") or [] if p["id"] != pid]
         keys.append({"id": pid, "x": format(x, "x"), "y": format(y, "x"), "name": nm, "rp": b64u(auth[:32]),
-                     "count": int.from_bytes(auth[33:37], "big"), "added": int(time.time()), "used": 0})
+                     "count": int.from_bytes(auth[33:37], "big"), "added": int(time.time()), "used": 0,
+                     # Whether it answers the PRF extension, which is what
+                     # lets it hold a key of the person's own (R157).
+                     "prf": bool(prf)})
         r["passkeys"] = keys[-20:]
         return {"ok": True, "id": pid, "name": nm}
     return _update(uid, put)

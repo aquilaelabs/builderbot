@@ -61,9 +61,12 @@ def door_refused(said, app=""):
             "update the app from the Apps page, or let it update itself")
 
 
-def configure(*, users, access=None, projects=None, flags=None):
-    global USERS, ACCESS, PROJECTS, FLAGS
-    USERS, ACCESS, PROJECTS, FLAGS = users, access, projects, flags
+UNLOCK = None            # (uid, key) -> unlocks.unlock, set by the server (R157)
+
+
+def configure(*, users, access=None, projects=None, flags=None, unlock=None):
+    global USERS, ACCESS, PROJECTS, FLAGS, UNLOCK
+    USERS, ACCESS, PROJECTS, FLAGS, UNLOCK = users, access, projects, flags, unlock
     wssync.configure_devices(name_of=_name_of)
 
 
@@ -197,6 +200,13 @@ def verb(name, auth, req):
         return {"work": PC.work(auth["device"], wait)}, 200
     if name == "pc-result" and PC:
         return PC.result(auth["device"], req.get("id"), req)
+    if name == "unlock":
+        # The key its person keeps, held by the app (R157): their store
+        # opened for their window, as a passkey would.
+        if not UNLOCK:
+            return {"error": "this controller takes no unlock from a device"}, 400
+        r = UNLOCK(auth["account"].get("uid", ""), str(req.get("key") or ""))
+        return r, (400 if r.get("error") else 200)
     if name == "apps":
         v = APPS.view() if APPS else {"apps": []}
         return {"version": v.get("version", ""), "door": DOOR, "door_min": DOOR_MIN,

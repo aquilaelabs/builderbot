@@ -59,7 +59,8 @@ const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
   twofactor: "an authenticator app, passkeys and recovery codes",
-  mykey: "your key, the tokens you gave repositories, and Purge",
+  mykey: "your key, who holds it, the tokens you gave repositories, Unlock and Lock",
+  uses: "each time a token of yours was opened, and for what",
   terminal: "the size, cursor and colors of your terminals",
   devices: "your browsers and apps, to sign out",
 };
@@ -454,12 +455,16 @@ function wireTwoFactor(root){
     if (what === "passkey-add"){
       try{
         const o = await pfTf({action: "2fa-passkey-begin"});
+        // The PRF extension asked for at creation (R157): an authenticator
+        // that answers it can hold a key of the person's own.
         const c = await navigator.credentials.create({publicKey: {challenge: pfU8(o.challenge), rp: {name: "BuilderBot", id: location.hostname},
           user: {id: pfU8(o.user), name: o.name, displayName: o.name}, pubKeyCredParams: [{type: "public-key", alg: -7}],
           authenticatorSelection: {residentKey: "preferred", userVerification: "preferred"}, attestation: "none", timeout: 60000,
-          excludeCredentials: (o.exclude || []).map(id => ({type: "public-key", id: pfU8(id)}))}});
+          excludeCredentials: (o.exclude || []).map(id => ({type: "public-key", id: pfU8(id)})), extensions: {prf: {}}}});
+        let prf = false;
+        try{ prf = !!c.getClientExtensionResults().prf?.enabled; }catch(e){ prf = false; }
         const name = await askText("A name for this passkey, so you know it in the list.", {verb: "Save", label: "Name", value: "this device"});
-        const r = await pfTf({action: "2fa-passkey-add", name: name || "a passkey", client: pfB64(c.response.clientDataJSON), att: pfB64(c.response.attestationObject)});
+        const r = await pfTf({action: "2fa-passkey-add", name: name || "a passkey", client: pfB64(c.response.clientDataJSON), att: pfB64(c.response.attestationObject), prf});
         if (r.error){ notify(r.error, true); return; }
         if (r.recovery?.length) pfCodes = r.recovery;
         notify(`Passkey added: ${r.name}`);

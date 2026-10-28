@@ -207,6 +207,7 @@ scripts/
     accountkeys.py               each account's own key for its sign-ins on the nodes (R154), in account-keys.json sealed under the install key, changed from Profile
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
     acme.py                      an ACME client on the cryptography library: Let's Encrypt certificates for the nginx page by HTTP-01 or DNS-01, renewed (R150)
+    unlocks.py                   a person's tokens opened per use for the window they pick and logged, git's handout of an opened one, and a store under a key of the person's own opened only while unlocked (R158 step 5, R157)
     hardening.py                 the dashboard's process kept from core files and swap, not dumpable, and wipe() for a key let go (R158 step 6)
     csp.py                       the page's Content-Security-Policy, its inline blocks allowed by hash and its scripts by integrity, and what a browser refused under it, kept for the Doctor (R158 step 4)
     tls.py                       the dashboard's own TLS: one port serving https and http by the first byte, the install's own certificate or Let's Encrypt's, its key sealed under the install key (R158 step 2)

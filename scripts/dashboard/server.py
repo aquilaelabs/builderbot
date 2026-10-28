@@ -724,6 +724,7 @@ def log_sweep_loop():
             r["job_logs"] = nodes.prune_job_logs()
             r["job_rows"] = nodes.prune_jobs()
             r["audit"] = db.prune_audit()
+            unlocks.sweep()
             if any(r.values()):
                 print(f"dashboard: log sweep: {', '.join(f'{k} {v}' for k, v in r.items() if v)}", flush=True)
         except Exception as e:                                # noqa: BLE001 (the loop outlives one bad pass)
@@ -1822,6 +1823,10 @@ def _givers_said(project, me):
         out.append({"uid": uid, "name": names.get(uid) or "an account that is gone", "login": fg.get("login", ""),
                     "host": fg.get("host", ""), "mine": uid == me, "live": logins.live(uid)})
     return out
+
+
+def _name_of_uid(uid):
+    return next((u.get("name") for u in users.all_users() if u.get("uid") == uid), "") or ""
 
 
 def _token_said(project, me):
@@ -4197,6 +4202,7 @@ except OSError as e:
 # report of their seals decides when a key before today's can go.
 import accountkeys                                               # noqa: E402
 import logins                                                    # noqa: E402
+import unlocks                                                   # noqa: E402
 import installkey                                                # noqa: E402
 
 
@@ -4205,6 +4211,14 @@ def _node_seals():
 
 
 accountkeys.configure(state=STATE, nodes_under=lambda uid, k: tokenkeys.sealed_under(_node_seals(), k, uid))
+# An unlock that gives up less (R158 step 5): a person's tokens opened per
+# use for the window they pick, each use logged for them, and a store under
+# a key of their own (R157) opened only while they have unlocked it.
+unlocks.configure(state=STATE, key_under_install=accountkeys.key_under_install, open_entry=accountkeys.open_entry_with,
+                  entry_of=accountkeys._entry, own_of=accountkeys.own_of, set_for=accountkeys.set_unlock_for,
+                  live=logins.live, ts=tokenkeys.ts, wipe=hardening.wipe,
+                  run_dir=os.environ.get("BB_HANDOUT_DIR") or "")
+unlocks.clear_all_handouts()
 # Who is signed in now (R159): the rows the cookies name, and a device
 # signed in as the account counts the same way.
 logins.configure(state=STATE, days=SESSION_DAYS,
@@ -4833,6 +4847,8 @@ diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.pay
 # that person (ftp.access_for).
 import devices                                                   # noqa: E402
 devices.configure(users=users.load, access=lambda acct, p: ftp.access_for(acct, p, "editor"),
+                  unlock=lambda uid, key: (unlocks.unlock(uid, unlocks.secret_from_hex(key)) if unlocks.secret_from_hex(key)
+                                           else {"error": "the key is 64 hex characters"}),
                   projects=lambda acct: project_names(acct),
                   flags=lambda acct, p: projects.app_flags(p, users.uid_of(acct)))
 profiletab.configure(devices=devices, logins=logins, mfa=mfa, audit=db.audit,
@@ -5171,6 +5187,10 @@ def _snapshot(who):
         # Which nodes report this account signed in to Claude, and the
         # sign-in of theirs that is running, if one is.
         "claude_auth": _timed("status:claude_auth", lambda: claude_auth(home_for(users.uid_of(who)))),
+        # The asker's key store (R158 step 5, R157): whether it is under a
+        # key of their own and shut, so the page asks for it before a
+        # terminal opens and the Git view says why a push would wait.
+        "store": unlocks.status(users.uid_of(who)) if users.uid_of(who) else {},
         # ...and the other coding agents' the same way (R95 step 3).
         "agent_auth": _timed("status:agent_auth", lambda: agent_auth(home_for(users.uid_of(who)))),
         "signin": login,
@@ -9450,6 +9470,8 @@ class Handler(BaseHTTPRequestHandler):
             if code == 200:
                 print(f"dashboard: {who.get('name') or uid} changed their account key", flush=True)
             return self._json(body, code)
+        if act in ("unlock", "lock", "unlock-for", "uses", "own-preview", "own-key", "own-back", "prf-begin"):
+            return self._json(*self._store_verb(act, uid, who, req))
         if self._refused("controller"):
             return
         if act == "status":
@@ -9475,6 +9497,101 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"dashboard: {who.get('name')} changed the install key; {body['resealed']} sealed again", flush=True)
             return self._json(body, code)
         return self._json({"error": f"unknown action {act!r}"}, 400)
+
+    def _store_secret(self, uid, req):
+        """The person's secret for their own key, from the request: a
+        passkey's PRF output, proved by the passkey's own assertion
+        (mfa.passkey_check), or the key they keep, typed; (secret, how,
+        passkey id) or (None, why, "")."""
+        pk = req.get("passkey") if isinstance(req.get("passkey"), dict) else None
+        if pk:
+            if not mfa.passkey_check(uid, self._origin(), str(pk.get("id") or ""), pk.get("client"), pk.get("auth"), pk.get("sig")):
+                return None, "the passkey did not prove itself", ""
+            try:
+                secret = base64.urlsafe_b64decode(str(pk.get("prf") or "") + "=" * (-len(str(pk.get("prf") or "")) % 4))
+            except (ValueError, TypeError):
+                secret = b""
+            if len(secret) < 16:
+                return None, "this passkey gave no secret: it does not do PRF, so it cannot hold a key; add one that does, or keep a key yourself", ""
+            return secret, "passkey", str(pk.get("id") or "")
+        secret = unlocks.secret_from_hex(req.get("key"))
+        if secret:
+            return secret, "key", ""
+        return None, "a passkey's answer or the key you keep (64 hex characters) opens it", ""
+
+    def _store_verb(self, act, uid, who, req):
+        """Profile's Your key store presses (R158 step 5, R157): unlock for
+        the window picked, lock, the window alone, the uses, and the move
+        under a key of the person's own and back."""
+        if not uid:
+            return {"error": "no such account"}, 404
+        name = who.get("name") or uid
+        if act == "uses":
+            labels = {}
+            return {"uses": [{**u, "project": registry.label(u["project"]) if u.get("project") else "",
+                              "by": labels.setdefault(u["by"], _name_of_uid(u["by"])) if u.get("by") else ""}
+                             for u in unlocks.uses(uid)], **unlocks.status(uid)}, 200
+        if act == "lock":
+            print(f"dashboard: {name} locked their key store", flush=True)
+            return {**unlocks.lock(uid, why="locked"), **unlocks.status(uid)}, 200
+        if act == "unlock-for":
+            try:
+                for_s = int(req.get("for"))
+            except (TypeError, ValueError):
+                for_s = -1
+            if not accountkeys.set_unlock_for(uid, for_s):
+                return {"error": "the window is a quarter of an hour, an hour, eight hours, or while signed in"}, 400
+            return unlocks.status(uid), 200
+        if act == "prf-begin":
+            return {"challenge": mfa.challenge(uid, "get"), "ids": mfa.passkey_ids(uid), "salt": unlocks.prf_salt(uid)}, 200
+        if act == "unlock":
+            for_s = req.get("for") if req.get("for") in unlocks.CHOICES else None
+            if unlocks.is_own(uid):
+                secret, how, _ = self._store_secret(uid, req)
+                if secret is None:
+                    return {"error": how}, 400
+                got = unlocks.unlock(uid, secret, for_s)
+            else:
+                got = unlocks.unlock(uid, None, for_s)
+            if got.get("error"):
+                return got, 400
+            db.audit(f"user:{name}", "key store unlocked", uid, {"for": unlocks.unlock_for(uid)})
+            return {**got, **unlocks.status(uid)}, 200
+        if act == "own-preview":
+            # What moving the store under their own key means: each project
+            # whose background work runs with a token of theirs.
+            rows = []
+            for fg in accountkeys.forges_of(uid):
+                for p in gitcreds.linked_projects(uid, fg["id"]):
+                    rows.append({"project": p, "label": registry.label(p), "host": fg["host"], "login": fg["login"], "id": fg["id"]})
+            return {"projects": rows, "passkeys": [k for k in mfa.summary(uid)["passkeys"]], **unlocks.status(uid)}, 200
+        if act == "own-key":
+            secret, how, pid = self._store_secret(uid, req)
+            if secret is None:
+                return {"error": how}, 400
+            keep = {str(p) for p in (req.get("keep") or []) if isinstance(p, str)}
+            # The tokens a project's background work runs with go to the
+            # controller's store as that project's own, unless kept.
+            moved = []
+            for fg in accountkeys.forges_of(uid):
+                for p in gitcreds.linked_projects(uid, fg["id"]):
+                    if p in keep:
+                        continue
+                    line = accountkeys.forge_line(uid, fg["id"], why="moved to the project", project=p, by=uid)
+                    if line and gitcreds.keep_as_own(p, line):
+                        moved.append(p)
+            body, code = accountkeys.move_to_own(uid, secret, how, pid)
+            if code == 200:
+                body["moved"] = moved
+                db.audit(f"user:{name}", "key store under own key", uid, {"how": how, "moved": len(moved)})
+                print(f"dashboard: {name} moved their key store under a key of their own ({how})", flush=True)
+            return body, code
+        if act == "own-back":
+            body, code = accountkeys.move_back(uid)
+            if code == 200:
+                db.audit(f"user:{name}", "key store under the install key", uid, {})
+            return body, code
+        return {"error": f"unknown action {act!r}"}, 400
 
     def _keys_purge(self, uid, name):
         """An account's key store emptied (R154): its key and what it linked

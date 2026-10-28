@@ -67,16 +67,35 @@ class Store(unittest.TestCase):
         gitcreds.write_line("web", "https://x:projtoken123@github.com")
         c = gitcreds.git_c("web", UID)
         self.assertEqual(c[:2], ["-c", "credential.helper="], "the tree's own helpers are reset first")
-        self.assertEqual(len([x for x in c if x.startswith("credential.helper=!")]), 2)
+        self.assertEqual(len([x for x in c if x.startswith("credential.helper=!")]), 1, "the project's own line")
+        gitcreds.link_account("web", UID, self.fid)
+        c = gitcreds.git_c("web", UID)
+        self.assertEqual(len([x for x in c if x.startswith("credential.helper=!")]), 2, "their handout, then the project's")
         self.assertEqual(gitcreds.git_c("nothing-here"), [])
 
-    def test_their_own_work_asks_their_store_first(self):
-        gitcreds.write_line("web", "https://x:projtoken123@github.com")
-        hs = gitcreds.helpers("web", UID)
-        self.assertEqual(len(hs), 2)
-        self.assertIn("--account", hs[0])
-        self.assertEqual(gitcreds.helpers("web"), [gitcreds.helper("web")])
-        self.assertEqual(gitcreds.helpers("web", "u_0000000b"), [gitcreds.helper("web")])
+    def test_their_own_work_is_handed_their_token_opened_per_use(self):
+        # Their token, given to the project, reaches git as a handout file
+        # (R158 step 5): one line, theirs, for the window; the helper
+        # opens nothing itself, and the use is on their Profile.
+        gitcreds.link_account("web", UID, self.fid)
+        hs = gitcreds.helpers("web", UID, why="push")
+        self.assertEqual(len(hs), 1)
+        handout = hs[0].split(" ", 1)[1].strip("'")
+        self.assertTrue(handout.endswith("/web"), handout)
+        self.assertEqual(Path(handout).read_text().strip(), LINE)
+        self.assertEqual(oct(Path(handout).stat().st_mode & 0o777), "0o600")
+        self.assertIn("password=ghp_abcdefghijklmnop0123", self.helper([handout, "get"]))
+        import unlocks
+        use = unlocks.uses(UID)[0]
+        self.assertEqual((use["why"], use["project"], use["host"]), ("push", "web", "github.com"))
+        # Locked, nothing is handed out, and what was is shredded.
+        unlocks.lock(UID)
+        self.assertFalse(Path(handout).exists())
+        # Somebody who gave nothing, and work that is nobody's, take a
+        # signed-in giver's, handed out the same way and logged for them.
+        self.assertEqual(len(gitcreds.helpers("web", "u_0000000b")), 1)
+        self.assertEqual(len(gitcreds.helpers("web", "")), 1)
+        self.assertEqual(unlocks.uses(UID)[0]["by"], "")
 
     def helper(self, argv, host="github.com"):
         env = {**os.environ, "BB_SIGNING_SECRET_FILE": str(self.d / "key")}
@@ -85,9 +104,10 @@ class Store(unittest.TestCase):
                            input=f"protocol=https\nhost={host}\n", capture_output=True, text=True, env=env, timeout=30)
         return r.stdout
 
-    def test_the_helper_answers_from_the_account(self):
-        self.assertIn("password=ghp_abcdefghijklmnop0123", self.helper(["--account", str(self.d), UID, "web", "get"]))
-        self.assertEqual(self.helper(["--account", str(self.d), UID, "web", "get"], host="gitlab.com"), "")
+    def test_the_helper_opens_no_store_itself(self):
+        # The form from before, which opened the account's store in the
+        # helper's own process, answers nothing: a handout is the way in.
+        self.assertEqual(self.helper(["--account", str(self.d), UID, "web", "get"]), "")
 
     def test_a_project_linked_to_the_account(self):
         gitcreds.link_account("web", UID, self.fid)
