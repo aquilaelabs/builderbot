@@ -364,6 +364,16 @@ function attRow(a){
   // battery, the battery low or to be replaced, the UPS silent; and its
   // own packages: security updates waiting, a restart they need. To This
   // machine, where the Power section and Updates are.
+  // A pack the vetted catalog withdrew, which this install holds (R169
+  // step 2): to the Toolchains page, where Remove is.
+  if (a.kind === "pack"){
+    return `<div class="bnote att bad">
+      <div class="bt">The catalog withdrew ${esc(a.name)}</div>
+      <div class="bsum">${esc(a.said)}</div>
+      <div class="bfoot"><span>until it is removed</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-btoolchains="1">Toolchains page</a></span></div></div>`;
+  }
   // A backup of the own machine that failed, or went stale (R162 step 5): to the Storage page.
   if (a.kind === "backup"){
     return `<div class="bnote att${a.bad ? " bad" : ""}">
@@ -827,6 +837,10 @@ function wireNeeds(root, after = () => {}){
     openAgentsOn(a.dataset.bag);
   });
   // ...and a node short of room to its Storage page.
+  root.querySelectorAll("[data-btoolchains]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    openToolchains();
+  });
   root.querySelectorAll("[data-bmachine]").forEach(a => a.onclick = e => {
     e.preventDefault();
     openMachineTab(a.dataset.bmachine);

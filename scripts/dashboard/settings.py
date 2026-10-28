@@ -83,6 +83,8 @@ KEYS = {
     # tunnel's rules are written rather than clicked. The two tokens are
     # secrets: kept here, never shown back, only said to be set.
     "tunnel_host": {"default": "", "kind": "text", "applied": "now"},
+    # The vetted catalog's address (R169 step 2): where index.json and index.sig are read from.
+    "catalog_url": {"default": "https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/", "kind": "text", "applied": "now"},
     "tunnel_token": {"default": "", "kind": "secret", "applied": "now"},
     "cf_api_token": {"default": "", "kind": "secret", "applied": "now"},
     # The dashboard's own connection (R158 step 2, tls.py): http, self (the

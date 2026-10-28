@@ -68,6 +68,22 @@ not a pack and is not listed. The files are written from the tables by
 the format is one; the installer and the agents' adapters still read
 their own tables.
 
+## The vetted catalog
+
+The public catalog (the `builderbot-catalog` repository, R169) is an index
+of packs reviewed by BuilderBot's maintainers, each entry pinning a pack's
+repository to an exact commit and the sha256 of its archive at that
+commit, never a branch or latest. The index is signed with the
+maintainers' Ed25519 key; the public half ships with BuilderBot
+(`config/catalog.pub`), and an install reads an entry only after the
+signature checks: an index changed on the way, or signed by another key,
+is refused and the one read before stands, with the reason said. Where it
+is read from is **Catalog address** under Controller settings. A pack the
+catalog withdraws (`withdrawn: true` in the next signed index) is a line on
+the bell for every install that holds it, saying to remove it. Search and
+Install from the catalog on the Toolchains and Agents pages are the next
+step; the index is what they read.
+
 ## What a project's sessions can use
 
 Each project's **Settings → Toolchains** lists every toolchain installed on
