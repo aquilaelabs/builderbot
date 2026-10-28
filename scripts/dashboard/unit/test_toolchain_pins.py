@@ -1,5 +1,5 @@
 """The versions a node's projects pin (B712): read off their Gradle files,
-each a row of its own on the node's Toolchains page, installed by the store's
+each a row of its own in the Library and on the Installed page, installed by the store's
 own listing, and nothing from an agent that does not list versions."""
 import os
 import sys

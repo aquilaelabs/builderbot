@@ -356,7 +356,7 @@ function rnFillNodesMore(){
 // sees, a listbox row each, ticked from the settings. Read-only there by
 // construction (users.with_reads), so the hint under it can say so plainly.
 // ---- the Toolchains group (R77) -------------------------------------------
-// The toolchains installed on the project's node, as its Toolchains page
+// The toolchains installed on the project's node, as the Installed page
 // lists them, and every tool pack: a row each, ticked when its sessions may
 // use it. Fetched when the settings open; null until it has arrived.
 let rnToolsList = null;

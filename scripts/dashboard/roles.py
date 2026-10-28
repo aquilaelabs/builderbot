@@ -79,7 +79,7 @@ AREAS = (
     ("vms", "VMs", "project", "its VMs and their state", "make, start, stop, snapshot and remove them"),
     ("terminal", "Terminal", "project", "the shielded agent console", "the full tmux shell"),
     ("nodes", "Nodes", "global", "the Nodes page", "configure nodes, and what a project's sessions reach"),
-    ("toolchains", "Toolchains", "global", "the Toolchains page", "install and remove"),
+    ("toolchains", "Toolchains", "global", "the Library and the Installed page", "install and remove"),
     ("jobs", "Jobs", "global", "the Jobs page", "run a command on a node"),
     # Scheduled scripts (R117): an administrator's own cron, given to no
     # other role unless somebody says so.

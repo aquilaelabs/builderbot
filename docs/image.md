@@ -30,7 +30,7 @@ how it boots, and how it is built. The decisions behind it are in
 - **No apt.** `apt` and `apt-get` are diverted to a stub that says why: the
   root forgets at the next boot, and a package installed into it would be
   gone without a word. A tool a project needs is a toolchain, from the
-  Toolchains page; a package the node needs is added to
+  Library; a package the node needs is added to
   `image/mkosi.conf` and comes with the next image.
 
 ## The disk

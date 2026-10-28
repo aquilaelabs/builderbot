@@ -86,7 +86,7 @@ write_json = None
 field = None                     # server.py's one-string-field reader, for act()
 # Why a container of a project on a node cannot be given that node's NVIDIA
 # card, or "": server.py's, which knows the node's switch, the project's
-# setting and what the node's Toolchains tab holds (R102).
+# setting and what the node's Installed page holds (R102).
 gpu_why = None
 room_why = None         # set by server.py: (node id) -> why a build there would run out of disk, or "" (R110)
 container_mem_gb = None  # set by server.py: () -> the memory limit in GB a container with none gets, 0 for none (R110)

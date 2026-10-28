@@ -47,7 +47,7 @@ def die(msg):
 
 def ffmpeg():
     return os.environ.get("BB_CAPTURE_FFMPEG") or shutil.which("ffmpeg") or die(
-        "ffmpeg is not on this node: it is a toolchain recipe on the Tools tab")
+        "ffmpeg is not on this node: it is a toolchain the Library installs")
 
 
 def run(argv, timeout=600, **kw):
@@ -338,7 +338,7 @@ def from_url(url, seconds, drive, work):
     The recording lands under `work`, the capture's scratch directory."""
     node_path, chrome = os.environ.get("BB_CAPTURE_NODE_PATH", ""), os.environ.get("BB_CAPTURE_CHROME", "")
     if not chrome:
-        die("no browser here: Playwright's Chromium is a toolchain recipe on the Tools tab")
+        die("no browser here: Playwright's Chromium is a toolchain the Library installs")
     vdir = os.path.join(work, "video")
     shutil.rmtree(vdir, ignore_errors=True)
     os.makedirs(vdir)

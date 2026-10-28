@@ -175,7 +175,7 @@ BUILTIN = [
      "text": "Never install a tool with a system package manager: it is invisible"
              " to `bb toolchains` and gone when the node is rebuilt. Say what is"
              " missing and which toolchain carries it (`bb toolchains`); installing is"
-             " the operator's, from the Toolchains page.",
+             " the operator's, from the Library.",
      # Refused, not only said (R200): the one rule here a command shows
      # being broken, so the guard stops it with this text as the reason.
      "refuse": ["apt install", "apt-get install", "apt-get -y install", "aptitude install",

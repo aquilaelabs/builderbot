@@ -81,7 +81,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                 : "; it reports no toolchains yet, so a compile will not find one"}.
                ${railAllows("library") ? `Add to it from the ${pageLink("library", "Library")}.`
                  // Not offered a page their grants keep them from (B114).
-                 : "An account that may open the Toolchains page adds to it there."}</div>`
+                 : "An account that may open the Library adds to it there."}</div>`
             : `<div class="hint">No node: nothing can be compiled for this project here.
                ${esc(b.why || "")}</div>`,
           {cls: b.node ? (b.gap ? "bad" : "") : "warn"});

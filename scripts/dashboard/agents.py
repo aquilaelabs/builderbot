@@ -41,7 +41,7 @@ class Agent:
     state: str              # where working, waiting and asking are read from
     transcripts: str        # its conversations, under the account's home
     live: bool = False      # wired end to end: parsed, offered, started
-    tool: str = ""          # its row on a node's Toolchains page, "" when it has none yet
+    tool: str = ""          # its row's name in the Library and on the Installed page, "" when it has none yet
     latest_url: str = ""    # where the newest release is asked (an npm registry `latest`, or a plain version)
 
     @property
@@ -234,7 +234,7 @@ def session_name(agent_id, project, slot=1):
 
 
 def installable():
-    """The agents a node's Toolchains page installs, Claude first: every
+    """The agents the Library installs on a node, Claude first: every
     row with a toolchain row of its own, live or not yet, since an agent
     is installed before a session can start it."""
     return tuple(a for a in TABLE if a.tool)
@@ -260,7 +260,7 @@ def asker(by):
 
 
 def by_tool(name):
-    """The agent whose row on its node's Agents page is called this, or None."""
+    """The agent whose row in the Library is called this, or None."""
     return next((a for a in TABLE if a.tool and a.tool == str(name)), None)
 
 

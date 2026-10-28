@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Everything behind the dashboard's Tools tab.
+"""Everything behind the toolchains in the dashboard's Library and Installed page.
 
 The catalog, where a toolchain's files land, what it weighs, what version it is
 and what version upstream has, and the one-job-at-a-time worker that installs,
@@ -344,7 +344,7 @@ def _tc_path(probe):
 # slow to say their own name), and they cannot change while nothing is being
 # installed. Re-read when that set does.
 #
-# ON DISK as well as in memory, since it is what made the Toolchains tab slow to
+# ON DISK as well as in memory, since it is what made the toolchains' page slow to
 # open after every container restart: the answer had not changed (the same
 # toolchains on the same share) and the tab paid four seconds to hear it
 # again. The key is what makes that safe rather than stale. It is the set of
@@ -593,9 +593,9 @@ def _reason(said, last, cap=400):
 def job_rev():
     """A token for "anything this tab draws has moved", for the revisions poll.
 
-    Everything the Toolchains page used to keep its own timer for. It polled at
-    half a second while a job ran and at eight seconds otherwise, and the
-    eight-second half was there for the one fact this used to leave out: the
+    What a page drawing toolchains would otherwise keep its own timer for:
+    half a second while a job runs and eight seconds otherwise, the
+    eight-second half there for the one fact this used to leave out: the
     version check. It is in memory here and costs nothing to report, so the
     tab watches this instead of holding a third clock.
 
@@ -978,7 +978,7 @@ def attention(project_nodes):
     """Bell rows, one per live agent node with a toolchain behind what is
     out: every toolchain its last check found an update for, and Claude
     Code beside them (claudecode.behind), each as {name, label, from, to}.
-    One shape for all of them, with Open on that node's Toolchains page,
+    One shape for all of them, with Open on the Library for that node,
     which is where each is updated (the operator, 9 Oct). Computed on every
     poll, so a row leaves the moment its update lands. `project_nodes` is
     {project: node id}."""
@@ -1003,9 +1003,9 @@ def attention(project_nodes):
 
 def agent_attention(project_nodes):
     """Bell rows, one per live agent node with a coding agent behind what is
-    out (R95, the operator 22 Oct: agents are the Agents page's), kind
+    out (R95, the operator 22 Oct: agents have rows of their own), kind
     agents, in the toolchain rows' shape so the bell keys and dismisses
-    them alike, with Open on that node's Agents page."""
+    them alike, with Open on the Library for that node."""
     out = []
     for n in nodes.node_list() if nodes else []:
         if n.get("kind") != "agent" or not n.get("live"):
@@ -1443,7 +1443,8 @@ def payload_for_node(nid):
         # job's result does, so a census from the job's last seconds counts.
         m["settling"] = bool(ended) and int(rep.get("at") or 0) < ended - 5 and time.time() - ended < 120
     # The coding agents are not here (R95, the operator 22 Oct): they are
-    # installed, updated and removed on the Agents page (agentcode.rows).
+    # installed and updated in the Library and removed on the Installed page
+    # (agentcode.rows).
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # What is this machine's rather than the store's: the NVIDIA
             # driver and the container toolkit, where the node has the card
@@ -1479,7 +1480,7 @@ DRIVER = "nvidia-driver"
 
 
 def driver_row(n):
-    """The NVIDIA driver as a row of the node's Toolchains page (R102), or
+    """The NVIDIA driver as a row of the Library and the Installed page (R102), or
     None where the node reports no NVIDIA card. A row like the store's, with
     a tick box, in the same batch and the same check, but the machine's own:
     built for its kernel, installed as root, taking the card at the next
@@ -1911,8 +1912,8 @@ TOOLKIT = "nvidia-container-toolkit"
 
 
 def container_row(n):
-    """The NVIDIA container toolkit as a row of the node's Toolchains page
-    (R102), or None where the node reports no NVIDIA card or no Docker: what
+    """The NVIDIA container toolkit as a row of the Library and the Installed
+    page (R102), or None where the node reports no NVIDIA card or no Docker: what
     lets a container there reserve the card. The machine's own like the
     driver it needs, and from NVIDIA's package source, which its install
     adds and its removal takes away; Docker reloads its configuration for
@@ -1953,12 +1954,12 @@ def container_why(n):
         return f"{name} reports no Docker"
     if row["state"] == "absent":
         return (f"{name} has no NVIDIA container toolkit, which is what hands the card to a container: "
-                "an administrator installs it from that node's Toolchains page")
+                "an administrator installs it from the Library with that node picked")
     if row["state"] == "unconfigured":
         return (f"Docker on {name} does not list the nvidia runtime, though the toolkit is installed: "
-                "install the toolkit again from that node's Toolchains page, which configures it")
+                "install the toolkit again from the Library with that node picked, which configures it")
     if not row["driver_loaded"]:
-        return f"NVIDIA's driver is not running the card on {name}: its Toolchains page says where it stands"
+        return f"NVIDIA's driver is not running the card on {name}: the Installed page says where it stands"
     return ""
 
 
@@ -2299,10 +2300,10 @@ def verb(action, req, principal):
         # ...and to remove one left for a card that has gone (B168).
         known |= {r["name"] for r in (driver_row(node), container_row(node)) if r and r["state"] == "nocard"}
         want = [str(x) for x in (req.get("names") or [])]
-        # A coding agent is the Agents page's (R95, the operator 22 Oct):
+        # A coding agent is its own verb's (R95, the operator 22 Oct):
         # named here, it is refused with the way there.
         if any(agents.by_tool(x) for x in want):
-            return {"error": "a coding agent is installed, updated and removed on the Agents page, "
+            return {"error": "a coding agent is installed and updated in the Library and removed on the Installed page, "
                              "not here: POST /api/agents"}, 400
         if action == "check":
             # Every row, or the ones named: the question a check answers

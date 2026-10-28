@@ -2,7 +2,7 @@
 // and adding or removing one there. Its own classic script beside index.html,
 // per the new-surface rule (docs/nodes.md §13).
 //
-// Not the Toolchains tab. A toolchain is one thing at one version; a system
+// Not a toolchain's card in the Library. A toolchain is one thing at one version; a system
 // image exists at every API level at once, and which one to have is a
 // question about what is being tested. The images live on the toolchain store
 // all the same, so an image job and a toolchain job take turns on one

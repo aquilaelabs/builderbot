@@ -164,7 +164,7 @@ scripts/
     statefile.py                 writing a state file, and holding it while you read-modify-write one
     stateversion.py              /config's state version: the start's refusal of a newer or too old one, the copy before a migration, the JSON stores' migrations run
     statemigrations/             numbered migrations for the JSON stores (NNNN_name.py, run(ctx)), each run once as the state moves, never edited once shipped
-    toolchains.py                everything behind the Toolchains page: catalog, sizes, the job worker
+    toolchains.py                everything behind the toolchains in the Library and the Installed page: catalog, sizes, the job worker
     toolpacks.py                 the tool packs a person adds (docs/tool-packs.md): a repository's bbtool.json, pinned to a commit, as catalog rows
     packconfig.py                what each added pack is configured with per node (R172): the answers to its config block, secrets sealed, handed in the hello
     library.py                   the Library's one list (R170): the toolchains and packs with what a node's store holds, the coding agents, the apps, the catalog's offers and the companions as rows of one shape
@@ -338,7 +338,7 @@ packs/                           the official packs (R169 step 1): every shipped
     agents/                      one folder per coding agent, its bbtool.json carrying the adapter agents.py's table has under agent
     services/                    one folder per deployed thing of BuilderBot's that is a pack (R172): the model router, its service block and its config block, what its Installed row asks for per node
 apps/                            the companions a person installs (R98 step 1): the phone app, the editor extension and the
-                                 Windows companion, each released by its own workflow and offered on the Apps page
+                                 Windows companion, each released by its own workflow and offered as a card in the Library
   android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
   vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
     package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
@@ -368,7 +368,7 @@ nodes/vm/                        the same machine for the other six hypervisors:
 nodes/cloud-init/                the seed a cloud image boots from: meta-data and the user-data that runs the provisioner
 config/skel/                     home directory skeleton
 config/icon.png                  the icon the Unraid template shows
-config/toolchains.json           the toolchains the Toolchains page offers, and how to install each
+config/toolchains.json           the toolchains the Library offers, and how to install each
 config/catalog.pub               the catalog maintainers' Ed25519 public key (R169 step 2): what every install checks the catalog's index.sig against
 config/release-keys/README.md    where each publisher release key came from, and how one is refreshed (R137)
 config/release-keys/node.asc     the Node.js release team keys that sign each release SHASUMS256.txt
@@ -413,8 +413,8 @@ docs/projects.md                 the Projects page: making, linking, archiving a
 docs/notebook.md                 a project's page: its header and its views, from the roadmap and bugs to the wiki and design
 docs/sessions.md                 each agent's sessions: starting one, the Sessions page, a session's view and network, its briefing and rules
 docs/building.md                 builds, tests, CI runners and logs, the scanner's findings, dist/, signing and releases
-docs/toolchains.md               the toolchain store, the Toolchains and Emulator pages, the NVIDIA card, Android, the Phone page
-docs/agents.md                   the coding agents: the agent table, the Agents page, installing and signing in to each on a node (R95)
+docs/toolchains.md               the toolchain store, the Library, the Installed page's toolchains, the Emulator page, the NVIDIA card, Android, the Phone page
+docs/agents.md                   the coding agents: the agent table, the Library and the Installed page, installing and signing in to each on a node (R95)
 docs/tool-packs.md               tool packs: adding one, a project's Toolchains setting, and writing a bbtool.json
 docs/containers.md               the Containers page and nginx: dev instances, how one is reached, networks, image updates
 docs/scanners.md                 the Scanners page: BuilderBot's own scanners on each node, their schedule, and the reports

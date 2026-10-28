@@ -690,7 +690,7 @@ class ConfigPlaneMixin:
         Streamed, the way Job.exec and _apply_root are: its output pumped
         as it comes and the log posted on a clock. It used to run the command
         to the end and post nothing meanwhile, so the NVIDIA rows on the
-        Toolchains page never said installing (the step rides a log post) and
+        Toolchains page (the Installed page's since R172) never said installing (the step rides a log post) and
         the job sat at assigned for as long as apt took (30 Sep).
         """
         # A job that cannot post or be canceled (a check's own stand-in, a

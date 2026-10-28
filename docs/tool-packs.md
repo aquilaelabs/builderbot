@@ -148,7 +148,7 @@ the scripts it runs:
 | Field | What it is |
 |---|---|
 | `name` | The pack's name, 2 to 40 of `a-z`, `0-9` and `-`. It is the toolchain's name and the word after `bb tool`, and it cannot be a shipped toolchain's. |
-| `label`, `about` | What the Toolchains page shows. |
+| `label`, `about` | What the Library and the Installed page show. |
 | `platforms` | Where it works, as `linux/amd64`, `linux/arm64`, `darwin/arm64` and so on; `linux/*` or `darwin/*` for any architecture of that system. A bare `*` is refused. |
 | `terms` | The licenses or agreements it is under, each a label and a link, shown on its row. |
 | `install.steps` | What runs after the repository is fetched into the store, each a list of words; `{dir}` is the pack's directory. This is where a pack downloads its binaries. |

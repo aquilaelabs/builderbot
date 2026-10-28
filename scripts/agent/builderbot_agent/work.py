@@ -552,13 +552,13 @@ class WorkMixin:
                 hit = next((os.path.join(d, name) for d in reversed(bt)
                             if os.access(os.path.join(d, name), os.X_OK)), "")
                 if not hit:
-                    job.say(f"no {name} on this node: install android-tools from the Toolchains page\n")
+                    job.say(f"no {name} on this node: install android-tools from the Library\n")
                     return "failed", 69
                 tools[name] = hit
         else:
             tools["jarsigner"] = os.path.join(store, "jdk", "bin", "jarsigner")
             if not os.access(tools["jarsigner"], os.X_OK):
-                job.say("no jarsigner on this node: install the jdk from the Toolchains page\n")
+                job.say("no jarsigner on this node: install the jdk from the Library\n")
                 return "failed", 69
         env = dict(sdk_env(self.state))
         who = self.drop_privileges(env)
@@ -719,7 +719,7 @@ class WorkMixin:
             return "failed", 64
         tl, missing = keyops.tools(tc_root(self.state), op in ("rotate", "release"))
         if missing:
-            job.say(f"no {missing} on this node: install it from the Toolchains page\n")
+            job.say(f"no {missing} on this node: install it from the Library\n")
             answer({"missing": missing})
             return "failed", 69
         env = dict(sdk_env(self.state), **tl["env"])

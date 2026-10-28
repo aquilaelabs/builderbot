@@ -486,7 +486,7 @@ rather than waiting on it in the foreground.
 **Shipped with the controller and kept current by it, chosen on the Settings
 page (19 Oct 2026).** The apps are attached to each release with their sha256, and a controller
 fetches the ones it offers from the release matching its own version,
-keeps each only when it matches, and serves it from its Apps page, under Build. Which
+keeps each only when it matches, and serves each as a card in the Library, under Build. Which
 are offered is a setting, and a seed file a compose generator writes beside
 the compose file sets it before the first start, because a choice the
 dashboard can make is not an environment variable (env-only-what-must).
@@ -621,7 +621,7 @@ the same buttons. Every place that said Claude asks `agents.py` which agent a
 session name, a terminal argument, a job or a census key is, so a second
 agent is a row, and Claude's adapter is the one that behaved as before. Each
 agent is installed, updated and signed in on a node by the person, from the
-Agents page beside Toolchains, never by the provisioner and never by a
+Library and the Installed page, never by the provisioner and never by a
 session; the vendor's own installer and device login run on the node, and
 the controller keeps only who each node said is signed in, never a token.
 A session's name carries its agent and an agent other than Claude works in a
@@ -640,7 +640,7 @@ Steps 12 to 14, a model router and an open agent for any model, wait for
 installed edition land (the operator, 21 and 27 Oct 2026, R98 step 1 and
 R56 step 1).** `apps/` holds the companions a person installs (the phone
 app, the editor extension, the Windows companion), each released by its
-own workflow and offered on the Apps page; `platforms/` holds each place
+own workflow and offered as a card in the Library; `platforms/` holds each place
 the container edition installs, its template and generated files (Unraid
 today, each NAS as its page is written); the installed edition's own parts
 (`host/`, `modules/`, `installer/`, `image/`) land beside them as they are

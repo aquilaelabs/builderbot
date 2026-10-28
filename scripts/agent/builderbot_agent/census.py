@@ -320,7 +320,7 @@ def census(state):
         # say before a toolchain install finds out the long way.
         "internet": _internet(),
         # A toolchain store this node holds but cannot write (R85), so the
-        # Toolchains page holds Install with the reason before a job fails.
+        # Library holds Install with the reason before a job fails.
         "store_ro": _store_ro(state),
         # ...or mounted noexec, so the bb bundle and every terminal from it
         # cannot run: the page says why, which the closing terminals do not.
@@ -350,7 +350,7 @@ def census(state):
         "toolchains": tc,
         "store_dirs": store_dirs(state),
         # Which held recipes need system packages this machine lacks
-        # (roadmap R51): read here, so the Tools tab and the row can say so
+        # (roadmap R51): read here, so the Installed page and the row can say so
         # before a build fails on a missing library.
         "sysdeps": sysdeps_now(state),
         # The android system images the store holds, and the AVDs built on

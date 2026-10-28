@@ -1,4 +1,4 @@
-"""The Toolchains page's read says the job as it stood when its rows were
+"""The toolchains' read says the job as it stood when its rows were
 read (B13): a job that ended while the rows were being read said "done"
 over a row read mid-removal, and the page, seeing nothing running, stopped
 asking and kept a removed toolchain installed."""

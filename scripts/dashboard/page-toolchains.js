@@ -64,7 +64,7 @@ async function loadToolchains(){
 // written straight into the spans, so the once-a-second redraw neither
 // restarts it nor resets it: a rebuild simply renders the count it is on.
 let tcDots = 0, tcDotsTimer = null;
-// Every animated ellipsis on the page, not just the toolchains tab's: the
+// Every animated ellipsis on the page, not just the toolchain rows': the
 // Projects card grew one when clones moved to a background job, and two
 // tickers running at different phases would read as a fault.
 // Which node's store is read: the Library's and the Installed page's node,

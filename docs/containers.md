@@ -137,7 +137,7 @@ exits, so a `compose build` spending four minutes pulling layers is not four
 minutes of a spinner. The phase word above it still says *building* or
 *starting*; the tail below says what the phase is spending its time on. It is
 raw and deliberately not parsed into a bar: docker rewrites a line per layer
-per tick, and turning that into a percentage is the thing the Toolchains page
+per tick, and turning that into a percentage is the thing the toolchain rows
 already gave up on.
 
 **Abort** sits beside it while a job runs, and asks nothing first. Stopping a

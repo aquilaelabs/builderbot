@@ -191,10 +191,10 @@ function attRow(a){
     // the projects bound to the node.
     const cc = a.tools.some(t => t.name === "claude-code") && a.sessions > 0;
     const n = a.tools.length;
-    // A coding agent's update is the Agents page's (R95), a toolchain's the
-    // Toolchains page's: each its own row.
+    // A coding agent's update and a toolchain's are each a row of their own
+    // (R95), both opening the Library on the node, where Update is.
     const ag = a.kind === "agents";
-    const where = ag ? "Agents page" : "Toolchains page";
+    const where = "Library";
     return `<div class="bnote att">
       <div class="bt">${n} ${ag ? "coding agent" : "toolchain"} update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
       <div class="bsum">${a.tools.map(t => esc(t.label)).join(", ")}</div>
@@ -203,7 +203,7 @@ function attRow(a){
       <details class="bdetail"${sectAttr((ag ? "bell:ag:" : "bell:tc:") + a.id)}><summary>versions${cc ? " and sessions" : ""}</summary><pre>${
         a.tools.map(t => `${esc(t.label)}: ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join("\n")}${
         cc ? `\n\nsessions there: ${a.projects.map(esc).join(", ")}` : ""}</pre></details>
-      <div class="bfoot"><span>on its ${where}</span>
+      <div class="bfoot"><span>in the ${where}</span>
         <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
           <a href="#" ${ag ? "data-bag" : "data-btc"}="${esc(a.id)}">${where}</a></span></div></div>`;
   }
@@ -316,7 +316,7 @@ function attRow(a){
         a.count > 1 ? `; ${esc(String(a.count - 1))} more this week` : ""}</div>
       <div class="bfoot"><span>${esc(ago(a.at))}; treat it as copied and end it at the provider</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
-          <a href="#" data-bag="${esc(a.id)}">Agents page</a></span></div></div>`;
+          <a href="#" data-bag="${esc(a.id)}">Library</a></span></div></div>`;
   }
   // A node's retired token presented again after its grace (R135 step 4): a
   // copy of its credential is in use somewhere, and its tokens are revoked.
@@ -365,14 +365,14 @@ function attRow(a){
   // own packages: security updates waiting, a restart they need. To This
   // machine, where the Power section and Updates are.
   // A pack the vetted catalog withdrew, which this install holds (R169
-  // step 2): to the Toolchains page, where Remove is.
+  // step 2): to the Installed page, where Remove is.
   if (a.kind === "pack"){
     return `<div class="bnote att bad">
       <div class="bt">The catalog withdrew ${esc(a.name)}</div>
       <div class="bsum">${esc(a.said)}</div>
       <div class="bfoot"><span>until it is removed</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
-          <a href="#" data-btoolchains="1">Toolchains page</a></span></div></div>`;
+          <a href="#" data-btoolchains="1">Installed page</a></span></div></div>`;
   }
   // A backup of the own machine that failed, or went stale (R162 step 5): to the Storage page.
   if (a.kind === "backup"){
@@ -819,13 +819,13 @@ function wireNeeds(root, after = () => {}){
     after();
     openNodesTab(a.dataset.bnode, a.dataset.bwhat);
   });
-  // ...and a toolchain update to that node's Toolchains tab.
+  // ...and a toolchain update to the Library on that node.
   root.querySelectorAll("[data-btc]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
     openLibraryOn(a.dataset.btc);
   });
-  // ...and a coding agent's update to that node's Agents page (R95).
+  // ...and a coding agent's update to the Library on that node (R95).
   root.querySelectorAll("[data-b2fa]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
@@ -839,7 +839,7 @@ function wireNeeds(root, after = () => {}){
   // ...and a node short of room to its Storage page.
   root.querySelectorAll("[data-btoolchains]").forEach(a => a.onclick = e => {
     e.preventDefault();
-    openLibrary();
+    openInstalledTab();
   });
   root.querySelectorAll("[data-bmachine]").forEach(a => a.onclick = e => {
     e.preventDefault();

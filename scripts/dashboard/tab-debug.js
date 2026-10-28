@@ -59,7 +59,7 @@ function renderDebugInto(i){
         <div class="field"><div class="actbar"><span class="sp"></span>
           <button type="button" class="primary" id="dbgSave"${staged ? "" : " disabled"}>Save</button>
           <button type="button" class="caution" id="dbgRevert"${staged ? "" : " disabled"}>Revert</button></div></div>`);
-  // In one wrapper, as the Agents page's: the jump bar wireSections puts
+  // In one wrapper, as the Installed page's: the jump bar wireSections puts
   // over the two sections goes inside it, so the list's own children are
   // what was painted and a read that brings nothing writes nothing.
   if (paint(d.list, `<div class="dbgpage">${html}</div>`)) wireDebug(d.el);

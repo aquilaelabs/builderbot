@@ -519,8 +519,8 @@ class SessionsMixin:
         server is not up, which is the normal state of a node nobody has
         opened a terminal on yet."""
         # When each session started, too: a toolchain installed after that
-        # is not on its PATH until it is reopened, and the Tools tab says so
-        # on the row. Before the title, which is free text and goes last.
+        # is not on its PATH until it is reopened, and the Installed page says
+        # so on the row. Before the title, which is free text and goes last.
         out = self._tmux(["list-panes", "-a", "-F",
                           "#{session_name}\t#{pane_active}\t#{session_attached}\t"
                           "#{pane_current_path}\t#{session_created}\t#{pane_title}"])
@@ -760,7 +760,7 @@ class SessionsMixin:
             env.update({"HOME": os.path.expanduser("~"), "USER": who_name, "LOGNAME": who_name})
         home = env.get("HOME") or os.path.expanduser("~")
         pin_dir = how.get("pin_dir") or os.path.join(AGENTS_DIR, how["id"])
-        # Taken off, from the node's Agents page (R145): the pinned copy a
+        # Taken off, from the Installed page (R145): the pinned copy a
         # session runs and the account's own install under its home.
         if spec.get("action") == "remove":
             gone = []

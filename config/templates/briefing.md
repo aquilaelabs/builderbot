@@ -146,7 +146,7 @@ behind another there says how many are ahead.
 A project whose build or test command is not set refuses and says so: `bb
 settings set build|test|outputs "..."` fills the field in for the operator,
 under the project's gate. When the toolchain lacks what a build needs, say
-so; installing is the operator's, from the Toolchains page. `bb toolchains`
+so; installing is the operator's, from the Library. `bb toolchains`
 says what is installed, where, and how each download was checked:
 this node carries git, tmux, jq, python3 and curl by itself, and nothing
 else is a given. That python3 has no pip and no venv: a project's own
@@ -508,7 +508,7 @@ one; adding or removing one deliberately is the operator's, from the
 Emulator page. The platform a build compiles against is separate: `bb
 toolchains` lists the store's `platforms/` and `build-tools/`, Gradle cannot
 fetch a missing one (the store is read-only to you), and the newest level is
-the Toolchains page's "Android SDK Platform" row, ticked by the operator. Say
+the Library's "Android SDK Platform" card, installed by the operator. Say
 which level the build needs rather than pinning dependencies down to fit. On
 a debuggable image `bb emu start` leaves adb root, so `am start` of an
 unexported activity and `bb emu touch` work without your own `adb root`.

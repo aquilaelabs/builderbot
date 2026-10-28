@@ -35,7 +35,7 @@ Extensions view, open the **…** menu and choose **Install from VSIX…**.
   panel, started if it is not running. This is the same terminal the
   dashboard opens, and the same rules decide whether you may type into it;
   an agent not installed or not signed in on the project's node says so
-  there, and is signed in from the dashboard's Agents page. Closing the
+  there, and is signed in from the dashboard's Installed page. Closing the
   panel leaves the session running; End on the dashboard stops it.
 - **BuilderBot: Search Project Files**: search the project's files on the
   controller, then open a match.

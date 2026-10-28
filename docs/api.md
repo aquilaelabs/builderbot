@@ -41,7 +41,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | GET | `/api/phone/wait` | prefix | `_get_phone_wait` | GET /api/phone/wait?since=T: the companion app's live connection (R125). |  |
 | GET | `/api/phone` | prefix | `_get_phone` | GET /api/phone. |  |
 | GET | `/api/toolchains` | prefix | `_get_toolchains` | GET /api/toolchains. |  |
-| GET | `/api/agents` | prefix | `_get_agents` | GET /api/agents?node=ID: the coding agents on one node (R95, the Agents page): each agent's row, the version against the latest and any job of its own, and the asking account's own plugins and MCP servers there. |  |
+| GET | `/api/agents` | prefix | `_get_agents` | GET /api/agents?node=ID: the coding agents on one node (R95, the Library's): each agent's row, the version against the latest and any job of its own, and the asking account's own plugins and MCP servers there. |  |
 | GET | `/api/emulator` | prefix | `_get_emulator` | GET /api/emulator?node=ID: that node's system images, what could be added, and the image job there. |  |
 | GET | `/api/roles` | prefix | `_get_roles` | GET /api/roles: the Roles page (R152): the areas, every role, and each account with its Global roles, the roles it holds on each project and the projects it is on. |  |
 | GET | `/api/users` | prefix | `_get_users` | GET /api/users. |  |
@@ -60,7 +60,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes page's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
 | GET | `/api/home` | prefix | `_get_home` | GET /api/home: home.read, the overview's numbers (R218 step 5). |  |
-| GET | `/api/apps` | prefix | `_get_apps` | GET /api/apps: the apps this controller offers and holds (apps.view), for the Apps page and the Settings section. |  |
+| GET | `/api/apps` | prefix | `_get_apps` | GET /api/apps: the apps this controller offers and holds (apps.view), for the Library's companion cards and the Settings section. |  |
 | GET | `/api/notices` | prefix | `_get_notices` | GET /api/notices: notices.listing, this account's own (R218 step 6). |  |
 | GET | `/api/help` | prefix | `_get_help` | GET /api/help: the docs on the Help page (helpdocs.py, R258): the listing, ?doc=NAME one of them, ?q=WORDS a search across them. |  |
 | GET | `/api/docker` | prefix | `_get_docker` | GET /api/docker: the manager's whole page, containers.manager_view, for the node this account may read. |  |

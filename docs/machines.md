@@ -120,7 +120,7 @@ what moved to a node is the agents and not the terminal. A node's sessions ride 
 heartbeat onto the Sessions page, with the node named, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: its Health section lists the toolchains its census found,
-and the Toolchains page's node picker is where more are added. (Underneath, the
+and the Library, with the node picked, is where more are added. (Underneath, the
 node still refuses a job asking for something it did not enroll with: the
 enforcement of docs/nodes.md §15 door 7, but every node enrolls with the
 full set, so it is a mechanism rather than a setting.)
@@ -596,8 +596,8 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   container rebuild is refused under it, and the bell says so), the memory
   level past which the bell warns, and a memory limit for every container
   whose compose file sets none ([nodes.md](nodes.md#room-a-node-keeps-for-itself)).
-- **Apps**: which of the apps a person installs this controller offers on
-  the Apps page ([reference.md](reference.md#the-apps-a-person-installs)).
+- **Apps**: which of the apps a person installs this controller offers as
+  Library cards ([reference.md](reference.md#the-apps-a-person-installs)).
 - **Mail**: the SMTP server BuilderBot sends through (its port, security,
   sign-in and the From address, the password sealed under the install key),
   for a person who asked on their Profile for the bell by email (R149,

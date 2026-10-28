@@ -38,7 +38,7 @@ node it shows (a picker where the project works on several):
   asking you) and its **Open**, **Restart** and **End**.
 - **Start.** A line for each agent installed on that node, the project's own
   first: **New** starts a conversation, or **Sign in** where you have no
-  sign-in to it there, which opens the Agents page at that agent's section.
+  sign-in to it there, which opens the Installed page at that agent's row, on its sign-in.
 - **Resume.** Your conversations on the project, newest first, each with its
   agent, when it was and its first words; one running in a session of yours
   is marked so and not offered, since two sessions would write over it.
@@ -91,22 +91,24 @@ While one of yours runs, the button reads **Manage agent**.
   Grok session with no sign-in there says so and where to sign in, as
   Claude's does.
 
-## The Agents page
+## The Library and the Installed page
 
-**Build, then Agents**, beside Toolchains: one node at a time, picked in the
-bar, and a section per coding agent installed there. The Library (the Build
-group's first page, docs/toolchains.md) lists the same agents as rows, with
-the same Install, Update and Remove and the sign-in under each row's
-Details.
+**Build, then Library** has a card per coding agent under Coding agents,
+for the node picked in the Build group's header
+([toolchains.md](toolchains.md#the-library)): what it is, its version
+against the latest, and Install or Update. **Machines, then Installed**
+holds what that node has: a row per agent installed there, which opens on
+your sign-in, what you added to the agent and Remove.
 
-- **The version.** Each section says what the node's session account runs
+- **The version.** Each card and row says what the node's session account runs
   against the newest release: Claude Code's from Anthropic's download
   service, Codex CLI's and Copilot CLI's from the npm registry, Grok Build's
   from its stable channel (`x.ai/cli/stable`), asked once
   after the controller starts, weekly, when a node starts, and on Check for
-  updates on the Toolchains page. A node behind is a row in the bell, which
-  opens this page when only agents are behind.
-- **Install, Update, Remove.** An administrator's, or whoever may install
+  updates in the Library. A node behind is a row in the bell, which
+  opens the Library on that node.
+- **Install, Update, Remove.** Install and Update on the Library's card,
+  Remove on the Installed page's row; an administrator's, or whoever may install
   toolchains on that node. Each ends that agent's sessions on the node
   first, then runs the vendor's own installer as the session account
   (`claude.ai/install.sh`, `chatgpt.com/codex/install.sh`,
@@ -118,18 +120,19 @@ Details.
 - **Your sign-in on that node.** A sign-in is one account's on one node and
   never travels to another. Claude's flow prints a link and waits for the
   code the page gives back. Codex's, Copilot's and Grok's are device flows: the
-  section shows the link and a one-time code, which you enter on OpenAI's,
+  row shows the link and a one-time code, which you enter on OpenAI's,
   GitHub's or xAI's page; nothing is pasted back. Codex's device login has to be
   switched on in the ChatGPT account's security settings first.
 
-- **Your plugins and MCP servers.** Each section lists what you added to
-  that agent on the node, as the node last said: Claude Code's plugins, and
+- **Your plugins and MCP servers.** Each agent's row on the Installed page
+  lists what you added to that agent on the node, as the node last said: Claude Code's plugins, and
   every agent's MCP servers by name (never their settings). They are changed
   in a session, for you alone; Profile no longer lists them.
 
 The Nodes page keeps one line per node saying which agents are installed
-there and which you are signed in to, with **Agents**, the way here. A
-project's Start sends a person here when they have no sign-in on its node.
+there and which you are signed in to. A project's Start sends a person to
+the Installed page, at that agent's row, when they have no sign-in on its
+node.
 
 ## The guards
 

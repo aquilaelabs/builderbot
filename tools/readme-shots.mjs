@@ -177,8 +177,8 @@ const desk = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 };
   await tab(page, 'openNodesTab()', 6000); await shoot(page, 'nodes.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
   await tab(page, 'openLibrary()', 7000); await shoot(page, 'library.png'); await ctx.close(); }
-// The Agents page: each coding agent on a node, its version and each
-// person's sign-in there (R95; the scrub rewrites the accounts' addresses).
+// The Installed page: what one node holds, each coding agent's version and
+// each person's sign-in there (R172; the scrub rewrites the accounts' addresses).
 { const { ctx, page } = await open(desk);
   await tab(page, 'openInstalledTab()', 7000); await shoot(page, 'installed.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);

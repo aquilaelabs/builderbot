@@ -2121,7 +2121,7 @@ def gpu_container_why(project, node_id):
     """Why a container of `project` on that node cannot be given its NVIDIA
     card, or "" (R102): the project's setting and the node's switch, which
     speak for containers as they do for sessions, then what the node's
-    Toolchains page holds (the driver running the card, the container
+    Installed page holds (the driver running the card, the container
     toolkit, Docker's runtime)."""
     who = gpu_for(project, node_id)
     if who == "project":
@@ -7596,7 +7596,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_apps(self):
         """GET /api/apps: the apps this controller offers and holds
-        (apps.view), for the Apps page and the Settings section."""
+        (apps.view), for the Library's companion cards and the Settings section."""
         return self._json(apps.view())
 
     def _apps(self, req):
@@ -7762,7 +7762,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_agents(self):
         """GET /api/agents?node=ID: the coding agents on one node (R95, the
-        Agents page): each agent's row, the version against the latest and
+        Library's): each agent's row, the version against the latest and
         any job of its own, and the asking account's own plugins and MCP
         servers there. Answered for the nodes this account may look at."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
@@ -9321,7 +9321,7 @@ class Handler(BaseHTTPRequestHandler):
         nid = field(req, "node")
         if not nid:
             return "", ({"error": "which node? A sign-in is made on one node, "
-                                  "from its Agents page"}, 400)
+                                  "from its row on the Installed page"}, 400)
         nid, why = self._node_asked(nid)
         if why:
             return "", ({"error": why}, 403)
@@ -10947,7 +10947,7 @@ class Handler(BaseHTTPRequestHandler):
             given = req.get("accept") if isinstance(req.get("accept"), list) else []
             if (missing := [t for t in need if t["label"] not in given]):
                 return self._json({"error": "installing this accepts " + " and ".join(t["label"] for t in missing)
-                                            + ": accept it on the Toolchains page first",
+                                            + ": accept it in the Library first",
                                    "accept": missing}, 409)
             if need:
                 db.audit(self._principal(), "terms-accepted", ",".join(map(str, req.get("names") or []))[:200],
@@ -11321,7 +11321,7 @@ class Handler(BaseHTTPRequestHandler):
         or runs as one list for one node (library.rows): the toolchains and
         packs with what the node's store holds, the coding agents, the apps
         a NAS runs, the vetted catalog's offers and the companions a person
-        downloads. Read as the Toolchains page is read: for the nodes of
+        downloads. Read as the toolchains' rows are read: for the nodes of
         the person's own projects; never a session's. Each part comes only
         to whoever its own page came to (Toolchains Read for the rows that
         install on a node, a container's grant for the apps, an
@@ -11342,7 +11342,7 @@ class Handler(BaseHTTPRequestHandler):
         cat = catalogindex.index(settings.get("catalog_url") or None) if may_install else {}
         # An app's row opens on its compose file (step 2), so it rides along.
         napps = [{**a, "compose": nasapps._all().get(a["id"], {}).get("compose", "")} for a in nasapps.catalog()] if may_apps else []
-        # ...and an agent's on what this person added to it there (the Agents page's Yours).
+        # ...and an agent's on what this person added to it there (the Installed page's Yours).
         uid = users.uid_of(who)
         mine = next((x for x in plugins.of(uid) if x["node"] == nid), {}) if uid and n else {}
         # The services (R172): the model router on this node, its status as

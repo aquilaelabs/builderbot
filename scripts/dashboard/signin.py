@@ -239,7 +239,7 @@ def cannot(n, agent="claude"):
     a home a session reads, and a node with no session half has neither."""
     a = agents.get(agent) or agents.get("claude")
     if not n or n.get("kind") != "agent":
-        return f"which node? A {a.name} sign-in is made on one node, from its Agents page"
+        return f"which node? A {a.name} sign-in is made on one node, from its row on the Installed page"
     if n.get("state") != "online":
         return f"{n['name']} is {n.get('state') or 'not online'} and takes no new work: sign in or out there when it is back online"
     if n.get("live") is False:

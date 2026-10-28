@@ -350,7 +350,7 @@ def _gpu_driver_apt():
 
 def _gpu_container(card=None):
     """Where the NVIDIA container toolkit stands on this machine, for its
-    row on the Toolchains page (R102): the version installed, the version apt
+    row on the Installed page (R102): the version installed, the version apt
     would move it to (known only while NVIDIA's package source is on the
     machine, which the row's install adds), and whether Docker lists the
     nvidia runtime, which is what a container reserving the card needs. {}

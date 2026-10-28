@@ -587,6 +587,6 @@ def _install(project, nid, serial, rel):
     pkg = m.group(1) if m and PKG.match(m.group(1)) else ""
     if not pkg:
         return {"error": "installed, but its package could not be read: the node needs android-tools "
-                         "from the Toolchains page for the lease to know it"}, 502
+                         "from the Library for the lease to know it"}, 502
     _add_pkg(nid, pkg)
     return {"ok": True, "pkg": pkg}, 200

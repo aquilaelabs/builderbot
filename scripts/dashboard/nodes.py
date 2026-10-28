@@ -1360,14 +1360,14 @@ def _census(c):
                                  and str(v.get("algo") or "") in ("sha1", "sha256", "sha512", "gpg", "none")}
     # Kept only when the agent sent one: a listing that is there and empty
     # is a store with nothing in it (B671), a key that is absent is a node
-    # that has not said, and the Toolchains tab reads the two apart.
+    # that has not said, and the Installed page reads the two apart.
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else None
     if sd is not None:
         out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                              for k in ("top", "android", "incomplete", "roots")}
         # ...and the versions under android's families (B712), kept only
         # when the agent lists them (a node with a toolchain store): the
-        # Toolchains tab reads a version a project pins against this, and a
+        # Library reads a version a project pins against this, and a
         # node that cannot say must not read as a store that lacks it.
         if isinstance(sd.get("versions"), dict):
             out["store_dirs"]["versions"] = {
@@ -1634,8 +1634,8 @@ def _census(c):
         if c.get(k):
             out[k] = str(c[k])[:200]
     # Where the NVIDIA driver stands (R102): installed for this kernel,
-    # loaded now, and which driver has the card, for the Toolchains tab's
-    # driver row.
+    # loaded now, and which driver has the card, for the driver's
+    # row in the Library and on the Installed page.
     # Kept without a card too when the agent says it was left for one that
     # has gone (nocard), so its row can remove it (B168).
     gd = c.get("gpu_driver")
@@ -3850,7 +3850,7 @@ def node_door(principal, node_id, on):
 def node_gpu_display(principal, node_id):
     """Set the GPU display up on a node from its row (R20): a system job
     the agent answers with bb-sandbox gpu, which starts a headless X server
-    on the card, on the driver the Toolchains page installed, and says
+    on the card, on the driver the Library installed, and says
     whether a reboot has to follow. The machine's own answer decides: a node with no card gets that
     said, not refused here."""
     n = node(node_id)
@@ -3862,11 +3862,11 @@ def node_gpu_display(principal, node_id):
         return {"error": "only a node provisioned as a BuilderBot sandbox is set up from here: "
                          "on the machine, sudo bb-sandbox gpu"}
     # The display runs on the driver and does not install it (R102): the
-    # Toolchains tab's driver row is the one place it is installed.
+    # driver's card in the Library is the one place it is installed.
     gd = (n.get("reported") or {}).get("gpu_driver")
     if isinstance(gd, dict) and not gd.get("installed"):
         return {"error": f"the NVIDIA driver is not installed on {n['name']}: install it on "
-                         "that node's Toolchains page first; the display runs on it"}
+                         "the Library with that node picked first; the display runs on it"}
     why = node_locked(n)
     if why:
         return {"error": why}
@@ -3957,7 +3957,7 @@ def node_power(principal, node_id, what):
         return {"error": "a system job is already in flight on this node; one at a time"}
     # ...nor under an install: a restart in the middle of apt, or of a
     # toolchain being unpacked, leaves it half on the machine (the operator,
-    # 30 Sep). The Toolchains tab's Abort stops one first.
+    # 30 Sep). The Library's Abort stops one first.
     busy = [j["type"] for j in jobs_for(node_id=node_id, active=True, n=20)
             if j.get("type") in POWER_WAITS]
     if busy:
@@ -6840,7 +6840,7 @@ def run_job(name, req, principal):
         when = (f", as of what it reported {age // 60}m ago; it has been "
                 "asked for a fresh answer, so a retry shortly may differ"
                 if age and age > 90 else "")
-        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Toolchains page "
+        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Library "
                          f"with {n['name']} picked, "
                          + ("or push and let CI build it."
                             if may_push(name)

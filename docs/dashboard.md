@@ -385,7 +385,7 @@ terminal, which is not something a button should be able to do.
 
 The flyout holds no `bb` commands: each has a page that does it better
 (status on Home, the emulator on its page, the logs in Controller settings,
-an agent's sign-in on its node's Agents page). The Tests view sends `bb tests log -f`
+an agent's sign-in on the Installed page). The Tests view sends `bb tests log -f`
 into the project's shell from its own button.
 
 What is there, top to bottom: **pinned**, the commands whose **thumbtack**

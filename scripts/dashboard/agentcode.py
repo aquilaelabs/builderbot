@@ -141,7 +141,7 @@ def start_hold(project, node_id, agent_id):
         return ""
     if updating(node_id, agent_id):
         return (f"{a.product} is updating on {n['name']}: start {a.name} on {project} again when its "
-                "row on the Agents page comes back")
+                "row on the Installed page comes back")
     return ""
 
 
@@ -223,7 +223,7 @@ def update_done(job, state):
 
 
 def row(n, agent_id):
-    """This agent as a row of the node's Toolchains page, in claude_row's
+    """This agent as a row of the Library and the Installed page, in claude_row's
     shape, or None on a node that runs no session account."""
     a = agents.get(agent_id)
     se = (n.get("reported") or {}).get("session") or {}
@@ -244,7 +244,7 @@ def row(n, agent_id):
 
 
 def claude_row(n):
-    """Claude Code as a row of the node's Agents page (R145, R95), or None on
+    """Claude Code as a row of the Library and the Installed page (R145, R95), or None on
     a node that runs no session account: what a Claude session there runs,
     installed on purpose rather than by the provisioner. The version is the
     census's (claude --version as the session account); the latest is
@@ -270,12 +270,12 @@ def claude_row(n):
 
 
 def rows(n):
-    """Every coding agent's row on a node's Agents page, Claude's first."""
+    """Every coding agent's row for a node in the Library and on the Installed page, Claude's first."""
     return [r for r in (claude_row(n), *(row(n, a.id) for a in tracked())) if r]
 
 
 def verb(principal, req):
-    """The Agents page's presses (R95, the operator 22 Oct: the one way an
+    """The coding agents' presses in the Library and on the Installed page (R95, the operator 22 Oct: the one way an
     agent is installed): install (or update), remove or check, for one
     agent on one node. The caller has decided who may. (payload, status)."""
     action = str(req.get("action") or "")

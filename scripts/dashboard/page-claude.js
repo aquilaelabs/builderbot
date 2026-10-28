@@ -666,8 +666,8 @@ function placeResumeMenu(){
     const line_ = (who, state, presses) => line(who, state, presses, "", pick);
     if (claude ? !claudeSigned(n) : n.id && !agentOn(a.id, n.id))
       return line_(a.name, "not signed in here", claude
-        ? `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its Claude sign-in">Sign in</button>`
-        : `<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its ${esc(a.name)} sign-in">Sign in</button>`);
+        ? `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Installed page, at its Claude sign-in">Sign in</button>`
+        : `<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Installed page, at its ${esc(a.name)} sign-in">Sign in</button>`);
     const slot = freeSlot(p.name, a.id);
     const cap = Math.min(AGENT_MAX_SLOTS, p.prefs?.agent_slots || 3);
     if (!slot) return line_(a.name, `${cap} running, the most here: end one to start another`, "");

@@ -37,7 +37,7 @@ def build_tools(store):
 def tools(store, need_build_tools):
     """(tools, missing): the store's keytool, the java it runs on and, when
     asked, its build-tools; `missing` names the toolchain to install, in
-    the Toolchains page's words, or is ""."""
+    the Library's words, or is ""."""
     jdk = os.path.join(store or "", "jdk")
     out = {"keytool": os.path.join(jdk, "bin", "keytool"),
            "env": {"JAVA_HOME": jdk, "PATH": os.path.join(jdk, "bin") + os.pathsep + os.environ.get("PATH", "")}}

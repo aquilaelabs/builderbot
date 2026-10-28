@@ -60,7 +60,7 @@ spec = verbs.get(verb)
 if not spec:
     die(f"{name} has no verb {verb}: " + ", ".join(sorted(verbs)) + f" (bb tool {name})")
 if not pack_dir:
-    die(f"{name} is not installed on this node: the Toolchains page installs it")
+    die(f"{name} is not installed on this node: the Library installs it")
 dist = os.path.join(project_dir, "dist") if project_dir else os.path.join(os.getcwd(), "dist")
 fill = {"{dir}": pack_dir, "{dist}": dist, "{project}": os.path.basename(project_dir or os.getcwd())}
 argv = []
