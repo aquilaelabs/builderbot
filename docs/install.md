@@ -329,3 +329,40 @@ git clone https://github.com/aquilaelabs/builderbot.git && cd builderbot
 cp .env.example .env && nano .env
 docker compose build && docker compose up -d
 ```
+
+## Moving a controller
+
+A controller moves to another home without losing its nodes (R90 step 12):
+from a container to another container on another host, from a container to
+a machine of its own, and back.
+
+1. On the old controller, Controller settings, **Move this controller**:
+   name the new home's address (where its page will be reached), tick the
+   repositories when the two homes do not mount the same share, tick the
+   install key when the new home should not ask for it, and press
+   **Prepare to move**. It writes one sealed bundle (the state: accounts,
+   nodes, project settings, the notebooks, the database, what is sealed
+   under the install key; the stores Storage may have moved; the deploy
+   key; the repositories if ticked) and shows the **move token** once:
+   write it down. The token is good for one move and 72 hours.
+2. **Download the bundle**, or copy it from the state's `move/` folder.
+3. From its next hello every node hears the new address and a challenge of
+   its own, which it keeps.
+4. Install the new home (the image, or bare metal) and open its page: on
+   the first-run card press **Moving a controller here?**, give the bundle
+   and the token, and press **Move it here**. The bundle is held to the
+   version gate (a move never lands on a build older than the state it
+   carries: update the new home first), its state put in place of the fresh
+   one (which is moved aside, not deleted), and the dashboard restarts on
+   it. Sign in with an account it had.
+5. On the old controller press **Mark as moved** (or just stop it): from
+   then on it tells its nodes it moved and is read-only, saying where. Each
+   node whose controller goes quiet, or is told so, knocks on the new
+   address with its own credential, checks the answer against the challenge
+   it holds (only a holder of the move key gives it), takes the new
+   address and TLS pin, and goes on; its containers kept running and its
+   synced copies kept meanwhile. The Nodes page shows each one back.
+6. A bare-metal source's own machine is not a node of the new home (its
+   row is retired there); a bare-metal destination enrolls its own machine
+   afresh with the installer. A node that missed the move (off for longer
+   than the token lived) is enrolled again by hand.

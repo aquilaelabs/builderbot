@@ -1,6 +1,7 @@
 """The agent: the loop that says hello, takes jobs and runs them, composed from the parts beside it."""
 import contextlib
 import hashlib
+import hmac
 import os
 import signal
 import subprocess
@@ -40,6 +41,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         # before anything reads where its toolchains are.
         use_scope((state.get("stores") or {}).get("toolchains") or "", state.get("node_id"))
         self.ctl = Controller(state["controller"], state["token"], state.get("pin", ""))
+        self.quiet = 0                    # hellos in a row the controller did not answer (R90 step 12: a move's knock)
         self.jobs = {}
         self.lock = threading.Lock()
         self.sampler = Sampler()
@@ -303,6 +305,18 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # kept in node.json. When it moves the layout file and the sudo
             # rule are rewritten and the terminals open the other way from
             # then on; tmux sessions are untouched either way.
+            # A move prepared on the controller (R90 step 12): the new address
+            # and this node's challenge, kept in node.json; when this
+            # controller goes quiet or says it moved, the node knocks there.
+            mv = r.get("move") if isinstance(r.get("move"), dict) else {}
+            want = {"url": str(mv.get("url") or ""), "expect": str(mv.get("expect") or "")} if mv.get("url") and mv.get("expect") else None
+            if want != self.state.get("move"):
+                if want:
+                    self.state["move"] = want
+                    log(f"a move is prepared: this controller goes to {want['url']}; this node knocks there when it goes quiet")
+                else:
+                    self.state.pop("move", None)
+                save_state(self.state)
             au = bool(r.get("account_users"))
             if au != bool(self.state.get("account_users")):
                 self.state["account_users"] = au
@@ -422,6 +436,43 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         if cut or trimmed:
             log(f"logs: kept to size: {', '.join(os.path.basename(f) for f in cut) or 'nothing'} cut, "
                 f"{trimmed} old runner diagnostics removed")
+
+    def knock(self, url=""):
+        """Knock on the controller a move named (R90 step 12): the new
+        address asked, with this node's own token, for the answer only a
+        holder of the move key gives; right, this node re-adopts the
+        controller there (its address and TLS pin taken, node.json written)
+        and goes on as before; wrong or silent, it tries again next time."""
+        mv = self.state.get("move") or {}
+        to = str(url or mv.get("url") or "").rstrip("/")
+        if not to or not mv.get("expect"):
+            return False
+        try:
+            ctl = Controller(to, self.state["token"], "")
+            st, r = ctl.call("moved", {"node": self.state.get("node_id", "")}, timeout=20)
+        except Exception as e:                                   # noqa: BLE001 (a knock that fails is tried again)
+            log_once("knock", f"the move's new address {to} did not answer: {e}")
+            return False
+        if st != 200 or not isinstance(r, dict):
+            log_once("knock", f"the move's new address {to} answered {st}: not the controller yet")
+            return False
+        # The proof: the challenge the old controller told this node to
+        # expect, which only a holder of the move key (the controller once
+        # restored there) can say back.
+        got = str(r.get("answer") or "")
+        if not got or not hmac.compare_digest(got, str(mv.get("expect") or "")):
+            log_once("knock", f"{to} answered the knock with the wrong answer: not the controller that moved")
+            return False
+        self.state["controller"] = str(r.get("url") or to).rstrip("/") or to
+        if r.get("pin"):
+            self.state["pin"] = str(r.get("pin"))
+        self.state.pop("move", None)
+        save_state(self.state)
+        self.ctl = Controller(self.state["controller"], self.state["token"], self.state.get("pin", ""))
+        self.quiet = 0
+        self.hello_at = 0
+        log(f"the controller moved: this node follows it to {self.state['controller']}")
+        return True
 
     def hello_again(self, why):
         """Ask the loop for a fresh hello, saying why in the journal: a node
@@ -554,6 +605,16 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 # None: the census is on its way; the work poll below is the
                 # heartbeat meanwhile, and the next turn of the loop asks again.
                 st, r = said if said is not None else (200, {})
+                if st == 410 and isinstance(r, dict) and r.get("moved"):
+                    # The controller moved (R90 step 12): knocked on at once.
+                    self.knock(r.get("to") or "")
+                    continue
+                if st != 200 and st != 401:
+                    self.quiet += 1
+                    if self.quiet >= 3 and self.state.get("move"):
+                        self.knock()
+                else:
+                    self.quiet = 0
                 if st == 401:
                     log(f"refused: {r.get('error')}; this node's credential "
                         "is no longer good. Re-enroll with a new token.")

@@ -25,6 +25,7 @@ import re
 import selectors
 import signal
 import shlex
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -207,6 +208,7 @@ SETUP_FIELDS = """  <p class="note">Nobody owns this container yet. The first ac
     everyone else. Do it now: until you do, anyone who can reach this page
     can claim it.</p>
   <!--ERR-->
+  <p class="note"><a href="/login/move">Moving a controller here?</a> Its bundle and token land its whole state on this install instead.</p>
   <label for="u">Username</label>
   <input id="u" name="username" autocomplete="username" autocapitalize="none"
     required autofocus>
@@ -217,6 +219,17 @@ SETUP_FIELDS = """  <p class="note">Nobody owns this container yet. The first ac
   <input id="p2" name="password2" type="password" autocomplete="new-password"
     minlength="8" required>
   <button type="submit">Create the owner</button>"""
+
+MOVE_FIELDS = """  <p class="note">A controller prepared to move writes a bundle and shows a move token once.
+    Give both here and this install becomes that controller: its accounts, nodes, projects
+    and settings, with each node checking back in on its own. Nothing else is set up first.</p>
+  <!--ERR-->
+  <label for="b">The bundle (builderbot-move-DATE.bbmove)</label>
+  <input id="b" name="bundle" type="file" required>
+  <label for="t">The move token</label>
+  <input id="t" name="token" type="password" autocomplete="off" required>
+  <button type="submit">Move it here</button>
+  <p class="note"><a href="/">Not moving one: make the first account instead</a>.</p>"""
 
 LOGIN_FIELDS = """  <!--ERR-->
   <input type="hidden" name="next" value="<!--NEXT-->">
@@ -2853,6 +2866,9 @@ MAINTENANCE_SAID = "BuilderBot is down for maintenance: only its owner can sign 
 # install and shown by the poll while the start is held.
 HELD_BAND = ('<div class="banner held" id="heldband" role="status" hidden>The start is held: nothing runs until '
              '<a href="#/controller/machine" data-heldgo>Start on This machine</a>. <span data-heldwhy></span></div>')
+# A moved controller's band (R90 step 12): read-only here, the new home named.
+MOVED_BAND = ('<div class="banner moved" id="movedband" role="status" hidden>This controller moved to '
+              '<a data-movedto href="#"></a>: what is here is read-only, for a look back.</div>')
 
 
 def kept_out(u):
@@ -3278,7 +3294,8 @@ def _versioned_page(raw, tag):
     # it on, the owner is the one account the page is for.
     band = featuresoff.banner_html() + (MAINT_BAND.replace(' hidden>', '>', 1)
                                         if settings.get("maintenance_mode") else MAINT_BAND) \
-        + (HELD_BAND.replace(' hidden>', '>', 1) if held.is_held() else HELD_BAND)
+        + (HELD_BAND.replace(' hidden>', '>', 1) if held.is_held() else HELD_BAND) \
+        + (MOVED_BAND.replace(' hidden>', '>', 1) if move.moved_to() else MOVED_BAND)
     out = out.replace(b"<!--BANNER-->", band.encode())
     parts.append(hashlib.sha256(band.encode()).hexdigest()[:8])
     # Every script runs as written, in order: Cloudflare's Rocket Loader
@@ -5058,6 +5075,17 @@ releasecheck.configure(version=lambda: image_stamp().get("version") or "", bare_
 # start, lifted by Start on This machine, armed for the next restart.
 import held                                                      # noqa: E402
 held.configure(state=STATE, bare_metal=lambda: BARE_METAL, write_json_fn=write_json)
+# Moving this controller to another home (R90 step 12, move.py): the bundle
+# and its token, the nodes told, the knock answered once restored here.
+import move                                                      # noqa: E402
+move.configure(state=STATE, workspace=WORKSPACE, secrets_dir=os.environ.get("BB_SECRETS_DIR", ""), write_json_fn=write_json,
+               seal_fn=signing.seal, open_fn=signing.open_with, state_version_fn=stateversion.current,
+               build_version_fn=lambda: image_stamp().get("version") or "",
+               install_key_fn=lambda: signing.MASTER or b"", store_paths_fn=lambda: {k: str(paths.of(k)) for k in paths.KINDS},
+               page_url_fn=_page_url, node_ids_fn=lambda: [n["id"] for n in nodes.node_list() if n.get("kind") == "agent" and n.get("state") != "retired"],
+               bare_metal_fn=lambda: BARE_METAL)
+nodes.move_for_node = move.for_node
+channel.moved_answer = lambda nid: {"answer": move.answer_for(nid), "url": _page_url(), "pin": tls._loaded or ""}
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
                setting=settings.get, write_json=write_json, audit=db.audit)
 apps.unvetted_ok = channel.unvetted_ok      # the Windows companion and the VS Code extension are dev features
@@ -5366,6 +5394,9 @@ def _snapshot(who):
                                                       if BARE_METAL else {})),
         # ...and whether its start is held (R56 step 9), with why.
         "held": held.status(),
+        # ...and where this controller went, when it moved (R90 step 12):
+        # the page is read-only then and says so.
+        "moved_to": move.moved_to(),
         "projects": ps,
         # Every project this account sees (R138), one with no repository in
         # it too: the Projects page draws each as one card, from this.
@@ -5545,6 +5576,8 @@ GET_ROUTES = (
     ("prefix", "/api/trace", "_get_trace"),
     ("prefix", "/api/status", "_get_status"),
     ("exact", "/api/reset", "_get_reset"),
+    ("exact", "/api/move", "_get_move"),
+    ("exact", "/api/move-bundle", "_get_move_bundle"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/transcripts", "_get_transcripts"),
@@ -5655,6 +5688,7 @@ POST_ROUTES = (
     ("exact", "/api/schedules", "_schedules"),
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
+    ("exact", "/api/move", "_move"),
     ("prefix", "/api/create", "_create"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/git", "_git_act"),
@@ -7121,6 +7155,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._login_page(setup=True)
         if path == "/login":
             return self._login_page()
+        if path == "/login/move":
+            return self._move_page() if not users.all_users() else self._login_page("This controller already has an account; a move lands only on a fresh install.")
         if path == "/login/setup" and self._authed():
             return self._setup_2fa_page()
         if path == "/logout":
@@ -8292,6 +8328,12 @@ class Handler(BaseHTTPRequestHandler):
         # against yet, and closed by its own effect the moment there is.
         if self.path.split("?")[0] == "/setup":
             return self._setup_post()
+        if self.path.split("?")[0] == "/setup/move":
+            return self._setup_move_post()
+        # Moved (R90 step 12): read-only from here on, the move's own verbs aside.
+        if move.moved_to() and self.path.split("?")[0].startswith("/api/") and not self.path.split("?")[0].startswith("/api/v1/agent/") \
+                and self.path.split("?")[0] not in ("/api/move", "/api/profile"):
+            return self._json({"error": f"this controller moved to {move.moved_to()}: it is read-only now", "moved": True}, 409)
         if self.path.split("?")[0] == "/login":
             return self._login_post()
         if self.path.split("?")[0] == "/login/2fa":
@@ -8881,6 +8923,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
         verb = self.path.split("?")[0][len("/api/v1/agent/"):]
+        # Moved (R90 step 12): every node is told where, and knocks there.
+        if move.moved_to():
+            return self._json({"error": "this controller moved", "moved": True, "to": move.moved_to()}, 410)
         hdr = self.headers.get("Authorization", "")
         bearer = hdr[7:] if hdr.startswith("Bearer ") else ""
         auth = nodes.authenticate(bearer) if bearer else {"error": "no token"}
@@ -11761,6 +11806,132 @@ class Handler(BaseHTTPRequestHandler):
         # runs for it. By node id when the row said which, and by name alone
         # for a caller that only knows the name (a tab closing).
         return self._result(end_session(session, str(req.get("node") or "")))
+
+    def _get_move(self):
+        """GET /api/move (R90 step 12): a move prepared here, or this
+        controller moved, or this state arrived by a move; an administrator's."""
+        me = self._who() or {}
+        if not users.is_admin(me) or me.get("session"):
+            return self._json({"error": "moving the controller is an administrator's"}, 403)
+        return self._json({**move.status(), "arrived": move.restored(), "here": _page_url()})
+
+    def _move(self, req):
+        """POST /api/move (R90 step 12): prepare (the bundle written, the
+        token answered once), forget (withdrawn), moved (this controller
+        marked moved to the new one, read-only from here on). The owner's."""
+        me = self._who() or {}
+        if (users.account_of(me) or {}).get("role") != "owner" or me.get("session"):
+            return self._json({"error": "moving the controller is its owner's"}, 403)
+        act = field(req, "action")
+        if act == "prepare":
+            r = move.prepare(self._principal(), field(req, "to"), repos=req.get("repos") is True, carry_key=req.get("carry_key") is True)
+            if r.get("ok"):
+                db.audit(self._principal(), "move-prepare", "", {"to": r.get("to", ""), "repos": req.get("repos") is True})
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "forget":
+            r = move.forget(self._principal())
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "moved":
+            r = move.mark_moved(field(req, "to") or move.status().get("to", ""))
+            db.audit(self._principal(), "moved", "", {"to": r.get("to", "")})
+            return self._json(r)
+        return self._json({"error": "action is prepare, forget or moved"}, 400)
+
+    def _get_move_bundle(self):
+        """GET /api/move-bundle: the prepared bundle as a download, the owner's."""
+        me = self._who() or {}
+        if (users.account_of(me) or {}).get("role") != "owner" or me.get("session"):
+            return self._json({"error": "the move bundle is its owner's"}, 403)
+        p = move.bundle_path()
+        if not p:
+            return self._json({"error": "no move is prepared"}, 404)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Disposition", f'attachment; filename="{p.name}"')
+        self.send_header("Content-Length", str(p.stat().st_size))
+        self.end_headers()
+        with open(p, "rb") as f:
+            shutil.copyfileobj(f, self.wfile)
+
+    def _move_page(self, error=""):
+        """GET /login/move: the first run's other way in (R90 step 12): a
+        controller's bundle and its token, before anybody owns this one."""
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "move a controller here")
+                .replace("<!--SAID-->", "Moving a controller here?")
+                .replace("<!--ACTION-->", "/setup/move")
+                .replace("<!--FIELDS-->", MOVE_FIELDS)
+                .replace("<!--ERR-->", f'<p class="err">{html_escape(error)}</p>' if error else "")
+                .replace("<!--NAME-->", "").replace("<!--NEXT-->", "/")
+                .replace("<form ", '<form enctype="multipart/form-data" ', 1)
+                .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _setup_move_post(self):
+        """POST /setup/move: the bundle and the token, taken before an owner
+        exists (closed the moment there is one), held to the version gate,
+        restored, and the dashboard re-executed on the restored state."""
+        if users.all_users():
+            return self._login_page("This controller already has an account; a move lands only on a fresh install.")
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            n = -1
+        if not 0 < n <= 16 << 30:
+            return self._move_page("the upload is empty or past 16 GB")
+        spool = Path(STATE).parent / f".move-upload-{os.getpid()}"
+        try:
+            with open(spool, "wb") as f:
+                left = n
+                while left > 0:
+                    chunk = self.rfile.read(min(1 << 20, left))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    left -= len(chunk)
+            import email.parser
+            with open(spool, "rb") as f:
+                msg = email.parser.BytesParser().parsebytes(b"Content-Type: " + self.headers.get("Content-Type", "").encode() + b"\r\n\r\n" + f.read())
+            token, bundle = "", None
+            for part in msg.walk():
+                name = part.get_param("name", header="content-disposition")
+                if name == "token":
+                    token = (part.get_payload(decode=True) or b"").decode("utf-8", "replace").strip()
+                elif name == "bundle":
+                    bundle = part.get_payload(decode=True)
+            if not bundle or not token:
+                return self._move_page("the bundle file and its token are both needed")
+            with open(spool, "wb") as f:
+                f.write(bundle)
+            r = move.restore(str(spool), token)
+        except (OSError, ValueError) as e:
+            return self._move_page(f"the move did not land: {e}")
+        finally:
+            with contextlib.suppress(OSError):
+                spool.unlink()
+        if r.get("error"):
+            return self._move_page(r["error"])
+        print(f"dashboard: a controller moved here from {r.get('from') or 'another home'}: {r.get('counts')}; restarting on its state", flush=True)
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "moved")
+                .replace("<!--SAID-->", "The controller is here now")
+                .replace("<!--ACTION-->", "/login")
+                .replace("<!--FIELDS-->", '<p class="note">Its state landed and the dashboard is restarting on it. Sign in with an account it had; '
+                                          f'{len(r.get("nodes") or [])} node(s) will check back in as each knocks on this address. '
+                                          'This page reloads in a moment.</p><meta http-equiv="refresh" content="6; url=/">')
+                .replace("<!--ERR-->", "").replace("<!--NAME-->", "").replace("<!--NEXT-->", "/")
+                .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        threading.Timer(1.5, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
 
     def _get_reset(self):
         """GET /api/reset: how a Reset that un-enrolls its nodes first is

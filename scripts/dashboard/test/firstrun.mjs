@@ -125,13 +125,14 @@ await firstRun(false);
   const OWNER = { username: 'firstowner', password: 'longenough1' };
   const H = { Authorization: 'Basic ' + Buffer.from(`${OWNER.username}:${OWNER.password}`).toString('base64'),
               'Content-Type': 'application/json' };
-  const controller = async (kind) => {
+  const controller = async (kind, { noOwner = false } = {}) => {
     const w = `${DIR}/firstrun-${kind}`;
     rmSync(w, { recursive: true, force: true });
     for (const d of ['config', 'workspace', 'home']) mkdirSync(`${w}/${d}`, { recursive: true });
     const env = { ...process.env, DASHBOARD_STATE: `${w}/config`, WORKSPACE: `${w}/workspace` };
-    execFileSync('python3', [`${LIB}/users-verbs.py`, 'claim', `${DASH}/users.py`, OWNER.username],
-                 { env: { ...env, BB_USERS_PW: OWNER.password } });
+    // Nobody's yet when asked (a move's destination, R90 step 12).
+    if (!noOwner) execFileSync('python3', [`${LIB}/users-verbs.py`, 'claim', `${DASH}/users.py`, OWNER.username],
+                               { env: { ...env, BB_USERS_PW: OWNER.password } });
     const port = await freePort();
     const out = openSync(`${w}/server.log`, 'a');
     const proc = spawn('python3', ['-u', `${DASH}/server.py`], { stdio: ['ignore', out, out], env: {
@@ -219,7 +220,7 @@ await firstRun(false);
   // A held start (R56 step 9): not held on this first boot, armed for the
   // next by its press, and Start says there was nothing to lift.
   const h0 = await page.evaluate(() => state?.held || null);
-  ok(h0 && h0.held === false && h0.armed === false && !!document, `a bare-metal install's first start is not held (${JSON.stringify(h0)})`);
+  ok(h0 && h0.held === false && h0.armed === false, `a bare-metal install's first start is not held (${JSON.stringify(h0)})`);
   const bmH = { Authorization: 'Basic ' + Buffer.from(`${OWNER.username}:${OWNER.password}`).toString('base64'), 'Content-Type': 'application/json' };
   const bmApi = async (path, body) => (await fetch(bm.base + path, body === undefined ? { headers: bmH } : { method: 'POST', headers: bmH, body: JSON.stringify(body) })).json();
   const armed = await bmApi('/api/v1/nodes', { action: 'hold-next', on: true });
@@ -235,5 +236,57 @@ await firstRun(false);
      `...and the Nodes page's picker offers the other node and not this machine (${picks.join(' | ')})`);
   await page.close();
   bm.stop();
+
+  // Moving a controller (R90 step 12): a source with a node prepares a move
+  // (the bundle sealed, the token shown once, the node told from its next
+  // hello), a destination nobody owns takes the bundle and the token on its
+  // first page and restarts on the state, where the node's knock is
+  // answered with the challenge it holds; the source marked moved is
+  // read-only and tells the node it moved.
+  {
+    const src = await controller('src');
+    const sH = { Authorization: 'Basic ' + Buffer.from(`${OWNER.username}:${OWNER.password}`).toString('base64'), 'Content-Type': 'application/json' };
+    const sApi = async (path, body) => (await fetch(src.base + path, body === undefined ? { headers: sH } : { method: 'POST', headers: sH, body: JSON.stringify(body) })).json();
+    const mover = await src.enroll('mover', false);
+    const en = await mover.go();
+    ok(en.ok && en.token, `the source has a node (${en.error || 'enrolled'})`);
+    const nH = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+    const prep = await sApi('/api/move', { action: 'prepare', to: 'http://127.0.0.1:1', repos: false });
+    ok(prep.ok && prep.token && prep.bundle && prep.counts?.state >= 2, `Prepare to move writes a sealed bundle and shows a token once (${prep.error || prep.bundle})`);
+    const told = await (await fetch(src.base + '/api/v1/agent/hello', { method: 'POST', headers: nH,
+      body: JSON.stringify({ census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' }, version: '1', digest: 'sha256:' + '1'.repeat(64) }) })).json();
+    ok(told.move?.url === 'http://127.0.0.1:1' && /^[0-9a-f]{64}$/.test(told.move?.expect || ''), `the node hears where it goes and a challenge of its own (${JSON.stringify(told.move)})`);
+    const bundle = Buffer.from(await (await fetch(src.base + '/api/move-bundle', { headers: sH })).arrayBuffer());
+    ok(bundle.length > 500 && bundle.subarray(0, 8).toString() === 'BBMOVE1\n', `the bundle downloads, sealed (${bundle.length} bytes)`);
+    const dst = await controller('dst', { noOwner: true });
+    const form = new FormData();
+    form.append('bundle', new Blob([bundle]), prep.bundle);
+    form.append('token', 'not-the-token');
+    const bad = await fetch(dst.base + '/setup/move', { method: 'POST', body: form });
+    const badText = await bad.text();
+    ok(bad.status === 200 && /not this bundle.{0,8}s move token/.test(badText), `another token is refused on the first page (${bad.status}: ${(badText.match(/<p class="err">([^<]*)/) || [])[1] || badText.slice(0, 120).replace(/\s+/g, ' ')})`);
+    form.set('token', prep.token);
+    const r = await fetch(dst.base + '/setup/move', { method: 'POST', body: form });
+    const html = await r.text();
+    ok(r.status === 200 && /The controller is here now/.test(html), `the destination takes the bundle and the token on its first page (${r.status})`);
+    // Restarted on the state: the process before it still answered from
+    // its own memory for a moment, so the node list is what says it is the
+    // new one.
+    const nodesThere = await (async () => { const end = Date.now() + patience(90000); while (Date.now() < end){
+      try { const ns = ((await (await fetch(dst.base + '/api/v1/nodes', { headers: sH })).json()).nodes || []).map(n => n.name);
+        if (ns.includes('mover')) return ns; } catch { /* restarting */ }
+      await sleep(1000); } return []; })();
+    ok(nodesThere.includes('mover'), `restarted on the state, the destination knows the source's accounts and nodes (${nodesThere.join(',')})`);
+    const knock = await (await fetch(dst.base + '/api/v1/agent/moved', { method: 'POST', headers: nH, body: JSON.stringify({ node: en.node_id }) })).json();
+    ok(knock.answer === told.move.expect, `the node's knock is answered with the challenge it holds (${(knock.answer || '').slice(0, 12)})`);
+    const moved = await sApi('/api/move', { action: 'moved', to: dst.base });
+    ok(moved.ok, 'the source is marked moved');
+    const ro = await sApi('/api/prefs', { project: 'alpha', gpu: 'off' });
+    const gone = await fetch(src.base + '/api/v1/agent/hello', { method: 'POST', headers: nH, body: JSON.stringify({ census: {}, version: '1', digest: 'x' }) });
+    ok(/read-only/.test(ro.error || '') && gone.status === 410 && (await gone.json()).to === dst.base,
+       `...read-only after, and it tells the node it moved and where (${ro.error} / ${gone.status})`);
+    src.stop();
+    dst.stop();
+  }
 }
 await done(browser);

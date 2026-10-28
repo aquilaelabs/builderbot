@@ -3566,6 +3566,10 @@ def token_attention():
     return out
 
 
+# A move prepared, per node (move.for_node), set by the server; {} when none.
+move_for_node = lambda nid: {}  # noqa: E731
+
+
 def hello(nid, census, addr, version="", digest="", running=None, keep=None, rotates=False):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it: the
@@ -3675,6 +3679,9 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             # The FTPS servers this node runs for its projects' file access
             # (R151): one per project, rooted at its tree.
             "ftp": [] if host_only(nid) else ftp_for(nid),
+            # A move prepared (R90 step 12): the new address and this node's
+            # challenge, which it keeps and knocks with when this one goes quiet.
+            "move": move_for_node(nid),
             # Its next token, for an agent that rotates (R135 step 4).
             **({"token": rotate_token(nid)} if rotates else {})}
 

@@ -397,6 +397,17 @@ function drawHeldBand(){
 // ---- search: jump to a page, a project, a container or a node ---------------
 
 // Rows: [label, where, go]. Pages by name, projects by the name they are
+// ---- a moved controller's band (R90 step 12) ---------------------------------
+function drawMovedBand(){
+  const b = document.getElementById("movedband");
+  if (!b) return;
+  const to = state?.moved_to || "";
+  const off = !to;
+  if (b.hidden !== off) b.hidden = off;
+  const a = b.querySelector("[data-movedto]");
+  if (a && to && a.textContent !== to){ a.textContent = to; a.href = to; }
+}
+
 // shown under, nodes from the list once it has landed, containers from what
 // every node last answered (dmJumpRows).
 function jumpItems(q){

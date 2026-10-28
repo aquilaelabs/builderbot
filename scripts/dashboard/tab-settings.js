@@ -71,6 +71,9 @@ const SETTINGS_SAYS = {
   idle: "when an idle session is ended", paths: "the shares and disks this controller uses",
   tunnel: "a hostname that reaches it from outside",
   apps: "the apps your people install, kept current",
+  mail: "the SMTP server the bell goes out through",
+  move: "to another home, its nodes following",
+  updates: "the release running, the newest, and Update",
   reset: "start over at the setup page",
 };
 
@@ -112,6 +115,7 @@ function renderSettingsInto(i){
     ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
     ${
     // Last, apart from the settings (R218 step 32); the Nodes section that
+    ${state?.can?.admin ? sect("move", "Move this controller", moveStatus(), moveSection()) : ""}
     // only linked to the Nodes page is gone with it, the rail being the way.
     sect("reset", "Reset BuilderBot", "", `<div class="field" data-group="Reset">
       <div class="hint">Start over at the setup page, un-enrolling the nodes first if you choose. Everything but project files is moved aside, not deleted.</div>
@@ -194,6 +198,66 @@ function updatesSection(){
 }
 function wireUpdates(root){
   root.querySelectorAll("[data-relcheck]").forEach(b => b.onclick = () => pressing(b, async () => {
+// ---- moving this controller (R90 step 12) ----
+// Prepare to move writes the bundle and shows the token once; Download the
+// bundle takes it along; the nodes are told from their next hello; Mark as
+// moved, pressed once the new home is up, makes this one read-only, saying
+// where it went. The moved band is page-shell.js's (drawMovedBand).
+let moveData = null, moveAsked = false, moveToken = null;
+async function loadMove(){
+  moveAsked = true;
+  try{ moveData = await (await fetch("/api/move")).json(); }
+  catch(e){ moveData = {error: "move: " + failWords(e)}; }
+  settingsRev++; drawPanes();
+}
+function moveStatus(){
+  const m = moveData || {};
+  return m.moved ? "moved" : m.prepared ? "prepared" : "";
+}
+function moveSection(){
+  if (moveData === null){ if (!moveAsked) loadMove(); return `<div class="field">${skRows(2)}</div>`; }
+  const m = moveData;
+  if (m.error) return `<div class="hint bad">${esc(m.error)}</div>`;
+  if (m.moved) return `<div class="row stack2" data-group="Move"><div class="grow">
+      <div class="sub bad">This controller moved to ${esc(m.to)} ${m.at ? esc(ago(m.at)) : ""}: it is read-only now, and its nodes have followed. What is here is a copy for a look back.</div></div></div>`;
+  const left = m.prepared ? `${Math.max(1, Math.round((m.left || 0) / 3600))} h` : "";
+  const sizeMb = m.size ? `${(m.size / 1048576).toFixed(1)} MB` : "";
+  const token = moveToken ? `<div class="field"><div class="hint warn">The move token, shown once and never kept here: <code>${esc(moveToken)}</code>. Give it with the bundle on the new install's first page (Moving a controller here?).</div></div>` : "";
+  return `<div class="row stack2" data-group="Move"><div class="grow">
+      <div class="sub">To another container, to a machine of its own, or back: Prepare to move writes one sealed bundle (the state, the stores, the deploy key, the repositories if ticked) and shows a move token once, good for one move and 72 hours; the nodes hear where it is going and follow by themselves once the new home answers.</div>
+      ${m.prepared ? `<div class="sub">Prepared ${esc(ago(m.made_at))} for ${esc(m.to || "an address not named yet")}: ${esc(sizeMb)}${m.repos ? ", the repositories in it" : ""}${m.carries_key ? ", the install key in it" : ""}; the token is good for ${esc(left)} more.</div>` : ""}
+      ${token}
+      ${m.prepared ? "" : `<div class="field"><label class="pick"><span class="pickw">New home</span><input type="text" id="moveTo" placeholder="https://builderbot.new.example" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="moveRepos"> the repositories too (leave off when both homes mount the same share)</label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="moveKey"> the install key too (else the new home asks for it)</label></div>`}
+      <div class="actbar"><span class="sp"></span>
+        ${m.prepared ? `<a class="btn" href="/api/move-bundle" download>Download the bundle</a><button type="button" data-moveforget>Forget it</button><button type="button" class="danger" data-movedone>Mark as moved</button>`
+                     : `<button type="button" class="primary" data-moveprep>Prepare to move</button>`}</div>
+    </div></div>`;
+}
+function wireMove(root){
+  root.querySelectorAll("[data-moveprep]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Preparing");
+    const j = await (await postJSON("/api/move", {action: "prepare", to: $("moveTo")?.value || "", repos: !!$("moveRepos")?.checked, carry_key: !!$("moveKey")?.checked})).json().catch(() => ({error: "no answer"}));
+    if (j.error){ notify(j.error, true); unbusy(b, "Prepare to move"); return; }
+    moveToken = j.token;
+    await loadMove();
+  }));
+  root.querySelectorAll("[data-moveforget]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const j = await (await postJSON("/api/move", {action: "forget"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    moveToken = null;
+    await loadMove();
+  }));
+  root.querySelectorAll("[data-movedone]").forEach(b => b.onclick = () => pressing(b, async () => {
+    if (!await askYes("Mark this controller as moved?\n\nFrom now on it is read-only and tells its nodes where it went; press this once the new home is up and answering.", {title: "Moved?", verb: "Mark as moved", danger: true})) return;
+    const j = await (await postJSON("/api/move", {action: "moved"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    await loadMove();
+    await refresh();
+  }));
+}
+
     busy(b, "Checking");
     const j = await (await postJSON("/api/v1/nodes", {action: "release-check"})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
@@ -621,6 +685,7 @@ function wireSettingsSections(el){
   wireUpdates(el);
   // Ask Let's Encrypt now (R158 step 2): the Connection section's own press.
   el.querySelectorAll("[data-tlsissue]").forEach(b => b.onclick = async () => {
+  wireMove(el);
     busy(b, "Asking");
     try{
       const j = await (await postJSON("/api/tls", {action: "issue"})).json();

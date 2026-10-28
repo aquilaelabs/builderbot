@@ -135,6 +135,7 @@ async function refresh(){
     drawBell();
     drawMaintBand();
     drawHeldBand();
+    drawMovedBand();
     // The account's scheme, on a browser that has never seen this account
     // (roadmap #25). localStorage is the PAINT path: the scheme is applied
     // at the top of this file before the stylesheet parses, and a value
