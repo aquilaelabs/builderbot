@@ -454,7 +454,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // read in a second round trip can land on the moment between two draws and
   // come back empty (B99's family; this file has had three).
   const opts = await page.waitForFunction(() => {
-    const os = [...document.querySelectorAll('.dmtab .dmpick option')];
+    const os = [...document.querySelectorAll('.pane .bar #ndPick option')];
     return os.length ? os.map(o => o.textContent.trim()) : false;
   }, null, { timeout: 15000 }).then(h => h.jsonValue());
   ok(opts.length === 2 && opts.some(o => /sandbox/.test(o))

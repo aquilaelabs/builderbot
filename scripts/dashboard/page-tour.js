@@ -13,7 +13,7 @@
 const TOUR_PANE = "#pane0";
 const TOUR_BAR = `${TOUR_PANE} .docbarrow:not([hidden]), ${TOUR_PANE} .vbar`;
 // The Machines group's header (R177): the node picker where the page's bar was.
-const TOUR_MHEAD = ".pane .bar.machines .phead";
+const TOUR_MHEAD = ".pane .bar.grouped .phead";
 const TOUR_SUB = `${TOUR_PANE} .bar .pseg`;
 const TOUR_FIRST = `${TOUR_PANE} .dmcard, ${TOUR_PANE} details.sect, ${TOUR_PANE} .doclist > .row, ${TOUR_PANE} .doclist .row`;
 const TOUR_STEPS = {

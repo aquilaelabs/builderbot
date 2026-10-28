@@ -42,9 +42,9 @@ await page.selectOption('.pane .bar #ndPick', sandbox.node);
 const sect = `.nginxtab [data-ngnode="${sandbox.node}"]`;
 await page.waitForSelector(sect, { timeout: 10000 });
 ok(await page.$eval(sect, s => /not deployed/.test(s.querySelector('.toolstate .pill').textContent)
-     && document.querySelector('.nginxtab .docbarrow [data-ngdeploy]') && !s.querySelector('[data-ngremove]')
+     && s.querySelector('.pghead [data-ngdeploy]') && !document.querySelector('.nginxtab .docbarrow:not([hidden])') && !s.querySelector('[data-ngremove]')
      && !s.querySelector('[data-ngsave]') && !s.querySelector('[data-ngadd]') && !s.querySelector('#ngCert')),
-   '...its state row says so, with Deploy alone, in the bar with every header button: no routes or certificates before nginx is there (R181)');
+   '...its state row says so, with Deploy alone in its head and no bar (R178): no routes or certificates before nginx is there (R181)');
 
 // Routes kept before Deploy, as the Enroll dialog's tick has them for a node
 // that has not said hello yet: the server keeps them, and Deploy brings
