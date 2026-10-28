@@ -149,7 +149,9 @@ def copilot_of(home):
     try:
         _, d = _jsonc(_copilot_config(home))
     except FileNotFoundError:
-        return None
+        # Sealed, its copy not open now (R126 step 3): still a sign-in.
+        got = sealed_of(home, "copilot")
+        return got if got and got["email"] else None
     except (OSError, ValueError) as e:
         return {"error": f"{type(e).__name__}: {e}"[:200]}
     u = d.get("lastLoggedInUser") if isinstance(d, dict) else None

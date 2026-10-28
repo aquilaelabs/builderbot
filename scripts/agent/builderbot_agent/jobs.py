@@ -532,7 +532,7 @@ class Job(threading.Thread):
         # ...and its seal, where sign-ins are sealed (R126): signed out is
         # nothing left here to open.
         forget = getattr(self.agent, "token_forget", None)
-        if forget and p.returncode == 0 and (agent or "claude") in ("claude", "codex"):
+        if forget and p.returncode == 0:
             forget(uid, agent or "claude")
         return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
 

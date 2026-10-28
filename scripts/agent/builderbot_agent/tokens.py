@@ -18,8 +18,10 @@ A seal is opened only when a person opens a terminal for their own account
 opened copy is wiped GRACE_S after the account's last session ends. A
 refresh written into it is sealed again within a pass. A login writes into
 the home as ever; the pass finds the plain file, seals it, and puts the
-link in its place. Copilot CLI keeps its token in a file of its settings and
-is not sealed yet.
+link in its place. Copilot CLI keeps its token inside its config.json with
+its settings, so that file is sealed whole (R126 step 3): the settings in
+it are the CLI's own, read where it reads them, and the Agents page names
+who is signed in from the seal's header as for the others.
 """
 import base64
 import contextlib
@@ -39,7 +41,7 @@ GRACE_S = 300
 EVERY_S = 10
 # ...and Grok Build's session (R95 step 21), a file of its own as Codex's is.
 FILES = (("claude", os.path.join(".claude", ".credentials.json")), ("codex", os.path.join(".codex", "auth.json")),
-         ("grok", os.path.join(".grok", "auth.json")))
+         ("grok", os.path.join(".grok", "auth.json")), ("copilot", os.path.join(".copilot", "config.json")))
 
 
 def _claims(jwt):
@@ -84,6 +86,15 @@ def about(agent, data, home):
             # The email its token's claims name, else that it is an xAI
             # account (login-list.py grok_of says it the same way).
             out["email"] = (_jwt_email(json.loads(data)) or "an xAI account")[:120]
+        elif agent == "copilot":
+            # Its config opens with // lines since 1.0.103 (B282), then the
+            # JSON naming the GitHub login it is signed in as.
+            lines = data.decode("utf-8", "replace").splitlines()
+            n = 0
+            while n < len(lines) and (not lines[n].strip() or lines[n].lstrip().startswith("//")):
+                n += 1
+            u = (json.loads("\n".join(lines[n:])) or {}).get("lastLoggedInUser") or {}
+            out["email"] = str(u.get("login") or "")[:120] if isinstance(u, dict) else ""
     return out
 
 

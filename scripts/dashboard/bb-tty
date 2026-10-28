@@ -1064,8 +1064,11 @@ agent_first_run() {
             head="$(grep '^[[:space:]]*//' "$f" 2>/dev/null)"
             grep -v '^[[:space:]]*//' "$f" | jq -e --arg d "$dir" '(.trustedFolders // []) | index($d)' >/dev/null 2>&1 && return 0
             body="$(grep -v '^[[:space:]]*//' "$f" | jq --arg d "$dir" '.trustedFolders = ((.trustedFolders // []) + [$d])')" || return 1
+            # Written through the file, never moved over it: where sign-ins
+            # are sealed (R126) config.json is a link into the account's
+            # opened copy, and a move would leave a plain file in the home.
             { [ -z "$head" ] || printf '%s\n' "$head"; printf '%s\n' "$body"; } > "$f.new" \
-                && mv -f "$f.new" "$f" || return 1 ;;
+                && cat "$f.new" > "$f" && rm -f "$f.new" || return 1 ;;
         *) return 0 ;;
     esac
     AGENT_TRUST_ADDED=1 AGENT_TRUST_FILE="$f"
