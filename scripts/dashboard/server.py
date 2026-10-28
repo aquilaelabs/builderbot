@@ -5070,7 +5070,29 @@ import apps                                                      # noqa: E402
 # asked of GitHub a while after the start and daily, on the bell and under
 # Controller settings, applied as the own node's system job.
 import releasecheck                                              # noqa: E402
-releasecheck.configure(version=lambda: image_stamp().get("version") or "", bare_metal=lambda: BARE_METAL)
+releasecheck.configure(version=lambda: image_stamp().get("version") or "", bare_metal=lambda: BARE_METAL,
+                       window=lambda: (str(settings.get("update_window") or ""), int(settings.get("update_hour") or 4)),
+                       apply=lambda v: _update_in_window(v))
+
+
+def _own_os():
+    """What the controller's own machine says of BuilderBot OS (R160 step
+    4), or {} where it runs on another system or in a container."""
+    nid = _own_node_id()
+    n = nodes.node(nid) if nid else None
+    return dict(((n or {}).get("reported") or {}).get("os_image") or {})
+
+
+def _update_in_window(version):
+    """The update window's press (releasecheck.window_pass): the image on
+    BuilderBot OS, the installer elsewhere, queued on the own node under the
+    window's own name and said on the bell by the job as any update is."""
+    nid = _own_node_id()
+    if not nid:
+        return
+    tag = "v" + version
+    r = nodes.node_os_update("system:update-window", nid, tag) if _own_os() else nodes.node_controller_update("system:update-window", nid, tag)
+    print(f"[dashboard] update window: {tag}: {r.get('job') or r.get('error')}", flush=True)
 # A held start on a bare-metal install (R56 step 9, held.py): read at the
 # start, lifted by Start on This machine, armed for the next restart.
 import held                                                      # noqa: E402
@@ -5390,7 +5412,7 @@ def _snapshot(who):
         "image": _timed("status:image", lambda: image_stamp()),
         # A bare-metal install's release against the newest (R90 step 5),
         # with its own node for the Update press; {} on a container install.
-        "release": _timed("status:release", lambda: (dict(releasecheck.status(), node=_own_node_id())
+        "release": _timed("status:release", lambda: (dict(releasecheck.status(), node=_own_node_id(), os=_own_os())
                                                       if BARE_METAL else {})),
         # ...and whether its start is held (R56 step 9), with why.
         "held": held.status(),

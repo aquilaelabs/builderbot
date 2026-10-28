@@ -36,6 +36,9 @@ function machineHead(n){
     ["System", [r.os, r.hostname && r.hostname !== n.name ? r.hostname : ""].filter(Boolean).join(" · ")],
     ["Cores and memory", [r.cpu ? `${r.cpu} cpu` : "", mem].filter(Boolean).join(" · ")],
     ["Release", `${img.version || "unstamped"}${img.rev ? ` (${img.rev.slice(0, 7)})` : ""}`],
+    // BuilderBot OS (R160 step 4): the image, the slot this boot came from
+    // and the one that boots next when an update has been written.
+    ...(r.os_image?.version ? [["Image", `BuilderBot OS ${r.os_image.version}, slot ${r.os_image.slot || "?"}${r.os_image.next && r.os_image.next !== r.os_image.slot ? `; slot ${r.os_image.next} boots next: restart to finish the update` : ""}`]] : []),
     ["Up", shortUptime(state?.uptime || 0)],
     ["Agent", n.agent?.version || ""],
     ["Wall", wall]]});

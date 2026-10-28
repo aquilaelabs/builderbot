@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# One disk laid out as BuilderBot OS (R160 steps 1 and 2): the partitions of
+# image/partitions.sh, GRUB for UEFI and BIOS with the menu, slot A written
+# from a root squashfs with its kernel and initrd beside it on the ESP, slot
+# B left for the first update, and the data partition made with /var's
+# skeleton. build.sh runs this on a loop device to make the image; the
+# installer on the ISO runs the copy the image carries on the disk a person
+# picked. One script, so a built image and an installed disk cannot differ.
+#
+#   lay-disk DEVICE SQUASHFS VMLINUZ INITRD RELEASE GRUBCFG [--var DIR] [--grow]
+#
+# --var DIR populates the data partition from DIR (the built tree's /var);
+# without it the squashfs is mounted and its /var used. --grow gives the
+# data partition the rest of the disk rather than its fixed size (an install;
+# the image keeps the fixed size so it stays small). Root, with the same
+# tools build.sh asks for.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=image/partitions.sh
+. "$HERE/partitions.sh"
+die() { echo "lay-disk: $*" >&2; exit 1; }
+[ $# -ge 6 ] || { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+DEV="$1"; SQ="$2"; KERNEL="$3"; INITRD="$4"; RELEASE="$5"; GRUBCFG="$6"; shift 6
+VAR=""; GROW=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --var) VAR="${2:?--var needs a directory}"; shift 2 ;;
+        --grow) GROW=1; shift ;;
+        *) die "unknown option: $1" ;;
+    esac
+done
+[ "$(id -u)" -eq 0 ] || die "run as root"
+[ -b "$DEV" ] || die "$DEV is not a block device"
+for f in "$SQ" "$KERNEL" "$INITRD" "$RELEASE" "$GRUBCFG"; do [ -f "$f" ] || die "no such file: $f"; done
+for t in sfdisk mkfs.vfat mkfs.ext4 grub-install grub-editenv partprobe; do command -v "$t" >/dev/null 2>&1 || die "$t is not here"; done
+[ -d /usr/lib/grub/x86_64-efi ] || die "grub-efi-amd64-bin is not here: GRUB for UEFI"
+[ -d /usr/lib/grub/i386-pc ] || die "grub-pc-bin is not here: GRUB for BIOS"
+SQ_MIB=$(( ($(stat -c %s "$SQ") + 1048575) / 1048576 ))
+[ "$SQ_MIB" -lt "$BB_SIZE_SLOT_MIB" ] || die "the root squashfs is ${SQ_MIB} MiB and a slot holds ${BB_SIZE_SLOT_MIB}"
+
+# ---- the partitions ---------------------------------------------------------
+if [ "$GROW" = 1 ]; then DATA_SIZE=""; else DATA_SIZE="size=${BB_SIZE_DATA_MIB}MiB, "; fi
+sfdisk --quiet --wipe always "$DEV" <<PT
+label: gpt
+unit: sectors
+sector-size: 512
+start=2048, size=2048, type=21686148-6449-6E6F-744E-656564454649, uuid=${BB_PART_BIOS}, name=bios
+size=${BB_SIZE_ESP_MIB}MiB, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, uuid=${BB_PART_ESP}, name=esp
+size=${BB_SIZE_SLOT_MIB}MiB, type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709, uuid=${BB_PART_ROOT_A}, name=bbroot-a
+size=${BB_SIZE_SLOT_MIB}MiB, type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709, uuid=${BB_PART_ROOT_B}, name=bbroot-b
+${DATA_SIZE}type=4D21B016-B534-45C2-A9FB-5C16E091FD2D, uuid=${BB_PART_DATA}, name=bbdata
+PT
+partprobe "$DEV" 2>/dev/null || true
+udevadm settle 2>/dev/null || sleep 1
+# A partition's node: /dev/sda2, /dev/nvme0n1p2, /dev/loop0p2.
+P() { case "$DEV" in *[0-9]) printf '%sp%s' "$DEV" "$1" ;; *) printf '%s%s' "$DEV" "$1" ;; esac; }
+for i in 2 3 4 5; do [ -b "$(P $i)" ] || die "partition $i did not appear at $(P $i)"; done
+
+# ---- the ESP: GRUB for both firmwares, one menu, slot A's kernel ------------
+MNT="$(mktemp -d)"
+cleanup() { umount "$MNT" 2>/dev/null || true; umount "$MNT.sq" 2>/dev/null || true; rmdir "$MNT" "$MNT.sq" 2>/dev/null || true; }
+trap cleanup EXIT
+mkfs.vfat -F 32 -i "${BB_ESP_FSUUID/-/}" -n "$BB_ESP_LABEL" "$(P 2)" >/dev/null
+mount "$(P 2)" "$MNT"
+grub-install --target=x86_64-efi --efi-directory="$MNT" --boot-directory="$MNT" --removable --no-nvram "$DEV" >/dev/null 2>&1 \
+    || die "grub-install for UEFI failed"
+grub-install --target=i386-pc --boot-directory="$MNT" "$DEV" >/dev/null 2>&1 \
+    || die "grub-install for BIOS failed"
+install -m 0644 "$GRUBCFG" "$MNT/grub/grub.cfg"
+grub-editenv "$MNT/grub/grubenv" create
+grub-editenv "$MNT/grub/grubenv" set bb_slot=a
+install -d "$MNT/builderbot/a" "$MNT/builderbot/b"
+install -m 0644 "$KERNEL" "$MNT/builderbot/a/vmlinuz"
+install -m 0644 "$INITRD" "$MNT/builderbot/a/initrd"
+install -m 0644 "$RELEASE" "$MNT/builderbot/a/release"
+umount "$MNT"
+
+# ---- slot A, and the data partition ----------------------------------------
+dd if="$SQ" of="$(P 3)" bs=4M conv=fsync status=none
+if [ -z "$VAR" ]; then
+    mkdir -p "$MNT.sq"
+    mount -t squashfs -o loop,ro "$SQ" "$MNT.sq" || die "the squashfs did not mount, so /var's skeleton could not be read"
+    VAR="$MNT.sq/var"
+fi
+mkfs.ext4 -q -L "$BB_DATA_LABEL" -d "$VAR" -E lazy_itable_init=0,lazy_journal_init=0 "$(P 5)"
+cleanup; trap - EXIT
+echo "lay-disk: $DEV holds BuilderBot OS in slot A$([ "$GROW" = 1 ] && echo ', the data partition grown to the disk')"

@@ -74,6 +74,7 @@ const SETTINGS_SAYS = {
   mail: "the SMTP server the bell goes out through",
   move: "to another home, its nodes following",
   updates: "the release running, the newest, and Update",
+  updwin: "when a newer release is applied by itself",
   reset: "start over at the setup page",
 };
 
@@ -190,12 +191,21 @@ const reportsCount = () => reportsList === null ? null : reportsList.length;
 function updatesSection(){
   const r = state?.release || {};
   const when = r.at ? `checked ${esc(ago(r.at))}` : "not checked yet";
+  const os = r.os && r.os.version ? r.os : null;
+  // BuilderBot OS (R160 step 4): the image whole into the other slot, a
+  // restart to finish; elsewhere the installer's bundle (R90 step 5).
+  const runs = os ? `BuilderBot OS ${esc(os.version)} from slot ${esc(os.slot || "?")}${os.next && os.next !== os.slot ? `, and slot ${esc(os.next)} boots next: restart to finish the update` : ""}`
+    : esc(r.running || "an unstamped build");
+  const how = os ? `Update fetches the release's image (its root, kernel and initrd), checks each against its sha256 and the root against its build attestation, writes the slot not in use and names it for the next boot; the restart is yours, from This machine, and the slot running now stays to fall back to. An offline machine takes the same files from a folder here (a stick, a share).`
+    : `Update fetches the release's bundle, checks its sha256 and its build attestation, holds the state to its version gate, switches to it and comes back by itself if the new build does not answer; the one before is kept, and Rollback on This machine's Updates takes it back.`;
   return `<div class="row stack2" data-group="Updates"><div class="grow">
-      <div class="sub">This install runs ${esc(r.running || "an unstamped build")}; the newest release is ${r.latest ? esc(r.latest) : "not known yet"} (${when}${r.error ? `; ${esc(r.error)}` : ""}).</div>
-      <div class="sub dim">Update fetches the release's bundle, checks its sha256 and its build attestation, holds the state to its version gate, switches to it and comes back by itself if the new build does not answer; a copy of the state is kept for Rollback.</div>
+      <div class="sub">This install runs ${runs}; the newest release is ${r.latest ? esc(r.latest) : "not known yet"} (${when}${r.error ? `; ${esc(r.error)}` : ""}).</div>
+      <div class="sub dim">${how}</div>
+      ${os ? `<div class="field"><label class="pick"><span class="pickw">From a folder here</span><input type="text" id="osFrom" placeholder="/mnt/stick/builderbot-os" autocomplete="off" spellcheck="false"></label></div>` : ""}
       <div class="actbar"><span class="sp"></span>
         <button type="button" data-relcheck>Check now</button>
-        <button type="button" class="primary" data-relupdate="${esc(r.node || "")}"${r.newer && r.node ? "" : " disabled"}>${r.newer ? `Update to ${esc(r.newer)}` : "Update"}</button></div>
+        ${os ? `<button type="button" data-osfrom="${esc(r.node || "")}"${r.node ? "" : " disabled"}>Update from the folder</button>` : ""}
+        <button type="button" class="primary" data-relupdate="${esc(r.node || "")}" data-os="${os ? "1" : ""}"${r.newer && r.node ? "" : " disabled"}>${r.newer ? `Update to ${esc(r.newer)}` : "Update"}</button></div>
     </div></div>`;
 }
 // ---- moving this controller (R90 step 12) ----
@@ -265,7 +275,22 @@ function wireUpdates(root){
     if (j.error) notify(j.error, true);
     await refresh();
   }));
+  root.querySelectorAll("[data-osfrom]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const from = ($("osFrom")?.value || "").trim();
+    if (!from){ notify("name the folder on this machine that holds the release's files", true); return; }
+    if (!await askYes(`Write the image in ${from} into the other slot?\n\nIts files are checked against the sha256 beside each; the slot not in use takes it and boots next; nothing running changes until you restart.`, {title: "Update from a folder?", verb: "Write the slot"})) return;
+    busy(b, "Updating");
+    const j = await (await postJSON("/api/v1/nodes", {action: "os-update", id: b.dataset.osfrom, from})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "updating: the job writes the other slot; restart from This machine when it is done", !!j.error);
+  }));
   root.querySelectorAll("[data-relupdate]").forEach(b => b.onclick = () => pressing(b, async () => {
+    if (b.dataset.os){
+      if (!await askYes(`Update this machine to BuilderBot OS ${state?.release?.newer}?\n\nThe release's image is fetched and checked (sha256, build attestation), written into the slot not in use and named for the next boot; nothing running changes until you restart from This machine, and the slot running now stays to fall back to.`, {title: "Update the image?", verb: "Write the slot"})) return;
+      busy(b, "Updating");
+      const j = await (await postJSON("/api/v1/nodes", {action: "os-update", id: b.dataset.relupdate, release: "v" + state.release.newer})).json().catch(() => ({error: "no answer"}));
+      notify(j.error || "updating: the job writes the other slot; restart from This machine when it is done", !!j.error);
+      return;
+    }
     if (!await askYes(`Update this install to ${state?.release?.newer}?\n\nThe installer runs on this machine's node: the bundle is fetched and checked, the state copied aside, the service switched to the new release and started. The page comes back on it; if it does not answer, the install goes back by itself.`)) return;
     busy(b, "Updating");
     const j = await (await postJSON("/api/v1/nodes", {action: "controller-update", id: b.dataset.relupdate})).json().catch(() => ({error: "no answer"}));
@@ -407,6 +432,17 @@ const SETTING_GROUPS = [
   // Maintenance mode, the owner's alone (state.can.maintenance): every
   // other account is told why and kept out until it is off, and a band on
   // every page reminds the owner it is on.
+  // The update window (R160 step 4): a newer release applied by itself at
+  // the hour named, daily or one weekday; off by default, so nothing moves
+  // the install without a press or this choice.
+  {key: "updwin", title: "Update window",
+   heading: s => s?.settings?.update_window?.value ? `${s.settings.update_window.value} at ${String(s.settings.update_hour?.value ?? 4).padStart(2, "0")}:00` : "off",
+   fields: [
+    {key: "update_window", label: "Apply a newer release", type: "select",
+     options: [["", "never by itself: Update under Updates is the press"], ["daily", "daily, at the hour below"],
+               ["mon", "Mondays"], ["tue", "Tuesdays"], ["wed", "Wednesdays"], ["thu", "Thursdays"], ["fri", "Fridays"], ["sat", "Saturdays"], ["sun", "Sundays"]],
+     hint: "In the window the newest release is applied the way Update does it: the image into the other slot on BuilderBot OS (a restart still waits for you), the installer's bundle elsewhere. One window applies one release once."},
+    {key: "update_hour", label: "At (hour, 0 to 23, this controller's time)", type: "number"}]},
   {key: "maint", title: "Maintenance", can: "maintenance",
    heading: s => s?.settings?.maintenance_mode?.value ? "on" : "off",
    headingCls: s => s?.settings?.maintenance_mode?.value ? "warn" : "",

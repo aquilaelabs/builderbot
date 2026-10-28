@@ -97,6 +97,9 @@ class ConfigPlaneMixin:
             return self._apply_feature(job, cfg)
         if what == "controller-update":
             return self._apply_controller_update(job, cfg)
+        if what == "os-update":
+            # BuilderBot OS: the next image into the other slot (osimage.py).
+            return self._apply_os_update(job, cfg)
         if what == "gpu-off":
             # The emulator off the card (R102): the display's unit stopped,
             # the driver left alone; then a hello, as the set-up sends.

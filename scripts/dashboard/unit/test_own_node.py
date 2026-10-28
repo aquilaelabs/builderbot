@@ -81,6 +81,25 @@ class OwnRow(unittest.TestCase):
         self.assertIn("not provisioned as a managed node", r.get("error", ""))
 
 
+class TheImageUpdate(unittest.TestCase):
+    """os-update (R160 step 4) is for a machine whose census says it runs
+    BuilderBot OS; a bare-metal install on another system is told so."""
+    def setUp(self):
+        self.state = tempfile.mkdtemp()
+        sys.path.insert(0, DASH)
+        import nodes
+        self.nodes = nodes
+        nodes.configure(state=self.state)
+
+    def test_it_is_refused_where_the_image_is_not_running(self):
+        mint(self.state, "nas", "--own")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "nas")
+        r = self.nodes.node_os_update("user:t", n["id"], "v0.9.1")
+        self.assertIn("runs BuilderBot OS", r.get("error", ""))
+        r = self.nodes.node_os_update("user:t", "n_nothere", "v0.9.1")
+        self.assertEqual(r.get("error"), "no such node")
+
+
 class TheDoctorSaysTheWall(unittest.TestCase):
     """bb doctor (and so the Doctor card) on a controller whose own machine is
     a node: whether the wall holds there, from that node's bb-session check,

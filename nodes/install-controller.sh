@@ -680,6 +680,13 @@ cmd_firstboot() {
     say "first boot: waiting for the controller on port ${PORT}"
     wait_up || die "the controller did not answer on port ${PORT}: journalctl -u ${SERVICE} says why"
     wall_write
+    local f
+    if [ -r "$OS_FEATURES_FILE" ]; then
+        while read -r f; do
+            case "$f" in vmhost|firewall|iommu) OS_FEATURES+=(--feature "$f") ;; "") ;; *) warn "not a feature the installer offers: $f (left out)" ;; esac
+        done < "$OS_FEATURES_FILE"
+        [ "${#OS_FEATURES[@]}" -eq 0 ] || printf '   features asked for at install: %s\n' "$(tr '\n' ' ' < "$OS_FEATURES_FILE")"
+    fi
     own_node || die "this machine did not become its controller's node (above): the unit runs again at the next boot"
 }
 
@@ -880,6 +887,10 @@ cmd_remove() {
 # A machine that is a node already is left as it is: of this controller,
 # provisioned again for a newer agent and bb-session; of another, said.
 OWN_MARK="$ETC/own-node"
+# The features the installer on the ISO was asked for (R160 step 2), turned
+# on with the node at the first boot: one id per line, on the data partition.
+OS_FEATURES_FILE="$P/var/lib/builderbot-os/features"
+declare -a OS_FEATURES=()
 own_node() {
     local ip name tok ctl prov="$OPT/nodes/provision-linux.sh"
     local -a dev=()
@@ -901,7 +912,7 @@ own_node() {
     tok="$("$BB_BIN" nodes enroll-token "$name" --user "$JOBS_USER" --own)" \
         || { warn "the controller would not mint this machine a token (above)"; return 1; }
     bash "$prov" --controller "$ctl" --token "$tok" --user "$JOBS_USER" --session-user "$SESSION_USER" \
-        --beside-controller "${dev[@]}" || { warn "this machine did not enroll as a node (above); --install again tries again"; return 1; }
+        --beside-controller "${dev[@]}" "${OS_FEATURES[@]}" || { warn "this machine did not enroll as a node (above); --install again tries again"; return 1; }
     printf '%s\n' "$ctl" > "$OWN_MARK"
     printf '   enrolled as %s, at %s\n' "$name" "$ctl"
     printf '   Give this machine a fixed address: the node reaches its controller at %s.\n' "$ip"

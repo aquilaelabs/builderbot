@@ -51,17 +51,20 @@ class Partitions(unittest.TestCase):
 
     def test_grub_boots_each_slot_by_its_partition_and_finds_the_esp_by_its_serial(self):
         g = read(IMG, "grub.cfg")
-        self.assertIn(f"root=PARTUUID={self.p['BB_PART_ROOT_A']} ", g)
-        self.assertIn(f"root=PARTUUID={self.p['BB_PART_ROOT_B']} ", g)
+        self.assertIn(f'set root_a="root=PARTUUID={self.p["BB_PART_ROOT_A"]}"', g)
+        self.assertIn(f'set root_b="root=PARTUUID={self.p["BB_PART_ROOT_B"]}"', g)
         self.assertIn(f"--fs-uuid --set=root {self.p['BB_ESP_FSUUID']}", g)
         self.assertIn("bbslot=a", g)
         self.assertIn("bbslot=b", g)
         self.assertIn("overlayroot=tmpfs", g)
 
-    def test_the_build_lays_the_disk_out_by_these_names(self):
-        b = read(IMG, "build.sh")
+    def test_the_disk_is_laid_out_by_these_names(self):
+        lay = read(IMG, "lay-disk")
         for k in ("BB_PART_BIOS", "BB_PART_ESP", "BB_PART_ROOT_A", "BB_PART_ROOT_B", "BB_PART_DATA",
                   "BB_SIZE_ESP_MIB", "BB_SIZE_SLOT_MIB", "BB_SIZE_DATA_MIB", "BB_ESP_FSUUID", "BB_ESP_LABEL", "BB_DATA_LABEL"):
+            self.assertIn(k, lay, k)
+        b = read(IMG, "build.sh")
+        for k in ("BB_SIZE_ESP_MIB", "BB_SIZE_SLOT_MIB", "BB_SIZE_DATA_MIB"):
             self.assertIn(k, b, k)
 
 
@@ -199,6 +202,82 @@ class Workflow(unittest.TestCase):
         import xml.dom.minidom
         xml.dom.minidom.parseString(ovf)
         self.assertIn("qemu-utils", read(ROOT, ".github", "workflows", "build-image.yml"))
+
+    def test_the_disk_is_laid_out_by_one_script_the_image_carries(self):
+        # R160 step 2: build.sh lays the image's disk out with lay-disk and
+        # puts lay-disk, the numbers and GRUB's menu into the image, where
+        # the installer runs the same script on a person's disk.
+        b = read(IMG, "build.sh")
+        self.assertIn('bash "$HERE/lay-disk" "$LOOP"', b)
+        self.assertNotIn("sfdisk --quiet", b, "the layout lives in lay-disk alone")
+        for f in ("lay-disk", "partitions.sh", "grub.cfg"):
+            self.assertIn(f'"$TREE/usr/lib/builderbot-os/{f}"', b)
+        lay = read(IMG, "lay-disk")
+        self.assertIn('. "$HERE/partitions.sh"', lay)
+        self.assertIn("--grow", lay)
+        inst = read(EXTRA, "usr", "lib", "builderbot-os", "installer")
+        self.assertIn('bash "$LIB/lay-disk" "$pick"', inst)
+        self.assertIn("--grow", inst)
+        self.assertIn("lib/builderbot-os/features", inst)
+        unit = read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-installer.service")
+        self.assertIn("ConditionKernelCommandLine=bbinstaller=1", unit)
+        self.assertIn("TTYPath=/dev/tty1", unit)
+
+    def test_the_iso_boots_the_same_root_live_with_the_installer(self):
+        b = read(IMG, "build.sh")
+        self.assertIn("grub-mkrescue -o", b)
+        self.assertIn("live/filesystem.squashfs", b)
+        g = read(IMG, "iso-grub.cfg")
+        self.assertIn("boot=live components bbinstaller=1", g)
+        self.assertIn("/live/vmlinuz", g)
+        conf = read(IMG, "mkosi.conf")
+        for p in ("live-boot", "live-boot-initramfs-tools", "whiptail"):
+            self.assertIn(p, conf, p)
+        wf = read(ROOT, ".github", "workflows", "build-image.yml")
+        self.assertIn("xorriso mtools", wf)
+        self.assertIn("out/builderbot-os-*.iso", wf)
+
+    def test_the_first_boot_turns_on_the_features_the_installer_was_asked_for(self):
+        inst = read(ROOT, "nodes", "install-controller.sh")
+        self.assertIn('OS_FEATURES_FILE="$P/var/lib/builderbot-os/features"', inst)
+        self.assertIn('"${OS_FEATURES[@]}"', inst)
+        self.assertIn("vmhost|firewall|iommu) OS_FEATURES+=(--feature", inst)
+
+    def test_nothing_is_published_before_the_image_boots(self):
+        # R160 step 5: the publish job waits on the boot job, which waits
+        # on the build; step 6: the weekly schedule builds with the day's
+        # snapshot and keeps the package diff.
+        wf = read(ROOT, ".github", "workflows", "build-image.yml")
+        self.assertRegex(wf, r"appliance-boot:\n    needs: appliance\n")
+        self.assertRegex(wf, r"appliance-publish:\n    needs: appliance-boot\n")
+        self.assertIn("hostfwd=tcp:127.0.0.1:7680-:7680", wf)
+        self.assertIn("github.event_name == 'schedule'", wf)
+        self.assertIn("builderbot-os-*.packages", wf)
+        self.assertIn('"$OUT/$NAME.packages"', read(IMG, "build.sh"))
+
+    def test_a_stick_loads_the_slot_into_memory_when_grub_says_so(self):
+        # R161 step 1: bb_toram=1 in grubenv turns root= into the copy in
+        # memory and names the slot's partition; the initramfs script and
+        # hook do the copy, and the slot tool reads and sets the switch.
+        p = shell_vars(os.path.join(IMG, "partitions.sh"))
+        g = read(IMG, "grub.cfg")
+        self.assertIn('if [ "$bb_toram" = 1 ]', g)
+        self.assertIn(f'root=/dev/loop0 bbslotdev=PARTUUID={p["BB_PART_ROOT_A"]} bbtoram=1', g)
+        self.assertIn(f'root=/dev/loop0 bbslotdev=PARTUUID={p["BB_PART_ROOT_B"]} bbtoram=1', g)
+        self.assertIn("$root_a rootfstype=squashfs", g)
+        top = read(EXTRA, "etc", "initramfs-tools", "scripts", "local-top", "builderbot-os-toram")
+        self.assertIn("od -An -t u8 -j 40 -N 8", top)
+        self.assertIn("losetup /dev/loop0 /run/bbroot/root.squashfs", top)
+        hook = read(EXTRA, "etc", "initramfs-tools", "hooks", "builderbot-os")
+        self.assertIn("copy_exec /sbin/losetup", hook)
+        self.assertIn("loop", read(EXTRA, "etc", "initramfs-tools", "modules").split())
+        tool = os.path.join(EXTRA, "usr", "lib", "builderbot-os", "slot")
+        with tempfile.TemporaryDirectory() as d:
+            c = os.path.join(d, "cmdline")
+            open(c, "w").write("root=/dev/loop0 bbslotdev=PARTUUID=x bbtoram=1 bbslot=a\n")
+            r = sh(f"bash {tool} status", {"BB_CMDLINE": c, "BB_ESP": os.path.join(d, "esp"), "BB_OS_RELEASE": os.path.join(d, "none")})
+            self.assertIn("root in memory: yes", r.stdout)
+            self.assertEqual(sh(f"bash {tool} ram", {"BB_CMDLINE": c, "BB_ESP": os.path.join(d, "esp")}).stdout.strip(), "off")
 
     def test_build_sh_says_how_without_root(self):
         r = sh("bash image/build.sh --help")

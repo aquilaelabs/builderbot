@@ -46,11 +46,39 @@ the initramfs, `fstab` and GRUB alike:
 | `esp` | 512 MiB | the ESP: GRUB for UEFI and BIOS, one menu, its environment, each slot's kernel and initrd under `/builderbot/a` and `/builderbot/b` |
 | `bbroot-a` | 4 GiB | root slot A: a squashfs, read-only |
 | `bbroot-b` | 4 GiB | root slot B: empty until an update writes it |
-| `bbdata` | 2 GiB, grown to the disk | `/var`, and under it the changes to `/etc` |
+| `bbdata` | 2 GiB in the image, the rest of the disk when installed | `/var`, and under it the changes to `/etc` |
 
 Beside the disk, the build leaves the pieces an update and the stick maker
 take: the slot's squashfs (`.root.squashfs`), its kernel and initrd, and the
 release stamp, each with a `.sha256`.
+
+## On a stick, run from memory
+
+The same disk written to a USB stick is the USB edition's base (R161): with
+`bb_toram=1` in GRUB's environment (`slot ram on`; the stick maker sets
+it) the initramfs copies the slot's squashfs into memory, exactly its
+bytes, and the root is that copy, so the stick is read once at boot and the
+system runs from memory as Unraid's does; `/var` and `/etc`'s changes stay
+on the stick's data partition, apart from both slots, and an update writes
+the other slot as on a disk. `slot status` says when the root is in memory.
+A machine needs the slot's size in memory beside what it runs (about 2 GB).
+The stick's own first run, its backup and the public stick maker are the
+USB edition's later steps.
+
+## Installing it on a machine
+
+`builderbot-os-VERSION.iso` boots the same root live (UEFI or BIOS) with
+the installer on the console: it lists the machine's disks (the medium it
+booted from left out), asks which one to lay out and says that everything
+on it is lost, asks which features to turn on at the first boot (VM host
+and the hosting firewall on, the IOMMU off), then lays the disk out with
+the very script that made the image (`image/lay-disk`, carried in the
+image at `/usr/lib/builderbot-os/lay-disk`), the data partition grown to
+the disk, and asks for a restart. Nothing else is asked: the first boot
+makes the machine its own node with those features, and the dashboard's
+first page, at `http://ITS-ADDRESS:7680` on the LAN, makes the owner and
+names the machine. The ISO's second entry boots the live system without
+installing, for a look or a rescue.
 
 ## The same disk for a hypervisor
 
@@ -108,10 +136,16 @@ edition's boot work (R161 step 2), on top of this.
 ## Building it
 
 CI builds the image on a hosted runner (`appliance` in
-`.github/workflows/build-image.yml`): on every release tag, and from the
-Actions page's *Run workflow* with its *appliance* box ticked. The files land
-on the release beside the controller bundle, the disk and the slot with a
-build attestation.
+`.github/workflows/build-image.yml`): on every release tag, from the
+Actions page's *Run workflow* with its *appliance* box ticked, and weekly.
+Before anything of it is published, `appliance-boot` boots the VM disk
+under QEMU and waits for the dashboard to answer; a release's files land
+only after that (`appliance-publish`), beside the controller bundle, each
+of the disk, the ISO, the VM disks and the slot with a build attestation.
+The weekly run takes the day before's snapshot, builds, and says in its
+summary which system packages moved since the last release (each image
+carries its package list, `.packages`); a patch release from it is a press
+on a tag, never the run's own doing.
 
 By hand, on a Debian or Ubuntu machine with root (mkosi installs packages,
 and the disk is assembled on a loop device):
@@ -127,9 +161,34 @@ to look at; `--from-tree DIR` assembles a disk from a tree built before.
 Moving the pin is editing `image/SNAPSHOT` to a newer timestamp; the weekly
 security rebuild (R160 step 6) will do that on its own.
 
+## Updating
+
+A newer release is found the way a bare-metal install's is (checked daily
+and on **Check now** under Controller settings, Updates, and said on the
+bell). On BuilderBot OS **Update** does not run the installer: the own
+node's root agent fetches the release's image files (the root, the kernel,
+the initrd, the stamp), checks each against the sha256 the release carries
+and the root against its build attestation (where `gh` is on the machine),
+writes the slot not in use, puts the kernel beside it on the ESP, and names
+that slot for the next boot. Nothing running changes until you restart
+from This machine, and the slot running now stays to fall back to: at the
+GRUB menu, or with `slot next a`. The Updates section says which slot runs
+and which boots next.
+
+An offline machine takes the same files from a folder on it (a stick, a
+share): **Update from the folder** under Updates, the folder holding the
+release's four files with their `.sha256` beside them.
+
+**Update window.** By default nothing is applied by itself. Under
+Controller settings, *Update window* names a day (daily, or one weekday)
+and an hour; in that hour a newer release is applied the way Update does
+it, once per release, and the restart still waits for you.
+
 ## What is not here yet
 
-The installable ISO (R160 step 2), the VM disk formats (step 3), the update
-that writes the other slot from the page (step 4), the boot of each image in
-CI before it ships (step 5), the weekly rebuild (step 6), and the USB edition
-with its boot counting and Safe mode (R161) each build on this image.
+What the boot in CI does not yet try (a ZFS pool and an array on virtual
+disks, a share over SMB, a node enrolled and a container started, the
+browser suites against the booted system) lands with the storage work
+(R162), the canary on the dev pair with it; the USB edition with its boot
+counting, Safe mode and the slot kept only once it says it is healthy
+(R161) builds on this image.
