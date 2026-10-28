@@ -15,7 +15,10 @@ await page.waitForFunction(() => typeof state !== 'undefined' && state && state.
 const keys = body => page.evaluate(async b => (await (await postJSON('/api/keys', b)).json()), body);
 
 // A token of the person's, given to alpha (the fixture's project).
-const given = await page.evaluate(async () => (await (await postJSON('/api/rename', { name: 'alpha', token: 'ghp_suiteTokenValue0123' })).json()).catch(() => ({}));
+const given = await page.evaluate(async () => {
+  const r = await postJSON('/api/rename', { name: 'alpha', token: 'ghp_suiteTokenValue0123' });
+  return r.json();
+}).catch(() => ({}));
 let mine = await keys({ action: 'mine' });
 ok(!given.error && (mine.forges || []).length >= 1, `a token given to alpha is in the store (${given.error || (mine.forges || []).length + ' entries'})`);
 if (!mine.sealing){ ok(true, 'this fixture has no install key: nothing is sealed, and the store has nothing to unlock (skipped)'); await done(browser); process.exit(0); }
