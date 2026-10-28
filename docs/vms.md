@@ -6,6 +6,16 @@ or by a project's session with `bb vm`, under the project's own
 setting. The VMs page sits in the Containers group beside Containers and
 nginx, and is built from the Containers page's pieces.
 
+**The machine's own VMs** (R165): a VM may belong to the machine rather
+than a project: Belongs to on New VM offers "This machine's own" to an
+administrator, and such a VM is keyed under `machine`, grouped and chipped
+as This machine's own on the VMs page, acted on by administrators alone
+under the VMs area, and never a session's (a session sees its own
+project's VMs and nothing else). It is for the NAS's own apps and
+desktops (a Home Assistant VM, a Windows desktop) on any VM host, the
+controller's own machine first where there is one; its network is its
+own as a project's is, or the LAN from its Hardware dialog.
+
 ## Where a VM runs
 
 A VM runs on a node with **VM host** installed: KVM through libvirt, put

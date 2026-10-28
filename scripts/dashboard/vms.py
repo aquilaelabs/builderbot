@@ -239,6 +239,13 @@ def _live(n):
     return {v.get("name"): v for v in ((n or {}).get("reported") or {}).get("vms") or [] if isinstance(v, dict)}
 
 
+# A VM that belongs to the machine rather than a project (R165 step 3): the
+# NAS's own apps and desktops, keyed under this name, an administrator's to
+# make and act on under the VMs area, never a session's, and on any VM
+# host (the own machine first, where there is one).
+MACHINE = "machine"
+
+
 def view(projects=None):
     """Every VM record, the node's census laid over it, for the page and for
     `bb vm list`: only the projects named, when `projects` is given."""
