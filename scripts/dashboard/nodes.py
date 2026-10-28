@@ -1423,6 +1423,9 @@ def _census(c):
                        # put there by BuilderBot, and on now, which a restart
                        # and the firmware decide.
                        "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True}}
+    # The machine's time zone (R161 step 3), a name under zoneinfo.
+    if isinstance(c.get("timezone"), str):
+        out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
     # BuilderBot OS on the machine (R160 step 4): the image's version and
     # snapshot, the slot this boot came from and the one GRUB boots next.
     if isinstance(c.get("os_image"), dict) and c["os_image"].get("version"):
@@ -3005,6 +3008,41 @@ def node_feature(principal, node_id, fid, op):
                 {"apply": "feature", "config": {"id": fid, "op": op}, "timeout": 1800})
     if r.get("ok"):
         audit(principal, "node-feature", node_id, {"job": r["job"], "id": fid, "op": op})
+    return r
+
+
+def node_machine(principal, node_id, hostname="", timezone=""):
+    """The controller's own machine's name and time zone (R161 step 3, R56
+    step 8): a system job on its node, whose root agent sets them through
+    hostnamectl and timedatectl; refused anywhere else, since another node's
+    name is its own administrator's."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": f"{n['name']}'s name and time zone are its own to set: This machine sets the controller's own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot set its name"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    host = str(hostname or "").strip().lower()
+    tz = str(timezone or "").strip()
+    if host and not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", host):
+        return {"error": "a hostname is letters, digits and hyphens, 63 at most"}
+    if tz and not re.fullmatch(r"[A-Za-z0-9_+-]{1,32}(/[A-Za-z0-9_+-]{1,32}){0,2}", tz):
+        return {"error": "a time zone is named as Region/City"}
+    if not host and not tz:
+        return {"error": "nothing to set"}
+    cfg = {k: v for k, v in (("hostname", host), ("timezone", tz)) if v}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "machine", "config": cfg, "timeout": 120})
+    if r.get("ok"):
+        audit(principal, "machine", node_id, {"job": r["job"], **cfg})
     return r
 
 
@@ -6053,6 +6091,7 @@ def verb(principal, req):
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
              "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
              "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
+             "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone")),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,

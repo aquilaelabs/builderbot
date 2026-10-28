@@ -40,6 +40,7 @@ function machineHead(n){
     // and the one that boots next when an update has been written.
     ...(r.os_image?.version ? [["Image", `BuilderBot OS ${r.os_image.version}, slot ${r.os_image.slot || "?"}${r.os_image.next && r.os_image.next !== r.os_image.slot ? `; slot ${r.os_image.next} boots next: restart to finish the update` : r.os_image.trial ? "; on trial until the health check marks it good" : ""}${r.os_image.fell_back ? `; ${r.os_image.fell_back}` : ""}`]] : []),
     ["Up", shortUptime(state?.uptime || 0)],
+    ...(r.timezone ? [["Time zone", r.timezone]] : []),
     ["Agent", n.agent?.version || ""],
     ["Wall", wall]]});
 }

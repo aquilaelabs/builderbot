@@ -236,6 +236,24 @@ def features_now():
     }
 
 
+def timezone_now():
+    """The system's time zone as its name (Europe/Paris), from /etc/timezone
+    or the /etc/localtime link; "" where neither says."""
+    try:
+        with open("/etc/timezone", encoding="utf-8", errors="replace") as f:
+            tz = f.read().strip()
+            if re.fullmatch(r"[A-Za-z0-9_+./-]{1,64}", tz):
+                return tz
+    except OSError:
+        pass
+    try:
+        link = os.readlink("/etc/localtime")
+        tz = link.split("zoneinfo/", 1)[1] if "zoneinfo/" in link else ""
+        return tz if re.fullmatch(r"[A-Za-z0-9_+./-]{1,64}", tz) else ""
+    except OSError:
+        return ""
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -250,6 +268,9 @@ def census(state):
         # a selector should not have to parse the display string above.
         "system": platform.system().lower(), "arch": platform.machine(),
         "hostname": socket.gethostname(),
+        # The machine's time zone (R161 step 3, R56 step 8): what the
+        # system keeps, for This machine's Name and time.
+        "timezone": timezone_now(),
         "machine": machine_now(),
         "docker": _run(["docker", "version", "--format", "{{.Server.Version}}"])
         if shutil.which("docker") else "",

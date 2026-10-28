@@ -97,6 +97,8 @@ class ConfigPlaneMixin:
             return self._apply_feature(job, cfg)
         if what == "controller-update":
             return self._apply_controller_update(job, cfg)
+        if what == "machine":
+            return self._apply_machine(job, cfg)
         if what == "os-update":
             # BuilderBot OS: the next image into the other slot (osimage.py).
             return self._apply_os_update(job, cfg)
@@ -276,6 +278,45 @@ class ConfigPlaneMixin:
         rc = self._sh(job, [SANDBOX_BIN, "gpu"], timeout=1800)
         self.hello_again("the GPU was set up")
         return ("succeeded", 0) if rc == 0 else ("failed", rc)
+
+    def _apply_machine(self, job, cfg):
+        """The machine's name and time zone (R161 step 3, R56 step 8), set
+        through systemd's own tools, each checked to its shape first: a
+        hostname is a label of letters, digits and hyphens, a time zone a
+        name under /usr/share/zoneinfo. Root's, as every system job is."""
+        if os.geteuid() != 0:
+            job.say("refused: the machine's name and time zone are root's, and this agent does not run as root\n")
+            return "failed", 77
+        host = str(cfg.get("hostname") or "").strip()
+        tz = str(cfg.get("timezone") or "").strip()
+        if not host and not tz:
+            job.say("refused: nothing to set (a hostname, a time zone)\n")
+            return "failed", 64
+        if host and not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", host.lower()):
+            job.say(f"refused: {host!r} is not a hostname (letters, digits and hyphens, 63 at most)\n")
+            return "failed", 64
+        if tz and not (re.fullmatch(r"[A-Za-z0-9_+-]{1,32}(/[A-Za-z0-9_+-]{1,32}){0,2}", tz)
+                       and os.path.isfile(os.path.join("/usr/share/zoneinfo", tz))):
+            job.say(f"refused: {tz!r} is not a time zone this machine knows (/usr/share/zoneinfo)\n")
+            return "failed", 64
+        bad = 0
+        if host:
+            tool = shutil.which("hostnamectl")
+            if not tool:
+                job.say("refused: no hostnamectl here to set the name with\n")
+                return "failed", 78
+            bad += self._sh(job, [tool, "set-hostname", host.lower()], timeout=30) != 0
+        if tz and not bad:
+            tool = shutil.which("timedatectl")
+            if not tool:
+                job.say("refused: no timedatectl here to set the time zone with\n")
+                return "failed", 78
+            bad += self._sh(job, [tool, "set-timezone", tz], timeout=30) != 0
+        self.hello_again("the machine's name or time zone changed")
+        if bad:
+            return "failed", 1
+        job.say(f"set: {' '.join(x for x in (host and f'hostname {host.lower()}', tz and f'time zone {tz}') if x)}\n")
+        return "succeeded", 0
 
     def _apply_power(self, job, what):
         """Reboot the machine or power it off, a few seconds out, so this

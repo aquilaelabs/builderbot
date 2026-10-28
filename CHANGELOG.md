@@ -28,6 +28,7 @@
 - BuilderBot OS installs from an ISO: it boots the same root live with an installer on the console that asks for the disk (everything on it lost, said first) and the features to turn on at the first boot, lays the disk out with the very script that made the image, the data partition grown to the disk, and restarts into the machine as its own controller and node; the ISO's second entry boots the live system without installing (31d0cee)
 - BuilderBot OS on a stick runs from memory: with the switch set in GRUB's environment the slot is copied into memory at boot, exactly its bytes, and the system runs from the copy while the stick keeps the configuration apart from both slots; the slot tool reads and sets the switch (31d0cee)
 - A BuilderBot OS update boots on trial: the slot an update wrote boots as a trial, the health check marks it good once the dashboard answers and the agent runs, and a second boot without that word goes back to the slot before by itself, said on This machine; the boot menu names each slot's version and offers Safe mode, which brings up the dashboard and the shares and starts nothing else (the start is held); the controller's configuration is copied before an update, kept beside the old slot (bb086ed)
+- This machine sets the machine's name and time zone: a Name and time section on the controller's own machine, each set on the machine by its root agent, the zones offered as a list to type into; the first-run page's This machine card says the name, the address and the clock's zone, and where to change them (bb086ed)
 
 ### Changed
 

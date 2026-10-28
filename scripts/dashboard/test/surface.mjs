@@ -81,7 +81,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'openStorageTab', 'loadStorage', 'storageHeld', 'storageRow', 'andList', 'storageDisks', 'storageProjects', 'storageBody', 'storagePick', 'renderStorageInto', 'wireStorageTab',
   'maintAsk', 'openKeysTab', 'postKeys', 'loadKeys', 'keysNotices', 'keysInstallBody', 'keysKeptBody', 'renderKeysInto', 'keysGo', 'keysChange', 'wireKeys',
   'loadKeyMine', 'keyMineSection', 'keyStorePurge', 'wireKeyMine', 'keyStoreHeld', 'keyStoreSecret', 'keyStoreUnlock', 'keyStoreOwn', 'keyStoreNewKey',
-  'openAuditTab', 'loadAudit', 'openNetworkTab', 'networkReach', 'networkDialStatus', 'networkDial', 'renderNetworkInto', 'openMachineTab', 'ownMachine', 'machineHead', 'renderMachineInto', 'wireHeld', 'ndRowHtml', 'drawHeldBand', 'auditRows', 'renderAuditInto', 'wireAudit',
+  'openAuditTab', 'loadAudit', 'openNetworkTab', 'networkReach', 'networkDialStatus', 'networkDial', 'renderNetworkInto', 'openMachineTab', 'ownMachine', 'machineHead', 'renderMachineInto', 'wireHeld', 'ndRowHtml', 'nodeMachineSection', 'wireMachineSection', 'drawHeldBand', 'auditRows', 'renderAuditInto', 'wireAudit',
   'connectionIntro', 'connectionStatus', 'updatesSection', 'wireUpdates', 'loadMove', 'moveStatus', 'moveSection', 'wireMove', 'drawMovedBand', 'nginxAcmeLines',
   'loadRouter', 'routerAct', 'nodeRouterSection', 'wireRouterSection',
   'usbHolder', 'usbWords', 'nodeUsbSection', 'wireUsbSection',

@@ -658,6 +658,43 @@ function nodeUsbSection(n){
   const held = (hw.usb || []).filter(u => usbHolder(u, vmsHere)).length;
   return docSection("nodes", "usb", title, hw.usb?.length ? `${hw.usb.length} device${hw.usb.length === 1 ? "" : "s"}${held ? `, ${held} in a VM` : ""}` : "", body);
 }
+// The controller's own machine's name and time zone (R161 step 3, R56 step
+// 8): set through the node's root agent, a system job each; the zones the
+// browser knows, offered as a list to type into. Nowhere else: another
+// node's name is its own administrator's.
+function nodeMachineSection(n){
+  if (!n.config?.own) return "";
+  const r = n.reported || {};
+  const admin = !!state?.can?.admin && nodeMay(n) === "write";
+  const why = !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  let zones = [];
+  try{ zones = Intl.supportedValuesOf("timeZone"); }catch(e){ zones = []; }
+  const body = `<div class="field"><div class="sub">The name the machine goes by on the network and in its prompt, and the time zone its clock, logs and schedules read. Each is set on the machine itself by its root agent, and the dashboard's own stamps follow the time zone from the next start.</div></div>
+    ${why ? `<div class="sub dim">${esc(why)}</div>` : ""}
+    <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" data-k="machinename" value="${esc(r.hostname || n.name || "")}" maxlength="63" autocomplete="off" spellcheck="false"${admin && !why ? "" : " disabled"}></label></div>
+    <div class="field"><label class="pick"><span class="pickw">Time zone</span><input type="text" data-k="machinetz" list="ndZones" value="${esc(r.timezone || "")}" placeholder="Region/City" autocomplete="off" spellcheck="false"${admin && !why ? "" : " disabled"}></label>
+      <datalist id="ndZones">${zones.map(z => `<option value="${esc(z)}">`).join("")}</datalist></div>
+    ${admin && !why ? `<div class="actbar"><span class="sp"></span><button type="button" class="primary" data-nd="machine-apply" disabled>Apply</button></div>` : ""}`;
+  return docSection("nodes", "machine", ndTitle("machine"), [r.hostname || "", r.timezone || ""].filter(Boolean).join(" · "), body);
+}
+function wireMachineSection(root, n){
+  const sect = root.querySelector('details[data-sect="nodes:machine"]');
+  if (!sect) return;
+  const name = sect.querySelector('[data-k="machinename"]'), tz = sect.querySelector('[data-k="machinetz"]'), b = sect.querySelector('[data-nd="machine-apply"]');
+  if (!b) return;
+  const r = n.reported || {};
+  const wake = () => { b.disabled = (name.value.trim().toLowerCase() === (r.hostname || n.name || "").toLowerCase()) && tz.value.trim() === (r.timezone || ""); };
+  name.oninput = wake; tz.oninput = wake;
+  b.onclick = () => pressing(b, async () => {
+    const body = {action: "machine", id: n.id};
+    if (name.value.trim().toLowerCase() !== (r.hostname || n.name || "").toLowerCase()) body.hostname = name.value.trim();
+    if (tz.value.trim() !== (r.timezone || "")) body.timezone = tz.value.trim();
+    busy(b, "Applying");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "set on the machine: its next check-in says the new name and zone", !!j.error);
+    await refresh();
+  });
+}
 function wireUsbSection(root, n){
   const sect = root.querySelector('details[data-sect="nodes:usb"]');
   if (!sect) return;
@@ -1729,7 +1766,7 @@ function nodeCharts(n){
 // template written beside the page fell behind it), so a change to either
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
-const ND_SECTS = [["health", "Health"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"], ["usb", "USB"],
+const ND_SECTS = [["health", "Health"], ["machine", "Name and time"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"], ["usb", "USB"],
                   ["router", "Model router"], ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
@@ -1888,6 +1925,7 @@ function ndRowHtml(n){
         ${n.kind === "agent" && !pending ? nodeProjectsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeMachineSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeUsbSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeRouterSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeFeaturesSection(n) : ""}
@@ -2785,6 +2823,7 @@ function wireNodesTab(root){
     }
     wireRouterSection(box);
     wireUsbSection(box, nodesList.find(x => x.id === id) || {});
+    wireMachineSection(box, nodesList.find(x => x.id === id) || {});
     // The GPU section's two switches (R102): drafts until its Apply.
     const ge = box.querySelector('[data-k="gpuemu"]');
     if (ge) ge.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuEmu = ge.checked; };

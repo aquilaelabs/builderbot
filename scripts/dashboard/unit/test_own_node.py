@@ -100,6 +100,26 @@ class TheImageUpdate(unittest.TestCase):
         self.assertEqual(r.get("error"), "no such node")
 
 
+class TheNameAndTime(unittest.TestCase):
+    """node_machine (R161 step 3) is the own machine's: another node's name
+    is its own administrator's, and the shapes are held before any job."""
+    def setUp(self):
+        self.state = tempfile.mkdtemp()
+        sys.path.insert(0, DASH)
+        import nodes
+        self.nodes = nodes
+        nodes.configure(state=self.state)
+
+    def test_another_node_is_refused_and_the_own_machine_holds_the_shapes(self):
+        mint(self.state, "other", "")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "other")
+        self.assertIn("its own to set", self.nodes.node_machine("user:t", n["id"], "box")["error"])
+        mint(self.state, "nas", "--own")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "nas")
+        r = self.nodes.node_machine("user:t", n["id"], "box")
+        self.assertNotIn("its own to set", r.get("error", ""))
+
+
 class TheDoctorSaysTheWall(unittest.TestCase):
     """bb doctor (and so the Doctor card) on a controller whose own machine is
     a node: whether the wall holds there, from that node's bb-session check,
