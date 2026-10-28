@@ -1,0 +1,57 @@
+{
+ "about": "Node.js and npm, for a project built with npm and for anything that drives a browser with Playwright.",
+ "label": "Node.js",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/node"
+ },
+ "name": "node",
+ "platforms": [
+  "linux/amd64",
+  "linux/arm64",
+  "darwin/arm64",
+  "darwin/amd64"
+ ],
+ "shipped": {
+  "probe": "node",
+  "reports": "node",
+  "source": {
+   "checksum": {
+    "from": "file",
+    "signed": {
+     "keys": "node.asc",
+     "sig": "{base}/SHASUMS256.txt.sig"
+    },
+    "url": "{base}/SHASUMS256.txt"
+   },
+   "fresh_only": true,
+   "kind": "tarball",
+   "strip": 1,
+   "url": {
+    "darwin/amd64": "https://nodejs.org/dist/{version}/node-{version}-darwin-x64.tar.gz",
+    "darwin/arm64": "https://nodejs.org/dist/{version}/node-{version}-darwin-arm64.tar.gz",
+    "linux-musl/amd64": "https://unofficial-builds.nodejs.org/download/release/{version}/node-{version}-linux-x64-musl.tar.xz",
+    "linux/amd64": "https://nodejs.org/dist/{version}/node-{version}-linux-x64.tar.xz",
+    "linux/arm64": "https://nodejs.org/dist/{version}/node-{version}-linux-arm64.tar.xz"
+   },
+   "verify": [
+    "{dir}/bin/node",
+    "--version"
+   ],
+   "version": {
+    "resolver": "node-index",
+    "url": "https://nodejs.org/dist/index.json"
+   }
+  }
+ },
+ "terms": [
+  {
+   "label": "Node.js's license",
+   "url": "https://github.com/nodejs/node/blob/main/LICENSE"
+  }
+ ],
+ "tier": "official"
+}

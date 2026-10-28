@@ -166,6 +166,7 @@ scripts/
     statemigrations/             numbered migrations for the JSON stores (NNNN_name.py, run(ctx)), each run once as the state moves, never edited once shipped
     toolchains.py                everything behind the Toolchains page: catalog, sizes, the job worker
     toolpacks.py                 the tool packs a person adds (docs/tool-packs.md): a repository's bbtool.json, pinned to a commit, as catalog rows
+    catalogindex.py              the vetted catalog's index (R169 step 2): fetched from the catalog's address, its signature checked against config/catalog.pub before an entry is read, a withdrawn pack on the bell
     emulator.py                  everything behind the Emulator page: a node's Android system images
     enrollscript.py              Enroll node as one script: the answers, the token and a WireGuard tunnel inside the provisioner
     memory.py                    everything behind the memory book: what Claude remembers per project
@@ -329,6 +330,9 @@ scripts/
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only
   agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
+packs/                           the official packs (R169 step 1): every shipped toolchain and every coding agent as a pack in bbtool.json's format, tagged official and bundled for an install with no network, written by tools/packs-export.py from the tables and held to them by bb lint
+    official/                    one folder per shipped toolchain (a colon in its name a hyphen), its bbtool.json carrying the recipe config/toolchains.json has under shipped
+    agents/                      one folder per coding agent, its bbtool.json carrying the adapter agents.py's table has under agent
 apps/                            the companions a person installs (R98 step 1): the phone app, the editor extension and the
                                  Windows companion, each released by its own workflow and offered on the Apps page
   android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
@@ -361,6 +365,7 @@ nodes/cloud-init/                the seed a cloud image boots from: meta-data an
 config/skel/                     home directory skeleton
 config/icon.png                  the icon the Unraid template shows
 config/toolchains.json           the toolchains the Toolchains page offers, and how to install each
+config/catalog.pub               the catalog maintainers' Ed25519 public key (R169 step 2): what every install checks the catalog's index.sig against
 config/release-keys/README.md    where each publisher release key came from, and how one is refreshed (R137)
 config/release-keys/node.asc     the Node.js release team keys that sign each release SHASUMS256.txt
 config/release-keys/swift.asc    the Swift signing keys that sign each download
@@ -372,6 +377,7 @@ tools/readme-shots.mjs           the README's pictures (dashboard, notebook, nod
 tools/bb-ref.sh                  writes the bb block of docs/reference.md from bb help; bb lint holds the two equal
 tools/builderbot-stick.py        the USB stick maker (R161 step 5): a release's stick image onto a removable disk on Windows, a Mac or Linux, checked and read back, Python's own library alone
 tools/api-doc.py                 writes docs/api.md from server.py's route tables; bb lint holds the two equal
+tools/packs-export.py            writes the official packs under packs/ from config/toolchains.json and agents.py's table; bb lint's --check holds them to it (R169 step 1)
 tools/check-sysdeps.py           checks every recipe's system packages, and with --controller the controller's own list, against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds

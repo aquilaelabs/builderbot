@@ -1,0 +1,25 @@
+{
+ "about": "Claude Code, run by sessions as claude",
+ "agent": {
+  "briefing": "system-prompt-file",
+  "command": "claude",
+  "guards": "hooks",
+  "latest_url": "",
+  "login_job": "claude-login",
+  "logout_job": "claude-logout",
+  "product": "Claude Code",
+  "provider": "Anthropic",
+  "reported": "claude",
+  "state": "hooks",
+  "tool": "claude-code",
+  "transcripts": ".claude/projects",
+  "update_job": "claude-update"
+ },
+ "label": "Claude",
+ "name": "claude",
+ "platforms": [
+  "linux/*"
+ ],
+ "terms": [],
+ "tier": "official"
+}

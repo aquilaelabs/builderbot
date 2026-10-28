@@ -1,0 +1,38 @@
+{
+ "about": "The android.jar a build compiles against (compileSdk), at the newest level Google publishes. Update adds the next level beside it, so older projects keep building. Removing this removes every level.",
+ "label": "Android SDK Platform (newest level)",
+ "layout": {
+  "bin": [],
+  "env": {}
+ },
+ "name": "android:platforms",
+ "platforms": [
+  "linux/*"
+ ],
+ "shipped": {
+  "probe": "android:platforms",
+  "requires": [
+   "android-tools"
+  ],
+  "source": {
+   "download": {
+    "resolver": "android-repo",
+    "xml": [
+     "https://dl.google.com/android/repository/repository2-3.xml"
+    ]
+   },
+   "kind": "sdkmanager",
+   "package": "platforms;android",
+   "versioned": true
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "accept": true,
+   "label": "Google's Android SDK terms",
+   "url": "https://developer.android.com/studio/terms"
+  }
+ ],
+ "tier": "official"
+}

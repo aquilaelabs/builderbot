@@ -312,5 +312,13 @@ def shipped():
     sys.exit(1 if bad else 0)
 
 
+def packs():
+    """The official packs under packs/ are the shipped tables in bbtool.json's
+    format (R169 step 1): tools/packs-export.py --check holds them to it."""
+    import subprocess
+    r = subprocess.run([sys.executable, "tools/packs-export.py", "--check"], check=False)
+    sys.exit(r.returncode)
+
+
 {"runner": runner, "xml": xml_, "settings": settings, "layout": layout, "hosted": hosted,
- "channels": channels, "shipped": shipped}[verb]()
+ "channels": channels, "shipped": shipped, "packs": packs}[verb]()

@@ -1,0 +1,52 @@
+{
+ "about": "Go, which cross-compiles to Windows, macOS, Linux and ARM with nothing else to install.",
+ "label": "Go",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/go"
+ },
+ "name": "go",
+ "platforms": [
+  "linux/amd64",
+  "linux/arm64",
+  "darwin/arm64",
+  "darwin/amd64"
+ ],
+ "shipped": {
+  "probe": "go",
+  "reports": "go",
+  "source": {
+   "checksum": {
+    "from": "go-json"
+   },
+   "fresh_only": true,
+   "kind": "tarball",
+   "strip": 1,
+   "url": {
+    "darwin/amd64": "https://go.dev/dl/{version}.darwin-amd64.tar.gz",
+    "darwin/arm64": "https://go.dev/dl/{version}.darwin-arm64.tar.gz",
+    "linux/amd64": "https://go.dev/dl/{version}.linux-amd64.tar.gz",
+    "linux/arm64": "https://go.dev/dl/{version}.linux-arm64.tar.gz"
+   },
+   "verify": [
+    "{dir}/bin/go",
+    "version"
+   ],
+   "version": {
+    "expect_prefix": "go",
+    "resolver": "text",
+    "url": "https://go.dev/VERSION?m=text"
+   }
+  }
+ },
+ "terms": [
+  {
+   "label": "Go's BSD license",
+   "url": "https://go.dev/LICENSE"
+  }
+ ],
+ "tier": "official"
+}

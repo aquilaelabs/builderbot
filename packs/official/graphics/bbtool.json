@@ -1,0 +1,91 @@
+{
+ "about": "What bb tool graphics runs: ImageMagick for resizing, cropping and comparing images, resvg for SVG to PNG, and oxipng, pngquant and cwebp for shrinking what an app ships.",
+ "label": "Graphics tools (ImageMagick, resvg, oxipng, pngquant, cwebp)",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/magick"
+ },
+ "name": "graphics",
+ "platforms": [
+  "linux/amd64"
+ ],
+ "shipped": {
+  "probe": "graphics",
+  "reports": "magick",
+  "source": {
+   "checksum": {
+    "from": "github-asset"
+   },
+   "download": {
+    "bytes": 120000000,
+    "resolver": "approximate"
+   },
+   "fresh_only": true,
+   "kind": "script",
+   "run": [
+    "sh",
+    "-ec",
+    "g=\"$(ldd --version 2>/dev/null | head -1 | sed 's/.* //')\"; case \"$g\" in [0-9]*.[0-9]*) ;; *) g=\"\";; esac; if [ -n \"$g\" ] && [ \"$(printf '%s\\n' 2.35 \"$g\" | sort -V | head -1)\" != \"2.35\" ]; then echo \"ImageMagick's AppImage needs glibc 2.35 and this node has $g (Rocky 9 and the other 2.34 systems): the graphics tools cannot run here\" >&2; exit 1; fi; dst=\"$2\"; bin=\"$dst/bin\"; t=\"$(mktemp -d)\"; mkdir -p \"$bin\"; get() { curl -fsSL --retry 3 -o \"$2\" \"$1\"; }; tag() { curl -fsSIL -o /dev/null -w '%{url_effective}' \"https://github.com/$1/releases/latest\" | sed 's#.*/tag/##'; }; v=\"$(tag ImageMagick/ImageMagick)\"; im=\"$t/magick.AppImage\"; get \"https://github.com/ImageMagick/ImageMagick/releases/download/$v/ImageMagick-$v-gcc-x86_64.AppImage\" \"$im\"; chmod +x \"$im\"; (cd \"$t\" && \"$im\" --appimage-extract >/dev/null); rm -rf \"$dst/magick\"; mv \"$t/squashfs-root\" \"$dst/magick\"; ln -sf ../magick/AppRun \"$bin/magick\"; rs=\"$1\"; if ! tar -tzf \"$rs\" >/dev/null 2>&1; then rs=\"$t/resvg.tgz\"; get https://github.com/linebender/resvg/releases/latest/download/resvg-linux-x86_64.tar.gz \"$rs\"; fi; tar -xzf \"$rs\" -C \"$t\"; cp \"$(find \"$t\" -name resvg -type f | head -1)\" \"$bin/\"; v=\"$(tag oxipng/oxipng)\"; get \"https://github.com/oxipng/oxipng/releases/download/$v/oxipng-${v#v}-x86_64-unknown-linux-musl.tar.gz\" \"$t/ox.tgz\"; tar -xzf \"$t/ox.tgz\" -C \"$t\"; cp \"$(find \"$t\" -name oxipng -type f | head -1)\" \"$bin/\"; get https://pngquant.org/pngquant-linux.tar.bz2 \"$t/pq.tbz\"; python3 -c 'import sys, tarfile; tarfile.open(sys.argv[1]).extractall(sys.argv[2])' \"$t/pq.tbz\" \"$t\"; cp \"$(find \"$t\" -name pngquant -type f | head -1)\" \"$bin/\"; wv=\"$(curl -fsS 'https://api.github.com/repos/webmproject/libwebp/tags?per_page=20' | grep -o '\"name\": *\"v[0-9.]*\"' | sed 's/.*\"v//; s/\"//' | sort -V | tail -1)\"; get \"https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$wv-linux-x86-64.tar.gz\" \"$t/webp.tgz\"; tar -xzf \"$t/webp.tgz\" -C \"$t\"; cp \"$(find \"$t\" -path '*/bin/cwebp' -type f | head -1)\" \"$(find \"$t\" -path '*/bin/dwebp' -type f | head -1)\" \"$bin/\"; chmod +x \"$bin\"/*; rm -rf \"$t\"",
+    "--",
+    "{script}",
+    "{dir}"
+   ],
+   "url": "https://github.com/linebender/resvg/releases/latest/download/resvg-linux-x86_64.tar.gz",
+   "verify": [
+    "{dir}/bin/magick",
+    "-version"
+   ]
+  },
+  "system": {
+   "apk": [
+    "font-dejavu"
+   ],
+   "apt": [
+    "fonts-dejavu-core"
+   ],
+   "dnf": [
+    "dejavu-sans-fonts"
+   ],
+   "emerge": [
+    "media-fonts/dejavu"
+   ],
+   "pacman": [
+    "ttf-dejavu"
+   ],
+   "xbps": [
+    "dejavu-fonts-ttf"
+   ],
+   "zypper": [
+    "dejavu-fonts"
+   ]
+  },
+  "tool": "graphics",
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "ImageMagick's license",
+   "url": "https://imagemagick.org/script/license.php"
+  },
+  {
+   "label": "resvg (MIT)",
+   "url": "https://github.com/linebender/resvg/blob/main/LICENSE-MIT"
+  },
+  {
+   "label": "oxipng (MIT)",
+   "url": "https://github.com/oxipng/oxipng/blob/master/LICENSE"
+  },
+  {
+   "label": "pngquant (GPLv3)",
+   "url": "https://github.com/kornelski/pngquant/blob/main/COPYRIGHT"
+  },
+  {
+   "label": "libwebp (BSD)",
+   "url": "https://github.com/webmproject/libwebp/blob/main/COPYING"
+  }
+ ],
+ "tier": "official"
+}

@@ -1,0 +1,38 @@
+{
+ "about": "aapt2, d8, zipalign and apksigner at the newest stable version. Update adds the next beside it.",
+ "label": "Android SDK Build-Tools (newest)",
+ "layout": {
+  "bin": [],
+  "env": {}
+ },
+ "name": "android:build-tools",
+ "platforms": [
+  "linux/*"
+ ],
+ "shipped": {
+  "probe": "android:build-tools",
+  "requires": [
+   "android-tools"
+  ],
+  "source": {
+   "download": {
+    "resolver": "android-repo",
+    "xml": [
+     "https://dl.google.com/android/repository/repository2-3.xml"
+    ]
+   },
+   "kind": "sdkmanager",
+   "package": "build-tools",
+   "versioned": true
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "accept": true,
+   "label": "Google's Android SDK terms",
+   "url": "https://developer.android.com/studio/terms"
+  }
+ ],
+ "tier": "official"
+}

@@ -1,0 +1,25 @@
+{
+ "about": "OpenCode, run by sessions as opencode",
+ "agent": {
+  "briefing": "instructions-file",
+  "command": "opencode",
+  "guards": "plugin",
+  "latest_url": "https://registry.npmjs.org/opencode-ai/latest",
+  "login_job": "",
+  "logout_job": "",
+  "product": "OpenCode",
+  "provider": "",
+  "reported": "opencode",
+  "state": "plugin",
+  "tool": "opencode",
+  "transcripts": ".local/share/opencode",
+  "update_job": "opencode-update"
+ },
+ "label": "Any model",
+ "name": "open",
+ "platforms": [
+  "linux/*"
+ ],
+ "terms": [],
+ "tier": "official"
+}

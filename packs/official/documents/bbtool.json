@@ -1,0 +1,60 @@
+{
+ "about": "What bb tool docs runs: reads a PDF, Word document, slide deck or spreadsheet as Markdown, draws a PDF's pages as pictures, and converts with pandoc. Also lets Claude Code read PDFs. About 650 MB.",
+ "label": "Document readers (markitdown, PyMuPDF, pandoc)",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/markitdown"
+ },
+ "name": "documents",
+ "platforms": [
+  "linux/amd64"
+ ],
+ "shipped": {
+  "probe": "documents",
+  "reports": "markitdown",
+  "source": {
+   "checksum": {
+    "from": "github-asset"
+   },
+   "download": {
+    "bytes": 230000000,
+    "resolver": "approximate"
+   },
+   "fresh_only": true,
+   "kind": "script",
+   "run": [
+    "sh",
+    "-ec",
+    "dst=\"$2\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst/bin\" \"$dst/libexec\"; get() { curl -fsSL --retry 3 -o \"$2\" \"$1\"; }; tag() { curl -fsSIL -o /dev/null -w '%{url_effective}' \"https://github.com/$1/releases/latest\" | sed 's#.*/tag/##'; }; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\" \"$dst/venv\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1; \"$dst/libexec/uv\" venv -q --python 3.12 \"$dst/venv\"; \"$dst/libexec/uv\" pip install -q --python \"$dst/venv/bin/python\" 'markitdown[pdf,docx,pptx,xlsx,xls]' pymupdf; ln -sf ../venv/bin/markitdown \"$dst/bin/markitdown\"; v=\"$(tag jgm/pandoc)\"; get \"https://github.com/jgm/pandoc/releases/download/$v/pandoc-$v-linux-amd64.tar.gz\" \"$t/pandoc.tgz\"; tar -xzf \"$t/pandoc.tgz\" -C \"$t\"; cp \"$(find \"$t\" -path '*/bin/pandoc' -type f | head -1)\" \"$dst/bin/pandoc\"; chmod +x \"$dst/bin/pandoc\"; test -f \"${BB_LIB:-}/poppler.py\" || { echo \"poppler.py is not beside bb: install this from bb toolchains\" >&2; exit 1; }; cp \"$BB_LIB/poppler.py\" \"$dst/libexec/poppler.py\"; for n in pdftoppm pdfinfo; do printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"$here/../venv/bin/python\" \"$here/../libexec/poppler.py\" %s \"$@\"\\n' \"$n\" > \"$dst/bin/$n\"; chmod +x \"$dst/bin/$n\"; done; rm -rf \"$t\"",
+    "--",
+    "{script}",
+    "{dir}"
+   ],
+   "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+   "verify": [
+    "{dir}/bin/markitdown",
+    "--version"
+   ]
+  },
+  "tool": "docs",
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "markitdown (MIT)",
+   "url": "https://github.com/microsoft/markitdown/blob/main/LICENSE"
+  },
+  {
+   "label": "PyMuPDF (AGPL)",
+   "url": "https://pymupdf.readthedocs.io/en/latest/about.html"
+  },
+  {
+   "label": "pandoc (GPL)",
+   "url": "https://github.com/jgm/pandoc/blob/main/COPYRIGHT"
+  }
+ ],
+ "tier": "official"
+}

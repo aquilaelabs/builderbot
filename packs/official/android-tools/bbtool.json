@@ -1,0 +1,61 @@
+{
+ "about": "sdkmanager and avdmanager, through which every other Android toolchain installs. Sets this node's ANDROID_HOME.",
+ "label": "Android command-line tools",
+ "layout": {
+  "bin": [
+   "root:android/cmdline-tools/latest/bin",
+   "root:android/platform-tools"
+  ],
+  "env": {},
+  "tool": "cmdline-tools/bin/sdkmanager"
+ },
+ "name": "android-tools",
+ "platforms": [
+  "linux/*"
+ ],
+ "shipped": {
+  "probe": "android-tools",
+  "requires": [
+   "jdk"
+  ],
+  "source": {
+   "after": [
+    "system images and the emulator install through it: bb toolchains install android:emulator, bb emu image add ID"
+   ],
+   "checksum": {
+    "from": "android-repo"
+   },
+   "download": {
+    "bytes": 150000000,
+    "resolver": "approximate"
+   },
+   "env": {
+    "JAVA_HOME": "{dir}/../jdk"
+   },
+   "fresh_only": true,
+   "kind": "script",
+   "run": [
+    "sh",
+    "-c",
+    "{ command -v unzip >/dev/null 2>&1 && unzip -q \"$1\" -d \"$2\"; } || python3 -c \"import os,sys,zipfile;z=zipfile.ZipFile(sys.argv[1]);[(z.extract(i,sys.argv[2]), (i.external_attr>>16) and os.chmod(os.path.join(sys.argv[2],i.filename), i.external_attr>>16)) for i in z.infolist()]\" \"$1\" \"$2\" && root=\"$(dirname \"$2\")/android\" && mkdir -p \"$root/cmdline-tools\" && rm -rf \"$root/cmdline-tools/latest\" && ln -sfn \"$2/cmdline-tools\" \"$root/cmdline-tools/latest\"",
+    "_",
+    "{script}",
+    "{dir}"
+   ],
+   "url": "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip",
+   "verify": [
+    "{dir}/cmdline-tools/bin/sdkmanager",
+    "--sdk_root={dir}/../android",
+    "--version"
+   ]
+  }
+ },
+ "terms": [
+  {
+   "accept": true,
+   "label": "Google's Android SDK terms",
+   "url": "https://developer.android.com/studio/terms"
+  }
+ ],
+ "tier": "official"
+}

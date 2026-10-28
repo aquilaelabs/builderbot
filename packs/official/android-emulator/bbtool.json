@@ -1,0 +1,83 @@
+{
+ "about": "The Android emulator. Its system images, one per API level, are added on the Emulator tab. Google ships it for x86_64 Linux only.",
+ "label": "Android emulator",
+ "layout": {
+  "bin": [
+   "root:android/emulator"
+  ],
+  "env": {},
+  "tool": "root:android/emulator/emulator"
+ },
+ "name": "android:emulator",
+ "platforms": [
+  "linux/amd64"
+ ],
+ "shipped": {
+  "probe": "android:emulator",
+  "reports": "emulator",
+  "requires": [
+   "android-tools",
+   "android:platform-tools"
+  ],
+  "source": {
+   "download": {
+    "resolver": "android-repo",
+    "xml": [
+     "https://dl.google.com/android/repository/repository2-3.xml"
+    ]
+   },
+   "kind": "sdkmanager",
+   "package": "emulator"
+  },
+  "system": {
+   "apk": [
+    "libpulse",
+    "mesa-gl",
+    "glu",
+    "alsa-lib",
+    "mesa-egl",
+    "vulkan-loader"
+   ],
+   "apt": [
+    "libpulse0",
+    "libgl1",
+    "libglu1-mesa",
+    "libasound2t64|libasound2",
+    "libegl1",
+    "libvulkan1"
+   ],
+   "dnf": [
+    "pulseaudio-libs",
+    "mesa-libGL",
+    "mesa-libGLU",
+    "alsa-lib",
+    "mesa-libEGL",
+    "vulkan-loader"
+   ],
+   "pacman": [
+    "libpulse",
+    "mesa",
+    "glu",
+    "alsa-lib",
+    "vulkan-icd-loader"
+   ],
+   "zypper": [
+    "libpulse0",
+    "Mesa-libGL1",
+    "libGLU1",
+    "libasound2",
+    "Mesa-libEGL1",
+    "libvulkan1"
+   ]
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "accept": true,
+   "label": "Google's Android SDK terms",
+   "url": "https://developer.android.com/studio/terms"
+  }
+ ],
+ "tier": "official"
+}

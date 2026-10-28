@@ -2070,6 +2070,8 @@ def _attention(who):
                 label=lambda r: {"root": "its root filesystem", "docker": "Docker's images and build cache"}.get(r, f"its {r} store")))
             + [a for a in toolchains.attention(where) + toolchains.agent_attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
+            # ...and a pack the vetted catalog withdrew that this install holds (R169 step 2).
+            + ([] if users.may(who, "toolchains-write") else catalogindex.attention(list(toolpacks.packs())))
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
             # R192), for whoever may act on the Docker tab, which Update is.
             + ([] if users.may(who, "docker-write")
@@ -3788,7 +3790,9 @@ toolchains.configure(run=run, write_json=write_json, state=STATE,
 # The tool packs a person added (R77): rows of the same catalog, kept under
 # /config, and carried to the nodes in the bundle beside the shipped one.
 import toolpacks                                                   # noqa: E402
+import catalogindex                                              # noqa: E402
 
+catalogindex.configure(state=STATE, write_json=write_json)
 toolpacks.configure(state=STATE, write_json=write_json,
                     unpack=lambda aid, dest: projects.unpack_archive(aid, dest))
 toolchains.packs_rows = toolpacks.recipes
@@ -5725,6 +5729,7 @@ GET_ROUTES = (
     ("exact", "/api/schedules", "_get_schedules"),
     ("exact", "/api/extmounts", "_get_extmounts"),
     ("exact", "/api/nasapps", "_get_nasapps"),
+    ("prefix", "/api/catalog", "_get_catalog"),
     ("exact", "/api/storebackups", "_get_storebackups"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
@@ -11251,6 +11256,22 @@ class Handler(BaseHTTPRequestHandler):
         if not r.get("error"):
             db.audit(by, "storebackup-" + act, field(req, "id") or (r.get("backup") or {}).get("id", ""), {"name": (r.get("backup") or {}).get("name", "")})
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _get_catalog(self):
+        """GET /api/catalog[?fresh=1] (R169 step 2): the vetted catalog's
+        index as kept (fetched again when older than an hour, or on fresh),
+        verified against the key this install ships; with the reason when
+        the newest could not be taken. For whoever may install toolchains;
+        never a session's."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "the catalog is a person's to read here; bb tool search is a session's way"}, 403)
+        why = users.may(who, "toolchains-write")
+        if why:
+            return self._json({"error": why}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        r = catalogindex.index(settings.get("catalog_url") or None, fresh=(q.get("fresh") or [""])[0] == "1")
+        return self._json({"index": r.get("index"), "error": r.get("error", ""), "url": settings.get("catalog_url")})
 
     def _get_nasapps(self):
         """GET /api/nasapps (R164 step 2): the catalog of ready apps the New

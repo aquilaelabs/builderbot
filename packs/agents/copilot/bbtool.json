@@ -1,0 +1,25 @@
+{
+ "about": "Copilot CLI, run by sessions as copilot",
+ "agent": {
+  "briefing": "instructions-file",
+  "command": "copilot",
+  "guards": "hooks",
+  "latest_url": "https://registry.npmjs.org/@github/copilot/latest",
+  "login_job": "copilot-login",
+  "logout_job": "copilot-logout",
+  "product": "Copilot CLI",
+  "provider": "GitHub",
+  "reported": "copilot",
+  "state": "hooks",
+  "tool": "copilot-cli",
+  "transcripts": ".copilot/session-state",
+  "update_job": "copilot-update"
+ },
+ "label": "Copilot",
+ "name": "copilot",
+ "platforms": [
+  "linux/*"
+ ],
+ "terms": [],
+ "tier": "official"
+}

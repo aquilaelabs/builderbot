@@ -50,6 +50,40 @@ take the new version.
 holds the pack, naming the node: uninstall it there first, since a pack gone
 from the catalog leaves no row to uninstall its files from.
 
+## Official packs and agent packs
+
+Everything BuilderBot ships is a pack in this same format too (R169): under
+`packs/official/` one `bbtool.json` per shipped toolchain, carrying the
+recipe `config/toolchains.json` has for it under `shipped` (where it is
+fetched from, how it is verified, the system packages it needs), and under
+`packs/agents/` one per coding agent, carrying the adapter under `agent`
+(the program sessions run, how it installs and updates, how a person signs
+in, how it takes the briefing and BuilderBot's guards, where its
+conversations are). Both carry `"tier": "official"`, which is what lets
+them stand in for install steps and verbs and take a shipped name; a pack
+you add is `url`, and a pack from the vetted catalog, when it comes, is
+`vetted`. An agent whose manifest cannot name how it takes the guards is
+not a pack and is not listed. The files are written from the tables by
+`tools/packs-export.py --write` and `bb lint` fails when they drift, so
+the format is one; the installer and the agents' adapters still read
+their own tables.
+
+## The vetted catalog
+
+The public catalog (the `builderbot-catalog` repository, R169) is an index
+of packs reviewed by BuilderBot's maintainers, each entry pinning a pack's
+repository to an exact commit and the sha256 of its archive at that
+commit, never a branch or latest. The index is signed with the
+maintainers' Ed25519 key; the public half ships with BuilderBot
+(`config/catalog.pub`), and an install reads an entry only after the
+signature checks: an index changed on the way, or signed by another key,
+is refused and the one read before stands, with the reason said. Where it
+is read from is **Catalog address** under Controller settings. A pack the
+catalog withdraws (`withdrawn: true` in the next signed index) is a line on
+the bell for every install that holds it, saying to remove it. Search and
+Install from the catalog on the Toolchains and Agents pages are the next
+step; the index is what they read.
+
 ## What a project's sessions can use
 
 Each project's **Settings → Toolchains** lists every toolchain installed on

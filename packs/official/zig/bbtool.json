@@ -1,0 +1,42 @@
+{
+ "about": "Zig, and a C and C++ cross-compiler (zig cc) for Windows, macOS and Linux; it also links Rust for those.",
+ "label": "Zig",
+ "layout": {
+  "bin": [
+   ""
+  ],
+  "env": {},
+  "tool": "zig"
+ },
+ "name": "zig",
+ "platforms": [
+  "linux/amd64"
+ ],
+ "shipped": {
+  "probe": "zig",
+  "source": {
+   "checksum": {
+    "from": "zig-index"
+   },
+   "fresh_only": true,
+   "kind": "tarball",
+   "strip": 1,
+   "verify": [
+    "{dir}/zig",
+    "version"
+   ],
+   "version": {
+    "asset": "x86_64-linux",
+    "resolver": "zig-index",
+    "url": "https://ziglang.org/download/index.json"
+   }
+  }
+ },
+ "terms": [
+  {
+   "label": "Zig (MIT)",
+   "url": "https://github.com/ziglang/zig/blob/master/LICENSE"
+  }
+ ],
+ "tier": "official"
+}
