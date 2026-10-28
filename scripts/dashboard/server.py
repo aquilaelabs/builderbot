@@ -8868,6 +8868,10 @@ class Handler(BaseHTTPRequestHandler):
         # thread, so the card stops saying a daemon nobody can reach (B710).
         if req.get("action") in ("retire", "discard", "uninstall") and isinstance(got[0], dict) and got[0].get("ok"):
             threading.Thread(target=doctor.refresh, name="doctor-after-node", daemon=True).start()
+            # ...and its scanners' record and the reports it sent up go with
+            # it, or the Analysis findings kept reading a node nobody has.
+            if req.get("id"):
+                scanners.forget_node(req["id"])
         return self._json(*got)
 
     def _jobs(self, req):
