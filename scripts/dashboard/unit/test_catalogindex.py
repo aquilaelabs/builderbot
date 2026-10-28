@@ -99,5 +99,16 @@ class Folders(unittest.TestCase):
         self.assertEqual([(p["name"], p["path"]) for p in idx["packs"]], [("jdk", "packs/official/jdk"), ("plain", "")])
 
 
+class Kinds(unittest.TestCase):
+    def test_an_entrys_kind_and_folder_are_kept(self):
+        # R170 steps 6 and 7, R172: a pack, a Docker app or a service, in a folder of its repository.
+        rows = [{**ENTRY, "name": "jdk", "path": "packs/official/jdk"}, {**ENTRY, "name": "whoami", "kind": "app", "path": "packs/apps/whoami"},
+                {**ENTRY, "name": "model-router", "kind": "service"}, {**ENTRY, "name": "evil", "path": "../etc"}, {**ENTRY, "name": "odd", "kind": "thing"}]
+        idx, why = catalogindex.parse(json.dumps({"version": 1, "generated": "x", "packs": rows}).encode())
+        self.assertEqual(why, "")
+        self.assertEqual([(p["name"], p["kind"], p["path"]) for p in idx["packs"]],
+                         [("jdk", "pack", "packs/official/jdk"), ("whoami", "app", "packs/apps/whoami"), ("model-router", "service", ""), ("odd", "pack", "")])
+
+
 if __name__ == "__main__":
     unittest.main()

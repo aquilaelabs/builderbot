@@ -65,6 +65,27 @@ PROVIDERS = {
     "xai": {"env": "XAI_API_KEY", "route": "xai/*", "label": "xAI"},
 }
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,23}$")
+
+
+def pack():
+    """The router as an official pack (R172): a service a node deploys from
+    its Library card, its configuration the fields the Node settings
+    section asked before, written to packs/services/model-router by
+    tools/packs-export.py and held to this by bb lint."""
+    return {"name": "model-router", "label": "Model router", "tier": "official", "platforms": ["linux/amd64", "linux/arm64"], "terms": [],
+            "about": "LiteLLM on this node holding your provider keys, Ollama beside it where you turn it on, offered to the projects you allow: "
+                     "each is handed its address and a key of its own at a session's start, so its spend is its own. What Start's Any model runs through.",
+            "service": {"kind": "router"},
+            "config": [{"name": pid, "label": p["label"], "kind": "secret", "help": f"{p['label']}'s API key, written into the router's compose file on this node and never into a session's view"}
+                       for pid, p in PROVIDERS.items()]
+                      + [{"name": "custom", "label": "Other OpenAI-compatible endpoints", "kind": "list",
+                          "help": "each a provider under its own name (NAME/model in the picker)",
+                          "fields": [{"name": "name", "label": "Name", "kind": "text"}, {"name": "base", "label": "Address", "kind": "text", "help": "https://host/v1"},
+                                     {"name": "key", "label": "API key", "kind": "secret"}]},
+                         {"name": "ollama", "label": "Run Ollama beside it", "kind": "switch",
+                          "help": "on this node's card where it has one, else its CPU and memory; its models one more provider (ollama/NAME)"},
+                         {"name": "projects", "label": "Projects that may use it", "kind": "projects",
+                          "help": "each handed the address and its own key at a session's start; a session of any other project cannot reach it"}]}
 MODEL_RE = re.compile(r"^[A-Za-z0-9._:/-]{1,120}$")
 
 

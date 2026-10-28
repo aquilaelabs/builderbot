@@ -114,6 +114,14 @@ def _words(v, what, errors, placeholders=PLACEHOLDERS):
 # coding agent's adapter as agents.py's table has it. Either stands in for
 # install steps and verbs, since what they install is the tool itself.
 TIERS = ("official", "vetted", "url")
+# What a pack asks for per node (R172): each field's kind, drawn by the
+# Library as Configure on the card, the answers kept sealed on the
+# controller and handed to the node. A `list` field is rows of `fields`.
+CONFIG_KINDS = ("secret", "text", "choice", "list", "switch", "projects")
+CONFIG_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
+ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]{0,40}$")
+# A deployed thing an official pack stands for (R172): the model router.
+SERVICES = ("router",)
 AGENT_FIELDS = ("product", "command", "provider", "reported", "update_job", "login_job", "logout_job",
                 "briefing", "guards", "state", "transcripts", "latest_url", "tool")
 AGENT_BRIEFING = ("system-prompt-file", "instructions-file")
@@ -152,6 +160,49 @@ def _agent(a, errors):
     return out
 
 
+def _config(c, errors, depth=0):
+    """The config block checked: a list of fields, each {name, label, kind,
+    help, required, env, choices (choice), fields (list)}; [] with the
+    errors said."""
+    if not isinstance(c, list) or len(c) > 24:
+        errors.append("config is a list of up to 24 fields, each {name, label, kind, help, required}")
+        return []
+    out, seen = [], set()
+    for f in c:
+        if not isinstance(f, dict):
+            errors.append("a config field is an object")
+            continue
+        name, kind = str(f.get("name") or ""), str(f.get("kind") or "text")
+        if not CONFIG_NAME.fullmatch(name) or name in seen:
+            errors.append(f"config field {name or '(unnamed)'}: name is 1 to 40 of a-z, 0-9, - and _, starting with a letter, and once")
+            continue
+        seen.add(name)
+        if kind not in CONFIG_KINDS or (kind in ("list", "projects") and depth):
+            errors.append(f"config field {name}: kind is one of {', '.join(CONFIG_KINDS)}" + (" (not inside a list)" if depth else ""))
+            continue
+        field = {"name": name, "kind": kind, "label": str(f.get("label") or name)[:60], "help": str(f.get("help") or "")[:200],
+                 "required": f.get("required") is True}
+        env = str(f.get("env") or "")
+        if env and not ENV_NAME.fullmatch(env):
+            errors.append(f"config field {name}: env is a NAME a verb reads it as")
+        elif env:
+            field["env"] = env
+        if kind == "choice":
+            ch = f.get("choices")
+            if not isinstance(ch, list) or not ch or not all(isinstance(x, dict) and str(x.get("value") or "") for x in ch):
+                errors.append(f"config field {name}: choices lists {{value, label}}")
+                continue
+            field["choices"] = [{"value": str(x["value"])[:60], "label": str(x.get("label") or x["value"])[:60]} for x in ch[:24]]
+        if kind == "list":
+            sub_errors = []
+            field["fields"] = _config(f.get("fields"), sub_errors, depth + 1)
+            if sub_errors or not field["fields"]:
+                errors.append(f"config field {name}: a list names the fields of each row: " + "; ".join(sub_errors or ["none"]))
+                continue
+        out.append(field)
+    return out
+
+
 def validate(m, shipped=()):
     """A manifest checked and cut down to what BuilderBot reads: (clean,
     errors). Nothing in it is run here; the errors say what to fix. An
@@ -186,7 +237,19 @@ def validate(m, shipped=()):
             a = _agent(m["agent"], errors)
             if a:
                 out["agent"] = a
-    stands_in = "shipped" in out or "agent" in out
+    # A deployed thing (R172): the model router, deployed and configured
+    # from its card; an official pack's alone, like an agent's adapter.
+    if m.get("service") is not None:
+        sv = m["service"] if isinstance(m["service"], dict) else {}
+        if not official:
+            errors.append("service (a deployed thing of BuilderBot's) is an official pack's alone")
+        elif str(sv.get("kind") or "") not in SERVICES:
+            errors.append(f"service.kind is one of {', '.join(SERVICES)}")
+        else:
+            out["service"] = {"kind": str(sv["kind"])}
+    if m.get("config") is not None:
+        out["config"] = _config(m["config"], errors)
+    stands_in = "shipped" in out or "agent" in out or "service" in out
     plats = m.get("platforms") or []
     if not isinstance(plats, list) or not plats or not all(isinstance(p, str) and PLATFORM.fullmatch(p) for p in plats):
         # The wildcard named too, in the form the rule takes (B111): a bare
@@ -653,6 +716,8 @@ def recipe(rec):
                     "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted"))}}
     if m.get("system"):
         row["system"] = m["system"]
+    if m.get("config"):
+        row["config"] = m["config"]
     return row
 
 
