@@ -1426,7 +1426,8 @@ def _census(c):
                        # and the firmware decide.
                        "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True},
                        "storage": {k: sto.get(k) is True for k in ("installed", "zfs", "mergerfs", "snapraid", "smart")},
-                       "shares": {k: sh.get(k) is True for k in ("installed", "smb", "nfs")}}
+                       "shares": {k: sh.get(k) is True for k in ("installed", "smb", "nfs")},
+                       "ups": {k: (fe.get("ups") or {}).get(k) is True for k in ("installed", "nut")} if isinstance(fe.get("ups"), dict) else {}}
     # The machine's disks (R162 step 1), each to its shape: a name, a model,
     # a serial, a size, what each partition holds, SMART's three facts.
     if isinstance(c.get("disks"), list):
@@ -1508,6 +1509,17 @@ def _census(c):
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
+    # ...and its UPS (R164 step 3) and its own packages' updates, each to its shape.
+    if isinstance(c.get("ups"), dict) and c["ups"]:
+        up = c["ups"]
+        num = lambda k: int(up[k]) if isinstance(up.get(k), int) and not isinstance(up.get(k), bool) and 0 <= up[k] <= 10 ** 7 else None  # noqa: E731
+        out["ups"] = {"model": re.sub(r"[^\w .,()/+-]", "", str(up.get("model") or ""))[:64], "status": re.sub(r"[^A-Z ]", "", str(up.get("status") or ""))[:32],
+                      "words": re.sub(r"[^a-z ,]", "", str(up.get("words") or ""))[:80], "answers": up.get("answers") is True,
+                      "charge": num("charge"), "runtime_s": num("runtime_s"), "load": num("load")}
+    if isinstance(c.get("host_updates"), dict) and c["host_updates"]:
+        hu = c["host_updates"]
+        out["host_updates"] = {k: (int(hu[k]) if isinstance(hu.get(k), int) and not isinstance(hu.get(k), bool) and hu[k] >= 0 else 0)
+                               for k in ("pending", "security", "checked")} | {"reboot": hu.get("reboot") is True}
     # ...and its disks' spin-down in minutes (R164 step 3), 0 for never.
     if isinstance(c.get("spindown"), int) and not isinstance(c.get("spindown"), bool) and c["spindown"] in SPINDOWN_MINUTES:
         out["spindown"] = c["spindown"]
@@ -3045,11 +3057,11 @@ def lockdown_over(n):
 
 # The features a node's Features section installs and removes (R91), as
 # bb-sandbox's FEATURE_IDS and the agent's census name them.
-FEATURES = ("vmhost", "firewall", "iommu", "storage", "shares")
+FEATURES = ("vmhost", "firewall", "iommu", "storage", "shares", "ups")
 FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall", "iommu": "the IOMMU",
-                 "storage": "storage", "shares": "shares"}
+                 "storage": "storage", "shares": "shares", "ups": "the UPS"}
 # The installed edition's own (R56 step 2): on the controller's own machine alone.
-OWN_FEATURES = ("storage", "shares")
+OWN_FEATURES = ("storage", "shares", "ups")
 
 
 def node_feature(principal, node_id, fid, op):
@@ -3442,6 +3454,75 @@ def storage_attention():
                     out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "array", "bad": True, "key": f"array:{n['id']}:{kind}{x.get('slot')}",
                                 "said": f"the array's {kind}{x.get('slot')} ({x.get('id') or 'unknown disk'}) is not mounted: the disk is gone or failed; Replace on the Storage page rebuilds it"})
     return out
+
+
+def power_attention():
+    """The bell's rows (kind power) for the controller's own machine (R164
+    step 3): on battery (bad, with the minutes left), a low battery (bad),
+    a battery to replace, a UPS that does not answer while its feature is
+    installed; and its own packages (kind host): security updates waiting,
+    and a restart the last update asked for. Keyed on the state, so a
+    dismissal holds until it changes."""
+    out = []
+    for n in node_list():
+        if n.get("kind") != "agent" or not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        up = rep.get("ups") or {}
+        fe = (rep.get("features") or {}).get("ups") or {}
+        if fe.get("installed") and up and not up.get("answers"):
+            out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "silent", "bad": False, "key": f"ups:silent:{n['id']}",
+                        "said": "the UPS does not answer: its USB cable, or NUT's driver (ups.conf names usbhid-ups)"})
+        elif up.get("answers"):
+            st = set((up.get("status") or "").split())
+            left = f", {up['runtime_s'] // 60} min left" if isinstance(up.get("runtime_s"), int) else ""
+            charge = f" at {up['charge']}%" if isinstance(up.get("charge"), int) else ""
+            if "LB" in st or "FSD" in st:
+                out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "low", "bad": True, "key": f"ups:low:{n['id']}",
+                            "said": f"the UPS battery is low{charge}{left}: the machine shuts down cleanly when NUT says so"})
+            elif "OB" in st:
+                out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "battery", "bad": True, "key": f"ups:battery:{n['id']}",
+                            "said": f"the machine runs on the UPS battery{charge}{left}"})
+            elif "RB" in st:
+                out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "replace", "bad": False, "key": f"ups:replace:{n['id']}",
+                            "said": "the UPS says its battery needs replacing"})
+        hu = rep.get("host_updates") or {}
+        if hu.get("security"):
+            out.append({"kind": "host", "id": n["id"], "node": n["name"], "what": "security", "bad": False, "key": f"host:security:{n['id']}:{hu['security']}",
+                        "said": f"{hu['security']} security update{'s' if hu['security'] != 1 else ''} to the system's own packages wait{'s' if hu['security'] == 1 else ''} ({hu.get('pending', 0)} in all)"})
+        if hu.get("reboot"):
+            out.append({"kind": "host", "id": n["id"], "node": n["name"], "what": "reboot", "bad": False, "key": f"host:reboot:{n['id']}",
+                        "said": "the last update of the system's packages needs a restart to run the new kernel or libraries"})
+    return out
+
+
+def node_host_update(principal, node_id, reboot=False):
+    """The controller's own machine's own packages updated (R164 step 3):
+    apt on its node by the root agent, a restart after when asked for;
+    refused anywhere else, on BuilderBot OS (whole images), and while a
+    system job is in flight."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": f"{n['name']}'s packages are its own administrator's: This machine updates the controller's own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot update its packages"}
+    if rep.get("os_image"):
+        return {"error": "BuilderBot OS updates as a whole image under Controller settings, never package by package"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    cfg = {"reboot": reboot is True}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "host-update", "config": cfg, "timeout": 7200})
+    if r.get("ok"):
+        audit(principal, "host-update", node_id, {"job": r["job"], **cfg})
+    return r
 
 
 def node_machine(principal, node_id, hostname="", timezone="", spindown=None):
@@ -6545,6 +6626,7 @@ def verb(principal, req):
              "storage-pool": lambda: node_storage_pool(principal, nid, req),
              "storage-snapshot": lambda: node_storage_snapshot(principal, nid, req),
              "storage-array": lambda: node_storage_array(principal, nid, req),
+             "host-update": lambda: node_host_update(principal, nid, req.get("reboot") is True),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,

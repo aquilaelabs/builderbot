@@ -420,6 +420,26 @@ disks but the system's after the idle time picked (`hdparm -S`, five
 minutes to two hours, or never); a solid-state disk is left alone, and the
 agent sets it again after every boot, since the timer is the drive's own.
 
+**Power** (R164): with the UPS feature installed (NUT, for a USB UPS;
+the Features section installs it on the controller's own machine), a
+Power section shows the UPS as NUT reads it: on line or on battery, the
+charge as a meter, the minutes left and the load. The machine on its
+battery, a low battery, a battery to replace and a UPS that does not
+answer are rows on the bell (kind power), and NUT's monitor shuts the
+machine down cleanly when the UPS says the battery is low, which is the
+feature's own configuration (`/etc/nut`, written once and left alone where
+a person changed it).
+
+**The system's own updates** (R164): on a bare-metal install that is not
+BuilderBot OS, Updates under Controller settings also counts the system's
+own package updates (apt, once an hour as root), says how many are
+security ones and whether the last update asked for a restart, and Apply
+updates runs apt on the machine by its root agent with the configuration
+files kept as they are, restarting after when the box was ticked and the
+update asked for it; Restart now is there when one is needed. Security
+updates waiting and a restart needed are rows on the bell (kind host).
+BuilderBot OS has none of this: its updates are whole images.
+
 ## Network
 
 **Network**, in the rail's Controller group (`#/controller/network`), is how

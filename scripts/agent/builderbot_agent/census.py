@@ -49,6 +49,7 @@ from .osimage import os_release
 from .shares import shares_now
 from .pools import pools_now, snapshots_now
 from .array import array_now
+from .power import host_updates_now, ups_now
 from .vms import isos_now, vm_memory, vm_pool, vms_now, vms_other
 
 
@@ -245,6 +246,8 @@ def features_now():
                     "snapraid": bool(shutil.which("snapraid")), "smart": bool(shutil.which("smartctl"))},
         "shares": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "shares")),
                    "smb": bool(shutil.which("smbd")), "nfs": bool(shutil.which("exportfs"))},
+        # ...and a UPS through NUT (R164 step 3), with whether upsc is here.
+        "ups": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "ups")), "nut": bool(shutil.which("upsc"))},
     }
 
 
@@ -375,6 +378,9 @@ def census(state):
         # ...and its array (R162 step 2): the disks by slot, their room, and
         # when SnapRAID last synced, scrubbed and checked it.
         "array": array_now(),
+        # ...and its UPS and its own packages' updates (R164 step 3).
+        "ups": ups_now(),
+        "host_updates": host_updates_now(state),
         # Whether a session here sees only its own project (R35).
         "isolation": isolation_now(),
         # ...and reaches only its own project's containers (R79), as the

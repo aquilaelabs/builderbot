@@ -2058,7 +2058,9 @@ def _attention(who):
                + releasecheck.attention(_own_node_id())
                # ...and a disk failing or hot, a pool not online, an array
                # slot gone, on the controller's own machine (R164 step 3).
-               + nodes.storage_attention())
+               + nodes.storage_attention()
+               # ...and its UPS on battery or its own packages' updates (R164 step 3).
+               + nodes.power_attention())
             # ...and a node short of disk or memory (R110), for whoever
             # manages nodes: what is short, on the Storage page's terms.
             + ([] if users.may(who, "node") else nodes.room_attention(
@@ -5113,6 +5115,15 @@ def _own_os():
     return dict(((n or {}).get("reported") or {}).get("os_image") or {})
 
 
+def _own_host():
+    """What the controller's own machine says of its own packages' updates
+    (R164 step 3): {pending, security, reboot, checked}, or {} where it
+    runs on BuilderBot OS or in a container."""
+    nid = _own_node_id()
+    n = nodes.node(nid) if nid else None
+    return dict(((n or {}).get("reported") or {}).get("host_updates") or {})
+
+
 def _update_in_window(version):
     """The update window's press (releasecheck.window_pass): the image on
     BuilderBot OS, the installer elsewhere, queued on the own node under the
@@ -5460,7 +5471,7 @@ def _snapshot(who):
         "image": _timed("status:image", lambda: image_stamp()),
         # A bare-metal install's release against the newest (R90 step 5),
         # with its own node for the Update press; {} on a container install.
-        "release": _timed("status:release", lambda: (dict(releasecheck.status(), node=_own_node_id(), os=_own_os())
+        "release": _timed("status:release", lambda: (dict(releasecheck.status(), node=_own_node_id(), os=_own_os(), host=_own_host())
                                                       if BARE_METAL else {})),
         # ...and whether its start is held (R56 step 9), with why.
         "held": held.status(),

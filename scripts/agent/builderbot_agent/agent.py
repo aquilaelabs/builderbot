@@ -33,11 +33,12 @@ from .osimage import OsImageMixin
 from .shares import SharesMixin
 from .pools import PoolsMixin
 from .array import ArrayMixin
+from .power import PowerMixin
 from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, AccountsMixin,
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, AccountsMixin,
             TokensMixin, ScanMixin):
     def __init__(self, state):
         self.state = state

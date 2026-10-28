@@ -681,6 +681,23 @@ function nodeMachineSection(n){
     ${admin && !why ? `<div class="actbar"><span class="sp"></span><button type="button" class="primary" data-nd="machine-apply" disabled>Apply</button></div>` : ""}`;
   return docSection("nodes", "machine", ndTitle("machine"), [r.hostname || "", r.timezone || "", r.spindown ? `disks spin down after ${r.spindown} min` : ""].filter(Boolean).join(" · "), body);
 }
+// The controller's own machine's power (R164 step 3): its UPS as NUT
+// reads it, drawn only where the UPS feature is installed: the status in
+// words, the charge as a meter, the minutes left and the load; and what
+// happens on a low battery, which is the feature's own.
+function nodePowerSection(n){
+  if (!n.config?.own) return "";
+  const fe = n.reported?.features?.ups || {}, up = n.reported?.ups || {};
+  if (!fe.installed && !up.answers) return "";
+  const onBattery = /\bOB\b/.test(up.status || ""), low = /\b(LB|FSD)\b/.test(up.status || "");
+  const body = !up.answers ? `<div class="sub dim">The UPS does not answer: its USB cable, or NUT's driver (ups.conf names usbhid-ups, which nearly every USB UPS speaks).</div>`
+    : `<div class="row stack2"><div class="grow">
+        <div class="name">${esc(up.model || "UPS")} <span class="pill${low ? " bad" : onBattery ? " warn" : " ok"}">${esc(up.words || up.status || "")}</span></div>
+        ${typeof up.charge === "number" ? `<div class="ndmeters">${meter("charge", up.charge, `${up.charge}%`, typeof up.runtime_s === "number" ? `${Math.round(up.runtime_s / 60)} min left` : "")}</div>` : ""}
+        ${factGrid([["Load", typeof up.load === "number" ? `${up.load}%` : ""], ["On a low battery", "the machine shuts down cleanly (NUT's monitor), and starts again when the power is back if its firmware says so"]])}
+      </div></div>`;
+  return docSection("nodes", "power", ndTitle("power"), up.answers ? esc(up.words || "") : "silent", body, {cls: low ? "bad" : onBattery ? "warn" : ""});
+}
 function wireMachineSection(root, n){
   const sect = root.querySelector('details[data-sect="nodes:machine"]');
   if (!sect) return;
@@ -798,7 +815,10 @@ function nodeFeaturesSection(n){
       "", fe ? `<div class="sub dim">${["zfs", "mergerfs", "snapraid", "smart"].map(k => `${k}: ${sto[k] ? "here" : "not here"}`).join(" · ")}</div>` : ""),
     row("shares", "Shares", !!sh.installed,
       `Samba and NFS, serving the shares the ${pageLink("storage", "Storage page")} makes, given to accounts there.`,
-      "", fe ? `<div class="sub dim">${["smb", "nfs"].map(k => `${k}: ${sh[k] ? "here" : "not here"}`).join(" · ")}</div>` : "")];
+      "", fe ? `<div class="sub dim">${["smb", "nfs"].map(k => `${k}: ${sh[k] ? "here" : "not here"}`).join(" · ")}</div>` : ""),
+    row("ups", "UPS", !!(fe?.ups || {}).installed,
+      "NUT on a USB UPS: its charge and the minutes left in the Power section, the bell when the machine runs on battery, and a clean shutdown when the battery is low.",
+      "", fe ? `<div class="sub dim">nut: ${(fe.ups || {}).nut ? "here" : "not here"}</div>` : "")];
   const rows = [...ownRows, row("vmhost", "VM host", !!vm.installed,
       `Runs virtual machines here with KVM through libvirt${vm.libvirt ? ` (libvirt ${esc(vm.libvirt)})` : ""}, as the jobs account and never a session.`,
       fe && !vm.kvm && !vm.installed ? "No /dev/kvm here, so a VM would run in software. On a VM, its host passes virtualization through: CPU mode host-passthrough and nested KVM on." : "",
@@ -1782,7 +1802,7 @@ function nodeCharts(n){
 // template written beside the page fell behind it), so a change to either
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
-const ND_SECTS = [["health", "Health"], ["machine", "Name and time"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"], ["usb", "USB"],
+const ND_SECTS = [["health", "Health"], ["machine", "Name and time"], ["power", "Power"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"], ["usb", "USB"],
                   ["router", "Model router"], ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
@@ -1942,6 +1962,7 @@ function ndRowHtml(n){
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeMachineSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodePowerSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeUsbSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeRouterSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeFeaturesSection(n) : ""}
@@ -1969,7 +1990,7 @@ function renderNodesInto(i){
     d.list.innerHTML = skTpl(`<div class="row stack2 ndrow"><div class="grow">
         <div class="name">${skv(7)}</div>${ndFacts(null)}
         <div class="actbar ndagent"><span class="lead dim"></span>${ndAgentButtons(true)}</div></div>
-      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu" && k !== "usb" && k !== "machine").map(([k, t], j) =>
+      <div class="ndsections">${ND_SECTS.filter(([k]) => k !== "gpu" && k !== "usb" && k !== "machine" && k !== "power").map(([k, t], j) =>
         docSection("nodes", k, t, "", skRows(j ? 1 : 3))).join("")}</div></div>`);
     sectJump(d.list.closest(".doctab") || d.el);
     loadNodes();
