@@ -1,0 +1,49 @@
+{
+ "about": "The Swift toolchain for Linux: shared logic, server-side Swift, and compiling packages. Not an iOS SDK.",
+ "label": "Swift",
+ "layout": {
+  "bin": [
+   "usr/bin"
+  ],
+  "env": {},
+  "tool": "usr/bin/swift"
+ },
+ "name": "swift",
+ "platforms": [
+  "linux/amd64"
+ ],
+ "shipped": {
+  "probe": "swift",
+  "reports": "swift",
+  "source": {
+   "checksum": {
+    "from": "signature",
+    "keys": "swift.asc",
+    "sig": "{url}.sig"
+   },
+   "fresh_only": true,
+   "kind": "tarball",
+   "strip": 1,
+   "url": "https://download.swift.org/swift-{version}-release/ubuntu2404/swift-{version}-RELEASE/swift-{version}-RELEASE-ubuntu24.04.tar.gz",
+   "verify": [
+    "{dir}/usr/bin/swift",
+    "--version"
+   ],
+   "version": {
+    "numeric": true,
+    "repo": "swiftlang/swift",
+    "resolver": "github-release",
+    "trim_prefix": "swift-",
+    "trim_suffix": "-RELEASE"
+   }
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "Swift's license (Apache 2.0)",
+   "url": "https://www.swift.org/legal/license.html"
+  }
+ ],
+ "tier": "official"
+}

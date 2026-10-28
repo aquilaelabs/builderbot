@@ -4674,6 +4674,13 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         python3 "$BB_LIB/lint-checks.py" layout || rc=1
     fi
 
+    # The official packs under packs/ against the tables they are written
+    # from (R169 step 1): tools/packs-export.py --write rewrites them.
+    if [ -f tools/packs-export.py ] && grep -qF '"packs": packs' "$BB_LIB/lint-checks.py"; then
+        section "packs (packs/ vs config/toolchains.json and agents.py)"
+        python3 "$BB_LIB/lint-checks.py" packs || rc=1
+    fi
+
     # What a release has run on an install's /config is never edited (R79):
     # every migration at the newest v* tag, byte-for-byte.
     if [ -d scripts/dashboard/migrations ] && [ -d scripts/dashboard/statemigrations ]; then

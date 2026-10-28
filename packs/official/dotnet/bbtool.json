@@ -1,0 +1,100 @@
+{
+ "about": "The .NET SDK plus the maui-android workload: Android apps from C#.",
+ "label": ".NET + MAUI",
+ "layout": {
+  "bin": [
+   "",
+   "tools"
+  ],
+  "env": {
+   "DOTNET_ROOT": ""
+  },
+  "tool": "dotnet"
+ },
+ "name": "dotnet",
+ "platforms": [
+  "linux/*"
+ ],
+ "shipped": {
+  "probe": "dotnet",
+  "reports": "dotnet",
+  "source": {
+   "checksum": {
+    "from": "none",
+    "why": "dotnet-install.sh is Microsoft's installer script, which Microsoft publishes no checksum for; the SDK it fetches comes from Microsoft's own download servers"
+   },
+   "download": {
+    "match": "URL #0[^:]*:\\s+(\\S+)",
+    "resolver": "command-urls",
+    "run": [
+     "bash",
+     "-c",
+     "curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel LTS --dry-run"
+    ]
+   },
+   "kind": "script",
+   "run": [
+    "bash",
+    "{script}",
+    "--channel",
+    "LTS",
+    "--install-dir",
+    "{dir}",
+    "--no-path"
+   ],
+   "then": [
+    {
+     "env": {
+      "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+      "DOTNET_ROOT": "{dir}"
+     },
+     "note": "adding the maui-android workload (android targets from C#)",
+     "optional": "the maui-android workload failed; the plain SDK is still installed",
+     "run": [
+      "{dir}/dotnet",
+      "workload",
+      "install",
+      "maui-android",
+      "--skip-sign-check"
+     ]
+    }
+   ],
+   "url": "https://dot.net/v1/dotnet-install.sh"
+  },
+  "system": {
+   "apk": [
+    "icu-libs"
+   ],
+   "apt": [
+    "libicu78|libicu76|libicu74|libicu72|libicu70"
+   ],
+   "dnf": [
+    "libicu"
+   ],
+   "emerge": [
+    "dev-libs/icu"
+   ],
+   "pacman": [
+    "icu"
+   ],
+   "xbps": [
+    "icu"
+   ],
+   "zypper": [
+    "libicu78|libicu73_2|libicu69|libicu-suse65_1"
+   ]
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": ".NET SDK (MIT)",
+   "url": "https://github.com/dotnet/sdk/blob/main/LICENSE.TXT"
+  },
+  {
+   "label": ".NET MAUI (MIT)",
+   "url": "https://github.com/dotnet/maui/blob/main/LICENSE.txt"
+  }
+ ],
+ "tier": "official"
+}

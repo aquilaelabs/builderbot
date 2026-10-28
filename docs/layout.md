@@ -329,6 +329,9 @@ scripts/
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only
   agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
+packs/                           the official packs (R169 step 1): every shipped toolchain and every coding agent as a pack in bbtool.json's format, tagged official and bundled for an install with no network, written by tools/packs-export.py from the tables and held to them by bb lint
+    official/                    one folder per shipped toolchain (a colon in its name a hyphen), its bbtool.json carrying the recipe config/toolchains.json has under shipped
+    agents/                      one folder per coding agent, its bbtool.json carrying the adapter agents.py's table has under agent
 apps/                            the companions a person installs (R98 step 1): the phone app, the editor extension and the
                                  Windows companion, each released by its own workflow and offered on the Apps page
   android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
@@ -372,6 +375,7 @@ tools/readme-shots.mjs           the README's pictures (dashboard, notebook, nod
 tools/bb-ref.sh                  writes the bb block of docs/reference.md from bb help; bb lint holds the two equal
 tools/builderbot-stick.py        the USB stick maker (R161 step 5): a release's stick image onto a removable disk on Windows, a Mac or Linux, checked and read back, Python's own library alone
 tools/api-doc.py                 writes docs/api.md from server.py's route tables; bb lint holds the two equal
+tools/packs-export.py            writes the official packs under packs/ from config/toolchains.json and agents.py's table; bb lint's --check holds them to it (R169 step 1)
 tools/check-sysdeps.py           checks every recipe's system packages, and with --controller the controller's own list, against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds

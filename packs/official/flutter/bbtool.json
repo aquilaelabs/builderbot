@@ -1,0 +1,45 @@
+{
+ "about": "Flutter with its Dart SDK. Builds Android apps on Linux, and iOS too on a Mac with Xcode.",
+ "label": "Flutter",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/flutter"
+ },
+ "name": "flutter",
+ "platforms": [
+  "linux/*",
+  "darwin/*"
+ ],
+ "shipped": {
+  "probe": "flutter",
+  "reports": "flutter",
+  "source": {
+   "branch": "stable",
+   "depth": 1,
+   "download": {
+    "bytes": 520000000,
+    "resolver": "approximate"
+   },
+   "fresh_only": true,
+   "kind": "git",
+   "safe_directory": true,
+   "url": "https://github.com/flutter/flutter.git",
+   "warm": [
+    "{dir}/bin/flutter",
+    "--version"
+   ],
+   "warm_note": "warming the toolchain (downloads the bundled dart sdk)"
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "Flutter's BSD license",
+   "url": "https://github.com/flutter/flutter/blob/master/LICENSE"
+  }
+ ],
+ "tier": "official"
+}

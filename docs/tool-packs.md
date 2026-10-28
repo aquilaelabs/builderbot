@@ -50,6 +50,24 @@ take the new version.
 holds the pack, naming the node: uninstall it there first, since a pack gone
 from the catalog leaves no row to uninstall its files from.
 
+## Official packs and agent packs
+
+Everything BuilderBot ships is a pack in this same format too (R169): under
+`packs/official/` one `bbtool.json` per shipped toolchain, carrying the
+recipe `config/toolchains.json` has for it under `shipped` (where it is
+fetched from, how it is verified, the system packages it needs), and under
+`packs/agents/` one per coding agent, carrying the adapter under `agent`
+(the program sessions run, how it installs and updates, how a person signs
+in, how it takes the briefing and BuilderBot's guards, where its
+conversations are). Both carry `"tier": "official"`, which is what lets
+them stand in for install steps and verbs and take a shipped name; a pack
+you add is `url`, and a pack from the vetted catalog, when it comes, is
+`vetted`. An agent whose manifest cannot name how it takes the guards is
+not a pack and is not listed. The files are written from the tables by
+`tools/packs-export.py --write` and `bb lint` fails when they drift, so
+the format is one; the installer and the agents' adapters still read
+their own tables.
+
 ## What a project's sessions can use
 
 Each project's **Settings → Toolchains** lists every toolchain installed on

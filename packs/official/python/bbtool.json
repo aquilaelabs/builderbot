@@ -1,0 +1,56 @@
+{
+ "about": "uv and a Python 3.12 with pip and venv, for a project's own dependencies: uv venv, then uv pip install -r requirements.txt. The node's own python3 has neither.",
+ "label": "Python (uv)",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/uv"
+ },
+ "name": "python",
+ "platforms": [
+  "linux/amd64"
+ ],
+ "shipped": {
+  "probe": "python",
+  "reports": "uv",
+  "source": {
+   "checksum": {
+    "from": "github-asset"
+   },
+   "download": {
+    "bytes": 90000000,
+    "resolver": "approximate"
+   },
+   "fresh_only": true,
+   "kind": "script",
+   "run": [
+    "sh",
+    "-ec",
+    "dst=\"$2\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst/bin\" \"$dst/libexec\"; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1; \"$dst/libexec/uv\" python install -q 3.12; py=\"$(\"$dst/libexec/uv\" python find 3.12)\"; ln -sf ../libexec/uv \"$dst/bin/uv\"; ln -sf \"$(realpath --relative-to=\"$dst/bin\" \"$py\")\" \"$dst/bin/python3.12\"; rm -rf \"$t\"",
+    "--",
+    "{script}",
+    "{dir}"
+   ],
+   "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+   "verify": [
+    "{dir}/bin/python3.12",
+    "-c",
+    "import venv, ensurepip"
+   ]
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "uv (MIT or Apache 2.0)",
+   "url": "https://github.com/astral-sh/uv/blob/main/LICENSE-MIT"
+  },
+  {
+   "label": "Python's license (PSF)",
+   "url": "https://docs.python.org/3/license.html"
+  }
+ ],
+ "tier": "official"
+}

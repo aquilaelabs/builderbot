@@ -45,6 +45,10 @@ _lock = threading.RLock()
 
 MANIFEST = "bbtool.json"
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
+NAME_OFFICIAL = re.compile(r"^[a-z][a-z0-9:-]{1,39}$")
+# A shipped layout may name the pack's own root ("") or a place under the
+# store's root (root:android/...), which a person's pack may not.
+REL_OFFICIAL = re.compile(r"^(|root:[A-Za-z0-9._/-]{1,200}|(?!/)(?!.*(?:^|/)\.\.?(?:/|$))[A-Za-z0-9._/-]{1,200})$")
 VERB = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 # A path inside the pack: no way out of its directory, nothing hidden.
 REL = re.compile(r"^(?!/)(?!.*(?:^|/)\.\.?(?:/|$))[A-Za-z0-9._/-]{1,200}$")
@@ -103,20 +107,86 @@ def _words(v, what, errors, placeholders=PLACEHOLDERS):
     return [str(w) for w in v]
 
 
+# One manifest for everything (R169 step 1): a pack's tier, and the two
+# blocks the official packs carry beyond a person's pack. `shipped` is a
+# toolchain's recipe as config/toolchains.json has it (its source, probe,
+# system packages and the rest), which the installer runs; `agent` is a
+# coding agent's adapter as agents.py's table has it. Either stands in for
+# install steps and verbs, since what they install is the tool itself.
+TIERS = ("official", "vetted", "url")
+AGENT_FIELDS = ("product", "command", "provider", "reported", "update_job", "login_job", "logout_job",
+                "briefing", "guards", "state", "transcripts", "latest_url", "tool")
+AGENT_BRIEFING = ("system-prompt-file", "instructions-file")
+AGENT_GUARDS = ("hooks", "plugin", "approval")
+AGENT_STATES = ("hooks", "plugin", "session-log")
+
+
+def _agent(a, errors):
+    """The agent block checked: an agent that cannot take the guards is
+    not listed (R169 step 1)."""
+    if not isinstance(a, dict):
+        errors.append("agent is an object: product, command, provider, reported, the jobs, briefing, guards, state, transcripts")
+        return None
+    out = {}
+    for k in AGENT_FIELDS:
+        v = a.get(k, "")
+        if not isinstance(v, str) or len(v) > 200:
+            errors.append(f"agent.{k} is a string")
+            return None
+        out[k] = v
+    for k in ("product", "command", "reported", "update_job", "transcripts"):
+        if not out[k]:
+            errors.append(f"agent.{k} is required")
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", out["command"] or "x"):
+        errors.append("agent.command is the program's name on PATH")
+    if out["briefing"] not in AGENT_BRIEFING:
+        errors.append(f"agent.briefing is one of {', '.join(AGENT_BRIEFING)}")
+    if out["guards"] not in AGENT_GUARDS:
+        errors.append(f"agent.guards is one of {', '.join(AGENT_GUARDS)}: an agent that cannot take BuilderBot's guards is not listed")
+    if out["state"] not in AGENT_STATES:
+        errors.append(f"agent.state is one of {', '.join(AGENT_STATES)}")
+    if out["transcripts"] and not REL.fullmatch(out["transcripts"]):
+        errors.append("agent.transcripts is a path under the account's home")
+    if out["latest_url"] and not re.fullmatch(r"https://[A-Za-z0-9._~:/@+?=&%-]{3,300}", out["latest_url"]):
+        errors.append("agent.latest_url is an https address")
+    return out
+
+
 def validate(m, shipped=()):
     """A manifest checked and cut down to what BuilderBot reads: (clean,
-    errors). Nothing in it is run here; the errors say what to fix."""
+    errors). Nothing in it is run here; the errors say what to fix. An
+    official pack (tier official, R169 step 1) may carry a shipped
+    toolchain's recipe or an agent's adapter in place of install steps and
+    verbs, and may take a shipped name, being the shipped thing itself."""
     errors = []
     if not isinstance(m, dict):
         return None, [f"{MANIFEST} is a JSON object"]
+    tier = str(m.get("tier") or "url")
+    if tier not in TIERS:
+        errors.append(f"tier is one of {', '.join(TIERS)}")
+    official = tier == "official"
     name = str(m.get("name") or "")
-    if not NAME.fullmatch(name):
+    # A shipped toolchain's name may carry a colon (android:emulator), the
+    # store's own family form; a person's pack never does.
+    if not (NAME_OFFICIAL if official else NAME).fullmatch(name):
         errors.append("name is 2 to 40 of a-z, 0-9 and -, starting with a letter")
-    elif name in shipped:
+    elif name in shipped and not official:
         errors.append(f"{name} is a toolchain BuilderBot ships; a pack takes a name of its own")
-    out: dict = {"name": name,
+    out: dict = {"name": name, "tier": tier,
            "label": str(m.get("label") or name)[:80],
            "about": str(m.get("about") or "")[:400]}
+    if official and isinstance(m.get("shipped"), dict):
+        out["shipped"] = m["shipped"]
+    elif m.get("shipped") is not None:
+        errors.append("shipped (a toolchain's recipe) is an official pack's alone")
+    if m.get("agent") is not None:
+        if not official:
+            errors.append("agent (a coding agent's adapter) is an official pack's alone")
+        else:
+            a = _agent(m["agent"], errors)
+            if a:
+                out["agent"] = a
+    stands_in = "shipped" in out or "agent" in out
     plats = m.get("platforms") or []
     if not isinstance(plats, list) or not plats or not all(isinstance(p, str) and PLATFORM.fullmatch(p) for p in plats):
         # The wildcard named too, in the form the rule takes (B111): a bare
@@ -144,12 +214,13 @@ def validate(m, shipped=()):
     if not isinstance(lay, dict):
         errors.append("layout is an object: bin, env and tool")
         lay = {}
+    rel = REL_OFFICIAL if official else REL
     bins = lay.get("bin") or []
-    if not isinstance(bins, list) or not all(isinstance(b, str) and REL.fullmatch(b) for b in bins):
+    if not isinstance(bins, list) or not all(isinstance(b, str) and rel.fullmatch(b) for b in bins):
         errors.append("layout.bin lists directories inside the pack to put on PATH")
         bins = []
     tool = lay.get("tool") or ""
-    if tool and not (isinstance(tool, str) and REL.fullmatch(tool)):
+    if tool and not (isinstance(tool, str) and rel.fullmatch(tool)):
         errors.append("layout.tool is a file inside the pack whose presence says it is installed")
         tool = ""
     env = lay.get("env") or {}
@@ -166,7 +237,7 @@ def validate(m, shipped=()):
     if apt:
         out["system"] = {"apt": apt}
     verbs = m.get("verbs") or {}
-    if not isinstance(verbs, dict) or not verbs:
+    if not isinstance(verbs, dict) or (not verbs and not stands_in):
         errors.append("verbs names at least one command a session calls, each {about, usage, run}")
         verbs = {}
     out["verbs"] = {}

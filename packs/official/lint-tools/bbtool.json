@@ -1,0 +1,71 @@
+{
+ "about": "What bb lint runs: shellcheck, hadolint, actionlint and ruff, with yq and fd. Without it, bb lint on a node skips its checks.",
+ "label": "Lint tools (shellcheck, hadolint, actionlint, ruff, yq, fd)",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/shellcheck"
+ },
+ "name": "lint-tools",
+ "platforms": [
+  "linux/amd64"
+ ],
+ "shipped": {
+  "probe": "lint-tools",
+  "reports": "shellcheck",
+  "source": {
+   "checksum": {
+    "from": "github-asset"
+   },
+   "download": {
+    "bytes": 70000000,
+    "resolver": "approximate"
+   },
+   "fresh_only": true,
+   "kind": "script",
+   "run": [
+    "sh",
+    "-ec",
+    "dst=\"$2/bin\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst\"; cp \"$1\" \"$dst/hadolint\"; get() { curl -fsSL --retry 3 -o \"$2\" \"$1\"; }; tag() { curl -fsSIL -o /dev/null -w '%{url_effective}' \"https://github.com/$1/releases/latest\" | sed 's#.*/tag/##'; }; get https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \"$dst/yq\"; get https://github.com/astral-sh/ruff/releases/latest/download/ruff-x86_64-unknown-linux-gnu.tar.gz \"$t/ruff.tgz\"; tar -xzf \"$t/ruff.tgz\" -C \"$t\"; cp \"$(find \"$t\" -name ruff -type f | head -1)\" \"$dst/\"; v=\"$(tag koalaman/shellcheck)\"; get \"https://github.com/koalaman/shellcheck/releases/download/$v/shellcheck-$v.linux.x86_64.tar.xz\" \"$t/sc.txz\"; tar -xJf \"$t/sc.txz\" -C \"$t\"; cp \"$t/shellcheck-$v/shellcheck\" \"$dst/\"; v=\"$(tag rhysd/actionlint)\"; get \"https://github.com/rhysd/actionlint/releases/download/$v/actionlint_${v#v}_linux_amd64.tar.gz\" \"$t/al.tgz\"; tar -xzf \"$t/al.tgz\" -C \"$t\" actionlint; cp \"$t/actionlint\" \"$dst/\"; v=\"$(tag sharkdp/fd)\"; get \"https://github.com/sharkdp/fd/releases/download/$v/fd-$v-x86_64-unknown-linux-gnu.tar.gz\" \"$t/fd.tgz\"; tar -xzf \"$t/fd.tgz\" -C \"$t\"; cp \"$(find \"$t\" -name fd -type f | head -1)\" \"$dst/\"; chmod +x \"$dst\"/*; rm -rf \"$t\"",
+    "--",
+    "{script}",
+    "{dir}"
+   ],
+   "url": "https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64",
+   "verify": [
+    "{dir}/bin/shellcheck",
+    "--version"
+   ]
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "shellcheck (GPLv3)",
+   "url": "https://github.com/koalaman/shellcheck/blob/master/LICENSE"
+  },
+  {
+   "label": "hadolint (GPLv3)",
+   "url": "https://github.com/hadolint/hadolint/blob/master/LICENSE"
+  },
+  {
+   "label": "actionlint (MIT)",
+   "url": "https://github.com/rhysd/actionlint/blob/main/LICENSE.txt"
+  },
+  {
+   "label": "ruff (MIT)",
+   "url": "https://github.com/astral-sh/ruff/blob/main/LICENSE"
+  },
+  {
+   "label": "yq (MIT)",
+   "url": "https://github.com/mikefarah/yq/blob/master/LICENSE"
+  },
+  {
+   "label": "fd (MIT)",
+   "url": "https://github.com/sharkdp/fd/blob/master/LICENSE-MIT"
+  }
+ ],
+ "tier": "official"
+}

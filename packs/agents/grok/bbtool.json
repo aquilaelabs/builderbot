@@ -1,0 +1,25 @@
+{
+ "about": "Grok Build, run by sessions as grok",
+ "agent": {
+  "briefing": "system-prompt-file",
+  "command": "grok",
+  "guards": "hooks",
+  "latest_url": "https://x.ai/cli/stable",
+  "login_job": "grok-login",
+  "logout_job": "grok-logout",
+  "product": "Grok Build",
+  "provider": "xAI",
+  "reported": "grok",
+  "state": "hooks",
+  "tool": "grok-build",
+  "transcripts": ".grok/sessions",
+  "update_job": "grok-update"
+ },
+ "label": "Grok",
+ "name": "grok",
+ "platforms": [
+  "linux/*"
+ ],
+ "terms": [],
+ "tier": "official"
+}

@@ -1,0 +1,53 @@
+{
+ "about": "JetBrains' Kotlin language server, so a session sees Kotlin errors as it edits. Carries its own Java.",
+ "label": "Kotlin language server",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/kotlin-lsp"
+ },
+ "name": "kotlin-lsp",
+ "platforms": [
+  "linux/amd64",
+  "linux/arm64"
+ ],
+ "shipped": {
+  "probe": "kotlin-lsp",
+  "reports": "kotlin-lsp",
+  "source": {
+   "checksum": {
+    "from": "none",
+    "why": "its address is GitHub's answer naming the release; the server it fetches is checked against JetBrains' .sha256 by its own install command"
+   },
+   "download": {
+    "bytes": 368000000,
+    "resolver": "approximate"
+   },
+   "fresh_only": true,
+   "kind": "script",
+   "run": [
+    "sh",
+    "-ec",
+    "v=\"$(sed -n 's#.*\"tag_name\": *\"kotlin-lsp/v\\([0-9.]*\\)\".*#\\1#p' \"$1\" | head -1)\"; [ -n \"$v\" ] || { echo 'no kotlin-lsp release named in the answer' >&2; exit 1; }; a=''; [ \"$(uname -m)\" = aarch64 ] && a='-aarch64'; t=\"$(mktemp -d)\"; u=\"https://download.jetbrains.com/language-server/kotlin-server/$v/kotlin-server-$v$a.tar.gz\"; curl -fsSL --retry 3 -o \"$t/k.tgz\" \"$u\"; want=\"$(curl -fsSL --retry 3 \"$u.sha256\" | cut -d\" \" -f1)\"; got=\"$(sha256sum \"$t/k.tgz\" | cut -d\" \" -f1)\"; [ -n \"$want\" ] && [ \"$want\" = \"$got\" ] || { echo \"the kotlin server is not what JetBrains says it is (sha256 $got, expected ${want:-none stated})\" >&2; exit 1; }; mkdir -p \"$2/server\" \"$2/bin\"; tar -xzf \"$t/k.tgz\" -C \"$2/server\" --strip-components=1; ln -sfn ../server/bin/intellij-server \"$2/bin/kotlin-lsp\"; rm -rf \"$t\"",
+    "--",
+    "{script}",
+    "{dir}"
+   ],
+   "url": "https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest",
+   "verify": [
+    "{dir}/bin/kotlin-lsp",
+    "--version"
+   ]
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "kotlin-lsp (Apache 2.0)",
+   "url": "https://github.com/Kotlin/kotlin-lsp/blob/main/LICENSE.txt"
+  }
+ ],
+ "tier": "official"
+}
