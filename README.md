@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="scripts/dashboard/static/favicon.svg" width="96" alt="BuilderBot's robot mark">
+  <img src="scripts/dashboard/static/mark.svg" width="128" alt="BuilderBot's mark: the robot head in isometric line work">
 </p>
 
 <h1 align="center">BuilderBot</h1>
