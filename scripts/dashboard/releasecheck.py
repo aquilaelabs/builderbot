@@ -22,19 +22,29 @@ BOOT_DELAY = float(os.environ.get("BB_RELEASE_BOOT_DELAY") or 120)
 EVERY = 24 * 3600
 TIMEOUT = 30
 VER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+# A dev build's tag (R179): the release it heads for and its ordinal.
+DEV = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)-dev\.(\d+)(?:\+[0-9a-f]+)?$")
 
 _lock = threading.Lock()
-_latest = {"version": "", "tag": "", "at": 0, "error": "", "checking": False, "url": ""}
+_latest = {"version": "", "tag": "", "at": 0, "error": "", "checking": False, "url": "", "dev": {"version": "", "tag": "", "url": ""}}
 _version = lambda: ""       # noqa: E731 (configured)
 _bare = lambda: False       # noqa: E731
+_channel = lambda: "normal"  # noqa: E731 (configured: the release channel picked)
+_dev_ok = lambda: False     # noqa: E731 (configured: whether dev may be picked here)
 _window = lambda: ("", 4)   # noqa: E731 (the update window: day, hour)
 _apply = lambda v: None     # noqa: E731 (queue the update to version v)
 _applied = {"version": ""}  # the version the window last queued, so one window queues once
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
-def configure(*, version, bare_metal, window=None, apply=None):
-    globals().update(_version=version, _bare=bare_metal, _window=window or _window, _apply=apply or _apply)
+def configure(*, version, bare_metal, window=None, apply=None, channel=None, dev_ok=None):
+    globals().update(_version=version, _bare=bare_metal, _window=window or _window, _apply=apply or _apply,
+                     _channel=channel or (lambda: "normal"), _dev_ok=dev_ok or (lambda: False))
+
+
+def channel():
+    """The channel in force: dev only while it may be picked here."""
+    return "dev" if _channel() == "dev" and _dev_ok() else "normal"
 
 
 def in_window(now=None):
@@ -75,6 +85,21 @@ def parse(v):
     return tuple(int(x) for x in m.groups()) if m else None
 
 
+def parse_dev(v):
+    """(major, minor, patch, ordinal) of a dev build or its tag, or None."""
+    m = DEV.match(str(v or "").strip())
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def rank(v):
+    """Where a version stands across both channels: a release above every
+    dev build heading for it, a dev build by its ordinal; None for neither."""
+    r = parse(v)
+    if r:
+        return (*r, 10 ** 9)
+    return parse_dev(v)
+
+
 def check():
     """Ask what the newest published release is, now. The record."""
     with _lock:
@@ -94,12 +119,21 @@ def check():
             url = str(live[0].get("html_url") or "")
         else:
             error = "no published release"
+        # The dev channel's newest (R179): a pre-release whose tag is a dev
+        # build's; never a draft, and never taken on the normal channel.
+        dev = [x for x in rows if isinstance(x, dict) and not x.get("draft") and x.get("prerelease") and parse_dev(x.get("tag_name"))]
+        dev.sort(key=lambda x: parse_dev(x.get("tag_name")), reverse=True)
+        devrec = {"version": str(dev[0]["tag_name"]).lstrip("v"), "tag": str(dev[0]["tag_name"]), "url": str(dev[0].get("html_url") or "")} if dev \
+            else {"version": "", "tag": "", "url": ""}
     except (OSError, ValueError) as e:
         error = f"the releases did not answer: {e}"[:200]
+        devrec = None
     with _lock:
         _latest.update(checking=False, at=int(time.time()), error=error)
         if version:
             _latest.update(version=version, tag=tag, url=url)
+        if devrec is not None:
+            _latest["dev"] = devrec
         return dict(_latest)
 
 
@@ -109,21 +143,32 @@ def latest():
 
 
 def newer():
-    """The newest release's version when it is newer than the build running
-    (a released version; a dev build compares by its target), else ""."""
+    """The newest version on the channel in force when it is newer than
+    the build running, else "". On the normal channel a released version,
+    a dev build comparing by its target; on the dev channel the newest of
+    the releases and the dev pre-releases by rank, so a dev build moves to
+    a later dev build or to the release it was heading for."""
     lt = latest()
+    if channel() == "dev":
+        now = rank(_version()) or rank(str(_version() or "").split("+")[0]) or parse(str(_version() or "").split("-")[0])
+        if now and len(now) == 3:
+            now = (*now, 10 ** 9)
+        best = max((v for v in (lt.get("version", ""), (lt.get("dev") or {}).get("version", "")) if rank(v)), key=rank, default="")
+        return best if best and now and rank(best) > now else ""
     now = parse(_version()) or parse(str(_version() or "").split("-")[0])
     want = parse(lt.get("version"))
     return lt["version"] if want and now and want > now else ""
 
 
 def status():
-    """What the page draws: nothing on a container install."""
+    """What the page draws: nothing on a container install. The channel in
+    force, whether dev may be picked here, and the dev channel's newest."""
     if not _bare():
         return {}
     lt = latest()
     return {"running": _version(), "latest": lt.get("version", ""), "newer": newer(), "at": lt.get("at", 0),
-            "error": lt.get("error", ""), "url": lt.get("url", "")}
+            "error": lt.get("error", ""), "url": lt.get("url", ""),
+            "channel": channel(), "dev_ok": bool(_dev_ok()), "dev_latest": (lt.get("dev") or {}).get("version", "")}
 
 
 def attention(own_node_id):

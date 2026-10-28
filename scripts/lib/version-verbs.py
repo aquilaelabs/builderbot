@@ -157,7 +157,8 @@ if argv and argv[0] == "release":
               "    Agents may: Tag and publish a release: auto releases at once, ask waits for the\n"
               "    project's owner, deny refuses. A release whose Android APK could not be signed (bb\n"
               "    sign status) is refused before the tag; --without-apk releases it anyway, to be\n"
-              "    signed after with bb sign release.\n"
+              "    signed after with bb sign release. --dev cuts the dev build's tag instead (vX.Y.Z-dev.N):\n"
+              "    no bump, no changelog section; CI publishes it as a pre-release for the dev channel.\n"
               'bb version [--for DIR] release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...\n'
               "    change the published release: its notes replaced whole (- reads stdin), a file from\n"
               "    dist/ or the committed tree attached (one of the same name replaced), (asset:NAME) in\n"
@@ -178,11 +179,14 @@ if argv and argv[0] == "release":
     # A release whose Android APK could not be signed is refused before the
     # tag unless this says to go on (R134 step 4).
     unsigned = "--without-apk" in rest
-    rest = [x for x in rest if x != "--without-apk"]
+    # A dev pre-release (R179): the dev build's tag, vX.Y.Z-dev.N, on the
+    # dev channel, its release page CI's.
+    dev = "--dev" in rest
+    rest = [x for x in rest if x not in ("--without-apk", "--dev")]
     if rest:
-        fail(f"bb version release takes --why \"...\" [--without-apk] and nothing else, not {rest[0]}")
+        fail(f"bb version release takes --why \"...\" [--without-apk] [--dev] and nothing else, not {rest[0]}")
     auth = os.environ.get("BB_VERSION_AUTH", "")
-    r = bbapi.call("/api/version", {"action": "release", "project": proj, "component": comp, "why": why,
+    r = bbapi.call("/api/version", {"action": "release", "project": proj, "component": comp, "why": why, "dev": dev,
                                     "unsigned": unsigned}, auth=auth, timeout=240)
     if r.get("error"):
         fail(f"[builderbot] ERROR: {r['error']}")

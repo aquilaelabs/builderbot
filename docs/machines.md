@@ -564,7 +564,10 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   names it for the next boot, the restart yours ([image.md](image.md)), and
   **Update from the folder** takes the files from a folder on the machine.
   The container edition has no such section: its image is pulled by the
-  host.
+  host. On a controller in debug mode with the dev switch on the section
+  carries a **Channel** pulldown, Releases or Dev builds
+  ([versions.md](versions.md#two-channels)); everywhere else the releases
+  are the only channel and no pulldown is drawn.
 - **Power** (a controller installed bare metal, the OS and the USB edition
   among them, R175): Restart and Shut down for the machine the controller
   runs on, through its own node's reboot and power-off verbs with This
