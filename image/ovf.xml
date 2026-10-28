@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- BuilderBot OS as an OVA (R160 step 3): this descriptor, the disk as a
+     stream-optimized VMDK and a manifest of their digests, in one tar. The
+     same image the raw disk and the USB stick are made from; build.sh fills
+     the @NAME@, @VMDK@, @VMDK_SIZE@ and @CAPACITY@ marks. -->
+<Envelope xmlns="http://schemas.dmtf.org/ovf/envelope/1" xmlns:ovf="http://schemas.dmtf.org/ovf/envelope/1"
+          xmlns:rasd="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_ResourceAllocationSettingData"
+          xmlns:vssd="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_VirtualSystemSettingData"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ovf:version="1.0">
+  <References>
+    <File ovf:href="@VMDK@" ovf:id="file1" ovf:size="@VMDK_SIZE@"/>
+  </References>
+  <DiskSection>
+    <Info>The BuilderBot OS disk: two root slots, GRUB and the data partition</Info>
+    <Disk ovf:capacity="@CAPACITY@" ovf:capacityAllocationUnits="byte" ovf:diskId="vmdisk1" ovf:fileRef="file1"
+          ovf:format="http://www.vmware.com/interfaces/specifications/vmdk.html#streamOptimized"/>
+  </DiskSection>
+  <NetworkSection>
+    <Info>One network, bridged or NAT as the hypervisor offers</Info>
+    <Network ovf:name="lan"><Description>The LAN the dashboard is reached on</Description></Network>
+  </NetworkSection>
+  <VirtualSystem ovf:id="@NAME@">
+    <Info>BuilderBot OS</Info>
+    <Name>@NAME@</Name>
+    <OperatingSystemSection ovf:id="96">
+      <Info>Debian 13, 64-bit</Info>
+      <Description>Debian 13 (64-bit)</Description>
+    </OperatingSystemSection>
+    <VirtualHardwareSection>
+      <Info>2 processors, 4 GB, one disk, one network interface; VMs inside it need nested virtualization turned on for the VM</Info>
+      <System>
+        <vssd:ElementName>Virtual Hardware Family</vssd:ElementName>
+        <vssd:InstanceID>0</vssd:InstanceID>
+        <vssd:VirtualSystemIdentifier>@NAME@</vssd:VirtualSystemIdentifier>
+        <vssd:VirtualSystemType>vmx-13 virtualbox-2.2</vssd:VirtualSystemType>
+      </System>
+      <Item>
+        <rasd:Caption>2 virtual CPUs</rasd:Caption>
+        <rasd:Description>Number of virtual CPUs</rasd:Description>
+        <rasd:ElementName>2 virtual CPUs</rasd:ElementName>
+        <rasd:InstanceID>1</rasd:InstanceID>
+        <rasd:ResourceType>3</rasd:ResourceType>
+        <rasd:VirtualQuantity>2</rasd:VirtualQuantity>
+      </Item>
+      <Item>
+        <rasd:AllocationUnits>byte * 2^20</rasd:AllocationUnits>
+        <rasd:Caption>4096 MB of memory</rasd:Caption>
+        <rasd:Description>Memory Size</rasd:Description>
+        <rasd:ElementName>4096 MB of memory</rasd:ElementName>
+        <rasd:InstanceID>2</rasd:InstanceID>
+        <rasd:ResourceType>4</rasd:ResourceType>
+        <rasd:VirtualQuantity>4096</rasd:VirtualQuantity>
+      </Item>
+      <Item>
+        <rasd:Caption>SATA controller</rasd:Caption>
+        <rasd:Description>SATA controller</rasd:Description>
+        <rasd:ElementName>sataController0</rasd:ElementName>
+        <rasd:InstanceID>3</rasd:InstanceID>
+        <rasd:ResourceSubType>AHCI</rasd:ResourceSubType>
+        <rasd:ResourceType>20</rasd:ResourceType>
+      </Item>
+      <Item>
+        <rasd:Caption>Disk</rasd:Caption>
+        <rasd:Description>The BuilderBot OS disk</rasd:Description>
+        <rasd:ElementName>disk1</rasd:ElementName>
+        <rasd:HostResource>ovf:/disk/vmdisk1</rasd:HostResource>
+        <rasd:InstanceID>4</rasd:InstanceID>
+        <rasd:Parent>3</rasd:Parent>
+        <rasd:AddressOnParent>0</rasd:AddressOnParent>
+        <rasd:ResourceType>17</rasd:ResourceType>
+      </Item>
+      <Item>
+        <rasd:AutomaticAllocation>true</rasd:AutomaticAllocation>
+        <rasd:Caption>Ethernet adapter on lan</rasd:Caption>
+        <rasd:Connection>lan</rasd:Connection>
+        <rasd:Description>Ethernet adapter</rasd:Description>
+        <rasd:ElementName>ethernet0</rasd:ElementName>
+        <rasd:InstanceID>5</rasd:InstanceID>
+        <rasd:ResourceSubType>E1000</rasd:ResourceSubType>
+        <rasd:ResourceType>10</rasd:ResourceType>
+      </Item>
+    </VirtualHardwareSection>
+  </VirtualSystem>
+</Envelope>

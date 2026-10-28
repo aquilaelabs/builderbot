@@ -52,6 +52,20 @@ Beside the disk, the build leaves the pieces an update and the stick maker
 take: the slot's squashfs (`.root.squashfs`), its kernel and initrd, and the
 release stamp, each with a `.sha256`.
 
+## The same disk for a hypervisor
+
+The raw disk is converted, never laid out again, into `builderbot-os-VERSION.qcow2`
+for Proxmox, Unraid and libvirt, and `builderbot-os-VERSION.ova` for VMware
+and VirtualBox (a stream-optimized VMDK with its OVF descriptor,
+`image/ovf.xml`, and a manifest): the easiest way to try BuilderBot, and to
+keep it apart on a hypervisor, its snapshots the hypervisor's. The VM boots
+into the bare-metal controller with the machine as its own node, as a stick
+or an installed disk does. Give it two processors and 4 GB at least, and
+turn nested virtualization on for it where VMs are to run inside it (the
+Features row says when `/dev/kvm` is missing); the data partition is grown
+to the disk the hypervisor gives it at the first boot once R160 step 2's
+installer lands, and is 2 GB until then.
+
 ## What persists
 
 The root is read-only, with a tmpfs over it (`overlayroot`): anything

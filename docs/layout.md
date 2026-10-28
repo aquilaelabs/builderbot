@@ -27,6 +27,7 @@ image/                           BuilderBot OS, the appliance image the installe
   mkosi.extra/                   what is laid into the tree: the initramfs script that mounts /var and /etc's overlay, fstab, the slot tool, the apt stub, the first-boot unit
   partitions.sh                  the disk's fixed partition UUIDs, sizes and labels, one place for build.sh, the initramfs, fstab and GRUB
   grub.cfg                       GRUB's menu on the ESP: the two slots, bb_slot from grubenv naming the one to boot
+  ovf.xml                        the OVA's descriptor (the VM disk for VMware and VirtualBox, R160 step 3), its marks filled by build.sh
   build.sh                       the build: mkosi, the squashfs, the disk on a loop device with GRUB for UEFI and BIOS, the stamps
 scripts/
   entrypoint.sh                  the container's boot: uid remap, the timezone, then lib/boot.sh's steps and gosu

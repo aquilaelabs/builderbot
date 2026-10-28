@@ -7,7 +7,9 @@
 #   sudo image/build.sh [--out DIR] [--tree-only] [--from-tree DIR]
 #
 # What comes out, under DIR (image/out by default), each with its .sha256:
-#   builderbot-os-VERSION.raw.zst        the whole disk (the VM disk, the USB stick and the installer start here)
+#   builderbot-os-VERSION.raw.zst        the whole disk (the USB stick and the installer start here)
+#   builderbot-os-VERSION.qcow2          the same disk for Proxmox, Unraid and libvirt
+#   builderbot-os-VERSION.ova            the same disk for VMware and VirtualBox (a stream-optimized VMDK with its descriptor)
 #   builderbot-os-VERSION.root.squashfs  one root slot, what an update writes into the other slot (R160 step 4)
 #   builderbot-os-VERSION.vmlinuz        the slot's kernel and initrd, kept on the ESP beside it
 #   builderbot-os-VERSION.initrd
@@ -157,10 +159,27 @@ dd if="$OUT/$NAME.root.squashfs" of="$(P 3)" bs=4M conv=fsync status=none
 # Debian's own skeleton under it; the state and the projects grow there.
 mkfs.ext4 -q -L "$BB_DATA_LABEL" -d "$TREE/var" -E lazy_itable_init=0,lazy_journal_init=0 "$(P 5)"
 cleanup; trap - EXIT
+
+# ---- the same disk for a hypervisor (R160 step 3) ---------------------------
+# qcow2 for Proxmox, Unraid and libvirt; an OVA (a stream-optimized VMDK with
+# its descriptor and manifest) for VMware and VirtualBox. Converted from the
+# raw disk, never laid out again, so the three cannot drift.
+say "the VM disks"
+need qemu-img "qemu-utils"
+qemu-img convert -O qcow2 -c "$RAW" "$OUT/$NAME.qcow2"
+OVA="$(mktemp -d)"
+qemu-img convert -O vmdk -o subformat=streamOptimized "$RAW" "$OVA/$NAME-disk1.vmdk"
+sed -e "s|@NAME@|$NAME|g" -e "s|@VMDK@|$NAME-disk1.vmdk|g" \
+    -e "s|@VMDK_SIZE@|$(stat -c %s "$OVA/$NAME-disk1.vmdk")|g" -e "s|@CAPACITY@|$(stat -c %s "$RAW")|g" \
+    "$HERE/ovf.xml" > "$OVA/$NAME.ovf"
+( cd "$OVA" && { printf 'SHA256(%s)= %s\n' "$NAME.ovf" "$(sha256sum "$NAME.ovf" | cut -d' ' -f1)";
+                 printf 'SHA256(%s)= %s\n' "$NAME-disk1.vmdk" "$(sha256sum "$NAME-disk1.vmdk" | cut -d' ' -f1)"; } > "$NAME.mf" \
+  && tar -cf "$OUT/$NAME.ova" --owner=0 --group=0 --mtime="@$SOURCE_DATE_EPOCH" "$NAME.ovf" "$NAME.mf" "$NAME-disk1.vmdk" )
+rm -rf "$OVA"
 say "compressing"
 zstd -q -T0 -19 --rm "$RAW" -o "$RAW.zst"
 
 # ---- the stamps -------------------------------------------------------------
-( cd "$OUT" && for f in "$NAME.raw.zst" "$NAME.root.squashfs" "$NAME.vmlinuz" "$NAME.initrd" "$NAME.release"; do sha256sum "$f" > "$f.sha256"; done )
+( cd "$OUT" && for f in "$NAME.raw.zst" "$NAME.qcow2" "$NAME.ova" "$NAME.root.squashfs" "$NAME.vmlinuz" "$NAME.initrd" "$NAME.release"; do sha256sum "$f" > "$f.sha256"; done )
 say "done"
 for f in "$OUT/$NAME".*; do printf '   %s  %s\n' "$(stat -c %s "$f")" "$(basename "$f")"; done

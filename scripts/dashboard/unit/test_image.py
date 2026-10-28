@@ -185,6 +185,21 @@ class Workflow(unittest.TestCase):
         snap = read(IMG, "SNAPSHOT").strip()
         self.assertRegex(snap, r"^\d{8}T\d{6}Z$")
 
+    def test_the_vm_disks_are_the_same_disk_converted(self):
+        # R160 step 3: qcow2 and an OVA from the raw disk, never a fourth
+        # layout; the descriptor's marks are the ones the build fills, and
+        # the workflow installs what converts them.
+        b = read(IMG, "build.sh")
+        self.assertIn("qemu-img convert -O qcow2", b)
+        self.assertIn("subformat=streamOptimized", b)
+        ovf = read(IMG, "ovf.xml")
+        for mark in ("@NAME@", "@VMDK@", "@VMDK_SIZE@", "@CAPACITY@"):
+            self.assertIn(mark, ovf)
+            self.assertIn(f"s|{mark}|", b)
+        import xml.dom.minidom
+        xml.dom.minidom.parseString(ovf)
+        self.assertIn("qemu-utils", read(ROOT, ".github", "workflows", "build-image.yml"))
+
     def test_build_sh_says_how_without_root(self):
         r = sh("bash image/build.sh --help")
         self.assertEqual(r.returncode, 0, r.stderr)
