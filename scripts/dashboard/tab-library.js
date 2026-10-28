@@ -235,6 +235,36 @@ const LIB_ICONS = {
 // its kind's glyph, its name with the tier and the versions as quiet pills,
 // what it is in two lines, and at its foot where it stands, Details, and
 // the verb. Open, it runs the grid's width with the whole description.
+// A pack's Look on its row: the manifest fetched at the commit it is pinned
+// to (an added pack at its own, a catalog offer at the catalog's, its archive
+// checked against the catalog's sha256), drawn as the dialog draws it.
+async function libLook(key){
+  const r = (lib?.rows || []).find(x => `${x.kind}:${x.name}` === key);
+  if (!r || libSeen[key] === "looking") return;
+  libSeen[key] = "looking"; libRev++; drawPanes();
+  const body = r.catalog ? {action: "preview", url: r.catalog.url, commit: r.catalog.commit, sha256: r.catalog.sha256, path: r.catalog.path || ""}
+    : {action: "preview", url: r.pack.url, commit: r.pack.commit, path: r.pack.path || ""};
+  const j = await (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
+  libSeen[key] = j;
+  libRev++; drawPanes();
+}
+
+// The driver's version on its card (R102, the operator 6 Oct: the branch
+// is picked before Install), as the Toolchains page's row had it: the
+// recommended one first, the rest by version, dead once one is installed.
+function libDriverPick(m){
+  const opts = m.options || [];
+  if (!opts.length || m.state === "nocard" || !m.managed) return "";
+  const picked = m.here ? m.package : (opts.some(o => o.pkg === tcDriverPick) ? tcDriverPick : "");
+  return `<label class="pick libdrvpick">Version <select id="libDrvSel" aria-label="driver version"${m.here || !lib?.may?.install ? " disabled" : ""}${
+      m.here ? ` title="installed: remove it first to install another version"` : ""}>
+      ${m.here ? "" : `<option value=""${picked ? "" : " selected"}>${esc(m.recommended
+          ? tcDriverOption(opts.find(o => o.pkg === m.recommended) || {pkg: m.recommended, version: "recommended"}, m)
+          : "the one recommended for this card")}</option>`}
+      ${opts.filter(o => m.here || o.pkg !== m.recommended).map(o => `<option value="${esc(o.pkg)}"${o.pkg === picked ? " selected" : ""}>${esc(tcDriverOption(o, m))}</option>`).join("")}
+    </select></label>`;
+}
+
 function libRow(r, may){
   const key = `${r.kind}:${r.name}`, open = libOpen.has(key);
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : "";
