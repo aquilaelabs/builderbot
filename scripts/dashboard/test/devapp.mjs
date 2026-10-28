@@ -4227,9 +4227,11 @@ ok(await page.$('#devSend'),
   // set to and links there, the way the tests-run line does.
   await dmRefresh();
   await dmEditNone();
-  const claudePill = () => [...document.querySelectorAll('.dmtab .row[data-inst^="ep.silon|"] .fpill')].find(p => p.querySelector('.k')?.textContent === 'Claude');
-  await page.waitForFunction(cp => /rebuild · env · create/.test((0, eval)(cp)()?.textContent || ''), claudePill.toString(), { timeout: 20000 });
-  ok(await page.evaluate(cp => !!(0, eval)(cp)()?.querySelector('[data-dmtestgo="ep.silon"]'), claudePill.toString())
+  // The pill found inside the page each time, never a function handed in
+  // as text and evaluated there: the page's CSP allows no eval.
+  const PILL = '.dmtab .row[data-inst^="ep.silon|"] .fpill';
+  await page.waitForFunction(sel => /rebuild · env · create/.test([...document.querySelectorAll(sel)].find(p => p.querySelector('.k')?.textContent === 'Claude')?.textContent || ''), PILL, { timeout: 20000 });
+  ok(await page.evaluate(sel => !![...document.querySelectorAll(sel)].find(p => p.querySelector('.k')?.textContent === 'Claude')?.querySelector('[data-dmtestgo="ep.silon"]'), PILL)
      && await page.$('.dmtab [data-dmclaude]') === null,
      'the docker row says what a session may do with it and links to the setting, carrying no control');
   await page.evaluate(() => renameProject('ep.silon'));
