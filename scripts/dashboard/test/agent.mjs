@@ -2943,7 +2943,8 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     ok(i2 && /already on this node \(6 bytes\)/.test(i2.log),
        '...and the next run of the same build fetches nothing: the node uses its copy');
     const cli = execFileSync('bash', [`${REPO}/scripts/bb`, 'emu', 'list'],
-      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...process.env, DASHBOARD_AUTH: 'test:test',
+      // ...with no token of the harness's own session leaking in (B412).
+      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...process.env, DASHBOARD_AUTH: 'test:test', BB_TOKEN: '',
         DASHBOARD_PORT: new globalThis.URL(URL).port, DASHBOARD_STATE: `${DIR}/state`, BB_PROJECT: 'alpha' } });
     ok(/bb emu list on agentbox/.test(cli) && /API levels with a system image here/.test(cli) && /succeeded/.test(cli),
        `bb emu from a shell goes to the project's node and streams the answer back (${cli.replace(/\s+/g, ' ').slice(0, 120)})`);
