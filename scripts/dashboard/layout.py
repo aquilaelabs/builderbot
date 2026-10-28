@@ -42,10 +42,12 @@ def configure(*, state, write_json, lock):
 # Every kind of tab the saved layout may carry. A kind missing from here is
 # dropped on read without a word, which is how the notebook came back from a
 # refresh as no tab at all: it was written to the file and filtered out of it.
+# The same read is how a retired page leaves a layout that still names it
+# (the Toolchains, Agents and Apps tabs, the Library since R170): no migration.
 # "findings" is the Analysis tab the Static analysis button opens, the
 # report as a document tab beside the notebook's own view of it.
-TAB_KINDS = {"term", "toolchains", "agents", "library", "installed", "emulator", "notebook", "projects", "docker", "findings", "roles", "nginx", "vms", "storage",
-             "nodes", "settings", "jobs", "users", "profile", "apps", "phone", "runner", "home", "notices", "help",
+TAB_KINDS = {"term", "library", "installed", "emulator", "notebook", "projects", "docker", "findings", "roles", "nginx", "vms", "storage",
+             "nodes", "settings", "jobs", "users", "profile", "phone", "runner", "home", "notices", "help",
              "sessions", "chat", "schedules", "debug", "keys", "audit", "scanners", "machine", "network"}
 
 

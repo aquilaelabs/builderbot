@@ -234,16 +234,6 @@ const TABKINDS = {
               icon: TOOL_ICONS.nodes,
               render: (i) => renderInstalledInto(i), live: () => `${instRev}/${nodesRev}/${signinRev()}`,
               open: () => loadInstalled() },
-  toolchains: { multi: false, label: () => "Toolchains",
-              icon: TOOL_ICONS.toolchains,
-              render: (i) => renderToolchainsInto(i), live: () => tcRev,
-              open: () => loadToolchains() },
-  // The coding agents on a node (R95 step 15): its own read, the node
-  // list, and the sign-in, which rides the status poll.
-  agents:   { multi: false, label: () => "Agents",
-              icon: TOOL_ICONS.agents,
-              render: (i) => renderAgentsInto(i), live: () => agentsLiveKey(),
-              open: () => loadAgents() },
   // nodesRev and jobsRev as well as its own: a node's images arrive on its
   // census, and an image job moves the queue.
   emulator: { multi: false, label: () => "Emulator",
@@ -372,9 +362,6 @@ const TABKINDS = {
   profile:  { multi: false, label: () => "Profile",
               render: (i) => renderProfileInto(i), live: () => `${profileRev}/${keyMineRev}`,
               open: () => loadProfile() },
-  apps:     { multi: false, label: () => "Apps",
-              render: (i) => renderAppsInto(i), live: () => devAppsRev,
-              open: () => loadApps() },
   findings: { multi: false, label: () => "Analysis",
               icon: TOOL_ICONS.findings,
               render: (i) => renderFindingsInto(i),

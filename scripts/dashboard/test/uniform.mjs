@@ -58,16 +58,6 @@ const DRIVERS = {
     open: () => page.evaluate(() => openInstalledTab()),
     readyWhen: '.installedtab details.sect, .installedtab .empty',
   },
-  toolchains: {
-    open: () => page.evaluate(() => openToolchains()),
-    readyWhen: '.tctab .tc',
-  },
-  // The coding agents on a node (R95 step 15): a section per agent, or the
-  // empty band on a box with no agent node.
-  agents: {
-    open: () => page.evaluate(() => openAgentsTab()),
-    readyWhen: '.agentstab [data-agnode] details.sect, .agentstab .empty',
-  },
   emulator: {
     // The harness's sandbox node reports a store, so the tab draws its head.
     open: () => page.evaluate(() => openEmulator()),
@@ -203,11 +193,6 @@ const DRIVERS = {
   profile: {
     open: () => page.evaluate(() => openProfileTab()),
     readyWhen: '.profiletab .snav .rrow',
-  },
-  apps: {
-    // Its section is always there, an app's rows or the line saying none is offered.
-    open: () => page.evaluate(() => openAppsTab()),
-    readyWhen: '.appstab details.sect[data-sect="apps:list"]',
   },
 };
 

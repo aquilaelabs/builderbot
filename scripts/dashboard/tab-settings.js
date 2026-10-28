@@ -13,6 +13,22 @@
 
 "use strict";
 
+// What the controller offers and holds of its companions (apps.view), for
+// the Apps section here and the Library's Companions cards (the Apps page's
+// read until R170).
+let devApps = null, devAppsRev = 0;
+async function loadApps(){
+  // Switched off on this install (R81): the route refuses, so it is not asked.
+  if (featureOff("apps")){ devAppsRev++; return; }
+  try{
+    const r = await bootFetch("/api/apps");
+    const j = await r.json();
+    if (!j.error) devApps = j;
+  }catch(e){ /* the section says it could not read them */ }
+  devAppsRev++;
+  if (tabs.some(t => t.kind === "settings")) drawPanes();
+}
+
 // Revert on a section puts its fields back to what is saved: the draft for
 // them dropped and the tab repainted, which the live key has to notice.
 let settingsRev = 0;

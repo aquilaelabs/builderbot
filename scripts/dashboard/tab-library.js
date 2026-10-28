@@ -60,7 +60,7 @@ function libPick(){
   }
   if (!live.some(n => n.id === want)) want = live[0]?.id || "";
   libNode = want;
-  if (want && want !== tcNode){ tcNode = want; toolchains = null; tcTicked.clear(); }
+  if (want && want !== tcNode){ tcNode = want; toolchains = null; tcDriverPick = ""; }
   return live.find(n => n.id === want) || null;
 }
 
@@ -173,6 +173,18 @@ function libActs(r, may){
 // The whole description, on the open row (rows-you-open): what it fetches
 // and runs, its terms, its platforms, the verbs it gives a session, an
 // agent's sign-in on this node, a pack's source, a companion's other files.
+// How a companion is connected once it is installed (the Apps page's words
+// until R170): the controller's address is the one thing each asks for,
+// written where it is typed.
+function devHow(name){
+  const at = `<code>${esc(location.origin)}</code>`;
+  return {
+    android: `Install it, open it and sign in at ${at} with your name and password.`,
+    vscode: `In VS Code: Extensions, the ⋯ menu, Install from VSIX; then BuilderBot: Connect, at ${at}.`,
+    companion: `Run it, sign in at ${at} with your name and password, and pick a project and a folder.`,
+  }[name] || "";
+}
+
 function libDetail(r){
   // The entry's metadata alone (the operator, 28 Oct: the Library is the
   // catalog; what is installed is managed on the Installed page under
@@ -215,7 +227,7 @@ function libDetail(r){
     if (r.compose) lines.push(`<pre class="libcompose mono">${esc(r.compose.trim())}</pre>`);
   }
   if (r.kind === "companion"){
-    lines.push(`<span class="sub">${typeof devHow === "function" ? devHow(r.name) : ""}</span>`);
+    lines.push(`<span class="sub">${devHow(r.name)}</span>`);
     if ((r.files || []).length > 1) lines.push(`<span class="sub">Also: ${r.files.slice(1).map(f => `<a href="${esc(f.url)}" download>${esc(f.file)}</a>`).join(", ")}</span>`);
   }
   return lines.filter(Boolean).join("");

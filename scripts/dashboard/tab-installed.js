@@ -48,7 +48,7 @@ function instPick(){
   if (!live.some(n => n.id === want)) want = live[0]?.id || "";
   instNode = want;
   // The toolchain job's verbs act on tcNode; the pack dialogs read its rows.
-  if (want && want !== tcNode){ tcNode = want; toolchains = null; tcTicked.clear(); }
+  if (want && want !== tcNode){ tcNode = want; toolchains = null; }
   return live.find(n => n.id === want) || null;
 }
 
@@ -130,6 +130,26 @@ function instActs(r, may){
 }
 
 // The open row: what the node knows of it, and what a person sets here.
+let agYours = {plugins: [], mcp: {}};   // this account's plugins and MCP servers on the node, as the read last said
+
+// What this account added to an agent on the node (R95 step 15, moved here
+// from Profile; the Agents page's until R170): Claude Code's plugins, and
+// each agent's MCP servers, by name, as the node last said. Read here;
+// changed in a session.
+function agExtras(a){
+  const pl = a.id === "claude" ? (agYours.plugins || []) : [];
+  const mcp = (agYours.mcp || {})[a.id] || [];
+  const one = p => `<code>${esc(p.id.replace(/@claude-plugins-official$/, ""))}</code>${p.version ? ` ${esc(p.version)}` : ""}${
+    p.scope === "project" ? ` (${esc(p.project ? projLabel(p.project) : "a project")})` : ""}${p.enabled === false ? ` <span class="dim">off</span>` : ""}`;
+  const rows = [
+    a.id === "claude" ? ["your plugins", pl.length ? pl.map(one).join(", ") : "none", {html: true}] : null,
+    ["your MCP servers", mcp.length ? mcp.map(x => `<code>${esc(x)}</code>`).join(", ") : "none", {html: true}],
+  ].filter(Boolean);
+  return `<div class="field agpart"><div class="fsub">Yours</div>${factGrid(rows, "agextras")}<div class="hint">${
+    a.id === "claude" ? "Changed with <code>/plugin</code> and <code>/mcp</code> in a Claude session, for you alone."
+      : `Set up in ${esc(a.product)}'s own configuration, for you alone.`}</div></div>`;
+}
+
 function instDetail(r){
   const n = (nodesList || []).find(x => x.id === instNode);
   const lines = [];
@@ -168,7 +188,7 @@ function instDetail(r){
     }
     if (n && (r.installed || r.agent === "claude") && typeof signinBlock === "function" && a?.provider)
       lines.push(`<div class="field agpart"><div class="fsub">Your sign-in</div>${signinBlock(n, r.agent)}</div>`);
-    if (n && r.installed && a && typeof agExtras === "function") lines.push(agExtras(a));
+    if (n && r.installed && a) lines.push(agExtras(a));
   }
   return lines.filter(Boolean).join("");
 }

@@ -1507,16 +1507,12 @@ input[type="number"]{-moz-appearance:textfield}
 button.primary{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:var(--row-y) var(--row-x)}
-/* The Toolchains page's band of actions (tab-toolchains.js): the bar is the
-   band, and what Remove would take sits under it on the band's own inset. */
-.tcact .tcclean{padding:4px 0 0;font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
 #linux button,#git button{font-family:var(--mono);font-size:12px}
-/* The toolchains document. One row per toolchain: a checkbox that owns the whole
-   row (the label wraps it), the size beside the name, and the resolved
-   install path underneath, "where did that actually go" is the question a
-   share full of SDKs invites. */
+/* A ticked row (.tc, the Emulator page's images): a checkbox that owns the
+   whole row (the label wraps it), the size beside the name and the facts
+   underneath. The Toolchains page that drew these first went with R170. */
 /* Inset to the same 12px the rows are, so the rule under a section heading
    starts and ends where the rules between rows do: a divider one step wider
    than the ones below it reads as a mistake, because it is one. The vertical
@@ -1534,26 +1530,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
   border-bottom:var(--hair) solid var(--line);cursor:pointer;color:var(--ink)}
 .tc:last-child{border-bottom:0}
 .tc input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto}
-/* The NVIDIA driver's row (R102): a row of the machine's own above the
-   store's, with the hairline the rows share under it. Not a label, since it
-   holds a pulldown, so the pointer is its name's alone. */
-.tc.tcdrv{cursor:default}
-.tc.tcdrv label.nm{cursor:pointer;display:block}
-.tc .tcdrvpick{display:flex;align-items:center;gap:8px;margin:6px 0 2px;color:var(--dim);font:var(--f-note)}
-.tcs.tcmachine{border-bottom:var(--hair) solid var(--line)}
 .tc .nm{font:600 13px/1.35 system-ui,sans-serif}
-/* The catalog is a table (R218 step 8): the tick beside the name in the
-   lead cell, what it is under the name, the notes under the line. */
-.tcs .td.lead{display:flex;gap:10px;align-items:flex-start;font:inherit}
-.tcs .td.lead .grow{min-width:0}
-.tcs .td .where{font:var(--f-data)}
-/* A version or a size in its column reads as the column's value, not as a
-   badge: the same voice as "installed" beside it. */
-.tcs .td:not(.lead) .pill{border:0;padding:0;background:none;font:var(--f-data);color:inherit}
-.tcs .tcpath{font-family:var(--mono);overflow-wrap:anywhere}
-/* "Installed not installed" on a phone says it twice: the word alone. */
-@media(max-width:900px){ .tcs .td:has(> .where:not(.on))::before{content:none} }
-.tcs .td.act .rm{margin:0}
 .tc .sub{display:block;color:var(--dim);font:var(--f-note)}
 .tc .where{font-family:var(--mono);overflow-wrap:anywhere}
 .tc .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
@@ -1604,9 +1581,6 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
 .imgadd button{flex:0 0 auto;min-height:var(--tap)}
 .imgadd .imgabout{flex:0 0 100%;color:var(--dim);margin:0;
   font:var(--f-ui);max-width:70ch}
-/* The one job at a time, said beside the button that started it rather than
-   written into the button, in the bar's state slot like any other state. */
-.tcworking{overflow-wrap:anywhere}
 /* Bigger tap targets where a finger is doing the ticking. */
 @media(max-width:900px){ .tc input{width:20px;height:20px} }
 /* A project row's controls move as one block: four buttons that wrapped one
@@ -2034,11 +2008,8 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
 .storagetab .ndmeter .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .storagetab .ndmeter .val{white-space:normal;overflow-wrap:anywhere;text-align:right}
 @media (max-width:600px){.storagetab .ndmeter{grid-template-columns:6em minmax(0,1fr) 7.5em}}
-/* The Agents tab (tab-agents.js, R95): a device sign-in's one-time code,
-   what the person types on the provider's page, a short mono fact set
-   apart by its weight and spacing, and taken whole by one press. */
-/* An agent's section in parts, each under a small head in the gear's voice,
-   a hairline between them. */
+/* An agent's row in parts (its sign-in, what is yours on the node), each
+   under a small head in the gear's voice. */
 .fsub{font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin:2px 0 8px}
 /* The Library (tab-library.js, R170): a store browses as cards, the
    Projects page's grid under a heading per kind; a card opened on its
@@ -4960,23 +4931,11 @@ pre{margin:0;padding:9px 11px;font:var(--f-code);white-space:pre-wrap;
    out as the pane lays them, the doc filling what is left under the bar. */
 .skboot{display:flex;flex-direction:column;height:100%;min-height:0;padding:0;margin:0}
 .skpcard .skv{height:.9em} .skpcard .skv.name{height:1.1em}
-/* A toolchain row closed is its name and what it is for on one line; the
-   rest (terms, system packages, needs, its path) on the open row (R218
-   step 22). Details beside the name opens it. */
-.tctab .tc:not(.open) .tcdetail{display:none}
-.tctab .tc .tcdetail{display:contents}
-.tctab .tc:not(.open) .tcabout{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tctab .tc .tcmore{font:var(--f-note);margin-left:6px;min-height:0;padding:0}
-/* On a phone the row's facts and its news start under its name, not at the
-   row's edge (the operator's phone, 18 Oct): the box is one size in every
-   browser so the inset is its width and the gap; and what a toolchain is
-   for is read whole there, where one line held a third of it. */
+/* On a phone a ticked row's facts start under its name, not at the row's
+   edge (the operator's phone, 18 Oct): the box is one size in every browser
+   so the inset is its width and the gap. */
 @media(max-width:900px){
-  .tcs .td.lead>input[type="checkbox"]{width:18px;height:18px;flex:0 0 18px;margin:1px 0 0}
-  .tcs .tline{padding-inline-start:28px}
-  .tcs .tline>.td.lead{margin-inline-start:-28px;flex-basis:calc(100% + 28px)}
   .tcs .tc>.sub{padding-inline-start:28px}
-  .tctab .tc:not(.open) .tcabout{white-space:normal}
 }
 .skboot .sk-card.skrows{padding:0}
 .skboot>.skstack{position:relative;flex:1;min-height:0;background:var(--panel)}
@@ -7274,9 +7233,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-users.js"></script>
 <script src="tab-roles.js"></script>
 <script src="tab-profile.js"></script>
-<script src="tab-apps.js"></script>
-<script src="tab-toolchains.js"></script>
-<script src="tab-agents.js"></script>
+<script src="page-toolchains.js"></script>
 <script src="tab-library.js"></script>
 <script src="tab-installed.js"></script>
 <script src="tab-emulator.js"></script>
@@ -8032,14 +7989,11 @@ onRev("live", () => liveRefresh());
 // setting was the one place a change took fifteen seconds to show.
 onRev("settings", () => refresh());
 // The toolchain store: an install or an uninstall finishing, or the version
-// check. The tab used to keep a timer of its own
-// for this (half a second while a job ran, eight seconds otherwise) which
-// is a third clock for a fact the poll already carries.
+// check. The Toolchains page used to keep a timer of its own for this (half
+// a second while a job ran, eight seconds otherwise) which is a third clock
+// for a fact the poll already carries. The Library (R170) and the Installed
+// page (R172) read on it.
 onRev("toolchains", () => {
-  if (tabs.some(t => t.kind === "toolchains")) loadToolchains();
-  // ...and the Agents page, whose rows are a node's toolchain rows (R95).
-  if (shown("agents")) loadAgents();
-  // ...and the Library, which is both (R170), and the Installed page (R172).
   if (shown("library")) loadLibrary();
   if (shown("installed")) loadInstalled();
 });
@@ -8071,14 +8025,11 @@ onRev("nodes", () => {
   else nodesStale = true;
   // A node's census carries its images: refetched only when they moved.
   if (shown("emulator")) emuOnNodes();
-  // ...and a page that said no node yet looks again (R256 step 1: its
-  // Refresh went, since the page follows its revisions).
-  if (shown("toolchains") && toolchains?.nonode) loadToolchains();
   // ...and Storage, whose walk lands with a node's census: the numbers a
   // Measure now asked for arrive with no Refresh (the operator, 17 Oct).
   if (shown("storage")) loadStorage();
-  // ...and the Agents page, whose versions ride a node's census (R95).
-  if (shown("agents")) loadAgents();
+  // ...and the Library and the Installed page, whose agents' versions ride
+  // a node's census (R95); a page that said no node yet looks again.
   if (shown("library")) loadLibrary();
   if (shown("installed")) loadInstalled();
   if (shown("emulator") && emu?.nonode) loadEmulator();
