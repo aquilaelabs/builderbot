@@ -3060,8 +3060,8 @@ def node_machine(principal, node_id, hostname="", timezone=""):
         return {"error": why}
     if not n.get("live"):
         return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
-    if system_job_for(node_id):
-        return {"error": "a system job is already in flight on this node; one at a time"}
+    # The shapes before the queue: a name that is not one is told so
+    # without a job in the way.
     host = str(hostname or "").strip().lower()
     tz = str(timezone or "").strip()
     if host and not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", host):
@@ -3070,6 +3070,8 @@ def node_machine(principal, node_id, hostname="", timezone=""):
         return {"error": "a time zone is named as Region/City"}
     if not host and not tz:
         return {"error": "nothing to set"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
     cfg = {k: v for k, v in (("hostname", host), ("timezone", tz)) if v}
     r = job_add(principal, {"node": node_id}, "system", {"apply": "machine", "config": cfg, "timeout": 120})
     if r.get("ok"):
