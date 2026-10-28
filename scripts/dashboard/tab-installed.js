@@ -263,7 +263,7 @@ function renderInstalledInto(i){
     return;
   }
   const may = inst.may || {};
-  d.setBar(nodeBar(nodePick("instNodeSel", pnodes, instNode), ""));
+  d.setBar("");    // the node is picked in the Machines group's header (R177)
   if (inst.error){
     paint(d.list, `<div class="field"><div class="notice bad">${esc("could not read what is installed: " + inst.error)}</div></div>`);
     return;
@@ -293,12 +293,6 @@ function renderInstalledInto(i){
 function wireInstalled(root){
   wireSections(root);
   if (typeof wireSignin === "function") wireSignin(root);
-  const psel = root.querySelector("#instNodeSel");
-  if (psel) psel.onchange = () => navPush(() => {
-    instNode = psel.value; inst = null;
-    try{ localStorage.setItem("bb.instnode", instNode); }catch(e){ /* private */ }
-    instRev++; drawPanes(); loadInstalled();
-  });
   root.querySelectorAll("[data-instmore]").forEach(b => b.onclick = () => {
     const k = b.dataset.instmore;
     if (instOpen.has(k)) instOpen.delete(k); else instOpen.add(k);

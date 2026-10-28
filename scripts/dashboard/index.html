@@ -3466,6 +3466,20 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    large, the branch and the node in the data face, the session's dot and
    word, and the actions at the right; the one notice under it. */
 .pane .bar.proj{padding:6px calc(var(--row-x) + var(--doc-in));flex-wrap:wrap;gap:4px 10px;font:var(--f-ui);min-height:var(--pbar-h)}
+/* The Machines group's header (R177): the project header's band, the node
+   picker where the name is, the facts beside it and the actions at the
+   right, over the group's sub-nav on its own line. */
+.pane .bar.page.machines{flex-wrap:wrap;gap:4px 10px;font:var(--f-ui)}
+.pane .bar.page.machines .phead{display:flex;align-items:center;gap:10px;flex:1 1 100%;min-width:0;flex-wrap:wrap}
+.pane .bar.page.machines .phead>label.pick{display:inline-flex;align-items:center;gap:var(--field-gap);margin:0}
+.pane .bar.page.machines .phead>label.pick>.pickw{font:var(--f-ui);color:var(--dim)}
+.pane .bar.page.machines .phead>label.pick>select{min-height:32px;padding:4px 10px;font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);box-sizing:border-box}
+.pane .bar.page.machines .pname{font-weight:600;font-size:1.15rem;line-height:1.3;color:var(--ink);white-space:nowrap}
+.pane .bar.page.machines .pfacts{font:var(--f-data);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:48ch}
+.pane .bar.page.machines .phead>.sp{flex:1}
+.pane .bar.page.machines .phead>button{min-height:32px;padding:4px 12px;font:var(--f-ui)}
+.pane .bar.page.machines>.subnav{flex:0 0 auto}
+@media(max-width:600px){ .pane .bar.page.machines .pfacts{flex:1 1 100%;max-width:none} }
 .pane .bar.proj .phead{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0;flex-wrap:wrap}
 .pane .bar.proj .pname{font-weight:600;font-size:1.15rem;line-height:1.3;color:var(--ink);white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .pane .bar.proj .pname .lockmark svg{width:14px;height:14px}

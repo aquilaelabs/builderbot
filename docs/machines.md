@@ -22,8 +22,11 @@ the page.) A controller installed bare metal can be a node of itself
 here, marked **this machine**, offered in a project's node pickers as such
 and in no container picker, its session network always on, and the Doctor
 says whether the wall between its sessions and the controller holds. The
-page shows one node, picked in its bar beside **Create
-sandbox VM** and **Enroll node**: a header with its state, and where it dials in from, which is the address of its
+page shows one node, picked in the Machines header over it (R177: one band
+for Nodes, Storage and Installed, the node pulldown where a project's name
+is, when it was seen, where it dials in from and its agent beside it, and
+**Create sandbox VM** and **Enroll node** at its right; the pick holds across
+the three pages): a header with its state, and where it dials in from, which is the address of its
 last hello, so a node whose address moves is followed within a minute, its
 screen relay rebound onto the new address by its agent and the session-port
 rule on the node rewritten if the controller's own address is what moved,
@@ -276,7 +279,7 @@ offered to a node that did not enroll as a sandbox.
 ## Storage
 
 **Storage**, under Machines, is what a node's disks hold, and whose. It shows
-one node at a time, picked in its bar: a line saying when it was measured,
+one node at a time, picked in the Machines header: a line saying when it was measured,
 its filesystems as a stack of meters, its stores and Docker's share, then
 each project's folders on it (the synced copy, the build cache, artifacts, a
 dev instance's data, emulators, the accounts' build caches), largest first,
@@ -440,7 +443,7 @@ storage module's next pieces.
 ## Installed
 
 **Installed**, under Machines beside Nodes and Storage (R172), is what the
-Library put on one node, picked in the bar, and how each is set there: a
+Library put on one node, picked in the Machines header, and how each is set there: a
 section per kind with anything on the node (coding agents, toolchains,
 tool packs, services), each a row that opens on what the Library's card
 does not show, since the Library is the catalog. An agent's row holds your
