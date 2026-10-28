@@ -2207,6 +2207,7 @@ token_pubs = None
 # The accounts' SMB passwords for the controller's own machine (R164 step
 # 1): users.smb_users, and the resolver of a share's names (users.smb_resolve).
 smb_users = None
+pack_config = None         # nid -> [{pack, store, values, env}] (R172, packconfig.for_node)
 smb_resolve = None
 # The reporting's intake (history.add), on the controller's own machine's samples (R164 step 4).
 history_add = None
@@ -4393,6 +4394,9 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             # passwords as Samba keeps them (R164 step 1): its agent imports
             # them and removes the ones gone.
             "smb_users": (smb_users() if smb_users and own_machine(n) else []),
+            # ...and what each added pack is configured with on this node
+            # (R172): its values, the secrets opened, for the pack's verbs.
+            "pack_config": (pack_config(nid) if pack_config else []),
             # ...and the other disks and shares it mounts (R162 step 4).
             "ext_mounts": (ext_mounts() if ext_mounts and own_machine(n) else []),
             # ...and the backups it copies (R162 step 5).

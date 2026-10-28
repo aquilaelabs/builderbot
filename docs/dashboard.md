@@ -45,7 +45,7 @@ away and honest about being a shell.
 down the left edge is ten groups, each one press, in this order: **Home**;
 **Projects** (Projects, Analysis); **Build** (Library, Emulator, Phone, CI
 runner); **Containers** (Containers, nginx); **Machines** (Controller
-settings, Nodes, Storage); **Sessions**; **Jobs**; **People** (Users, Roles);
+settings, Nodes, Storage, Installed); **Sessions**; **Jobs**; **People** (Users, Roles);
 **Settings** (Profile); and **Help**. A group with several pages shows them
 as a sub-nav at the top of its page. A page an account's grants forbid is not
 drawn: People only for an account that may read accounts, Controller

@@ -182,6 +182,21 @@ def set_dest(uid, req):
     return {"ok": True, "dest": next(x for x in list_for(uid) if x["id"] == rec["id"])}
 
 
+def set_on(uid, did, on):
+    """A destination switched on or off, its settings kept (R173): {dest}
+    or {error}."""
+    with _lock:
+        d = _load()
+        mine = d.get(uid) or {}
+        rec = next((x for x in (mine.get("dest") or []) if x.get("id") == did), None)
+        if rec is None:
+            return {"error": "no such destination"}
+        rec["on"] = on is True
+        d[uid] = mine
+        _save(d)
+    return {"ok": True, "dest": next(x for x in list_for(uid) if x["id"] == did)}
+
+
 def remove(uid, did):
     with _lock:
         d = _load()

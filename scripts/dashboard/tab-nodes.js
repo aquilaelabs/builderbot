@@ -20,7 +20,7 @@ let ndHistory = {};              // the own machine's reporting per node: {span,
 // its dialog opened still has its nodes.
 let nodesStale = false;
 // The pages that draw the list: a node picker each, or the rows themselves.
-const NODE_READERS = ["nodes", "toolchains", "agents", "library", "emulator", "docker", "projects", "settings", "debug"];
+const NODE_READERS = ["nodes", "toolchains", "agents", "library", "installed", "emulator", "docker", "projects", "settings", "debug"];
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
@@ -524,72 +524,6 @@ Host ${esc(alias)}
 // press; a key field says only that it is set, and a value typed replaces
 // it at Save. Deploy, Save and Remove are the nginx page's shape: a
 // written System container, built by a compose job on the node.
-const routerData = {};            // node id -> the last answer, or null while it is on its way
-let routerDraft = {};             // {node, providers: {}, custom: [], ollama}: typed and not saved yet
-
-async function loadRouter(nid){
-  routerData[nid] = routerData[nid] || null;
-  try{
-    const j = await (await fetch("/api/router?node=" + encodeURIComponent(nid))).json();
-    routerData[nid] = j.error ? {error: j.error} : j;
-  }catch(e){ routerData[nid] = {error: "router: " + failWords(e)}; }
-  nodesRev++; drawPanes();
-}
-
-async function routerAct(body){
-  const j = await (await postJSON("/api/router", body)).json().catch(() => ({error: "no answer"}));
-  if (j.error) notify(j.error, true);
-  else if (j.note) notify(j.note, true);
-  else if (j.job) notify(`${body.action === "deploy" ? "deploying the router" : "rebuilding the router"}: its row on the Containers page has the build`);
-  else if (body.action === "ollama-pull") notify(`pulling ${body.model}: a job on the Jobs page`);
-  if (body.node) await loadRouter(body.node);
-  return j;
-}
-
-function nodeRouterSection(n){
-  const d = routerData[n.id];
-  if (d === undefined){ loadRouter(n.id); }
-  const title = ndTitle("router");
-  if (!d) return docSection("nodes", "router", title, "", `<div class="field">${skRows(2)}</div>`);
-  if (d.error) return docSection("nodes", "router", title, "", `<div class="hint bad">${esc(d.error)}</div>`);
-  const dr = routerDraft.node === n.id ? routerDraft : (routerDraft = {node: n.id, providers: {}, custom: null, ollama: null});
-  const known = d.providers_known || {};
-  const provRows = Object.entries(known).map(([pid, label]) => `<div class="field"><label class="pick"><span class="pickw">${esc(label)}</span>
-      <input type="password" data-rtprov="${esc(pid)}" placeholder="${d.providers?.[pid] ? "set: type to replace, or 'clear'" : "API key"}" autocomplete="off" spellcheck="false" value="${esc(dr.providers[pid] || "")}"></label></div>`).join("");
-  const custom = dr.custom ?? (d.custom || []).map(c => ({...c}));
-  const customRows = custom.map((c, i) => `<div class="field ctlrow rtcustom" data-rtc="${i}">
-      <input type="text" data-rtcname placeholder="name" value="${esc(c.name || "")}" autocomplete="off" spellcheck="false">
-      <input type="text" data-rtcbase placeholder="https://host/v1" value="${esc(c.base || "")}" autocomplete="off" spellcheck="false">
-      <input type="password" data-rtckey placeholder="${c.key === true ? "set: type to replace" : "API key"}" autocomplete="off" spellcheck="false">
-      <button type="button" data-rtcrm="${i}">Remove</button></div>`).join("");
-  const ollamaOn = dr.ollama ?? !!d.ollama?.on;
-  const pulled = (d.ollama?.models || []).map(m => `<div class="row"><span class="grow">${esc(m)}</span><button type="button" data-rtollrm="${esc(m)}">Remove</button></div>`).join("");
-  const projects = (d.all_projects || []).map(p => `<label class="chip"><input type="checkbox" data-rtproj="${esc(p)}" ${d.projects?.includes(p) ? "checked" : ""}${d.deployed ? "" : " disabled"}> ${esc(projLabel(p))}${
-      d.spend?.[p] !== undefined ? ` <span class="dim">($${Number(d.spend[p]).toFixed(2)})</span>` : ""}</label>`).join("");
-  const models = (d.models || []).filter(m => !m.wild);
-  const status = d.deployed ? "deployed" : Object.values(d.providers || {}).some(Boolean) || (d.custom || []).length || d.ollama?.on ? "not deployed" : "none";
-  const body = `
-    <div class="field"><div class="sub">${d.deployed ? `LiteLLM answers at ${esc(d.url)}/v1 for the projects ticked below, each with a key of its own.`
-      : "A model router here: LiteLLM holding the provider keys, offered to the projects you tick, each spending through a key of its own."}</div></div>
-    <div class="field"><div class="hint">Provider keys, kept sealed here and written into the router's compose file on this node, never into a session's view.</div></div>
-    ${provRows}
-    <div class="field"><div class="hint">Other OpenAI-compatible endpoints, each a provider under its own name (NAME/model in the picker).</div></div>
-    ${customRows}
-    <div class="field"><div class="actbar"><span class="sp"></span><button type="button" data-rtcadd>Add an endpoint</button></div></div>
-    <div class="field"><label class="ndcap"><input type="checkbox" data-rtollama ${ollamaOn ? "checked" : ""}>
-      run Ollama beside it${d.gpu ? ", on this node's card" : ", on this node's CPU and memory"}, its models one more provider (ollama/NAME)</label></div>
-    ${d.deployed && d.ollama?.on ? `<div class="field"><div class="ctlrow"><input type="text" id="rtPull-${esc(n.id)}" placeholder="a model Ollama lists, such as qwen2.5-coder:7b" autocomplete="off" spellcheck="false">
-      <button type="button" data-rtollpull>Pull</button></div>${pulled ? `<div class="rows">${pulled}</div>` : `<div class="sub dim">Nothing pulled yet.</div>`}</div>` : ""}
-    <div class="field"><div class="actbar"><span class="state">${status === "deployed" ? "deployed" : status === "none" ? "nothing behind it yet" : "not deployed"}</span><span class="sp"></span>
-      ${d.deployed ? `<button type="button" data-rtsave>Save and rebuild</button><button type="button" class="danger" data-rtremove>Remove</button>`
-                   : `<button type="button" data-rtsave>Save</button><button type="button" class="primary" data-rtdeploy${status === "none" ? " disabled" : ""}>Deploy</button>`}</div></div>
-    ${d.deployed ? `<div class="field"><div class="hint">Projects that may use it, each handed the address and its own key at a session's start; a session of any other project cannot reach it.</div>
-      <div class="chips">${projects || `<span class="dim">no projects yet</span>`}</div></div>
-    <div class="field"><div class="actbar"><span class="state">${models.length ? `${models.length} model${models.length === 1 ? "" : "s"} known${d.models_at ? `, read ${esc(ago(d.models_at))}` : ""}` : "no model list read yet"}</span><span class="sp"></span>
-      <button type="button" data-rtmodels>Read the models</button><button type="button" data-rtspend>Read the spend</button></div></div>` : ""}`;
-  return docSection("nodes", "router", title, status === "none" ? "" : status, body, {cls: ""});
-}
-
 // ---- USB (R116) ----
 // The machine's USB devices, each with what holds it (the host, a VM,
 // nothing), Give to a VM and Take back, and its USB controllers with what
@@ -788,36 +722,6 @@ function wireUsbSection(root, n){
   }));
 }
 
-function wireRouterSection(root){
-  const sect = root.querySelector('details[data-sect="nodes:router"]');
-  if (!sect) return;
-  const nid = routerDraft.node;
-  const read = () => {
-    const providers = {};
-    sect.querySelectorAll("[data-rtprov]").forEach(i => { if (i.value.trim()) providers[i.dataset.rtprov] = i.value.trim(); });
-    const custom = [...sect.querySelectorAll(".rtcustom")].map(row => ({name: row.querySelector("[data-rtcname]").value, base: row.querySelector("[data-rtcbase]").value,
-      key: row.querySelector("[data-rtckey]").value}));
-    routerDraft = {...routerDraft, node: nid, providers, custom, ollama: !!sect.querySelector("[data-rtollama]")?.checked};
-    return routerDraft;
-  };
-  sect.addEventListener("input", read);
-  sect.addEventListener("change", read);
-  const on = (sel, fn) => sect.querySelectorAll(sel).forEach(b => b.onclick = async () => { busy(b, "Working"); await fn(b); });
-  on("[data-rtcadd]", () => { read(); routerDraft.custom = [...(routerDraft.custom || []), {name: "", base: "", key: ""}]; nodesRev++; drawPanes(); });
-  on("[data-rtcrm]", b => { read(); routerDraft.custom.splice(Number(b.dataset.rtcrm), 1); nodesRev++; drawPanes(); });
-  on("[data-rtsave]", async () => { const dr = read(); const j = await routerAct({action: "set", node: nid, providers: dr.providers, custom: dr.custom, ollama: dr.ollama}); if (!j.error) routerDraft = {node: nid, providers: {}, custom: null, ollama: null}; });
-  on("[data-rtdeploy]", async () => { const dr = read(); await routerAct({action: "set", node: nid, providers: dr.providers, custom: dr.custom, ollama: dr.ollama}); routerDraft = {node: nid, providers: {}, custom: null, ollama: null}; await routerAct({action: "deploy", node: nid}); });
-  on("[data-rtremove]", async () => {
-    if (!await askYes("Remove the model router from this node? Its keys stay here sealed; the projects lose their way to it.", {verb: "Remove", danger: true})) return;
-    await routerAct({action: "remove", node: nid});
-  });
-  on("[data-rtollpull]", () => routerAct({action: "ollama-pull", node: nid, model: sect.querySelector(`#rtPull-${CSS.escape(nid)}`)?.value || ""}));
-  on("[data-rtollrm]", b => routerAct({action: "ollama-remove", node: nid, model: b.dataset.rtollrm}));
-  on("[data-rtmodels]", () => routerAct({action: "models", node: nid}));
-  on("[data-rtspend]", () => routerAct({action: "spend", node: nid}));
-  sect.querySelectorAll("[data-rtproj]").forEach(i => i.onchange = () => routerAct({action: i.checked ? "allow" : "disallow", node: nid, project: i.dataset.rtproj}));
-}
-
 function nodeFeaturesSection(n){
   if (n.kind !== "agent") return "";
   const fe = n.reported?.features;
@@ -913,9 +817,9 @@ function nodeFeaturesSection(n){
   const emu = (r.store_dirs?.android || []).includes("emulator");
   others.push(elsewhere("emulator", "Android emulator", emu, "The emulator and its system images, from the Toolchains page, where Google's SDK license is accepted.",
     `<button type="button" data-ndtc="${esc(n.id)}">Toolchains</button>`));
-  // The model router (R144): deployed from its own section on this page.
-  const rt = routerData[n.id];
-  others.push(elsewhere("router", "Model router", !!rt?.deployed, rt?.deployed ? `LiteLLM at ${esc(rt.url)}, for ${(rt.projects || []).length} project${(rt.projects || []).length === 1 ? "" : "s"}.` : "LiteLLM with your provider keys, Ollama beside it, set up in the Model router section above.", ""));
+  // The model router (R144, R172): a card of the Library's on this node, configured there.
+  others.push(elsewhere("router", "Model router", false, "LiteLLM with your provider keys, Ollama beside it, deployed and configured from its card on the Library with this node picked.",
+    `<button type="button" data-ndtc="${esc(n.id)}">Library</button>`));
   const runs = ((r.services || {}).runners || []).length;
   others.push(elsewhere("runner", "CI runner", runs > 0, runs ? `${runs} runner${runs === 1 ? "" : "s"} registered here.` : "A forge's runner, registered with a token from the forge on the CI runner page.", ""));
   rows.push(...others);
@@ -1847,7 +1751,7 @@ function nodeCharts(n){
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
 const ND_SECTS = [["health", "Health"], ["report", "Reporting"], ["machine", "Name and time"], ["power", "Power"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"], ["usb", "USB"],
-                  ["router", "Model router"], ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
+                  ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
 // enrolling off (R81): under the bar, since a reason in a tooltip is nothing
@@ -2009,7 +1913,6 @@ function ndRowHtml(n){
         ${n.kind === "agent" && !pending ? nodeMachineSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodePowerSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeUsbSection(n) : ""}
-        ${n.kind === "agent" && !pending ? nodeRouterSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeFeaturesSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
@@ -2903,7 +2806,6 @@ function wireNodesTab(root){
       const el = box.querySelector(`[data-k="${k}"]`);
       if (el) el.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft[key] = el.checked; sessWake(); };
     }
-    wireRouterSection(box);
     wireUsbSection(box, nodesList.find(x => x.id === id) || {});
     wireMachineSection(box, nodesList.find(x => x.id === id) || {});
     wireReportSection(box, nodesList.find(x => x.id === id) || {});

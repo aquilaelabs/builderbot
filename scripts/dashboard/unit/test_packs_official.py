@@ -16,6 +16,34 @@ import toolpacks  # noqa: E402
 
 
 class Official(unittest.TestCase):
+    def test_a_config_block_is_checked_and_a_service_is_official_only(self):
+        # R172: what a pack asks for per node, drawn by the Library as Configure.
+        good = {"name": "hexkit", "label": "Hexkit", "platforms": ["linux/amd64"], "terms": [], "layout": {"bin": [], "env": {}},
+                "verbs": {"dump": {"about": "dump", "usage": "FILE", "run": ["{dir}/bin/hexkit", "{args}"]}},
+                "config": [{"name": "api_key", "label": "API key", "kind": "secret", "env": "HEXKIT_KEY", "required": True},
+                           {"name": "region", "kind": "choice", "choices": [{"value": "eu"}, {"value": "us", "label": "US"}]},
+                           {"name": "hosts", "kind": "list", "fields": [{"name": "name", "kind": "text"}, {"name": "key", "kind": "secret"}]},
+                           {"name": "verbose", "kind": "switch"}]}
+        clean, errors = toolpacks.validate(good)
+        self.assertEqual(errors, [])
+        self.assertEqual([f["kind"] for f in clean["config"]], ["secret", "choice", "list", "switch"])
+        self.assertEqual((clean["config"][0]["env"], clean["config"][0]["required"], clean["config"][1]["choices"][1]["label"]), ("HEXKIT_KEY", True, "US"))
+        self.assertEqual([f["name"] for f in clean["config"][2]["fields"]], ["name", "key"])
+        for bad, said in (([{"name": "x", "kind": "magic"}], "kind is one of"), ([{"name": "A", "kind": "text"}], "name is"),
+                          ([{"name": "a", "kind": "text"}, {"name": "a", "kind": "text"}], "once"),
+                          ([{"name": "l", "kind": "list", "fields": [{"name": "p", "kind": "projects"}]}], "not inside a list"),
+                          ([{"name": "c", "kind": "choice"}], "choices lists"), ("no", "config is a list")):
+            _c, errors = toolpacks.validate(dict(good, config=bad))
+            self.assertTrue(any(said in e for e in errors), (bad, errors))
+        _c, errors = toolpacks.validate(dict(good, service={"kind": "router"}))
+        self.assertTrue(any("official pack's alone" in e for e in errors))
+        import router
+        clean, errors = toolpacks.validate(router.pack())
+        self.assertEqual(errors, [])
+        self.assertEqual((clean["service"], clean["verbs"], [f["name"] for f in clean["config"]][-3:]), ({"kind": "router"}, {}, ["custom", "ollama", "projects"]))
+        _c, errors = toolpacks.validate(dict(router.pack(), service={"kind": "nope"}))
+        self.assertTrue(any("service.kind is one of" in e for e in errors))
+
     def test_an_official_pack_stands_in_for_steps_and_verbs(self):
         m = {"name": "jdk", "label": "JDK", "tier": "official", "platforms": ["linux/amd64"], "terms": [],
              "layout": {"bin": ["bin"], "env": {"JAVA_HOME": ""}, "tool": "bin/java"}, "shipped": {"source": {"kind": "tarball"}}}

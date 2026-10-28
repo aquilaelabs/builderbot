@@ -41,6 +41,7 @@ class Rows(unittest.TestCase):
     def test_one_shape_in_the_pages_order(self):
         kinds = [r["kind"] for r in self.rows]
         self.assertEqual(kinds, ["agent", "agent", "toolchain", "toolchain", "pack", "pack", "app", "pack", "companion", "companion"])
+        self.assertIn("service", library.KINDS)
         for r in self.rows:
             for k in ("kind", "tier", "name", "label", "about", "platforms", "installed", "version", "latest", "update", "running", "verb"):
                 self.assertIn(k, r, (r["kind"], r["name"], k))
@@ -85,6 +86,25 @@ class Rows(unittest.TestCase):
         a, v = self.by[("companion", "android")], self.by[("companion", "vscode")]
         self.assertEqual((a["verb"], a["download"]["url"], a["version"]), ("download", "/apps/a.apk", "0.9.0"))
         self.assertEqual((v["verb"], v["absent"], v["download"]), ("", "0.9.0", None))
+
+    def test_a_service_is_a_row_with_its_configuration_as_the_page_sees_it(self):
+        # R172: the model router as a card, its values from its own status.
+        fields = [{"name": "anthropic", "kind": "secret", "label": "Anthropic"}, {"name": "custom", "kind": "list", "label": "Other", "fields": [{"name": "name", "kind": "text"}, {"name": "base", "kind": "text"}, {"name": "key", "kind": "secret"}]},
+                  {"name": "ollama", "kind": "switch", "label": "Ollama"}, {"name": "projects", "kind": "projects", "label": "Projects"}]
+        status = {"deployed": True, "url": "http://10.0.0.5:4000", "providers": {"anthropic": True, "openai": False},
+                  "custom": [{"name": "groq", "base": "https://api.groq.com/v1", "key": True}], "ollama": {"on": True, "models": ["qwen"]},
+                  "projects": ["web"], "models": [{"id": "x"}], "models_at": 5, "spend": {"web": 1.5}}
+        rows = library.rows(TC, [], [], None, None, services=[{"manifest": {"name": "model-router", "label": "Model router", "about": "r", "platforms": ["linux/*"],
+                                                                            "service": {"kind": "router"}, "config": fields}, "status": status, "ready": "", "all_projects": ["web", "app"]}])
+        r = next(x for x in rows if x["kind"] == "service")
+        self.assertEqual((r["name"], r["installed"], r["verb"], r["service"], r["all_projects"]), ("model-router", True, "", "router", ["web", "app"]))
+        self.assertEqual(r["values"], {"anthropic": True, "custom": [{"name": "groq", "base": "https://api.groq.com/v1", "key": True}], "ollama": True, "projects": ["web"]})
+        self.assertEqual((r["status"]["url"], r["status"]["spend"]), ("http://10.0.0.5:4000", {"web": 1.5}))
+        # ...and a pack's answers ride its row, only where it asks for any.
+        tc = {**TC, "items": [{**TC["items"][0], "config": [{"name": "k", "kind": "secret", "label": "K"}]}, TC["items"][1]]}
+        rows = library.rows(tc, [], [], None, None, pack_values={"jdk": {"k": True}})
+        self.assertEqual(next(x for x in rows if x["name"] == "jdk")["values"], {"k": True})
+        self.assertIsNone(next(x for x in rows if x["name"] == "node")["values"])
 
     def test_nothing_read_is_nothing_listed(self):
         self.assertEqual(library.rows(None, None, None, None, None), [])

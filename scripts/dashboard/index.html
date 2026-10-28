@@ -2079,6 +2079,22 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
   background:var(--panel2,var(--panel));border:var(--hair) solid var(--line);border-radius:var(--r-s,4px);white-space:pre}
 .librarytab .lcard .tpseen{display:flex;flex-direction:column;gap:3px}
 .librarytab .lcard.skcard .lcicon{background:var(--line)}
+/* The Installed page (tab-installed.js, R172): a row a fold (rows-you-open),
+   what it is one ellipsized line until Details opens it on the node's
+   side of it and its Configure. */
+.installedtab .irow:not(.open) .idetail{display:none}
+.installedtab .irow .idetail{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.installedtab .irow .idetail .agpart{margin-top:6px}
+.installedtab .irow:not(.open) .iabout{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.installedtab .irow .imore{font:var(--f-note);min-height:0;padding:0 2px;margin-left:4px;background:none;border:0;color:var(--dim);text-decoration:underline;cursor:pointer;vertical-align:middle}
+.installedtab .irow .imore:hover{color:var(--ink)}
+.installedtab .irow .acts{flex-wrap:wrap;justify-content:flex-end}
+.installedtab .irow .acts>.state{font:var(--f-note);color:var(--dim)}
+.installedtab .irow .acts>.state.ok{color:var(--ok)}
+.installedtab .irow .acts>.state.warn{color:var(--warn)}
+@media (max-width:600px){
+  .installedtab .irow:not(.open) .iabout{white-space:normal}
+}
 .librarytab .lcard .libdrvpick{display:flex;align-items:center;gap:6px;font:var(--f-note);color:var(--dim)}
 .librarytab .lcard .libdrvpick select{flex:1 1 auto;min-width:0}
 .librarytab .libfilter .chips{flex:0 1 auto}
@@ -7232,6 +7248,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-toolchains.js"></script>
 <script src="tab-agents.js"></script>
 <script src="tab-library.js"></script>
+<script src="tab-installed.js"></script>
 <script src="tab-emulator.js"></script>
 <script src="tab-docker.js"></script>
 <script src="page-welcome.js"></script>  <!-- a part of the page that is no tab: same rule -->
@@ -7992,8 +8009,9 @@ onRev("toolchains", () => {
   if (tabs.some(t => t.kind === "toolchains")) loadToolchains();
   // ...and the Agents page, whose rows are a node's toolchain rows (R95).
   if (shown("agents")) loadAgents();
-  // ...and the Library, which is both (R170).
+  // ...and the Library, which is both (R170), and the Installed page (R172).
   if (shown("library")) loadLibrary();
+  if (shown("installed")) loadInstalled();
 });
 // Google's image index landing, for the Emulator tab's picker.
 onRev("emulator", () => {
@@ -8032,6 +8050,7 @@ onRev("nodes", () => {
   // ...and the Agents page, whose versions ride a node's census (R95).
   if (shown("agents")) loadAgents();
   if (shown("library")) loadLibrary();
+  if (shown("installed")) loadInstalled();
   if (shown("emulator") && emu?.nonode) loadEmulator();
   // ...and Home's Getting started, which says whether a node is online.
   if (shown("home") && homeStartReadsNodes()) loadNodes().then(() => drawPanes());

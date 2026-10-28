@@ -1,0 +1,82 @@
+{
+ "about": "LiteLLM on this node holding your provider keys, Ollama beside it where you turn it on, offered to the projects you allow: each is handed its address and a key of its own at a session's start, so its spend is its own. What Start's Any model runs through.",
+ "config": [
+  {
+   "help": "Anthropic's API key, written into the router's compose file on this node and never into a session's view",
+   "kind": "secret",
+   "label": "Anthropic",
+   "name": "anthropic"
+  },
+  {
+   "help": "OpenAI's API key, written into the router's compose file on this node and never into a session's view",
+   "kind": "secret",
+   "label": "OpenAI",
+   "name": "openai"
+  },
+  {
+   "help": "Google (Gemini)'s API key, written into the router's compose file on this node and never into a session's view",
+   "kind": "secret",
+   "label": "Google (Gemini)",
+   "name": "gemini"
+  },
+  {
+   "help": "OpenRouter's API key, written into the router's compose file on this node and never into a session's view",
+   "kind": "secret",
+   "label": "OpenRouter",
+   "name": "openrouter"
+  },
+  {
+   "help": "xAI's API key, written into the router's compose file on this node and never into a session's view",
+   "kind": "secret",
+   "label": "xAI",
+   "name": "xai"
+  },
+  {
+   "fields": [
+    {
+     "kind": "text",
+     "label": "Name",
+     "name": "name"
+    },
+    {
+     "help": "https://host/v1",
+     "kind": "text",
+     "label": "Address",
+     "name": "base"
+    },
+    {
+     "kind": "secret",
+     "label": "API key",
+     "name": "key"
+    }
+   ],
+   "help": "each a provider under its own name (NAME/model in the picker)",
+   "kind": "list",
+   "label": "Other OpenAI-compatible endpoints",
+   "name": "custom"
+  },
+  {
+   "help": "on this node's card where it has one, else its CPU and memory; its models one more provider (ollama/NAME)",
+   "kind": "switch",
+   "label": "Run Ollama beside it",
+   "name": "ollama"
+  },
+  {
+   "help": "each handed the address and its own key at a session's start; a session of any other project cannot reach it",
+   "kind": "projects",
+   "label": "Projects that may use it",
+   "name": "projects"
+  }
+ ],
+ "label": "Model router",
+ "name": "model-router",
+ "platforms": [
+  "linux/amd64",
+  "linux/arm64"
+ ],
+ "service": {
+  "kind": "router"
+ },
+ "terms": [],
+ "tier": "official"
+}

@@ -9,6 +9,7 @@ project's directory, the pack's name, then the verb and its words. The
 catalog is read through sdkmeta, packs and all.
 """
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -72,4 +73,15 @@ for w in spec["run"]:
     argv.append(w)
 if "{dist}" in " ".join(spec["run"]):
     os.makedirs(dist, exist_ok=True)
+# What the pack is configured with on this node (R172): the agent writes
+# the fields that name an environment variable into the store, owned by
+# the session account, and the verb reads them from there.
+try:
+    with open(os.path.join(os.path.dirname(pack_dir), ".bb", "config", name + ".env"), encoding="utf-8") as f:
+        for line in f:
+            k, sep, v = line.rstrip("\n").partition("=")
+            if sep and re.fullmatch(r"[A-Z][A-Z0-9_]{0,40}", k):
+                os.environ[k] = v
+except OSError:
+    pass
 os.execvp(argv[0], argv)

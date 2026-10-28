@@ -26,7 +26,7 @@ let libWantAgent = "";         // the agent whose card a door asked to open, unt
 // The sections, in the page's order: what a session runs first, then what
 // it builds with, then what a person adds, then what the box hosts, then
 // what the person takes to their own machines.
-const LIB_KINDS = [["agent", "Coding agents"], ["toolchain", "Toolchains"], ["pack", "Tool packs"], ["app", "Apps"], ["companion", "For you"]];
+const LIB_KINDS = [["agent", "Coding agents"], ["toolchain", "Toolchains"], ["pack", "Tool packs"], ["service", "Services"], ["app", "Apps"], ["companion", "For you"]];
 const LIB_TIERS = [["official", "Official"], ["vetted", "Vetted"], ["sideloaded", "Sideloaded"]];
 
 function openLibrary(){
@@ -130,6 +130,7 @@ function libState(r){
   const w = (t, cls = "") => `<span class="state${cls ? " " + cls : ""}">${t}</span>`;
   if (r.running) return w(`${esc(r.doing === "remove" ? "removing" : r.doing === "check" ? "checking" : r.kind === "agent" && r.installed ? "updating" : "installing")}<span class="dots"></span>`);
   if (r.kind === "app") return w("");
+  if (r.kind === "service") return r.installed ? w("deployed", "ok") : r.ready ? w(esc(r.ready), "warn") : w("");
   if (r.kind === "companion") return r.download ? w(esc(r.version ? `held, ${r.version}` : "held")) : w(esc(r.absent ? `not in ${r.absent}` : "not fetched yet"), "warn");
   if (r.wrong_platform) return w(esc(r.wrong_platform), "warn");
   if (r.machine){
@@ -158,67 +159,38 @@ function libActs(r, may){
   // its press sends it to the Containers page's New container with the app
   // picked, and each press makes another container under its own name.
   if (r.kind === "app") return `${may.apps ? a("install", "New container", "primary") : ""}${r.tier === "sideloaded" && may.packs ? a("edit", "Edit") : ""}`;
+  // A service deploys as a written container does (docker-write), once
+  // something is behind it, set on the Installed page.
+  if (r.kind === "service") return !may.apps || r.installed ? "" : `<button type="button" class="primary" data-libact="install" data-libkind="service" data-libname="${esc(r.name)}"${r.ready ? " disabled" : ""}${r.ready ? ` title="${esc(r.ready)}: set on the Installed page"` : ""}>Install</button>`;
   if (!may.install || !n) return "";
   if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install");
   if (r.machine && !r.machine.managed) return "";
   const verb = r.update ? a("install", "Update", "primary") : r.installed ? "" : a("install", "Install", r.kind === "agent" && r.agent === "claude" ? "primary" : "");
   const edit = r.kind === "pack" && r.pack ? a("edit", "Edit") : "";
-  const rm = r.installed && r.kind !== "pack" ? a("remove", "Remove", "danger") : r.kind === "pack" && r.pack ? a("remove", "Remove", "danger") : "";
-  return `${verb}${edit}${rm}`;
-}
-
-// The driver's version on its card (R102, the operator 6 Oct: the branch
-// is picked before Install), as the Toolchains page's row had it: the
-// recommended one first, the rest by version, dead once one is installed.
-function libDriverPick(m){
-  const opts = m.options || [];
-  if (!opts.length || m.state === "nocard" || !m.managed) return "";
-  const picked = m.here ? m.package : (opts.some(o => o.pkg === tcDriverPick) ? tcDriverPick : "");
-  return `<label class="pick libdrvpick">Version <select id="libDrvSel" aria-label="driver version"${m.here || !lib?.may?.install ? " disabled" : ""}${
-      m.here ? ` title="installed: remove it first to install another version"` : ""}>
-      ${m.here ? "" : `<option value=""${picked ? "" : " selected"}>${esc(m.recommended
-          ? tcDriverOption(opts.find(o => o.pkg === m.recommended) || {pkg: m.recommended, version: "recommended"}, m)
-          : "the one recommended for this card")}</option>`}
-      ${opts.filter(o => m.here || o.pkg !== m.recommended).map(o => `<option value="${esc(o.pkg)}"${o.pkg === picked ? " selected" : ""}>${esc(tcDriverOption(o, m))}</option>`).join("")}
-    </select></label>`;
+  return `${verb}${edit}`;
 }
 
 // The whole description, on the open row (rows-you-open): what it fetches
 // and runs, its terms, its platforms, the verbs it gives a session, an
 // agent's sign-in on this node, a pack's source, a companion's other files.
 function libDetail(r){
-  const n = (nodesList || []).find(x => x.id === libNode);
+  // The entry's metadata alone (the operator, 28 Oct: the Library is the
+  // catalog; what is installed is managed on the Installed page under
+  // Machines): what it is in full, its platforms, terms, size and source, a
+  // pack's Look, an app's compose with its blanks, a companion's files.
+  const key = `${r.kind}:${r.name}`;
   const lines = [];
   if (r.platforms?.length) lines.push(`<span class="sub">Platforms: ${esc(r.platforms.join(", "))}</span>`);
-  const key = `${r.kind}:${r.name}`;
-  if (r.machine){
-    // The machine's own rows say their state in the words the Toolchains
-    // page gave them (tcDriverLine, tcToolkitLine), and whose the machine is.
-    lines.push(r.name === TC_DRIVER ? tcDriverLine(r.machine) : tcToolkitLine(r.machine));
-    if (!r.machine.managed) lines.push(`<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: ${r.name === TC_DRIVER ? "its driver" : "the toolkit"} is installed there by hand.</span>`);
-    if (r.machine.settling) lines.push(`<span class="sub">The node is reporting what the last job left<span class="dots"></span></span>`);
-    return lines.filter(Boolean).join("");
-  }
   if (r.kind === "toolchain" || r.kind === "pack"){
-    // The Toolchains page's open row, line for line: what it adds to a
-    // session, its terms, its system packages, what it needs, where it
-    // is, how its download was checked, and who started before it landed.
     if (r.tool) lines.push(`<span class="sub">Adds <code>bb tool ${esc(r.tool)}</code> to a session.</span>`);
-    if (r.needs?.length) lines.push(`<span class="sub">Needs ${esc(r.needs.join(", "))}, installed with it.${r.needed_by?.length ? ` Needed by ${esc(r.needed_by.join(", "))}.` : ""}</span>`);
-    else if (r.needed_by?.length) lines.push(`<span class="sub">Needed by ${esc(r.needed_by.join(", "))}.</span>`);
+    if (r.needs?.length) lines.push(`<span class="sub">Needs ${esc(r.needs.join(", "))}, installed with it.</span>`);
     lines.push(tcTermsLine(r));
-    lines.push(tcSystemLine(r, !!lib?.managed));
-    lines.push(tcNeedsLine(r));
-    if (r.installed && r.path && !r.running) lines.push(`<span class="sub">At ${esc(r.path)}.</span>`);
-    lines.push(tcVerifiedLine(r));
-    if (r.reopen && !r.running) lines.push(`<span class="sub warn">${r.reopen === 1 ? "1 session" : `${r.reopen} sessions`} open here started before this was installed: reopen ${r.reopen === 1 ? "it" : "them"} to use it.</span>`);
     if (r.size) lines.push(`<span class="sub">About ${esc(r.size)} on the store.</span>`);
-    if (r.pack) lines.push(`<span class="sub">${r.pack.here ? "Made here" : `From <code>${esc(r.pack.url)}</code> at ${esc((r.pack.commit || "").slice(0, 12))}`}${r.pack.by ? `, added by ${esc(r.pack.by)}` : ""}. A session has <code>bb tool ${esc(r.name)}</code>.</span>`);
-    if (r.catalog) lines.push(`<span class="sub">From <code>${esc(r.catalog.url)}</code> at ${esc((r.catalog.commit || "").slice(0, 12))}, its archive's sha256 checked on the way in. Install opens the Add tool pack dialog on that commit, and Add keeps exactly that.</span>`);
+    if (r.machine) lines.push(`<span class="sub">${r.name === TC_DRIVER ? "Built for the machine's kernel, installed as root, taking the card at the next restart." : "From NVIDIA's own package source, which installing adds and removing takes away."} Its state and Remove are on the Installed page.</span>`);
+    if (r.pack) lines.push(`<span class="sub">${r.pack.here ? "Made here" : `From <code>${esc(r.pack.url)}</code>${r.pack.path ? ` (${esc(r.pack.path)})` : ""} at ${esc((r.pack.commit || "").slice(0, 12))}`}${r.pack.by ? `, added by ${esc(r.pack.by)}` : ""}. A session has <code>bb tool ${esc(r.name)}</code>.</span>`);
+    if (r.catalog) lines.push(`<span class="sub">From <code>${esc(r.catalog.url)}</code>${r.catalog.path ? ` (${esc(r.catalog.path)})` : ""} at ${esc((r.catalog.commit || "").slice(0, 12))}, its archive's sha256 checked on the way in. Install opens the Add tool pack dialog on that commit, and Add keeps exactly that.</span>`);
+    if (r.config?.length) lines.push(`<span class="sub">Asks for ${esc(r.config.map(f => f.label).join(", "))} on each node, set on the Installed page once it is there.</span>`);
     if (r.wrong_platform) lines.push(`<span class="sub warn">${esc(r.wrong_platform)}</span>`);
-    if (r.pinned?.length) lines.push(`<span class="sub">Pinned by ${esc(r.pinned.map(projLabel).join(", "))}.</span>`);
-    // What a pack fetches and runs, the dialog's Look drawn on the row
-    // (tpSeen): asked once per row, kept while the page is open.
     if (r.pack && !r.pack.here || r.catalog){
       const seen = libSeen[key];
       lines.push(seen === "looking" ? `<span class="sub">Looking at the repository<span class="dots"></span></span>`
@@ -227,14 +199,13 @@ function libDetail(r){
         : `<span class="sub"><button type="button" class="link" data-liblook="${esc(key)}">Look</button> at what it fetches and runs, before anything is installed.</span>`);
     }
   }
+  if (r.kind === "service"){
+    lines.push(`<span class="sub">Deployed on the node as a written container; configured, read and removed on the Installed page under Machines.</span>`);
+    if (r.config?.length) lines.push(`<span class="sub">Asks for ${esc(r.config.map(f => f.label).join(", "))}.</span>`);
+  }
   if (r.kind === "agent"){
     const a = agentById(r.agent);
-    lines.push(`<span class="sub">${a?.product ? `${esc(a.product)}, installed` : "Installed"} for the node's session account; ${r.latest ? `the latest is ${esc(r.latest)}` : "its latest is not known yet"}.${
-      a?.provider ? ` Signs in with ${/^(?:[AEIOU]|x(?=[A-Z]))/.test(a.provider) ? "an" : "a"} ${esc(a.provider)} account.` : ""}</span>`);
-    if (r.error) lines.push(`<span class="sub bad">${esc(r.error)}</span>`);
-    if (n && (r.installed || r.agent === "claude") && typeof signinBlock === "function" && a?.provider)
-      lines.push(`<div class="field agpart"><div class="fsub">Your sign-in</div>${signinBlock(n, r.agent)}</div>`);
-    if (n && r.installed && a && typeof agExtras === "function") lines.push(agExtras(a));
+    lines.push(`<span class="sub">${a?.product ? `${esc(a.product)}, installed` : "Installed"} once per node for its session account${a?.provider ? `; each person signs in with ${/^(?:[AEIOU]|x(?=[A-Z]))/.test(a.provider) ? "an" : "a"} ${esc(a.provider)} account on the Installed page` : ""}.${r.latest ? ` The latest is ${esc(r.latest)}.` : ""}</span>`);
   }
   if (r.kind === "app"){
     if (r.tier === "sideloaded") lines.push(`<span class="sub">Added${r.by ? ` by ${esc(r.by)}` : ""}${r.at ? ` ${ago(r.at)}` : ""}, kept as sideloaded: Edit changes it, and Remove in there takes it off the catalog.</span>`);
@@ -256,12 +227,44 @@ const LIB_ICONS = {
   agent: () => TOOL_ICONS.agents, toolchain: () => TOOL_ICONS.toolchains, app: () => TOOL_ICONS.docker,
   pack: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.2 8 2.6l5.5 2.6v5.6L8 13.4l-5.5-2.6z"/><path d="M2.5 5.2 8 7.8l5.5-2.6"/><path d="M8 7.8v5.6"/><path d="M5.2 3.9l5.6 2.7"/></svg>`,
   companion: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.2" y="3" width="11.6" height="7.6" rx="1.2"/><path d="M6 13.4h4M8 10.6v2.8"/></svg>`,
+  // A service (R172): what a node runs for the others, as a box with a plug.
+  service: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.4" y="4.2" width="11.2" height="7.6" rx="1.2"/><path d="M5.2 8h5.6M5.2 4.2V2.6M10.8 4.2V2.6"/></svg>`,
 };
 
 // One card (the Projects page's shape, R170: a store browses as cards):
 // its kind's glyph, its name with the tier and the versions as quiet pills,
 // what it is in two lines, and at its foot where it stands, Details, and
 // the verb. Open, it runs the grid's width with the whole description.
+// A pack's Look on its row: the manifest fetched at the commit it is pinned
+// to (an added pack at its own, a catalog offer at the catalog's, its archive
+// checked against the catalog's sha256), drawn as the dialog draws it.
+async function libLook(key){
+  const r = (lib?.rows || []).find(x => `${x.kind}:${x.name}` === key);
+  if (!r || libSeen[key] === "looking") return;
+  libSeen[key] = "looking"; libRev++; drawPanes();
+  const body = r.catalog ? {action: "preview", url: r.catalog.url, commit: r.catalog.commit, sha256: r.catalog.sha256, path: r.catalog.path || ""}
+    : {action: "preview", url: r.pack.url, commit: r.pack.commit, path: r.pack.path || ""};
+  const j = await (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
+  libSeen[key] = j;
+  libRev++; drawPanes();
+}
+
+// The driver's version on its card (R102, the operator 6 Oct: the branch
+// is picked before Install), as the Toolchains page's row had it: the
+// recommended one first, the rest by version, dead once one is installed.
+function libDriverPick(m){
+  const opts = m.options || [];
+  if (!opts.length || m.state === "nocard" || !m.managed) return "";
+  const picked = m.here ? m.package : (opts.some(o => o.pkg === tcDriverPick) ? tcDriverPick : "");
+  return `<label class="pick libdrvpick">Version <select id="libDrvSel" aria-label="driver version"${m.here || !lib?.may?.install ? " disabled" : ""}${
+      m.here ? ` title="installed: remove it first to install another version"` : ""}>
+      ${m.here ? "" : `<option value=""${picked ? "" : " selected"}>${esc(m.recommended
+          ? tcDriverOption(opts.find(o => o.pkg === m.recommended) || {pkg: m.recommended, version: "recommended"}, m)
+          : "the one recommended for this card")}</option>`}
+      ${opts.filter(o => m.here || o.pkg !== m.recommended).map(o => `<option value="${esc(o.pkg)}"${o.pkg === picked ? " selected" : ""}>${esc(tcDriverOption(o, m))}</option>`).join("")}
+    </select></label>`;
+}
+
 function libRow(r, may){
   const key = `${r.kind}:${r.name}`, open = libOpen.has(key);
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : "";
@@ -412,23 +415,6 @@ function wireLibrary(root){
   if (add) add.onclick = () => libWithToolchains(() => tpOpen(""));
   root.querySelectorAll("[data-libact]").forEach(b => b.onclick = () => libAct(b, b.dataset.libact, b.dataset.libkind, b.dataset.libname));
   root.querySelectorAll("[data-liblook]").forEach(b => b.onclick = () => libLook(b.dataset.liblook));
-  // The Toolchains page's own presses on its lines, wired the same.
-  root.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = async () => { await tcAct("sysdeps", [b.dataset.tcsys]); loadLibrary(); });
-  root.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = async () => { await tcAct("install", [b.dataset.tcneed]); loadLibrary(); });
-}
-
-// A pack's Look on its row: the manifest fetched at the commit it is pinned
-// to (an added pack at its own, a catalog offer at the catalog's, its archive
-// checked against the catalog's sha256), drawn as the dialog draws it.
-async function libLook(key){
-  const r = (lib?.rows || []).find(x => `${x.kind}:${x.name}` === key);
-  if (!r || libSeen[key] === "looking") return;
-  libSeen[key] = "looking"; libRev++; drawPanes();
-  const body = r.catalog ? {action: "preview", url: r.catalog.url, commit: r.catalog.commit, sha256: r.catalog.sha256, path: r.catalog.path || ""}
-    : {action: "preview", url: r.pack.url, commit: r.pack.commit, path: r.pack.path || ""};
-  const j = await (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
-  libSeen[key] = j;
-  libRev++; drawPanes();
 }
 
 // The search keeps its caret through the redraw its own keystroke brings.
@@ -455,10 +441,17 @@ async function libAct(b, act, kind, name){
     if (act === "edit") tpOpenApp(name); else openNewContainerApp(name);
     return;
   }
+  if (kind === "service"){
+    busy(b, "Deploying");
+    const j = await (await postJSON("/api/library", {action: "install", node: libNode, pack: r.name})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    else if (j.job) notify(`deploying ${r.label}: its row on the Containers page has the build`);
+    await loadLibrary();
+    return;
+  }
   if (kind === "agent"){
-    if (act === "remove" && !await askYes(`Remove ${r.label} from ${where}? Its sessions end, and none starts there until it is installed again.`)) return;
-    if (act === "install" && r.installed && !await askYes(`Update ${r.label} on ${where}? Its sessions there end first; they start again from the project rows.`)) return;
-    busy(b, act === "remove" ? "Removing" : "Asking");
+    if (r.installed && !await askYes(`Update ${r.label} on ${where}? Its sessions there end first; they start again from the project rows.`)) return;
+    busy(b, "Asking");
     const j = await (await postJSON("/api/agents", {action: act, node: libNode, agent: r.agent || ""})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
     await loadLibrary();
@@ -466,13 +459,6 @@ async function libAct(b, act, kind, name){
   }
   if (act === "add"){ libWithToolchains(() => tpOpenCatalog({...r.catalog, name: r.name, tier: r.tier, about: r.about, platforms: r.platforms})); return; }
   if (act === "edit"){ libWithToolchains(() => tpOpen(r.name)); return; }
-  if (act === "remove"){
-    if (!await askYes(`Uninstall ${r.label} from ${where}? The files are deleted; installing it again re-downloads them.`)) return;
-    busy(b, "Removing");
-    await tcAct("remove", [r.name]);
-    await loadLibrary();
-    return;
-  }
   // Install or update a toolchain or an added pack: the Toolchains job,
   // with its agreements asked the way that page asks them.
   busy(b, r.installed ? "Updating" : "Installing");

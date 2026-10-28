@@ -61,6 +61,12 @@ def agent_packs():
     return out
 
 
+def service_packs():
+    """[(path, manifest)] for every deployed thing of BuilderBot's that is a pack (R172)."""
+    import router
+    return [(os.path.join(PACKS, "services", "model-router", "bbtool.json"), router.pack())]
+
+
 def text(m):
     return json.dumps(m, indent=1, sort_keys=True) + "\n"
 
@@ -68,7 +74,7 @@ def text(m):
 def catalog_dir_paths(root):
     """[(path under DIR, manifest, index name)] for every official pack."""
     out = []
-    for path, m in toolchain_packs() + agent_packs():
+    for path, m in toolchain_packs() + agent_packs() + service_packs():
         rel = os.path.relpath(path, PACKS)                     # official/NAME/bbtool.json
         out.append((os.path.join(root, "packs", rel), m, rel.split(os.sep)[1]))
     return out
@@ -120,7 +126,7 @@ def catalog_index(root):
 
 
 def main(argv):
-    want = toolchain_packs() + agent_packs()
+    want = toolchain_packs() + agent_packs() + service_packs()
     if "--catalog" in argv:
         root = argv[argv.index("--catalog") + 1]
         if "--index" in argv:
@@ -155,7 +161,7 @@ def main(argv):
         if have != text(m):
             print(f"  [FAIL] {os.path.relpath(path, ROOT)} is not what the table says: tools/packs-export.py --write rewrites it")
             bad += 1
-    for sub in ("official", "agents"):
+    for sub in ("official", "agents", "services"):
         d = os.path.join(PACKS, sub)
         for name in (os.listdir(d) if os.path.isdir(d) else []):
             rel = os.path.join("packs", sub, name, "bbtool.json")

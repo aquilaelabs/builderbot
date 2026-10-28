@@ -14,6 +14,9 @@ const PAGES = [
   ['schedules', '#/jobs/schedules', 'schedData = null; renderSchedulesInto(0)'],
   ['nodes', '#/machines/nodes', 'nodesList = null; renderNodesInto(0)'],
   ['storage', '#/machines/storage', 'storageList = null; renderStorageInto(0)'],
+  // Installed (R172): its sections are the kinds with anything there, which
+  // the fixture's node has one or two of; the template draws the four.
+  ['installed', '#/machines/installed', 'inst = null; instSeq = 1; renderInstalledInto(0)', ['title:Coding agents', 'title:Toolchains', 'title:Tool packs', 'title:Services']],
   // Deploy is an undeployed node's alone, which is not known while it waits.
   // ...and its four sections are a deployed node's: the fixture's is not, so
   // the page draws one line and Deploy where the template, waiting for the

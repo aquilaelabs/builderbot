@@ -47,6 +47,10 @@ const TOUR_STEPS = {
     {say: "Analysis is what the linters and the code map found across your projects, worst first."},
     {at: TOUR_BAR, say: "Narrow it by project or by kind here."},
   ],
+  installed: [
+    {say: "Installed is what a node has from the Library: its coding agents, toolchains, tool packs and services, and what each is set to there."},
+    {at: TOUR_BAR, say: "Pick the node here. Details on a row opens your sign-in to an agent, a toolchain's system packages, a pack's or a service's Configure, and Remove."},
+  ],
   library: [
     {say: "The Library is everything a BuilderBot installs or runs on a node: the coding agents, the toolchains for builds and tests, the tool packs you add, the apps a NAS runs, and the apps for your own machines."},
     {at: TOUR_BAR, say: "Pick the node here. Check for updates reads what is newer; Add your own brings in a tool pack or an app of yours, looked at before it is kept."},

@@ -12,13 +12,33 @@ read's own endpoint, so nothing is installed two ways.
 """
 import re
 
-KINDS = ("toolchain", "agent", "pack", "app", "companion")
+KINDS = ("toolchain", "agent", "pack", "service", "app", "companion")
 TIER_WORDS = {"official": "Official", "vetted": "Vetted", "url": "Sideloaded", "here": "Sideloaded", "sideloaded": "Sideloaded"}
 
 
 def _an(w):
     """"a" or "an" before a word, by its sound (Any model, OpenCode, xAI)."""
     return ("an " if w[:1].upper() in "AEIOU" or (w[:1] == "x" and w[1:2].isupper()) else "a ") + w
+
+
+def service_values(fields, status):
+    """A service's configuration as the page shows it, from its own status
+    (the router's: a provider's key as whether it is set, the endpoints
+    with their keys as set, Ollama on or off, the projects allowed)."""
+    out = {}
+    for f in fields:
+        n = f["name"]
+        if f["kind"] == "secret":
+            out[n] = bool((status.get("providers") or {}).get(n))
+        elif n == "custom" and f["kind"] == "list":
+            out[n] = [{"name": c.get("name", ""), "base": c.get("base", ""), "key": bool(c.get("key"))} for c in status.get("custom") or []]
+        elif n == "ollama" and f["kind"] == "switch":
+            out[n] = bool((status.get("ollama") or {}).get("on"))
+        elif f["kind"] == "projects":
+            out[n] = list(status.get("projects") or [])
+        else:
+            out[n] = "" if f["kind"] in ("text", "choice") else False if f["kind"] == "switch" else []
+    return out
 
 
 def repo_of(catalog_url):
@@ -36,10 +56,14 @@ def _tier(t):
     return "official" if t in ("official", "") else "vetted" if t == "vetted" else "sideloaded"
 
 
-def rows(node_payload, agent_rows, apps, catalog_index, companions):
-    """The one list, in the page's order: agents, toolchains, packs, apps,
-    the catalog's offers, the companions."""
+def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(), pack_values=None):
+    """The one list, in the page's order: agents, toolchains, packs, the
+    services (R172: a deployed thing of BuilderBot's, its configuration on
+    the card), apps, the catalog's offers, the companions. `services` is
+    [{manifest, status, ready, all_projects}] and `pack_values` {pack name:
+    its answers on this node} for the packs with a config block."""
     out = []
+    pack_values = pack_values or {}
     tc = node_payload or {}
     job = tc.get("job") or {}
     busy_on = job.get("current") if job.get("running") and job.get("action") != "check" else ""
@@ -82,8 +106,21 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions):
                     # The open row's lines, as the Toolchains page draws them (step 2).
                     "tool": i.get("tool") or "", "system": i.get("system"), "needs": i.get("needs") or [], "needed_by": i.get("needed_by") or [],
                     "needs_missing": i.get("needs_missing") or [], "path": i.get("path") or "", "verified": i.get("verified"), "reopen": i.get("reopen") or 0,
-                    "pack": {k: pack.get(k) for k in ("url", "commit", "by", "at", "tier", "verbs", "here")} if pack else None,
+                    "pack": {k: pack.get(k) for k in ("url", "commit", "path", "by", "at", "tier", "verbs", "here")} if pack else None,
+                    # What it asks for per node, and what it has been given here (R172).
+                    "config": i.get("config") or [], "values": pack_values.get(i["name"]) if i.get("config") else None,
                     "verb": "update" if i.get("state") == "update" else ("" if i.get("installed") else "install")})
+    for s in services or []:
+        m, st = s.get("manifest") or {}, s.get("status") or {}
+        deployed = bool(st.get("deployed"))
+        out.append({"kind": "service", "tier": "official", "name": m.get("name", ""), "label": m.get("label") or m.get("name", ""),
+                    "about": m.get("about") or "", "platforms": m.get("platforms") or [], "terms": [],
+                    "installed": deployed, "unknown": False, "version": "", "latest": "", "update": False,
+                    "running": bool(st.get("job")), "doing": "deploy" if st.get("job") else "",
+                    "service": (m.get("service") or {}).get("kind", ""), "config": m.get("config") or [],
+                    "values": service_values(m.get("config") or [], st), "ready": s.get("ready", ""), "all_projects": s.get("all_projects") or [],
+                    "status": {k: st.get(k) for k in ("url", "port", "models", "models_at", "spend", "ollama", "projects")},
+                    "verb": "" if deployed else "install"})
     for a in apps or []:
         out.append({"kind": "app", "tier": _tier(a.get("tier", "official")), "name": a["id"], "label": a["name"], "about": a.get("what") or "", "platforms": ["linux/*"],
                     "by": a.get("by") or "", "at": a.get("at") or 0,
@@ -100,8 +137,9 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions):
         # withdrew is not offered (the bell says so to an install that holds it).
         if e["name"] in packs_here or e.get("withdrawn") or (e.get("tier") == "official" and e["name"] in shipped):
             continue
-        # A Docker app in the catalog is step 7's card; until then it is not a pack to offer.
-        if e.get("kind") == "app":
+        # A Docker app in the catalog is R170 step 7's card, and a service is
+        # its own row (R172); neither is a pack to offer.
+        if e.get("kind") in ("app", "service"):
             continue
         out.append({"kind": "pack", "tier": _tier(e.get("tier")), "name": e["name"], "label": e["name"], "about": e.get("about") or "",
                     "platforms": e.get("platforms") or [], "installed": False, "version": "", "latest": e.get("commit", "")[:12], "update": False,
