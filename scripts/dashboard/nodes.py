@@ -2991,6 +2991,38 @@ def node_feature(principal, node_id, fid, op):
     return r
 
 
+def node_controller_update(principal, node_id, release=""):
+    """Update a controller installed bare metal (R90 step 5): a system job
+    on its own machine's node, whose root agent runs the installer's
+    --update (the release's bundle fetched and verified, the state gate,
+    the switch, and a rollback by itself when the new build does not
+    answer); the controller's account never does. Refused anywhere else."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if os.environ.get("BB_INSTALL", "") != "bare-metal" or not own_machine(n):
+        return {"error": "updating from here is for a controller installed bare metal, on its own machine's node; "
+                         "the container edition is updated by pulling its image"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot run the installer"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    tag = str(release or "").strip()
+    if tag and not re.fullmatch(r"v?\d+\.\d+\.\d+", tag):
+        return {"error": "a release is named as its tag, vX.Y.Z"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "controller-update", "config": ({"release": tag} if tag else {}), "timeout": 3600})
+    if r.get("ok"):
+        audit(principal, "controller-update", node_id, {"job": r["job"], "release": tag})
+    return r
+
+
 def node_lockdown(principal, node_id):
     """Lock down a hosting-only node (R92), the press for a box that may
     have been taken over: from this moment its agent may ask for nothing
@@ -5957,6 +5989,7 @@ def verb(principal, req):
              "door": lambda: node_door(principal, nid, req.get("on")),
              "lockdown": lambda: node_lockdown(principal, nid),
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
+             "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,

@@ -95,6 +95,8 @@ class ConfigPlaneMixin:
             return self._apply_lockdown(job)
         if what == "feature":
             return self._apply_feature(job, cfg)
+        if what == "controller-update":
+            return self._apply_controller_update(job, cfg)
         if what == "gpu-off":
             # The emulator off the card (R102): the display's unit stopped,
             # the driver left alone; then a hello, as the set-up sends.
@@ -210,6 +212,29 @@ class ConfigPlaneMixin:
             return "failed", 64
         rc = self._sh(job, [SANDBOX_BIN, "feature", op, fid], timeout=1800)
         self.hello_again(f"the {fid} feature was {'installed' if op == 'install' else 'removed'}")
+        return ("succeeded", 0) if rc == 0 else ("failed", rc)
+
+    def _apply_controller_update(self, job, cfg):
+        """The controller this machine carries, updated by its own node's
+        root agent (R90 step 5): the installed release's own installer run
+        with --update, which fetches the release's bundle and verifies it,
+        holds the state to its gate, switches the link, and rolls back by
+        itself when the new build does not answer. Only on a machine that
+        is a bare-metal controller's own node (the installer's marker), and
+        a release named only by its tag."""
+        mark = "/etc/builderbot-controller/own-node"
+        installer = "/opt/builderbot/nodes/install-controller.sh"
+        if not os.path.isfile(mark) or not os.path.isfile(installer):
+            job.say("refused: this machine is not a bare-metal controller's own node, so there is no installer here to run\n")
+            return "failed", 77
+        tag = str(cfg.get("release") or "")
+        if tag and not re.fullmatch(r"v?\d+\.\d+\.\d+", tag):
+            job.say("refused: a release is named by its tag, vX.Y.Z\n")
+            return "failed", 64
+        argv = ["bash", installer, "--update"] + (["--release", tag] if tag else [])
+        job.say(f"controller update: {' '.join(argv[1:])}\n")
+        rc = self._sh(job, argv, timeout=3600)
+        self.hello_again("the controller was updated")
         return ("succeeded", 0) if rc == 0 else ("failed", rc)
 
     def _apply_lockdown(self, job):

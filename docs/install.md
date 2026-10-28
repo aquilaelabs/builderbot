@@ -294,14 +294,28 @@ sudo bash /opt/builderbot/nodes/install-controller.sh --update --release v0.7.0
 sudo bash /opt/builderbot/nodes/install-controller.sh --rollback               # the release before
 ```
 
-An update fetches the release, asks its own state check whether it would
-start on this install's state (and changes nothing when it would not),
-lays it out beside the one in use, switches to it and restarts; the
-release before is kept. The controller moves the state forward as it does
-in the container, with the same copy first, and `--rollback` puts that
-copy back when the newer release had moved the state on (what the state
-held then is kept under its `backups/`). The [Upgrading](#upgrading) policy
-is the same.
+An update fetches the release's controller bundle
+(`builderbot-controller-X.Y.Z.tar.gz`, published by the release workflow
+with its sha256 beside it and a build attestation), checks the archive
+against the sha256 and, where `gh` is installed, against the attestation
+(a release from before the bundle falls back to its source archive, said
+as unverified), asks its own state check whether it would start on this
+install's state (and changes nothing when it would not), lays it out beside
+the one in use, switches to it and restarts; the release before is kept.
+A new release that does not answer on its port within two minutes is
+rolled back by itself, the state copy put back, so the machine is never
+left on a build that does not come up. The controller moves the state
+forward as it does in the container, with the same copy first, and
+`--rollback` puts that copy back when the newer release had moved the
+state on (what the state held then is kept under its `backups/`). The
+[Upgrading](#upgrading) policy is the same.
+
+The page does the same without a shell: a newer release is a line on the
+bell and the **Updates** section under Controller settings says which
+release this install runs and which is newest (checked daily, **Check
+now** sooner); **Update** runs the installer through this machine's own
+node, whose root agent is the only account that runs it, and the page comes
+back on the new release.
 
 **Taking it away.** `--remove` stops the controller and takes away its
 release, service, `bb` and wall, and this machine's node; the state, the

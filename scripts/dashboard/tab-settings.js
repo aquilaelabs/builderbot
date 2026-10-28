@@ -108,6 +108,7 @@ function renderSettingsInto(i){
     ${sect("idle", "Idle sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
            `<div class="row stack2" data-group="Idle sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
+    ${state?.release?.running !== undefined ? sect("updates", "Updates", state.release.newer ? `${state.release.newer} is out` : state.release.latest ? "up to date" : "", updatesSection()) : ""}
     ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
     ${
     // Last, apart from the settings (R218 step 32); the Nodes section that
@@ -177,6 +178,34 @@ async function loadReports(){
   drawPanes();
 }
 const reportsCount = () => reportsList === null ? null : reportsList.length;
+// A bare-metal install's updates (R90 step 5): the release running, the
+// newest published, and Update, which runs the installer through this
+// machine's own node; the container edition has no such section.
+function updatesSection(){
+  const r = state?.release || {};
+  const when = r.at ? `checked ${esc(ago(r.at))}` : "not checked yet";
+  return `<div class="row stack2" data-group="Updates"><div class="grow">
+      <div class="sub">This install runs ${esc(r.running || "an unstamped build")}; the newest release is ${r.latest ? esc(r.latest) : "not known yet"} (${when}${r.error ? `; ${esc(r.error)}` : ""}).</div>
+      <div class="sub dim">Update fetches the release's bundle, checks its sha256 and its build attestation, holds the state to its version gate, switches to it and comes back by itself if the new build does not answer; a copy of the state is kept for Rollback.</div>
+      <div class="actbar"><span class="sp"></span>
+        <button type="button" data-relcheck>Check now</button>
+        <button type="button" class="primary" data-relupdate="${esc(r.node || "")}"${r.newer && r.node ? "" : " disabled"}>${r.newer ? `Update to ${esc(r.newer)}` : "Update"}</button></div>
+    </div></div>`;
+}
+function wireUpdates(root){
+  root.querySelectorAll("[data-relcheck]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Checking");
+    const j = await (await postJSON("/api/v1/nodes", {action: "release-check"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    await refresh();
+  }));
+  root.querySelectorAll("[data-relupdate]").forEach(b => b.onclick = () => pressing(b, async () => {
+    if (!await askYes(`Update this install to ${state?.release?.newer}?\n\nThe installer runs on this machine's node: the bundle is fetched and checked, the state copied aside, the service switched to the new release and started. The page comes back on it; if it does not answer, the install goes back by itself.`)) return;
+    busy(b, "Updating");
+    const j = await (await postJSON("/api/v1/nodes", {action: "controller-update", id: b.dataset.relupdate})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "updating: the job runs on this machine's node; the page comes back on the new release", !!j.error);
+  }));
+}
 function reportsSection(){
   const rows = reportsList || [];
   const mayDelete = state?.can?.controller !== false;
@@ -589,6 +618,7 @@ function settingsSections(){
 }
 
 function wireSettingsSections(el){
+  wireUpdates(el);
   // Ask Let's Encrypt now (R158 step 2): the Connection section's own press.
   el.querySelectorAll("[data-tlsissue]").forEach(b => b.onclick = async () => {
     busy(b, "Asking");

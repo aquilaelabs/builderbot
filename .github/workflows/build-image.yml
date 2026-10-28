@@ -359,3 +359,50 @@ jobs:
           # whole directory because both workflows write into it.
           find "$dir" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' \
             | sort -rn | tail -n +61 | cut -d' ' -f2- | xargs -r rm -f
+
+  # The controller bundle a release publishes (R90 step 5): the tag's tree
+  # as builderbot-controller-X.Y.Z.tar.gz with its sha256 beside it and a
+  # build attestation, which install-controller.sh --update on a bare-metal
+  # install fetches and verifies in place of the tag's source archive. On a
+  # tag push alone; the release is made here when the tag has none yet.
+  bundle:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Pack the tag's tree
+        id: pack
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          ver="${tag#v}"
+          name="builderbot-controller-${ver}.tar.gz"
+          # The tree as the release carries it, with the commit's hash where
+          # the installer reads it (tree_stamp's .release-rev).
+          git archive --format=tar --prefix="builderbot-${ver}/" "$tag" > tree.tar
+          mkdir -p stamp/"builderbot-${ver}" && git rev-parse "$tag^{commit}" > stamp/"builderbot-${ver}"/.release-rev
+          tar -rf tree.tar -C stamp "builderbot-${ver}/.release-rev"
+          gzip -n -9 < tree.tar > "$name"
+          sha256sum "$name" > "$name.sha256"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Attest the bundle
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.pack.outputs.name }}
+      - name: Put it on the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pack.outputs.tag }}
+          NAME: ${{ steps.pack.outputs.name }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes "BuilderBot ${TAG#v}: see CHANGELOG.md."
+          gh release upload "$TAG" "$NAME" "$NAME.sha256" --repo "$GITHUB_REPOSITORY" --clobber

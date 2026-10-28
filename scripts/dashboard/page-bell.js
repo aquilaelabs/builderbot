@@ -349,6 +349,16 @@ function attRow(a){
           ${a.job ? `<a href="#" data-bjob="${esc(a.job)}">its log</a>` : ""}
           <a href="#" data-bscanners="1">Scanners page</a></span></div></div>`;
   }
+  // A newer BuilderBot release, on a controller installed bare metal (R90
+  // step 5): Update runs the installer through its own node's root agent.
+  if (a.kind === "release"){
+    return `<div class="bnote att">
+      <div class="bt">BuilderBot ${esc(a.to)} is out</div>
+      <div class="bsum">this install runs ${esc(a.from || "an unstamped build")}; Update fetches the release's bundle, checks it, switches to it and comes back by itself if it does not answer</div>
+      <div class="bfoot"><span>under Controller settings</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-brelease="${esc(a.id)}">Update</a></span></div></div>`;
+  }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
   if (a.kind === "nginx"){
@@ -793,6 +803,13 @@ function wireNeeds(root, after = () => {}){
     e.preventDefault();
     after();
     openDockerOn(a.dataset.bdocker || "");
+  });
+  // ...and a release's Update (R90 step 5): the own node's job, said once queued.
+  root.querySelectorAll("[data-brelease]").forEach(a => a.onclick = async e => {
+    e.preventDefault();
+    const j = await (await postJSON("/api/v1/nodes", {action: "controller-update", id: a.dataset.brelease})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "updating: the installer runs on this machine's node, and the page comes back on the new release", !!j.error);
+    after();
   });
   // ...and an nginx update to the nginx tab on that node.
   root.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {

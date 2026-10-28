@@ -1714,6 +1714,12 @@ def _page_url():
     return f"https://{host}/" if host else ""
 
 
+def _own_node_id():
+    """The controller's own machine's node (R90), or "": where a bare-metal
+    install's update runs."""
+    return next((n["id"] for n in nodes.node_list() if nodes.own_machine(n) and n.get("state") != "retired"), "")
+
+
 def _reach_loop():
     """The minute loop (R149): each person's bell to the destinations they
     keep, what is new, outside their quiet window."""
@@ -2010,7 +2016,9 @@ def _attention(who):
     # person, where the rest is an update that can wait (seen fourth, under
     # the fold of the bell, in the walk of 15 Oct).
     rows = (_held_rows(who)
-            + ([] if users.may(who, "node") else nodes.attention(where) + _token_rows())
+            + ([] if users.may(who, "node") else nodes.attention(where) + _token_rows()
+               # ...and a newer release for a bare-metal install (R90 step 5).
+               + releasecheck.attention(_own_node_id()))
             # ...and a node short of disk or memory (R110), for whoever
             # manages nodes: what is short, on the Storage page's terms.
             + ([] if users.may(who, "node") else nodes.room_attention(
@@ -5035,6 +5043,11 @@ profiletab.configure(devices=devices, logins=logins, reach=reach, smtp_set=lambd
 # served from /apps (R272 step 3); which of them are offered is the
 # Settings page's, set first by the seed file (step 4).
 import apps                                                      # noqa: E402
+# A newer release for a bare-metal install (R90 step 5, releasecheck.py):
+# asked of GitHub a while after the start and daily, on the bell and under
+# Controller settings, applied as the own node's system job.
+import releasecheck                                              # noqa: E402
+releasecheck.configure(version=lambda: image_stamp().get("version") or "", bare_metal=lambda: BARE_METAL)
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
                setting=settings.get, write_json=write_json, audit=db.audit)
 apps.unvetted_ok = channel.unvetted_ok      # the Windows companion and the VS Code extension are dev features
@@ -5337,6 +5350,10 @@ def _snapshot(who):
         # now from one a browser carried across a restart.
         "boot": layout.boot_id(),
         "image": _timed("status:image", lambda: image_stamp()),
+        # A bare-metal install's release against the newest (R90 step 5),
+        # with its own node for the Update press; {} on a container install.
+        "release": _timed("status:release", lambda: (dict(releasecheck.status(), node=_own_node_id())
+                                                      if BARE_METAL else {})),
         "projects": ps,
         # Every project this account sees (R138), one with no repository in
         # it too: the Projects page draws each as one card, from this.
@@ -8586,6 +8603,10 @@ class Handler(BaseHTTPRequestHandler):
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
+        # The release check, now (R90 step 5): the newest published release
+        # read again, for the Updates section's Check now.
+        if act == "release-check":
+            return self._json({"ok": True, **releasecheck.check()})
         got = nodes.verb(self._principal(), req)
         # A node that left is a node the Doctor's cached verdict may still
         # name, for up to its half hour: the next run starts now, on its own
@@ -11971,6 +11992,8 @@ def main():
         apps.start()          # the apps from this controller's release, a while after the start, then daily
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     threading.Thread(target=log_sweep_loop, name="log-sweep", daemon=True).start()
+    if BARE_METAL and "internet" not in featuresoff.off():
+        releasecheck.start()      # a newer release, asked of GitHub a while after the start, then daily
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes
     if not NODES_OK:
         threading.Thread(target=_room_loop, name="room", daemon=True).start()

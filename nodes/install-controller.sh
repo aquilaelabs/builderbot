@@ -632,16 +632,42 @@ EOF
 # fetch_tree [TAG]: the release's tree, unpacked in a folder of its own,
 # printed. The newest release when no tag is named, read from the releases
 # page's redirect the way the Dockerfile reads its tools' (no API budget).
+# fetch_tree [TAG]: the release's controller bundle (R90 step 5), which the
+# release workflow publishes as builderbot-controller-X.Y.Z.tar.gz with its
+# sha256 beside it and a build attestation from GitHub: the archive checked
+# against the sha256, and against the attestation where gh is here to ask;
+# a release from before the bundle falls back to the tag's source archive,
+# said as such. The tree's directory is printed.
 fetch_tree() {
-    local tag="${1:-}" d url
+    local tag="${1:-}" d url base ver sum
     if [ -z "$tag" ]; then
         tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)"
         tag="${tag##*/}"
         case "$tag" in v[0-9]*) ;; *) die "could not tell which release is the newest (https://github.com/${REPO}/releases/latest)" ;; esac
     fi
     d="$(mktemp -d /tmp/builderbot-release.XXXXXX)"
-    url="https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz"
-    curl -fsSL -o "$d/release.tar.gz" "$url" || die "could not download ${url}"
+    ver="${tag#v}"
+    base="https://github.com/${REPO}/releases/download/${tag}/builderbot-controller-${ver}.tar.gz"
+    if curl -fsSL -o "$d/release.tar.gz" "$base" 2>/dev/null; then
+        curl -fsSL -o "$d/release.tar.gz.sha256" "${base}.sha256" || die "the bundle has no sha256 beside it at ${base}.sha256, so it is not taken"
+        sum="$(awk '{print $1}' "$d/release.tar.gz.sha256")"
+        echo "${sum}  $d/release.tar.gz" | sha256sum -c - >/dev/null 2>&1 \
+            || die "the bundle does not match its sha256 (${base}): not taken"
+        printf '   bundle %s, sha256 %s\n' "$(basename "$base")" "${sum:0:12}" >&2
+        if command -v gh >/dev/null 2>&1; then
+            if gh attestation verify "$d/release.tar.gz" --repo "$REPO" >/dev/null 2>&1; then
+                printf '   build attestation: verified by gh\n' >&2
+            else
+                die "gh attestation verify refused the bundle: not taken (a build not made by the release workflow)"
+            fi
+        else
+            printf '   build attestation: gh is not here to check it; the sha256 is what held\n' >&2
+        fi
+    else
+        url="https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz"
+        printf '   %s publishes no controller bundle (a release from before 0.9.0); its source archive is taken instead, unverified\n' "$tag" >&2
+        curl -fsSL -o "$d/release.tar.gz" "$url" || die "could not download ${url}"
+    fi
     tar -xzf "$d/release.tar.gz" -C "$d"
     local top
     top="$(find "$d" -mindepth 1 -maxdepth 1 -type d | head -1)"
@@ -707,7 +733,15 @@ cmd_update() {
     if wait_up; then
         printf '   %s is up; %s --rollback goes back to %s\n' "$ver" "$OPT/nodes/install-controller.sh" "${cur:-the one before}"
     else
-        warn "${ver} did not answer on port ${PORT}: journalctl -u ${SERVICE} says why, and --rollback goes back to ${cur:-the one before}"
+        # Not answering: back by itself (R90 step 5), the state the newer
+        # build may have moved on put back from the copy it took, so the
+        # machine is never left on a build that does not come up.
+        warn "${ver} did not answer on port ${PORT}: journalctl -u ${SERVICE} says why; going back to ${cur:-the one before} now"
+        if [ -L "$RELEASES/.previous" ] && cmd_rollback; then
+            warn "back on ${cur:-the one before}; ${ver} is kept beside it for a look"
+        else
+            warn "the rollback did not go through either: ${OPT}/nodes/install-controller.sh --rollback by hand"
+        fi
         exit 1
     fi
 }

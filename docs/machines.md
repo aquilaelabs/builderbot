@@ -301,6 +301,12 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
 - **BuilderBot bug reports**: what sessions and people reported about
   BuilderBot itself, each with its delete, **Download diagnostics** and
   **Clear reports**.
+- **Updates** (a controller installed bare metal, R90): the release this
+  install runs and the newest published, checked daily and on **Check
+  now**; **Update** runs the installer's update through this machine's
+  own node, the bundle verified and the state copied aside, and the install
+  comes back by itself if the new release does not answer. The container
+  edition has no such section: its image is pulled by the host.
 - **Idle sessions**: the idle rule, which ends any agent's session after N minutes
   with nothing typed or written, here and on every node, where the node
   itself enforces it so the rule holds while this container is down.
