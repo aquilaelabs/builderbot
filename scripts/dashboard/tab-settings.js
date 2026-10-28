@@ -100,7 +100,9 @@ function renderSettingsInto(i){
   const t = state?.settings?.tunnel;
   const sect = (key, title, status, html, opts = {}) =>
     docSection("settings", key, title, status, html.replace(/<h4>[^<]*<\/h4>\s*/, ""), opts);
-  const groups = settingsSections();
+  // Reach from outside and Connection are the Network page's now (R165
+  // step 4, tab-network.js), drawn from the same table.
+  const groups = settingsSections().filter(g => !NETWORK_GROUPS.includes(g.key));
   // The logs are an administrator's: a poll that has landed without them
   // means this account has no Logs section, not one still on its way (B38).
   const logs = logSection();
@@ -113,9 +115,9 @@ function renderSettingsInto(i){
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
     ${state?.release?.running !== undefined ? sect("updates", "Updates", state.release.newer ? `${state.release.newer} is out` : state.release.latest ? "up to date" : "", updatesSection()) : ""}
     ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
+    ${state?.can?.admin ? sect("move", "Move this controller", moveStatus(), moveSection()) : ""}
     ${
     // Last, apart from the settings (R218 step 32); the Nodes section that
-    ${state?.can?.admin ? sect("move", "Move this controller", moveStatus(), moveSection()) : ""}
     // only linked to the Nodes page is gone with it, the rail being the way.
     sect("reset", "Reset BuilderBot", "", `<div class="field" data-group="Reset">
       <div class="hint">Start over at the setup page, un-enrolling the nodes first if you choose. Everything but project files is moved aside, not deleted.</div>
@@ -196,8 +198,6 @@ function updatesSection(){
         <button type="button" class="primary" data-relupdate="${esc(r.node || "")}"${r.newer && r.node ? "" : " disabled"}>${r.newer ? `Update to ${esc(r.newer)}` : "Update"}</button></div>
     </div></div>`;
 }
-function wireUpdates(root){
-  root.querySelectorAll("[data-relcheck]").forEach(b => b.onclick = () => pressing(b, async () => {
 // ---- moving this controller (R90 step 12) ----
 // Prepare to move writes the bundle and shows the token once; Download the
 // bundle takes it along; the nodes are told from their next hello; Mark as
@@ -258,6 +258,8 @@ function wireMove(root){
   }));
 }
 
+function wireUpdates(root){
+  root.querySelectorAll("[data-relcheck]").forEach(b => b.onclick = () => pressing(b, async () => {
     busy(b, "Checking");
     const j = await (await postJSON("/api/v1/nodes", {action: "release-check"})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
@@ -683,9 +685,9 @@ function settingsSections(){
 
 function wireSettingsSections(el){
   wireUpdates(el);
+  wireMove(el);
   // Ask Let's Encrypt now (R158 step 2): the Connection section's own press.
   el.querySelectorAll("[data-tlsissue]").forEach(b => b.onclick = async () => {
-  wireMove(el);
     busy(b, "Asking");
     try{
       const j = await (await postJSON("/api/tls", {action: "issue"})).json();

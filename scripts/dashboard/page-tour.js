@@ -99,6 +99,10 @@ const TOUR_STEPS = {
     {say: "Keys: the install key, which seals what this BuilderBot keeps, and everything kept under it. Save a copy of the key apart from /config; Change makes another and seals everything again."},
     {at: TOUR_FIRST, say: "Each person keeps a key store of their own on their Profile, for their agents' sign-ins and the forge tokens they link."},
   ],
+  network: [
+    {say: "Network: how this BuilderBot is reached. Its address and port, what it is served over, where each node dials in from, and the hostname that reaches it from outside."},
+    {at: `${TOUR_PANE} .snav, ${TOUR_FIRST}`, say: "Pick a section here: Connection sets http or https and its certificate; Reach from outside runs the home tunnel."},
+  ],
   machine: [
     {say: "This machine: the computer this BuilderBot runs on, installed bare metal. What it is, the release it runs and its updates, and what it runs as a node."},
     {at: `${TOUR_FIRST}, ${TOUR_PANE} .empty`, say: "Its sections are a node's: health, the projects on it, its sessions, its features, storage and network, and the verbs at the end, reboot and power off among them."},

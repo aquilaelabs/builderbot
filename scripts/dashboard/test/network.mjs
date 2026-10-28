@@ -19,7 +19,7 @@ const head = await page.$eval('.networktab .pghead', e => e.textContent.replace(
 ok(/Reached at/.test(head) && /Port/.test(head) && /Served over/.test(head) && /http/.test(head) && /Hostname/.test(head),
    `the head says where the page is, its port, what it is served over and the hostname (${head.slice(0, 120)})`);
 const rows = await page.evaluate(() => [...document.querySelectorAll('.networktab .snav .rrow')].map(b => b.dataset.spick));
-ok(rows.join() === 'reach,dial,connection,tunnel', `its sections: reached at, nodes dial in, Connection, Reach from outside (${rows.join()})`);
+ok(rows.join() === 'reach,dial,tunnel,connection', `its sections: reached at, nodes dial in, Reach from outside, Connection (${rows.join()})`);
 await splitPick(page, 'dial');
 await page.waitForFunction(() => document.querySelector('.networktab .netdial .row, .networktab details[data-sect="network:dial"] .empty'), null, { timeout: patience(15000) });
 const dial = await page.evaluate(() => [...document.querySelectorAll('.networktab .netdial .row')].map(r => r.textContent.replace(/\s+/g, ' ').trim()));

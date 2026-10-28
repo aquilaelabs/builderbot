@@ -1780,3 +1780,24 @@ This page's own rules:
 Applies to: scripts/dashboard/tab-machine.js, scripts/dashboard/tab-nodes.js; this machine, own node
 
 This machine draws the own node with the Nodes page's own row builder and adds only what the machine is (its head) and its updates; a section about a node is written once, in tab-nodes.js, and never a second time for this page.
+
+### the Network page (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Network page on a desktop frame (12 columns by 10 rows: the frame shows 8 of them, and the page scrolls), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Content (the main reading or working area): the head, in the facts voice: Reached at, Port, Served over, Hostname, Nodes, across the top, rows 1 to 2 of 10
+  2. List (rows of like things): the sections beside the one picked: Reached at, Nodes dial in, Connection, Reach from outside, on the left, columns 1 to 3 of 12, rows 3 to 10 of 10
+  3. Table (columns of data): Nodes dial in: each node, where it dials in from, when seen, how it reaches the controller, on the right, columns 4 to 12 of 12, rows 3 to 5 of 10
+  4. Card (a box holding one thing): Connection and Reach from outside: Settings' own groups drawn here, each with Apply and Revert, on the right, columns 4 to 12 of 12, rows 6 to 10 of 10
+Notes:
+  A page of the Controller group in every edition (R165 step 4; the operator, 22 Oct): how this BuilderBot is reached, and the two groups that were about reaching it moved out of Controller settings, Connection (http or https and its certificate) and Reach from outside (the home tunnel), drawn by Settings' own table so a field saves the way it always did (pages-of-settings). The bare-metal install's own ports, bridge, bonds and VLANs are This machine's Network section, not this page's.
+This page's own rules:
+  network/one-table-two-pages: scripts/dashboard/tab-network.js, scripts/dashboard/tab-settings.js; network page, reach from outside (`bb design show network/one-table-two-pages` reads it)
+
+#### Rules of the Network page's own
+
+##### network/one-table-two-pages
+
+Applies to: scripts/dashboard/tab-network.js, scripts/dashboard/tab-settings.js; network page, reach from outside
+
+Connection and Reach from outside are one table (tab-settings.js SETTING_GROUPS) drawn on the Network page and nowhere else; a group about reaching the controller goes there, never back under Controller settings.

@@ -319,6 +319,20 @@ here. A band on every page says it is held and why. Safe mode at the boot
 menu and a disk the array names gone missing are the installed OS's own
 reasons to hold (R161, R162).
 
+## Network
+
+**Network**, in the rail's Controller group (`#/controller/network`), is how
+this controller is reached, in every edition (R165 step 4): the address the
+page is at and its port, what it is served over, and which nodes dial in,
+each with where it dials in from, when it was last seen and how it reaches
+the controller (this network, the public hostname, WireGuard). Under them,
+two groups moved here out of Controller settings: **Connection** (http, or
+https with the install's own certificate or a Let's Encrypt one for the
+hostname; the certificate's fingerprint a phone or the companion pins, and
+its download) and **Reach from outside** (the home tunnel the controller
+runs itself, with its setup steps). On a bare-metal install the machine's
+own ports, addresses and bridge are This machine's Network section.
+
 ## Controller settings
 
 **Controller settings**, beside Home in the rail's Home group (`#/home/settings`),
@@ -351,28 +365,10 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   whose compose file sets none ([nodes.md](nodes.md#room-a-node-keeps-for-itself)).
 - **Apps**: which of the apps a person installs this controller offers on
   the Apps page ([reference.md](reference.md#the-apps-a-person-installs)).
-- **Reach from outside**: the home tunnel the controller runs itself (R176,
-  `tunnel.py`): the hostname a node off the LAN dials, the tunnel's token from
-  Zero Trust (a secret, said to be set and never shown back), and an optional
-  Cloudflare API token with which the hostname's record and the tunnel's two
-  rules (the agent's API to the controller, everything else 404) are written
-  on Apply rather than clicked; the section's line says whether cloudflared
-  is in the image, running and registered.
 - **Mail**: the SMTP server BuilderBot sends through (its port, security,
   sign-in and the From address, the password sealed under the install key),
   for a person who asked on their Profile for the bell by email (R149,
   `reach.py`); nothing is sent until a server is set.
-- **Connection**: what the dashboard is served over (R158 step 2,
-  `tls.py`): http, https with the install's own certificate (made at the
-  switch and remade a month before it ends; its fingerprint on the section
-  for the phone and the companion to pin, Download for the certificate
-  itself, its private key sealed under the install key and listed on the
-  Keys page) or https with a Let's Encrypt certificate for the controller's
-  own hostname, by a DNS-01 record through the Cloudflare API token. One
-  port serves both, so a node keeps dialing http while a browser gets
-  https. A fresh install starts on http and the Doctor says so until https
-  is on; http stays a choice for a LAN with no CA, said with what then
-  crosses in the clear.
 - **Maintenance**: the owner's alone. While *Maintenance mode* is on, only
   the owner signs in and is answered, from the page, the phone app or a
   session of theirs. Everybody else is told BuilderBot is down for

@@ -82,6 +82,11 @@ const DRIVERS = {
     open: () => page.evaluate(() => openSettingsTab()),
     readyWhen: '.settingstab .snav .rrow',
   },
+  // The Network page (R165 step 4): Connection and Reach from outside, under its own list.
+  network: {
+    open: () => page.evaluate(() => openNetworkTab()),
+    readyWhen: '.networktab .snav .rrow',
+  },
   // The Phone and the CI runner, tools of their own again (R121).
   phone: {
     open: () => page.evaluate(() => openPhoneTab()),

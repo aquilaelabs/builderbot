@@ -198,6 +198,8 @@ const TOOL_ICONS = {
     <path d="M5.5 14h5"/><path d="M8 11.5V14"/></svg>`,
   // A ledger's lines, for the Audit page (R158 step 8).
   audit: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h10v11H3z"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg>`,
+  // Two points joined, for the Network page (R165 step 4).
+  network: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="2"/><circle cx="12" cy="4" r="2"/><circle cx="12" cy="12" r="2"/><path d="M5.8 7.2 10.2 4.8M5.8 8.8l4.4 2.4"/></svg>`,
   // A box with its one light, for This machine (R90 step 8).
   machine: `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="9" rx="1"/><path d="M5 12.5v1.5M11 12.5v1.5M5 6.5h3"/><circle cx="11" cy="6.5" r=".8"/></svg>`,
   // A clock, for the Schedules page (R117).
@@ -337,6 +339,10 @@ const TABKINDS = {
               icon: TOOL_ICONS.audit,
               render: (i) => renderAuditInto(i), live: () => auditRev,
               open: () => loadAudit() },
+  network:  { multi: false, label: () => "Network",
+              icon: TOOL_ICONS.network,
+              render: (i) => renderNetworkInto(i), live: () => settingsLive() + nodesRev,
+              open: () => loadNodes() },
   machine:  { multi: false, label: () => "This machine",
               icon: TOOL_ICONS.machine,
               render: (i) => renderMachineInto(i), live: () => nodesRev,

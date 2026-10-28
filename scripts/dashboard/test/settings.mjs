@@ -97,8 +97,8 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Connection|Mail|Room on the nodes|Maintenance|Reset',
-   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), what the dashboard is served over (R158 step 2), the mail server the bell goes out through (R149), the room a node keeps (R110), the terminal tabs open in (R133), maintenance mode (the owner's), and the reset (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Mail|Room on the nodes|Maintenance|Move|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the mail server the bell goes out through (R149), the room a node keeps (R110), the terminal tabs open in (R133), maintenance mode (the owner's), and the reset (${groups.join(', ')})`);
 {
   // The room a node keeps (R110 steps 1 and 5): whole numbers held to their
   // range by the server, the browser's own min and max beside them.
@@ -144,15 +144,22 @@ ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Conn
   await page.click('.settingstab [data-group="Idle sessions"] [data-srevert]');
   await page.waitForFunction(w => document.getElementById('idleMin')?.value === w, was, { timeout: 10000 });
   ok(true, 'Revert on a section puts its field back to what is saved');
-  ok(await page.$eval('.settingstab [data-group="Reach from outside"] .setsteps', ol => ol.querySelectorAll('li').length === 4 && /localhost:\d+/.test(ol.textContent)),
-     'the Reach from outside section carries its own setup steps, with the controller\'s port in them');
+  // Reach from outside is the Network page's now (R165 step 4), with the
+  // same builder: its setup steps are there.
+  await page.evaluate(() => openNetworkTab());
+  await page.waitForSelector('.networktab .snav .rrow', { timeout: 15000 });
+  await splitPick(page, 'tunnel');
+  ok(await page.$eval('.networktab [data-group="Reach from outside"] .setsteps', ol => ol.querySelectorAll('li').length === 4 && /localhost:\d+/.test(ol.textContent)),
+     'the Reach from outside section carries its own setup steps, with the controller\'s port in them, on the Network page');
 }
 
 // The home tunnel (R176): a hostname, two secrets never shown back, and the
 // controller running cloudflared itself (the harness's stub) from them, with
 // the group's line reading the process. The token is nowhere in the page.
 {
-  const G = '.settingstab [data-group="Reach from outside"]';
+  const G = '.networktab [data-group="Reach from outside"]';
+  await page.evaluate(() => openNetworkTab());
+  await page.waitForSelector('.networktab .snav .rrow', { timeout: 15000 });
   await splitPick(page, 'tunnel');
   const f = await page.$eval(G, g => ({ host: g.querySelector('[data-set="tunnel_host"]')?.type,
     tok: g.querySelector('[data-set="tunnel_token"]')?.type, api: g.querySelector('[data-set="cf_api_token"]')?.type,
@@ -194,7 +201,9 @@ ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Conn
   ok(viaHost('/api/status') === '403' && viaHost('/') === '403' && viaHost('/api/v1/agent/hello') !== '403',
      `by its own hostname the controller refuses its pages and keeps the agent's API (${viaHost('/api/status')}, ${viaHost('/')})`);
   await page.click('#ndBody #ndEnCancel');
-  await page.evaluate(() => openSettingsTab());
+  await page.evaluate(() => openNetworkTab());
+  await page.waitForSelector('.networktab .snav .rrow', { timeout: 15000 });
+  await splitPick(page, 'tunnel');
   await page.waitForSelector(`${G} [data-clear="tunnel_token"]`, { timeout: 15000 });
   await page.check(`${G} [data-clear="tunnel_token"]`);
   await page.click(`${G} .setApply`);

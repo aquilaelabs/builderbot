@@ -41,7 +41,7 @@ const RAIL = [
   // BuilderBot behaves, with room for the pages a bare-metal install and
   // the USB edition add beside Settings (R90, R56). After Containers, so a
   // phone's bar keeps its four.
-  {key: "controller", label: "Controller", icon: "controller", tools: [["machine", "This machine"], ["settings", "Settings"], ["keys", "Keys"], ["audit", "Audit"], ["debug", "Debug"]]},
+  {key: "controller", label: "Controller", icon: "controller", tools: [["machine", "This machine"], ["settings", "Settings"], ["network", "Network"], ["keys", "Keys"], ["audit", "Audit"], ["debug", "Debug"]]},
   {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"], ["schedules", "Schedules"]]},
@@ -72,7 +72,7 @@ function railAllows(kind){
   if (kind === "debug") return !!state?.settings?.debug_available && state?.can?.debug !== false;
   if (!a) return true;
   switch (kind){
-    case "settings": case "keys": case "audit": return !!a.controller;
+    case "settings": case "keys": case "audit": case "network": return !!a.controller;
     // This machine (R90 step 8): a bare-metal install's own, drawn only
     // where the install has one; the container edition shows Settings first.
     case "machine": return !!a.controller && !!state?.own_node;
@@ -394,9 +394,6 @@ function drawHeldBand(){
   if (go && !go.onclick) go.onclick = e => { e.preventDefault(); openMachineTab(); };
 }
 
-// ---- search: jump to a page, a project, a container or a node ---------------
-
-// Rows: [label, where, go]. Pages by name, projects by the name they are
 // ---- a moved controller's band (R90 step 12) ---------------------------------
 function drawMovedBand(){
   const b = document.getElementById("movedband");
@@ -411,6 +408,9 @@ function drawMovedBand(){
 // shown under, nodes from the list once it has landed, containers from what
 // every node last answered (dmJumpRows).
 function jumpItems(q){
+// ---- search: jump to a page, a project, a container or a node ---------------
+
+// Rows: [label, where, go]. Pages by name, projects by the name they are
   const needle = (q || "").trim().toLowerCase();
   if (!needle) return [];
   const rows = [];
