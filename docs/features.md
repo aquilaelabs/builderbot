@@ -73,7 +73,7 @@ works there ([notebook.md](notebook.md)).
   dock, on its project and in the bell.
 - A session may **read other projects** you allow, without changing them.
 - Each person signs in to each agent with their own account, on each node,
-  from the Agents page.
+  from the Installed page under Machines.
 
 ## The `bb` command
 
@@ -110,7 +110,7 @@ The machines that do the work ([machines.md](machines.md), [nodes.md](nodes.md))
 
 ([toolchains.md](toolchains.md))
 
-- A catalog of toolchains installed per node from the Toolchains page: JDK,
+- A catalog of toolchains installed per node from the Library: JDK,
   the Android SDK, Flutter, Go, .NET, Node.js, Python, Rust, Swift, Zig,
   Playwright, ffmpeg, language servers, lint tools, document, graphics,
   diagram and speech tools, LibreOffice, and PyTorch with CUDA.

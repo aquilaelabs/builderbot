@@ -76,7 +76,7 @@ second node can be started from the same place. Where this account is
 signed in on the project's node, the press starts the session or opens the
 chooser with Resume and New conversation, as it always has. Where
 it is not, the chooser offers **Sign in on** that node in their place, which
-opens the Agents page on that node with that agent's section unfolded. A
+opens the Installed page on that node with that agent's row unfolded. A
 project on several nodes lists each under its name: Resume and New
 conversation for a node this account is signed in on, the sign-in for one it
 is not, and the reason alone for one where a session cannot start.
@@ -98,7 +98,7 @@ conversation does not.
 
 **Claude Code is a toolchain of each node, installed on purpose, and by
 nothing a session can do.** The provisioner does not install it: a node's
-Agents page (under Build, beside Toolchains) has a Claude section, with the version its session account
+Library (under Build) installs it, and the Installed page (under Machines) has its row, with the version its session account
 runs against the latest the controller knows, asked on the toolchains' own
 clock (weekly, when a node starts, and on **Check for updates**). Until it
 is installed no Claude session starts there: the project's Start agent
@@ -114,10 +114,10 @@ node behind is a row in the bell, and stays on what it has until you
 install the update: nothing updates it before a session starts (a switch
 that did went on 7 Oct). The same section keeps each account's sign-in;
 the Nodes page keeps one line per node saying which agents are installed and
-signed in there, with a button to the Agents page.
+signed in there, with a button to the Installed page.
 
 **ChatGPT's Codex CLI and Copilot CLI are installed the same way**, each
-from its own section of the Agents page: Install, Update and Remove run the
+from its own card on the Library and its row on the Installed page: Install, Update and Remove run the
 vendor's installer as the session account and pin the binary on a managed
 node, and an agent's update holds its starts there until it ends. A project
 whose agent is missing on its node offers Install for that agent in place
@@ -129,7 +129,7 @@ machine: nothing carries it to another node, and the controller holds no
 credential, only what each node reported. A refresh rotates the refresh
 token, so one login on two machines signs each of them out in turn; a login
 per machine is the shape Claude supports. The sign-in is in the Claude
-section of the node's Agents page, for whoever is looking: *You
+row of the node's Installed page, for whoever is looking: *You
 are signed in here as* the Anthropic account that node reported, with **Sign
 out**, or *You are not signed in to Claude on* that node, with **Sign in**.
 **There is no terminal in it.** `claude auth login` is interactive, printing
@@ -150,7 +150,7 @@ names, and a sign-in on any other node is untouched. A node that is not
 answering offers neither, with the reason under it.
 
 **ChatGPT and Copilot sign in with a device code**, each in its own section
-of the node's Agents page and as the same per-account, per-node record:
+of the node's Installed page and as the same per-account, per-node record:
 the section shows the link to open and the code to enter at OpenAI or
 GitHub, and says who the node reports signed in once the code is taken
 (the ChatGPT account, or the GitHub login with a Copilot plan). Sign out

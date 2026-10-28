@@ -40,11 +40,12 @@ and a session keeps going.
    identity your commits will carry. No session starts until these are set,
    because a commit with no author is a mess somebody else has to clean up.
 3. **Install an agent, then sign in to it**, on each machine your projects
-   work on. A node has no agent until the **Agents** page (under Build, with
-   that node picked) installs one: press Install under Claude, ChatGPT or
-   Copilot. Then press a project's **Start agent**: where you are not signed
-   in on its node yet, it offers **Sign in on** that node, which opens that
-   node's Agents page at that agent's section. Press Sign in there: Claude's
+   work on. A node has no agent until the **Library** (under Build, with
+   that node picked in the header) installs one: press Install on Claude
+   Code, Codex CLI, Copilot CLI or Grok Build. Then press a project's **Start
+   agent**: where you are not signed in on its node yet, it offers **Sign in
+   on** that node, which opens that node's **Installed** page (under
+   Machines) at that agent's row. Press Sign in there: Claude's
    gives a link and takes the code back, ChatGPT's and Copilot's give a link
    and a code to enter at OpenAI or GitHub. The login stays on that machine
    and is yours: it is not shared with the other people here, nobody else's
@@ -77,7 +78,7 @@ The four you are most likely to meet:
 - **the node is away**: the machine a project builds on is not answering, so
   nothing runs there until it is back. It is not your doing.
 - **a tool is missing**: builds use what the machine has, and installing more
-  is an administrator's call, on the Toolchains page. Say what you needed.
+  is an administrator's call, from the Library. Say what you needed.
 - **a session may not push here**: the project's git policy keeps pushing with
   a person. Your commit is made; push it from the notebook's Git view.
 
@@ -103,9 +104,10 @@ roadmap, and it never reads your chat history.
 - **Machines**: this controller's own settings, the nodes where builds,
   tests, CI, the emulator and sessions run, and what their disks hold.
   Enroll node gives you the script to run on a machine.
-- **Build**: what each node builds with (Toolchains, and the tool packs you
-  add there), its emulator, a phone lent to it, its CI runner, and the apps
-  people install.
+- **Build**: the Library, where everything a node installs or runs comes
+  from (coding agents, toolchains, tool packs, services and apps), its
+  emulator, a phone lent to it and its CI runner; what a node has from the
+  Library is managed on Installed, under Machines.
 - **Containers**: what runs on each node's Docker, and the nginx in front of
   it.
 - **People**: accounts, roles and which projects each one sees.

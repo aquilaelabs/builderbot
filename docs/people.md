@@ -193,8 +193,8 @@ own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
 
 Each account signs in to the agents it uses for itself, on each node it
-works on, from that node's Agents page (Build, then Agents, with that node
-picked), and People and Profile name the account each agent is signed in as.
+works on, from that node's Installed page (Machines, then Installed, with that
+node picked in the header), and People and Profile name the account each agent is signed in as.
 Which account that is is the person's own choice: the Users page says when
 two BuilderBot accounts are on one Anthropic account, since Anthropic's
 terms allow one person per Claude account, and nothing is refused for it.
@@ -211,7 +211,7 @@ gets no shell, and their agent's session opens as a **console** instead:
 the real interface, rendered by a read-only terminal that takes no keys, with
 a box to type a message and a button to end the conversation. The controller
 refuses anything else they ask a terminal for, so a read-only window cannot be
-pointed at somebody else's session. They see the Containers and Toolchains pages
+pointed at somebody else's session. They see the Containers page and the Library
 for their own projects' nodes: the scoping is on the answer, not just the
 picker, so a node none of their projects builds on is refused rather than
 listed, and change neither, with one exception: **Rebuild**, and Abort with
