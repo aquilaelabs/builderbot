@@ -58,7 +58,7 @@ The same disk written to a USB stick is the USB edition's base (R161): with
 `bb_toram=1` in GRUB's environment (`slot ram on`; the stick maker sets
 it) the initramfs copies the slot's squashfs into memory, exactly its
 bytes, and the root is that copy, so the stick is read once at boot and the
-system runs from memory as Unraid's does; `/var` and `/etc`'s changes stay
+system runs from memory; `/var` and `/etc`'s changes stay
 on the stick's data partition, apart from both slots, and an update writes
 the other slot as on a disk. `slot status` says when the root is in memory.
 A machine needs the slot's size in memory beside what it runs (about 2 GB).
@@ -119,7 +119,7 @@ installing, for a look or a rescue.
 ## The same disk for a hypervisor
 
 The raw disk is converted, never laid out again, into `builderbot-os-VERSION.qcow2`
-for Proxmox, Unraid and libvirt, and `builderbot-os-VERSION.ova` for VMware
+for Proxmox, libvirt and other QEMU hosts, and `builderbot-os-VERSION.ova` for VMware
 and VirtualBox (a stream-optimized VMDK with its OVF descriptor,
 `image/ovf.xml`, and a manifest): the easiest way to try BuilderBot, and to
 keep it apart on a hypervisor, its snapshots the hypervisor's. The VM boots

@@ -2,7 +2,7 @@
 #
 # BuilderBot entrypoint.
 #
-#   1. remap the `builder` user to PUID/PGID so files written into your Unraid
+#   1. remap the `builder` user to PUID/PGID so files written into your host's
 #      shares come out owned by the right account
 #   2. seed the home volume from the image skeleton
 #   3. run every startup hook in scripts/startup.d and /config/startup.d

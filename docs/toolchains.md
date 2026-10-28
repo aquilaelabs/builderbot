@@ -16,7 +16,7 @@ module. Everything a build needs: the JDK, the Android SDK, the emulator,
 Flutter, .NET: is a recipe installed into a **node's toolchain store**, from
 the Library with that node picked; the page lists nodes and nothing else,
 and with none enrolled it says so. The controller's own store: the SDK
-share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`): holds
+share, mapped at `/sdk` (on a NAS host `/mnt/user/sdk`): holds
 only what its boot keeps for `bb capture shot`, the Playwright browsers; nothing is
 installed on the controller from the dashboard. A node enrolled with the same
 share is recognized as sharing it, and each keeps its own directory there.
@@ -480,7 +480,7 @@ container toolkit and system packages, which write no store, wait for
 nothing there. One machine still runs one toolchain job at a
 time. What identifies the pair is a marker file
 inside the store itself, not the mount: this container reaches the toolchain store
-through Unraid's FUSE layer while a node reaches the same bytes over NFS,
+through the host's user-share layer while a node reaches the same bytes over NFS,
 and neither mount string can be derived from the other. Nothing
 machine-specific is written into a shared store: the generated
 `sdk-env.sh`, whose every line is an absolute path, lives on the home volume

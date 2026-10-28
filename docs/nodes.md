@@ -2268,7 +2268,7 @@ otherwise. Put the session on the node and most of that is simply not needed.
 
 It also settles a question §18 could not. The operator hit it on 4 September:
 this box's toolchain store and bb-sandbox's are **one store under two
-names**: `/sdk` here through Unraid's FUSE layer, `/mnt/SDK` there over NFS,
+names**: `/sdk` here through the host's user-share layer, `/mnt/SDK` there over NFS,
 store id identical, so "the container has Flutter" and "the node has Flutter"
 were one fact, and nothing could be taken off the container without taking it
 off the node. §18's answer was to split the share, which is a share per

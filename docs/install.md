@@ -186,7 +186,7 @@ the Controller settings page, or `/config/seed.json` before the first start
 
 **Updating**: CI publishes `:latest` for any push to `main` that touches the
 image's inputs (Dockerfile, `scripts/`, `config/`) + a weekly freshness
-rebuild. Unraid's *Check for Updates* flips the container to **update ready**,
+rebuild. The host's app page's *Check for Updates* flips the container to **update ready**,
 so click it. Builds seed their layer cache from the previous `:latest`, so a
 scripts-only change is a small pull; the Monday rebuild is uncached on purpose
 and is always the big one. *Run workflow* takes a **Rebuild every layer** box

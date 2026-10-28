@@ -578,7 +578,7 @@ def mounts_now():
                 if e.errno == errno.ESTALE:
                     m["stale"] = True
                     m["error"] = ("mounted, but the handle is stale: the export was re-created "
-                                  "under it on the host; re-export it there (Unraid: the share's "
+                                  "under it on the host; re-export it there (on a NAS host: the share's "
                                   "NFS setting off and on, or a pool the mover leaves alone), "
                                   "then Apply storage here")
     return got
@@ -621,7 +621,7 @@ def export_gaps(addr):
     that do not include addr, the address this node is about to move to.
     From `showmount -e` on each server; a server that does not answer, or
     a machine without showmount, contributes nothing rather than a refusal.
-    The Unraid rule the docs prescribe names exactly one address, so a
+    The export rule the docs prescribe names exactly one address, so a
     node that moves without the rule moving loses every share at once."""
     if not addr or not _have("showmount"):
         return []

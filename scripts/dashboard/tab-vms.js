@@ -498,7 +498,7 @@ function openNewVm(forProject = ""){
 
 // ---- a VM's hardware beyond size (R100) -----------------------------------
 // One set of fields for New VM's More and the Hardware dialog of a stopped VM:
-// CPU threads in their core pairs (as Unraid draws them), a memory ceiling it
+// CPU threads in their core pairs (as a hypervisor's form draws them), a memory ceiling it
 // may balloon to, its network, a folder of the project shared in, and the
 // host's devices passed through, which only an administrator is shown.
 function vmHwLine(v){

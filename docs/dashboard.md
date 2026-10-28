@@ -193,7 +193,7 @@ the server could not be without a flash.
 The container's uptime **and which build of the image is serving it** are
 both in the bar of the Controller settings page, and the build is again the
 About control in the header, whose popup carries the whole commit and the time it was
-built. The two are different questions: an Unraid container keeps running
+built. The two are different questions: a NAS's container keeps running
 whatever it last pulled, so "up two hours" says nothing about whether a fix
 merged an hour ago is in there, and inferring one from the other is a good
 way to spend an afternoon debugging a bug that was already fixed. `unstamped`

@@ -1,5 +1,4 @@
-// The Schedules page (R117): an administrator's own cron, as Unraid's User
-// Scripts are. Each schedule a row: its name, whether it is on, its
+// The Schedules page (R117): an administrator's own cron. Each schedule a row: its name, whether it is on, its
 // timetable said in words, the node it runs on and as whom, its last run
 // (its state, when, and its log on the Jobs page) and its next; Run now,
 // Edit, Turn on or off, and Remove behind its More. New schedule in the

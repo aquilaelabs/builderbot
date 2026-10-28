@@ -223,7 +223,7 @@ sdk_write_env() {
 # bb emu all go to it), so answering with this container's store told a
 # session about a machine its project does not use. Worse on this box, where
 # this toolchain store and the node's toolchain store are ONE store under two names
-# (/sdk here through Unraid's FUSE layer, /mnt/SDK there over NFS, the same
+# (/sdk here through the host's user-share layer, /mnt/SDK there over NFS, the same
 # store id): the two listings read like two machines' toolchains and were the
 # same bytes.
 #

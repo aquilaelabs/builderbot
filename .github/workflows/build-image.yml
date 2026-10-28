@@ -220,7 +220,7 @@ jobs:
           # attestation has to be an index: the image and the attestation are
           # two entries in it. ghcr then serves the tag ONLY to a request that
           # accepts application/vnd.oci.image.index.v1+json, and answers 404 to
-          # one that asks for the docker manifest types. Unraid's Docker page
+          # one that asks for the docker manifest types. A NAS's Docker page
           # asks for the docker types, so every image that moved to an index
           # went to "not available" in its version column. That was measured on
           # ghcr.io/advplyr/audiobookshelf, which 404s for every Accept header
@@ -231,7 +231,7 @@ jobs:
           # here: one platform, one private image, one consumer, and that
           # consumer's whole job is to tell the operator whether the box is
           # current. Delete this line to get the attestation back, and the
-          # version column goes blank again until Unraid can read an index.
+          # version column goes blank again until such a page can read an index.
           provenance: false
           # Inline cache, not the GHA cache. The GHA quota is 10GB per repo
           # and this image's layers alone exceeded it, so every build's cache

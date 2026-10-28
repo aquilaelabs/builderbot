@@ -22,8 +22,8 @@ A VM runs on a node with **VM host** installed: KVM through libvirt, put
 there by Enroll node's tick or by the node's Features section on the Nodes
 page (`bb-sandbox feature install vmhost`, the same install either way). It
 needs `/dev/kvm`. A node that is itself a VM has that only when its host
-passes virtualization through: CPU mode host-passthrough (Unraid's CPU Mode:
-Host Passthrough, Proxmox's CPU type host) and nested KVM on in the host's
+passes virtualization through: CPU mode host-passthrough (a host's CPU mode
+set to host passthrough, Proxmox's CPU type host) and nested KVM on in the host's
 `kvm_intel` or `kvm_amd`. Without it the Features row says so, and offers no
 Install: a VM in software emulation would be tens of times slower.
 

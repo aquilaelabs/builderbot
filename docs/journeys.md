@@ -66,7 +66,7 @@ What was pressed, in order:
 What this walk moved or confirmed:
 
 - Alpha, confirmed again: Gitea as a git host (link, push, runner
-  registration, CI), Unraid as the VM's hypervisor, the Debian family for
+  registration, CI), a KVM host as the VM's hypervisor, the Debian family for
   the provisioner, and the plain enroll command from the dialog.
 - Alpha, new evidence: the Storage section's Apply moving three stores and
   three mounts onto a squashed NFS share; Uninstall and Reset as the way to a

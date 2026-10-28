@@ -324,7 +324,7 @@ moment it stops being true, and keyed on what is wrong so a dismissal
 holds until that changes. Each links to the Storage page, where Replace
 and the rest are.
 
-**Array** (R162): an Unraid-style array beside the pools, for disks of
+**Array** (R162): an array of mixed disks beside the pools, for disks of
 mixed sizes: each data disk its own xfs or btrfs filesystem mounted at
 `/mnt/disks/dN`, pooled into one tree at `/mnt/array` by mergerfs (the
 policy picked says where a new file lands: the emptiest disk, the disk its
@@ -739,8 +739,8 @@ the queue's counts, and `/metrics` answers with one in Prometheus text.
 
 ## Schedules
 
-**Schedules**, beside Jobs in its group, is an administrator's own cron, as
-Unraid's User Scripts are: each schedule a name, when it runs (hourly, daily,
+**Schedules**, beside Jobs in its group, is an administrator's own cron:
+each schedule a name, when it runs (hourly, daily,
 weekly, monthly, or cron's five fields under Custom, said in words: `0 4 * * 0`
 is Sundays at 4:00), where it runs, and a script. It runs on the controller,
 as the controller's account with everything that account can read, or on a

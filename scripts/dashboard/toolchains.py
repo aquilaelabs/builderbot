@@ -1527,7 +1527,7 @@ def _store_share(n):
 
     The store's own id first (nodes.store_id, a marker file inside it),
     because it is the only answer that survives the transport differing. On
-    Unraid the toolchain store is reached through the FUSE layer by the
+    a NAS host the toolchain store is reached through the user-share layer by the
     controller (fstype fuse.shfs, source "shfs") and over NFS by a node
     (nas:/mnt/user/sdk); neither string can be derived from the other, so
     without the id the pair is invisible and the one-install-at-a-time

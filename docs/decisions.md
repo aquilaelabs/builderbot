@@ -524,7 +524,7 @@ fixed table, under a dial a project sets (21 Oct 2026, R91).** The operator
 asked for VMs a project's session can make, looking and asking like the
 Containers page. libvirt over KVM on any node with VM host installed, rather
 than a hypervisor of BuilderBot's own: it is what every Linux distribution
-ships and what Proxmox and Unraid run underneath. The agent builds every
+ships and what Proxmox and other KVM hosts run underneath. The agent builds every
 virsh and qemu-img command itself from the job's checked fields, so the
 controller, and anything that reaches it, names what to make and never a
 command line. An OS is a publisher's cloud image checked against the
@@ -663,7 +663,7 @@ already do, and BuilderBot manages them from Python without ever being the
 data path (the operator, 18 to 27 Oct 2026, R56 steps 4 to 6, R115 and
 R162).** Two storage profiles are offered, each said for what it gives up:
 ZFS pools (mirrors or RAIDZ2, the default for matched disks) and an
-Unraid-style array (a filesystem per disk under mergerfs with SnapRAID's
+an array of mixed disks (a filesystem per disk under mergerfs with SnapRAID's
 periodic parity) for disks of mixed sizes; pools are by purpose, an SSD pool
 for BuilderBot's hot data and the array for shares, with no cache tier and
 nothing moved behind a person's back. Not built: a storage engine, real-time

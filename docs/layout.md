@@ -324,7 +324,7 @@ scripts/
     disks.py                     the machine's disks for the census (R162 step 1): lsblk's JSON and smartctl's, each whole disk with what its partitions hold
     shares.py                    the machine's SMB and NFS shares for the census and the storage-share job (R162 step 1): BuilderBot's own two files, read and written whole
     pools.py                     the machine's ZFS pools for the census and the storage-pool job (R162 step 1): made, grown, scrubbed, a member replaced, exported, destroyed, each disk held to the census
-    array.py                     the machine's Unraid-style array for the census and the storage-array job (R162 step 2): the record, snapraid.conf and the fstab lines rendered from it, made, a disk added or replaced, synced, scrubbed, checked, destroyed
+    array.py                     the machine's array of mixed disks for the census and the storage-array job (R162 step 2): the record, snapraid.conf and the fstab lines rendered from it, made, a disk added or replaced, synced, scrubbed, checked, destroyed
     power.py                     the machine's UPS through NUT and its own packages' updates for the census, and the host-update job (R164 step 3)
     extmounts.py                 the other disks and shares the hello names (R162 step 4): each mounted at /mnt/other/NAME or unmounted as the record says, an SMB share's credentials root's alone, the census's rows
     packconfig.py                what each added pack is configured with here (R172): the hello's rows written as one env file per pack under the store's .bb/config, the session account's alone, which bb tool reads into a verb's environment

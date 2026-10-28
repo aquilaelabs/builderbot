@@ -16,7 +16,7 @@ runner's token is typed on the CI runner page.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
+| `PUID` / `PGID` | `99` / `100` | File ownership (a NAS host's `nobody:users`) |
 | `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked under the gear in the header |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (websockets at `/termws`) |
 | `FEATURES_OFF` | *(empty)* | Features switched off for the whole install, comma-separated: `tunnel`, `ftp`, `phone`, `devices`, `apps`, `image-updates`, `runner`, `enroll`, `shell` (a terminal on the controller itself; a node's stay), `vms` (virtual machines on nodes: the VMs page, `bb vm` and installing VM host), `internet` (an install meant to run offline: apps, image updates, the tunnel and runners with it, and the Doctor skips asking the outside). Each one's controls are drawn dead with the sentence below under them, its requests are refused, and Settings lists them |
