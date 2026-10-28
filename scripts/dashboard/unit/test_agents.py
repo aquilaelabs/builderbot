@@ -22,9 +22,10 @@ node = agentpkg.load("builderbot_agent")
 
 
 class Table(unittest.TestCase):
-    def test_five_agents_with_claude_first_and_the_open_one_not_live_yet(self):
+    def test_five_agents_with_claude_first_and_every_one_live(self):
         self.assertEqual([a.id for a in agents.TABLE], ["claude", "codex", "copilot", "grok", "open"])
-        self.assertEqual([a.id for a in agents.live()], ["claude", "codex", "copilot", "grok"])
+        self.assertEqual([a.id for a in agents.live()], ["claude", "codex", "copilot", "grok", "open"])
+        self.assertEqual((agents.get("open").provider, agents.get("open").guards, agents.get("open").state), ("", "plugin", "plugin"))
         self.assertIs(agents.default(), agents.get("claude"))
 
     def test_every_row_is_well_formed(self):
@@ -62,12 +63,11 @@ class Names(unittest.TestCase):
         self.assertEqual(agents.of_session("claude-"), (None, ""))
         self.assertEqual(agents.of_session(""), (None, ""))
 
-    def test_a_planned_agent_s_names_are_not_read_as_its_yet(self):
-        # A scratch session somebody called open-x stays a scratch session
-        # until the open agent is wired.
-        self.assertEqual(agents.of_session("open-alpha"), (None, ""))
-        self.assertEqual(agents.of_arg("open:alpha"), (None, ""))
-        self.assertFalse(idle.is_claude("open-alpha"))
+    def test_the_open_agent_s_names_are_read_as_its(self):
+        # Any model (R144 step 2): its sessions and its arguments are its.
+        self.assertEqual(agents.of_session("open-alpha"), (agents.get("open"), "alpha"))
+        self.assertEqual(agents.of_arg("open:alpha"), (agents.get("open"), "alpha"))
+        self.assertTrue(idle.is_claude("open-alpha"))
 
     def test_a_second_slot_is_its_project_s_in_its_own_name(self):
         self.assertEqual(agents.session_name("claude", "ep.silon", 2), "claude-ep_silon~2")
@@ -430,7 +430,7 @@ class Sessions(unittest.TestCase):
             {"name": "u_0123abcd~claude-alpha", "claude": {"state": "asking"}},
             {"name": "shell-alpha"},
             {"name": "shell-alpha-2"},
-            {"name": "open-alpha"},
+            {"name": "scratch-alpha"},
         ]
         projsessions.configure(
             sessions=lambda: self.rows,

@@ -40,6 +40,9 @@ object Agents {
         // Grok Build (R95 step 21): its own default model until a list is
         // read off it, as agents.py has none for it yet.
         Agent("grok", "Grok", "Grok Build", emptyList(), emptyList()),
+        // Any model (R144): OpenCode through a node's router; its models are
+        // the router's, read per project, so none are listed here.
+        Agent("open", "Any model", "OpenCode", emptyList(), emptyList()),
     )
 
     fun byId(id: String?): Agent? = LIVE.firstOrNull { it.id == id }

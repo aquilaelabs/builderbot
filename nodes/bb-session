@@ -1393,8 +1393,8 @@ def caller(c, account=""):
 
 
 PROJECT_DIR = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
-AGENT_IDS = ("claude", "codex", "copilot", "grok")
-BRANCH = re.compile(r"(?:claude|codex|copilot|grok)/[A-Za-z0-9][A-Za-z0-9._@-]{0,79}")
+AGENT_IDS = ("claude", "codex", "copilot", "grok", "open")
+BRANCH = re.compile(r"(?:claude|codex|copilot|grok|open)/[A-Za-z0-9][A-Za-z0-9._@-]{0,79}")
 
 
 def worktree(c, argv):

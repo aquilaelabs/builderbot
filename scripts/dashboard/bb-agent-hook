@@ -43,7 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # The tools each agent runs a command or edits a file with, by the names
 # its hooks hand over.
 SHELL = {"shell", "exec_command", "local_shell", "bash", "run_shell_command", "run_terminal_command", "Bash"}
-EDIT = {"apply_patch", "edit", "create", "write", "str_replace_editor", "write_file", "search_replace", "Edit", "Write"}
+EDIT = {"apply_patch", "edit", "create", "write", "str_replace_editor", "write_file", "search_replace", "patch", "Edit", "Write"}
 # ...and searches a file's contents with (Codex has none: it runs rg in its
 # shell, which the rule guard reads).
 GREP = {"grep", "Grep", "search_file_content"}
@@ -60,6 +60,13 @@ def as_claude(agent, raw):
              "tool_name": d.get("toolName") or "", "tool_input": args if isinstance(args, dict) else {},
              "prompt": d.get("prompt") or d.get("userPrompt") or "",
              "stop_hook_active": bool(d.get("stopHookActive"))}
+    if agent == "open":
+        # OpenCode's plugin (bb-tty writes it): the tool by its name and its
+        # arguments as the plugin was handed them.
+        args = d.get("args")
+        d = {"session_id": d.get("session_id") or "", "cwd": d.get("cwd") or "",
+             "tool_name": d.get("tool") or "", "tool_input": args if isinstance(args, dict) else {},
+             "prompt": d.get("prompt") or "", "stop_hook_active": False}
     if agent == "copilot":
         args = d.get("toolArgs")
         if isinstance(args, str):
@@ -111,7 +118,9 @@ def keep(agent, raw):
     when it names one, else where it keeps it; nothing when neither is there."""
     d = raw if isinstance(raw, dict) else {}
     tree, home = os.environ.get("BB_TREE", ""), os.environ.get("HOME", "")
-    if not tree or not home:
+    if not tree or not home or agent == "open":
+        # Any model's plugin keeps its own export (opencode export) in the
+        # same folder; nothing to copy here.
         return
     if agent == "copilot":
         sid = str(d.get("sessionId") or "")
@@ -222,7 +231,7 @@ def run(argv, payload, timeout):
 P, W = "{proj}", "{who}"
 HOOKS = {
     "pre": {"claude": ("PreToolUse", None), "codex": ("PreToolUse", 120), "copilot": ("preToolUse", 120),
-            "grok": ("PreToolUse", 120), "steps": [
+            "grok": ("PreToolUse", 120), "open": ("tool.execute.before", 120), "steps": [
         ("bb-gate", [P, W], 60, None, None),
         ("bb-work-note", [P, W], 30, ("Edit", "Write", "NotebookEdit"), None),
         ("bb-rule-hook", ["guard", P, W], 30, ("Bash",), None),
@@ -230,17 +239,18 @@ HOOKS = {
     # Claude Code waiting on its own permission prompt (B52): said to the
     # controller, so the dock and the bell show it.
     "asking": {"claude": ("Notification", "permission_prompt"), "codex": ("PermissionRequest", 15),
-               "copilot": ("permissionRequest", 15), "steps": [
+               "copilot": ("permissionRequest", 15), "open": ("permission.ask", 15), "steps": [
         ("bb-gate", ["--asking", P, W], 15, None, None)]},
-    "recall": {"claude": ("SessionStart", "compact"), "codex": ("PostCompact", 30), "grok": ("PostCompact", 30), "steps": [
+    "recall": {"claude": ("SessionStart", "compact"), "codex": ("PostCompact", 30), "grok": ("PostCompact", 30),
+               "open": ("session.compacted", 30), "steps": [
         ("bb-rule-hook", ["recall", P, W], 30, None, None)]},
     "prompt": {"claude": ("UserPromptSubmit", None), "codex": ("UserPromptSubmit", 900),
-               "copilot": ("userPromptSubmitted", 900), "grok": ("UserPromptSubmit", 900), "steps": [
+               "copilot": ("userPromptSubmitted", 900), "grok": ("UserPromptSubmit", 900), "open": ("chat.message", 900), "steps": [
         ("bb-prompt-relay", [P, W], 30, None, None),
         ("bb-rule-hook", ["prompt", P, W], 10, None, None),
         ("bb-gate", ["--turn", P, W, "--wait", "840"], 900, None, "Waiting for a turn on this node")]},
     "stop": {"claude": ("Stop", None), "codex": ("Stop", 3600), "copilot": ("agentStop", 3600),
-             "grok": ("Stop", 3600), "steps": [
+             "grok": ("Stop", 3600), "open": ("session.idle", 3600), "steps": [
         ("bb-check-relay", [P, W], 3600, None, None),
         ("bb-gate", ["--turn-done", P, W], 30, None, None)]},
 }

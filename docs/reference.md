@@ -546,6 +546,7 @@ bb rules pending   rules a session added that are waiting for your approval
 bb rules audit [DAYS]   your conversations here over DAYS (7): the commands a rule
                    refuses, run or tried, and the code map asked against grep
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb router-key      the model router's address, this project's own key and its models, for an Any model session
 bb help TOPIC      one topic of the session briefing in full (start, where, map, build, tidy,
                    speed, capture, asks, notebook, versions, git, android, gpu, containers);
                    bb help topics lists them, bb help VERB one verb's lines

@@ -101,11 +101,19 @@ TABLE = (
           briefing="system-prompt-file", guards="hooks", state="hooks",
           transcripts=".grok/sessions", tool="grok-build", live=True,
           latest_url="https://x.ai/cli/stable"),
+    # Any model (R144 step 2): OpenCode, the open agent, pointed at a node's
+    # model router (router.py) rather than signed in to anybody: its keys
+    # are the router's, handed to a session at its start with the models
+    # the router offers; its briefing an instructions file in its config,
+    # its guards and its state a plugin of BuilderBot's (bb-tty writes it)
+    # calling bb-agent-hook as the others' hooks do, its conversations
+    # exported by that plugin at each turn's end. Checked against OpenCode
+    # 1.x's docs on 28 Oct.
     Agent(id="open", name="Any model", product="OpenCode", command="opencode",
           provider="", reported="opencode", update_job="opencode-update",
           login_job="", logout_job="",
           briefing="instructions-file", guards="plugin", state="plugin",
-          transcripts=".local/share/opencode",
+          transcripts=".local/share/opencode", tool="opencode", live=True,
           latest_url="https://registry.npmjs.org/opencode-ai/latest"),
 )
 
@@ -127,6 +135,9 @@ EFFORTS = {
     "codex": ('low', 'medium', 'high', 'xhigh', 'max'),
     "copilot": ('low', 'medium', 'high', 'xhigh', 'max'),
 }
+# Any model's models are the router's (router.models_for), read per project
+# rather than kept here; a pick is held to that list by prefs and bb-tty.
+OPEN_MODEL = re.compile(r"^[A-Za-z0-9._:/-]{1,120}$")
 
 
 def get(agent_id):

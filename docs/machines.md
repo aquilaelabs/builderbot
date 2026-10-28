@@ -34,7 +34,13 @@ heading so a phone reads the headings and opens one: Health (the meters:
 cpu, memory, the card's load and its own memory where an NVIDIA driver
 answers, and each store's room; the toolchains its census found, which is what a project bound to it can
 build), Projects (the projects bound to it), Sessions (whether it runs them,
-and which are open), GPU (where it has a card), Features (what the machine has
+and which are open), GPU (where it has a card), Model router (R144: LiteLLM
+on this node with the provider keys you give it, kept sealed on the
+controller and written into the router's compose file on the node, Ollama
+beside it where you turn it on with its models pulled and removed here, and
+the projects allowed to use it, each handed the address and a key of its
+own at a session's start so its spend is its own; **Deploy**, **Save and
+rebuild**, **Remove**, **Read the models** and **Read the spend**), Features (what the machine has
 beyond the base, each with **Install** or **Uninstall**: VM host, and the
 hosting firewall on a hosting-only node), Coding agents (one line saying
 which are installed there, with the way to the node's **Agents** page, where

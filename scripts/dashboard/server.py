@@ -1376,6 +1376,10 @@ def _project_columns(who, facts):
                     # may_work: whether the project is this account's to change.
                     "yours": mine_prefs.get(d.name, {"model": "", "effort": "", "reply": "", "asks": "",
                                                      "git_name": "", "git_email": "", "term_scheme": ""}),
+                    # Any model through a router (R144): the models the
+                    # router allows this project, with their context and
+                    # price, and what the project has spent through it.
+                    "router": _router_row(d.name),
                     # Whether a commit here would carry an author, asked WITH
                     # the override: somebody whose Profile has no email can
                     # still set one for this project, and then a session may
@@ -1935,6 +1939,17 @@ def _givers_said(project, me):
         out.append({"uid": uid, "name": names.get(uid) or "an account that is gone", "login": fg.get("login", ""),
                     "host": fg.get("host", ""), "mine": uid == me, "live": logins.live(uid)})
     return out
+
+
+def _router_row(name):
+    """{models, spend} for a project a router allows, or None; cheap, since
+    the record is one small file read on every poll."""
+    models = router.models_for(name)
+    if not models:
+        return None
+    return {"models": [{"id": m["id"], "provider": m.get("provider", ""), "context": m.get("context", 0),
+                        "in_cost": m.get("in_cost", 0), "out_cost": m.get("out_cost", 0)} for m in models],
+            "spend": router.spend_for(name)}
 
 
 def _name_of_uid(uid):
@@ -4181,7 +4196,7 @@ try:
     # ...and the containers' (R178): whether each project's are kept apart
     # here, and what each compose project may reach, whatever the sessions'
     # switch says.
-    nodes.session_net_for = lambda nid: (({"on": True, "own": _with_vmnets(nid, devapp.session_net_own(nid))}
+    nodes.session_net_for = lambda nid: (({"on": True, "own": router.with_peers(_with_vmnets(nid, devapp.session_net_own(nid)))}
                                           if nodes.session_net_on(nid) else {"on": False, "own": {}})
                                          | {"ctr_on": nodes.container_net_on(nid),
                                             "ctr": devapp.container_net_own(nid) if nodes.container_net_on(nid) else {},
@@ -4346,8 +4361,17 @@ reach.configure(state=STATE, write_json=write_json, seal=signing.seal, unseal=si
                 smtp_settings=lambda: {"host": settings.get("smtp_host"), "port": settings.get("smtp_port"),
                                        "security": settings.get("smtp_security") or "starttls", "user": settings.get("smtp_user"),
                                        "password": settings.secret("smtp_password"), "from": settings.get("smtp_from")})
+# A model router on a node (R144 step 1, router.py): LiteLLM with the
+# provider keys, Ollama beside it, a key per allowed project.
+import router                                                    # noqa: E402
+router.configure(state=STATE, write_json=write_json, seal=signing.seal, unseal=signing.unseal,
+                 sealing=lambda: signing.MASTER is not None, node_list=nodes.node_list,
+                 node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
+                 node_addr=lambda nid: str((nodes.node(nid) or {}).get("addr") or ((nodes.node(nid) or {}).get("agent") or {}).get("addr") or ""),
+                 project_names=lambda: list(prefs.all_projects(WORKSPACE)), job_add=nodes.job_add,
+                 job_get=lambda jid: nodes.job(jid, with_log=True))
 installkey.configure(passes=(signing.seal_all, gitcreds.seal_all, settings.seal_all, mfa.seal_all,
-                             accountkeys.seal_all, reach.seal_all),
+                             accountkeys.seal_all, reach.seal_all, router.seal_all),
                      nodes_previous=lambda: tokenkeys.sealed_under(_node_seals(), signing.PREVIOUS)
                      if signing.PREVIOUS else 0)
 installkey.note_made()
@@ -5496,6 +5520,8 @@ GET_ROUTES = (
     ("prefix", "/api/users", "_get_users"),
     ("prefix", "/api/nginx", "_get_nginx"),
     ("exact", "/api/scanners", "_get_scanners"),
+    ("exact", "/api/router", "_get_router"),
+    ("exact", "/api/router-key", "_get_router_key"),
     ("prefix", "/api/storage", "_get_storage"),
     ("exact", "/api/schedules", "_get_schedules"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
@@ -5571,6 +5597,7 @@ POST_ROUTES = (
     ("exact", "/api/notices", "_notices"),
     ("exact", "/api/nginx", "_nginx"),
     ("exact", "/api/scanners", "_scanners"),
+    ("exact", "/api/router", "_router"),
     ("exact", "/api/images", "_images"),
     ("exact", "/api/storage", "_storage"),
     ("exact", "/api/schedules", "_schedules"),
@@ -9750,6 +9777,10 @@ class Handler(BaseHTTPRequestHandler):
         for r in reach.at_rest():
             rows.append({"kind": "reach", "name": f"{names.get(r['uid'], r['uid'])}: {r['name']}",
                          "uses": "the bell sent there", "sealed": r["sealed"], "go": ["profile", ""]})
+        # A node's model router (R144): the provider keys and its master key.
+        for r in router.at_rest():
+            rows.append({"kind": "router", "name": f"{(nodes.node(r['node']) or {}).get('name') or r['node']}: {r['name']}",
+                         "uses": "the model router there", "sealed": r["sealed"], "go": ["nodes", r["node"]]})
         for f in sorted((STATE / "gitcreds").iterdir()) if (STATE / "gitcreds").is_dir() else []:
             raw = f.read_text(errors="replace").strip() if f.is_file() else ""
             gv = gitcreds.givers(f.name)
@@ -10981,6 +11012,80 @@ class Handler(BaseHTTPRequestHandler):
         if not users.is_admin(who) and not roles.level_of(who, "nodes"):
             return self._json({"error": "the nginx page is the Nodes page's area: ask for Read on Nodes"}, 403)
         return self._json(nginxproxy.view(devapp, devactions.state))
+
+    def _get_router(self):
+        """GET /api/router?node=ID: a node's model router (router.status)
+        and the projects it may be offered to, for an account that reads the
+        Nodes page; never a session's."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a node's router is a person's"}, 403)
+        if self._refused("nodes"):
+            return
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid = q.get("node", [""])[0]
+        if not nid or not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        return self._json({**router.status(nid), "providers_known": {k: v["label"] for k, v in router.PROVIDERS.items()},
+                           "all_projects": sorted(prefs.all_projects(WORKSPACE)),
+                           "gpu": bool(((nodes.node(nid) or {}).get("reported") or {}).get("gpu_card"))})
+
+    def _get_router_key(self):
+        """GET /api/router-key?project=NAME: the router address and the
+        project's own key, for a session of that project at its start
+        (bb-tty's launcher) or a person who may work on it; {} where no
+        router allows the project."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        who = self._who() or {}
+        if who.get("session") and who.get("session") != name and users.key_of(who.get("session") or "") != users.key_of(name):
+            return self._json({"error": "a session is handed its own project's key"}, 403)
+        got = router.for_project(name)
+        if got:
+            got["models"] = router.models_for(name)
+        return self._json(got)
+
+    def _router(self, req):
+        """POST /api/router: a node's model router (router.py): its keys and
+        endpoints saved, Deploy, Save and Remove as a written container's
+        compose jobs, Ollama's models pulled and removed, a project allowed
+        or not, the models and the spend read; docker-write like the
+        nginx page, and never a session's."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a node's router is a person's"}, 403)
+        if self._refused("docker-write"):
+            return
+        act, nid = field(req, "action"), field(req, "node")
+        if not nid or not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        by = (self._who() or {}).get("name") or ""
+        gpu = bool(((nodes.node(nid) or {}).get("reported") or {}).get("gpu_card"))
+        if act == "set":
+            r = router.set_keys(nid, req)
+            if not r.get("error") and router.record(nid).get("deployed"):
+                r = router.apply(nid, containers, devactions, devapp, gpu) | {"saved": True}
+        elif act == "deploy":
+            r = router.deploy(nid, containers, devactions, devapp, gpu)
+        elif act == "remove":
+            r = router.remove(nid, devactions, devapp)
+        elif act == "allow":
+            r = router.allow(nid, field(req, "project"), by)
+        elif act == "disallow":
+            r = router.disallow(nid, field(req, "project"))
+        elif act == "ollama-pull":
+            r = router.ollama_pull(nid, field(req, "model"), by)
+        elif act == "ollama-remove":
+            r = router.ollama_remove(nid, field(req, "model"), by)
+        elif act == "models":
+            r = router.refresh_models(nid)
+        elif act == "spend":
+            r = {"ok": True, "spend": router.refresh_spend(nid)}
+        else:
+            return self._json({"error": f"unknown action {act!r}"}, 400)
+        if not r.get("error"):
+            db.audit(f"user:{by}", f"router-{act}", nid, {"project": field(req, "project")} if act in ("allow", "disallow") else {})
+        return self._result(r)
 
     def _get_scanners(self):
         """The Scanners page (scanners.view): every node's scanners, the

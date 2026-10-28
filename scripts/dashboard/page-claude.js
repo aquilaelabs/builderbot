@@ -395,10 +395,10 @@ async function openBrief(name, node, agent = "claude"){
       $(id).innerHTML = optionList(table, cur);
     }
   } else {
-    const t = AGENT_MODELS[agent] || {models: [], efforts: []};
+    const t = agent === "open" ? routerModels(p) : (AGENT_MODELS[agent] || {models: [], efforts: []});
     for (const [id, xs, cur] of [["briefModel", t.models, p?.yours?.[`${agent}_model`] || ""],
                                  ["briefEffort", t.efforts, p?.yours?.[`${agent}_effort`] || ""]]){
-      $(id).innerHTML = optionList([["", `${a.name}'s default`], ...xs.map(v => [v, v])], cur);
+      $(id).innerHTML = optionList([["", `${a.name}'s default`], ...xs.map(v => Array.isArray(v) ? v : [v, v])], cur);
     }
   }
   for (const b of ["briefGo", "briefSkip"]) $(b).disabled = true;
@@ -536,11 +536,21 @@ function resumePicker(p, m, card, anchor, ns, several){
 // agent, on which node, and that agent's own models and efforts, its
 // default first; Start opens it. Nothing is saved: the pick rides the
 // terminal's argument.
+// Any model's models (R144 step 3): the router's, as the project row
+// carries them, each said with its provider, its context and its price
+// where the router knows them; none when no router allows the project.
+function routerModels(p){
+  const rows = p?.router?.models || [];
+  const price = m => m.in_cost ? ` $${(m.in_cost * 1e6).toFixed(2)}/$${(m.out_cost * 1e6).toFixed(2)} per M` : "";
+  const ctx = m => m.context ? ` ${Math.round(m.context / 1000)}k` : "";
+  return {models: rows.map(m => [m.id, `${m.id}${ctx(m)}${price(m)}`]), efforts: []};
+}
+
 function agentPicker(p, m, card, anchor, n, several){
-  const r = resumePick, a = agentById(r.agent), t = AGENT_MODELS[r.agent] || {models: [], efforts: []};
+  const r = resumePick, a = agentById(r.agent), t = r.agent === "open" ? routerModels(p) : (AGENT_MODELS[r.agent] || {models: [], efforts: []});
   const said = agentSlotName(a, r.slot || 1), as = (r.slot || 1) > 1 ? ` as ${said}` : "";
   const opts = (xs, cur) => [`<option value="">${esc(a.name)}'s default</option>`]
-    .concat(xs.map(v => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(v)}</option>`)).join("");
+    .concat(xs.map(v => { const [val, label] = Array.isArray(v) ? v : [v, v]; return `<option value="${esc(val)}"${val === cur ? " selected" : ""}>${esc(label)}</option>`; })).join("");
   m.innerHTML = `<div class="rmhead"><b>${r.restart ? `Restart your ${esc(said)} session`
       : r.sessionId ? `Resume the ${esc(a.name)} conversation` : `A new ${esc(a.name)} conversation`}</b><span class="rmfacts">${
       r.restart ? (r.sessionId ? "ending the one running, resuming its conversation · " : "ending the one running · ")

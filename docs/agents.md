@@ -22,11 +22,9 @@ transcripts are read from.
 | ChatGPT | Codex CLI | an OpenAI account (ChatGPT) | `codex-update` | `codex-login`, `codex-logout` | yes |
 | Copilot | Copilot CLI | a GitHub account with a Copilot plan | `copilot-update` | `copilot-login`, `copilot-logout` | yes |
 | Grok | Grok Build | a SuperGrok or X Premium+ account | `grok-update` | `grok-login`, `grok-logout` | yes |
-| Any model | an open agent, in a later release | none: a model router would hold the keys | | | not yet |
+| Any model | OpenCode | none: a node's model router holds the keys | `opencode-update` | | yes |
 
-A row whose sessions are not wired yet is read by nothing that names a
-session: `open-alpha` is a scratch terminal until the open agent lands, and
-no Start offers it. A session's name carries its agent (`claude-alpha`,
+A session's name carries its agent (`claude-alpha`,
 `codex-alpha`), so one person may run a Claude session and a Codex session
 on one project at once, and two people may run different agents on it.
 
@@ -195,7 +193,21 @@ token). The
 controller keeps that per account, per node, per agent, and holds no
 credential of any of them.
 
-## Not built yet
+## Any model, through a router
 
-The model router and the open agent that drives any model through it
-come in a later release.
+The fifth agent signs in to nobody. A node's **Model router** section
+(Machines, Nodes; R144) deploys LiteLLM there with the provider keys you
+give it, Ollama beside it where you turn it on, and ticks the projects
+allowed to use it; each is handed the router's address and a key of its
+own at a session's start, so its spend is its own. Start's **Any model**
+offers the router's models with their context and price where the router
+knows them (`Read the models` on the section reads them), and bb-tty
+starts OpenCode with a config written for the session: the router as its
+one provider, the briefing as an instructions file, and its permissions.
+Its guards are a plugin of BuilderBot's that bb-tty writes into the
+account's OpenCode plugins folder, calling `bb-agent-hook open` before a
+tool (a refusal throws, so the tool does not run), on a prompt, at a
+permission ask, at the turn's end and after a summary, and exporting the
+conversation into the tree's transcript folder at each turn's end, where
+bb transcripts and the Sessions view read it. A project no router allows
+is told so at Start.

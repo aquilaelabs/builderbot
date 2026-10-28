@@ -77,7 +77,9 @@ class Gpu(unittest.TestCase):
         self.assertEqual(prefs.get("alpha")["agent_default"], "claude")
         self.assertNotIn("error", prefs.set_prefs("alpha", agent_default="codex"))
         self.assertEqual(prefs.get("alpha")["agent_default"], "codex")
-        self.assertIn("error", prefs.set_prefs("alpha", agent_default="open"))
+        self.assertIn("error", prefs.set_prefs("alpha", agent_default="nobody"))
+        self.assertNotIn("error", prefs.set_prefs("alpha", agent_default="open"), "Any model is a live agent (R144)")
+        prefs.set_prefs("alpha", agent_default="codex")
         # Switching it off puts Start back on Claude.
         prefs.set_prefs("alpha", agents_off="codex")
         self.assertEqual(prefs.get("alpha")["agent_default"], "claude")

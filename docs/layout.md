@@ -96,6 +96,7 @@ scripts/
   lib/tests-verbs.py             `bb tests`: the registry verbs
   lib/tests-verdict.py           what went wrong, from a run's log (bb tests last, the end of a run)
   lib/preamble-verbs.py          `bb preamble`
+  lib/router-key.py              `bb router-key`: the model router's address, this project's own key and its models (R144)
   lib/findings-verbs.py          `bb findings history` and `bb findings sample`
   lib/settings-verbs.py          `bb settings`: show, set for build, test and outputs, and node from a controller shell
   lib/projects-adopt.py          `bb projects adopt`: a folder already under the share made a project
@@ -205,6 +206,7 @@ scripts/
     tokenkeys.py                 the controller's half of the sealed sign-ins (R126): each account's public key per node, made from the account's own key, and the keys a person's own terminal carries, each seal's by the key it names
     installkey.py                the install key the install made itself (R154): where it is kept, its fingerprint, shown to save, changed with everything kept under it sealed again
     accountkeys.py               each account's own key for its sign-ins on the nodes (R154), in account-keys.json sealed under the install key, changed from Profile
+    router.py                    a model router on a node (R144): LiteLLM with the provider keys and Ollama as a written container, a key per allowed project, the models and the spend read at the router
     reach.py                     the bell's rows sent elsewhere per person (R149): email over SMTP, a webhook and its presets, each destination's kinds and quiet window, the minute loop holding a repeat while unchanged
     scanners.py                  BuilderBot's own scanners on each node (R145): the compose project of Semgrep, Trivy and mobsfscan deployed and updated per node, one schedule for every node's runs, the SARIF each sends up, and the bell's rows
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py

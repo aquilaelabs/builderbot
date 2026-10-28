@@ -66,8 +66,8 @@ class Controller(unittest.TestCase):
         agentcode.tmux_base = lambda s: s
         return agentcode.nodes
 
-    def test_codex_copilot_and_grok_are_tracked_and_claude_is_not(self):
-        self.assertEqual([a.id for a in agentcode.tracked()], ["codex", "copilot", "grok"])
+    def test_codex_copilot_grok_and_open_are_tracked_and_claude_is_not(self):
+        self.assertEqual([a.id for a in agentcode.tracked()], ["codex", "copilot", "grok", "open"])
 
     def test_the_version_is_read_out_of_what_each_prints(self):
         n = node(codex="codex-cli 0.163.0", copilot="GitHub Copilot CLI 1.0.102.")

@@ -12,7 +12,7 @@ const AGENTS = [
   {id: "codex", name: "ChatGPT", product: "Codex CLI", command: "codex", provider: "OpenAI", live: true},
   {id: "copilot", name: "Copilot", product: "Copilot CLI", command: "copilot", provider: "GitHub", live: true},
   {id: "grok", name: "Grok", product: "Grok Build", command: "grok", provider: "xAI", live: true},
-  {id: "open", name: "Any model", product: "OpenCode", command: "opencode", provider: "", live: false},
+  {id: "open", name: "Any model", product: "OpenCode", command: "opencode", provider: "", live: true},
 ];
 
 // Each agent's own models and efforts beside Claude's (agents.py MODELS,
@@ -30,6 +30,7 @@ const AGENT_GUARDS = {
   claude: "every guard, through Claude Code's own hooks: the hold while BuilderBot updates, the node's turn limit, the house rules' command guard and their recall after a summary, the work note, the prompt relay, the stop check and the asking mark",
   codex: "the same guards through Codex's own hooks (before a tool, a prompt, the stop, its permission prompt and after a summary), but for the code map's hint before a search, which it has no tool for",
   copilot: "the same guards through Copilot's own hooks (before a tool, a prompt, the stop and its permission prompt), but for the house rules' recall after a summary, which it has no hook for, and the code map's hint",
+  open: "the same guards through a plugin of BuilderBot's in OpenCode (before a tool, a prompt, the stop, its permission ask and after a summary); its keys are the router's, never a sign-in of its own",
   grok: "the same guards through Grok's own hooks (before a tool, a prompt, the stop and after a summary), but for the asking mark, which it has no permission-prompt hook for, and a house rule's words on a prompt, which it does not pass on to the model",
 };
 

@@ -302,6 +302,10 @@ def _clean_user(rec):
     rec = rec if isinstance(rec, dict) else {}
     out = {k: (rec.get(k) if rec.get(k) in vals else "") for k, vals in USER_CHOICES.items()}
     out.update({k: str(rec.get(k) or "").strip()[:n] for k, n in USER_TEXT.items()})
+    # Any model's pick (R144): a model name as the router lists it, held to
+    # its shape here and to the router's list where it is read.
+    om = str(rec.get("open_model") or "").strip()
+    out["open_model"] = om if agents.OPEN_MODEL.match(om) else ""
     return out
 
 
@@ -1217,7 +1221,7 @@ def configure_dialog(**parts):
 # The dialog's fields that are the asking account's own on the project, not
 # the project's: anybody on it sets these for themselves.
 YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks", "term_scheme",
-         *(f"{a}_{k}" for a in agents.MODELS for k in ("model", "effort")))
+         *(f"{a}_{k}" for a in agents.MODELS for k in ("model", "effort")), "open_model")
 
 
 def project_changes(name, req):

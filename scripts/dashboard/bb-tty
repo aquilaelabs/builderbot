@@ -827,11 +827,23 @@ PY
         # session was (bb-tty has held each to the agent's own list), else
         # the person's kept pick read above; each checked against the
         # agent's list again here, since the file is read at exec.
-        if [ "$ag" != claude ]; then
+        if [ "$ag" != claude ] && [ "$ag" != open ]; then
             [ -z "${LAUNCH_MODEL:-}" ] || printf 'am=%q\n' "$LAUNCH_MODEL"
             [ -z "${LAUNCH_EFFORT:-}" ] || printf 'ae=%q\n' "$LAUNCH_EFFORT"
             printf 'case " %s " in *" ${am:-} "*) ;; *) am="" ;; esac\n' "$(agent_models "$ag")"
             printf 'case " %s " in *" ${ae:-} "*) ;; *) ae="" ;; esac\n' "$(agent_efforts "$ag")"
+        fi
+        # Any model's (R144): the model as the router lists it, held to the
+        # list handed over at this session's start, and OpenCode's config
+        # beside this file (opencode_config wrote it), with the router's
+        # key in the environment the config reads it from and the plugin's
+        # export folder for the conversations.
+        if [ "$ag" = open ]; then
+            [ -z "${LAUNCH_MODEL:-}" ] || printf 'am=%q\n' "$LAUNCH_MODEL"
+            printf 'case " %s " in *" ${am:-} "*) ;; *) am="" ;; esac\n' "$(jq -r '[.[].id] | join(" ")' <<<"${BB_ROUTER_MODELS:-[]}" 2>/dev/null || true)"
+            printf '[ -z "${am:-}" ] || extra+=(--model "builderbot/$am")\n'
+            printf 'export BB_ROUTER_KEY=%q OPENCODE_CONFIG=%q BB_TRANSCRIPT_DIR=%q\n' "${BB_ROUTER_KEY:-}" "$dir/opencode.json" "$tdir/open"
+            printf 'export OPENCODE_DISABLE_AUTOUPDATE=1\n'
         fi
         if [ "$ag" = codex ]; then
             printf '[ -z "${am:-}" ] || extra+=(-m "$am")\n'
@@ -909,6 +921,7 @@ PY
                     printf '  if [ -n "$n" ]; then n="${n##*/}"; extra+=(--resume "${n%%.jsonl}"); else extra+=(--continue); fi\n'
                     printf 'fi\n' ;;
                 grok)    printf 'if [ "${1:-}" = --respawn ]; then extra+=(-c); fi\n' ;;
+                open)    printf 'if [ "${1:-}" = --respawn ]; then extra+=(--continue); fi\n' ;;
             esac
         fi
         printf 'exec'
@@ -1033,7 +1046,80 @@ agent_hooks() {
               def ours(ev; t): [{hooks: [{type: "command", command: "\($c) \(ev)", timeout: t}]}];
               {hooks: (reduce $evs[] as [$n, $ev, $t] ({}; .[$n] = ours($ev; $t)))}' \
                 > "$f.new" 2>/dev/null && mv -f "$f.new" "$f" ;;
+        # OpenCode's guards are a plugin of BuilderBot's (R144 step 2) in
+        # the account's global plugins folder, which every session of its
+        # loads: each hook runs bb-agent-hook with the agent and the event,
+        # a tool refused by exit 2 thrown so OpenCode does not run it, and
+        # the conversation exported into the tree's folder at each turn's
+        # end, where bb transcripts reads it.
+        open)
+            f="${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/builderbot.js"
+            ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
+            opencode_plugin "$hooks/bb-agent-hook" > "$f.new" 2>/dev/null && mv -f "$f.new" "$f" ;;
     esac
+}
+
+# opencode_plugin HOOK: the plugin's text (agent_hooks open writes it).
+opencode_plugin() {
+    cat <<PLUGIN
+// Written by BuilderBot's bb-tty (R144 step 2): its guards in OpenCode, as
+// the other agents' hooks files are. A session BuilderBot did not start has
+// no BB_PROJECT in its environment and runs none of it.
+const HOOK = $(printf '%s' "$1" | jq -Rs .);
+async function hook(ev, body){
+  if (!process.env.BB_PROJECT) return {code: 0, out: "", err: ""};
+  const p = Bun.spawn([HOOK, "open", ev], {stdin: new Blob([JSON.stringify(body)]), stdout: "pipe", stderr: "pipe", env: process.env});
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const code = await p.exited;
+  return {code, out, err};
+}
+async function keep(id){
+  const dir = process.env.BB_TRANSCRIPT_DIR;
+  if (!dir || !id) return;
+  try{
+    const p = Bun.spawn(["opencode", "export", id], {stdout: "pipe", stderr: "pipe", env: process.env});
+    const text = await new Response(p.stdout).text();
+    if (await p.exited !== 0 || !text.trim()) return;
+    await Bun.\$\`mkdir -p \${dir}\`.quiet().nothrow();
+    await Bun.write(dir + "/" + id + ".jsonl", JSON.stringify(JSON.parse(text)) + "\n");
+  }catch(e){ /* a conversation not exported is one not listed, nothing worse */ }
+}
+export const BuilderBot = async ({ directory }) => ({
+  "tool.execute.before": async (input, output) => {
+    const r = await hook("pre", {tool: input.tool, args: output.args, cwd: directory, session_id: input.sessionID || ""});
+    if (r.code === 2) throw new Error((r.err || "").trim() || "refused by a BuilderBot guard");
+  },
+  "chat.message": async (input, output) => {
+    const text = (output?.message?.parts || output?.parts || []).map(p => p.text || "").join("\n");
+    await hook("prompt", {prompt: text, cwd: directory, session_id: input?.sessionID || ""});
+  },
+  "permission.ask": async (input, output) => { await hook("asking", {tool: input?.type || "", cwd: directory, session_id: input?.sessionID || ""}); },
+  event: async ({ event }) => {
+    const id = event?.properties?.sessionID || event?.properties?.info?.id || "";
+    if (event.type === "session.idle"){ await hook("stop", {session_id: id, cwd: directory}); await keep(id); }
+    if (event.type === "session.compacted") await hook("recall", {cwd: directory, session_id: id});
+  },
+});
+PLUGIN
+}
+
+# opencode_config PROJECT DIR: OpenCode's config for this session, beside
+# the launcher: the router as its one provider (@ai-sdk/openai-compatible at
+# the router's address, the key out of the environment the launcher sets),
+# each model the router offers with its context, the briefing as an
+# instructions file, and its permissions: edits and commands run without
+# asking, as the other agents' do under the view and the guards.
+opencode_config() {
+    local proj="$1" dir="$2" f="$2/opencode.json" models
+    models="${BB_ROUTER_MODELS:-[]}"
+    ( umask 077; jq -n --arg url "${BB_ROUTER_URL:-}" --arg pref "${BB_AGENT_BRIEFING:-}" --argjson models "$models" '
+        {"$schema": "https://opencode.ai/config.json",
+         provider: {builderbot: {npm: "@ai-sdk/openai-compatible", name: "BuilderBot router",
+                                 options: {baseURL: $url, apiKey: "{env:BB_ROUTER_KEY}"},
+                                 models: ($models | map({key: .id, value: ({name: .id} + (if (.context // 0) > 0 then {limit: {context: .context, output: 16384}} else {} end))}) | from_entries)}},
+         instructions: (if $pref == "" then [] else [$pref] end),
+         permission: {edit: "allow", bash: "allow", webfetch: "allow"}}' > "$f.new" ) 2>/dev/null \
+        && mv -f "$f.new" "$f"
 }
 
 # agent_first_run AGENT DIR: another coding agent's "trust this folder?",
@@ -1415,7 +1501,7 @@ case "$target" in
         start "$(sess "shell-${proj}-${num}")" "$dir" "${RUN[@]}"
         ;;
 
-    claude:*|codex:*|copilot:*|grok:*)
+    claude:*|codex:*|copilot:*|grok:*|open:*)
         # The coding agent this session runs (R95): the argument's prefix,
         # by the agent table's ids (scripts/dashboard/agents.py), each with
         # what a person reads it as. Claude's is the path this branch has
@@ -1429,6 +1515,8 @@ case "$target" in
             codex)   agent_name=ChatGPT; agent_product="Codex CLI" ;;
             copilot) agent_name=Copilot; agent_product="Copilot CLI" ;;
             grok)    agent_name=Grok;    agent_product="Grok Build" ;;
+            # Any model (R144 step 2): OpenCode, pointed at a node's router.
+            open)    agent_name="Any model"; agent_product="OpenCode" ;;
         esac
         # claude:PROJECT                  a fresh conversation
         # claude:PROJECT:r:UUID           resume that transcript (Claude's)
@@ -1558,8 +1646,26 @@ case "$target" in
                 # ~/.grok/auth.json, or an API key in the environment.
                 grok)
                     [ -n "${XAI_API_KEY:-}" ] || [ -s "${GROK_HOME:-$HOME/.grok}/auth.json" ] ;;
+                # Any model signs in to nobody: its keys are the router's,
+                # handed over below once a router allows this project.
+                open) [ -n "${BB_ROUTER_URL:-}" ] ;;
             esac
         }
+        # The router's address, this project's own key and the models it
+        # offers (R144): asked of the controller as this account, before
+        # the sign-in check reads it; none means no router allows the
+        # project, said the way a missing sign-in is.
+        if [ "$agent" = open ]; then
+            rk="$(BB_PROJECT="$proj" bb router-key 2>/dev/null || true)"
+            BB_ROUTER_URL="$(jq -r '.url // empty' <<<"$rk" 2>/dev/null || true)"
+            BB_ROUTER_KEY="$(jq -r '.key // empty' <<<"$rk" 2>/dev/null || true)"
+            BB_ROUTER_MODELS="$(jq -c '[.models[]? | {id, context}]' <<<"$rk" 2>/dev/null || true)"
+            if [ -z "$BB_ROUTER_URL" ] || [ -z "$BB_ROUTER_KEY" ]; then
+                bad "No model router allows ${proj}: a node's Model router section (its page" \
+                    "under Machines, Nodes) deploys one and ticks the projects that may use it."
+            fi
+            export BB_ROUTER_URL BB_ROUTER_KEY BB_ROUTER_MODELS
+        fi
         # EACH MACHINE KEEPS ITS OWN LOGIN, and opening a tab is when this
         # one says so (R47). `bb login --check` carries one sentence and no
         # secret: which Anthropic account this account is signed in as here.
@@ -1586,6 +1692,9 @@ case "$target" in
             # Sealed here (R126) and not open: the home's file links into the
             # tmpfs, which holds nothing until a person opens a terminal.
             case "$agent" in claude) tf="$HOME/.claude/.credentials.json" ;; codex|grok) tf="$HOME/.$agent/auth.json" ;; *) tf="" ;; esac
+            if [ "$agent" = open ]; then
+                bad "No model router allows ${proj}, so there is nothing for Any model to run on."
+            fi
             if on_node && [ -n "$tf" ] && [ -L "$tf" ] && [ ! -e "$tf" ]; then
                 bad "This account's ${agent_name} sign-in is kept sealed on ${BB_NODE:-this node}, and it opens" \
                     "only when you open one of your terminals there from the dashboard. Open this" \
@@ -1614,6 +1723,7 @@ case "$target" in
             copilot) cmd=(copilot --no-auto-update) ;;
             # Its updater off in the launcher's environment, as Copilot's.
             grok)    cmd=(grok) ;;
+            open)    cmd=(opencode) ;;
         esac
         if [ -n "$resume" ] && [ "$agent" != claude ]; then
             # Another agent's conversation resumes below, once its tree is
@@ -1708,6 +1818,9 @@ case "$target" in
                 case "$agent" in
                     claude) prompt=(--append-system-prompt-file "$pref") ;;
                     codex|grok) export BB_AGENT_BRIEFING="$pref" ;;
+                    # OpenCode reads it as one of its instructions files,
+                    # named in the config written for this session.
+                    open) export BB_AGENT_BRIEFING="$pref" ;;
                     copilot)
                         idir="$(cache_project_dir "$proj")/copilot-instructions"
                         if ( umask 077; mkdir -p "$idir" ) && cp -f "$pref" "$idir/AGENTS.md" 2>/dev/null; then
@@ -1780,6 +1893,16 @@ case "$target" in
                         || bad "Grok's conversation ${resume} is not on this node." \
                                "Grok resumes a session where it ran; start a new one here instead."
                     cmd+=(--resume "$resume") ;;
+                # OpenCode keeps its sessions in its own database on the
+                # node it ran on: resumed by id where this node has it, the
+                # export in the tree's folder put back through its import
+                # where it has not.
+                open)
+                    if ! opencode export "$resume" >/dev/null 2>&1; then
+                        opencode import "$kd/$resume.jsonl" >/dev/null 2>&1 \
+                            || bad "Any model's conversation ${resume} is not on this node and could not be brought here."
+                    fi
+                    cmd+=(--session "$resume") ;;
             esac
         fi
         # Claude Code's first run asks three things at the keyboard (a
@@ -1820,6 +1943,14 @@ case "$target" in
         # to it: the same file in two worktrees has to be one name, or
         # comparing across them compares nothing.
         export BB_TREE="$dir"
+        if [ "$agent" = open ]; then
+            # Its config for this session (R144): the router as its one
+            # provider with the models handed over, the briefing as its
+            # instructions, and what it may do without asking.
+            if ! opencode_config "$proj" "$(cache_project_dir "$proj")"; then
+                echo "WARNING: could not write OpenCode's config; this session starts with no router and no briefing." >&2
+            fi
+        fi
         if [ "$agent" != claude ]; then
             # Its guards are its own hooks, holding Claude's (R95 step 6).
             if ! agent_hooks "$agent"; then

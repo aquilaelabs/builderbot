@@ -42,7 +42,7 @@ async function loadKeys(){
 // Where the key is kept, in a person's words.
 const KEYS_WHERE = {secrets: "the secrets folder", state: "beside the state, in /config", env: "the environment (INSTALL_KEY)"};
 const KEYS_KIND = {git: "Git token", setting: "Controller setting", signing: "Signing key", "two-factor": "Two-factor",
-                   account: "Account key", forge: "Linked forge", "sign-in": "Agent sign-in", reach: "Bell destination"};
+                   account: "Account key", forge: "Linked forge", "sign-in": "Agent sign-in", reach: "Bell destination", router: "Model router"};
 const KEYS_WHEN = s => s ? new Date(s * 1000).toLocaleDateString(undefined, {day: "numeric", month: "short", year: "numeric"}) : "";
 
 function keysNotices(k){

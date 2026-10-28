@@ -149,6 +149,13 @@ AGENT_INSTALLS = {
                     "script": 'curl -fsSL https://x.ai/cli/install.sh | bash -s -- ${BB_PIN:-}',
                     "pin": ("BB_PIN", "{v}"), "env": {"GROK_BIN_DIR": "{home}/.local/bin"},
                     "bin": ".local/bin/grok"},
+    # OpenCode (R144 step 2), the open agent any model runs through: its
+    # install script takes the version as VERSION and the folder as
+    # OPENCODE_INSTALL_DIR (read off the script on 28 Oct).
+    "opencode-update": {"id": "open", "command": "opencode", "product": "OpenCode", "reported": "opencode",
+                        "script": "curl -fsSL https://opencode.ai/install | bash",
+                        "pin": ("VERSION", "{v}"), "env": {"OPENCODE_INSTALL_DIR": "{home}/.local/bin"},
+                        "bin": ".local/bin/opencode"},
 }
 # Claude Code's row in the same shape, for the claude-update job: kept out of
 # AGENT_INSTALLS, which the census and the session PATH read for the agents
@@ -188,7 +195,7 @@ SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
 # carries no dashboard module; unit/test_agents.py holds the two to each
 # other. The session prefixes, the launchers a respawn may run and the
 # process kinds a busy machine is read by are all made from it.
-AGENT_IDS = ("claude", "codex", "copilot", "grok")
+AGENT_IDS = ("claude", "codex", "copilot", "grok", "open")
 # The pane a respawn may run again: bb-tty's launcher of a coding agent
 # (claude-run.sh, codex-run.sh, copilot-run.sh, grok-run.sh; a second slot's
 # claude-2-run.sh, R143), in the project's cache

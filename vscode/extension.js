@@ -197,6 +197,7 @@ const AGENTS = [
   { id: 'codex', name: 'ChatGPT', product: 'Codex CLI' },
   { id: 'copilot', name: 'Copilot', product: 'Copilot CLI' },
   { id: 'grok', name: 'Grok', product: 'Grok Build' },
+  { id: 'open', name: 'Any model', product: 'OpenCode' },
 ];
 
 // The terminal argument that opens an agent's session on a project, as the
