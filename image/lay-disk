@@ -73,6 +73,15 @@ install -d "$MNT/builderbot/a" "$MNT/builderbot/b"
 install -m 0644 "$KERNEL" "$MNT/builderbot/a/vmlinuz"
 install -m 0644 "$INITRD" "$MNT/builderbot/a/initrd"
 install -m 0644 "$RELEASE" "$MNT/builderbot/a/release"
+# builderbot.env (R161 step 12): the lines a boot hands the controller
+# (usr/lib/builderbot-os/env), laid at a fixed 4 KiB behind a marker line so
+# the stick maker writes a person's --set lines into these same bytes while
+# the image streams, and nothing writes a FAT by hand on any system. A line
+# without "=" is nothing to the reader, so the padding is blank.
+{ { printf '%s\n' "# builderbot.env BB-STICK-ENV-1: KEY=VALUE lines the boot reads (TZ, BB_RELEASE_LINE)"
+    head -c 4096 /dev/zero | tr '\0' ' '; } | head -c 4095; printf '\n'
+} > "$MNT/builderbot.env"
+[ "$(stat -c %s "$MNT/builderbot.env")" = 4096 ] || die "builderbot.env is not its 4 KiB"
 umount "$MNT"
 
 # ---- slot A, and the data partition ----------------------------------------

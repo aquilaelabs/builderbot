@@ -12,7 +12,7 @@ set -euo pipefail
 ESP="${BB_ESP:-/boot/efi}"
 OUT="${BB_OS_RUN:-/run/builderbot-os}/env"
 CMDLINE="${BB_CMDLINE:-/proc/cmdline}"
-ALLOW="DEBUG_MODE BB_RELEASE_LINE TZ"
+ALLOW="DEBUG_MODE BB_RELEASE_LINE BB_RELEASE_CHANNEL TZ"
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT.new"
 if [ -r "$ESP/builderbot.env" ]; then

@@ -175,6 +175,24 @@ def reset_debug():
     return bool(on)
 
 
+def boot_channel():
+    """The release channel a boot asked for (BB_RELEASE_CHANNEL, from a
+    stick's builderbot.env, R161 step 12), taken at start on a controller in
+    debug mode: dev turns the dev switch on and picks the dev channel, so a
+    stick made for it follows the pre-releases from its first start. Nothing
+    without DEBUG_MODE=1, and nothing for any other word. Whether it moved
+    anything."""
+    if not debug_available() or os.environ.get("BB_RELEASE_CHANNEL", "").strip() != "dev":
+        return False
+    with _lock:
+        d = load()
+        if d.get("offer_unvetted") is True and d.get("release_channel") == "dev":
+            return False
+        d.update(offer_unvetted=True, release_channel="dev")
+        write_json(FILE, d)
+    return True
+
+
 def configure(*, write_json, state):
     globals().update(write_json=write_json)
     globals()["FILE"] = Path(state) / "settings.json"

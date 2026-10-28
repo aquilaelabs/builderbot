@@ -90,10 +90,18 @@ step's next piece.
 `tools/builderbot-stick.py` writes a release's stick image onto a USB
 stick on Windows, a Mac or Linux with nothing but Python's own library: `list`
 names the removable disks here (the system disk marked, and never written),
-`write DISK --latest` (or `--release vX.Y.Z`, or `--image FILE`) fetches
-`builderbot-os-VERSION.stick.raw.xz` with its sha256, checks it, says what
-is on the stick is lost, writes the disk whole and reads it back; `verify`
-reads a stick back against an image. It runs as root (sudo) on Linux and a
+`write DISK` fetches the newest release's `builderbot-os-VERSION.stick.raw.xz`
+(or `--release vX.Y.Z`'s, or writes `--image FILE`) with its sha256, checks
+it, says what is on the stick is lost, writes the disk whole and reads it
+back; `verify` reads a stick back against an image. `--set KEY=VALUE`, as
+often as needed, writes a line into the stick's `builderbot.env`, the file on
+the ESP each boot reads into the controller's environment: `TZ`
+(`Europe/Berlin`) and `BB_RELEASE_LINE` (the release line updates follow,
+`0.9`) are the ones it takes. The file is 4 KiB laid by the image itself, and
+the maker writes the lines into those same bytes as the image streams, so
+nothing writes a FAT partition by hand on any system; with the stick in
+another machine it is a plain file to edit, and `verify` takes the same
+`--set` to read such a stick back. It runs as root (sudo) on Linux and a
 Mac and as an administrator on Windows, where it locks and dismounts the
 stick's volumes first. A stick made this way boots the appliance with the
 slot loaded into memory and keeps its configuration on the stick's data

@@ -4,12 +4,16 @@ and Linux, nothing but Python's own library, that writes a release's stick
 image onto a USB stick and checks it.
 
     builderbot-stick.py list                      the removable disks here
-    builderbot-stick.py write DISK [--image FILE | --release vX.Y.Z | --latest] [--yes]
+    builderbot-stick.py write DISK [--image FILE | --release vX.Y.Z | --latest] [--set KEY=VALUE ...] [--yes]
     builderbot-stick.py verify DISK --image FILE  the stick read back against the image
 
 DISK is /dev/sdX on Linux, /dev/diskN on a Mac, \\\\.\\PhysicalDriveN or its
 number on Windows. The image is builderbot-os-VERSION.stick.raw.xz from a
-release (its sha256 beside it is fetched and checked), or a file you have.
+release (its sha256 beside it is fetched and checked), the newest one when
+nothing else is named, or a file you have. --set KEY=VALUE, as often as
+needed, writes a line into the stick's builderbot.env, which each boot reads:
+TZ (the machine's time zone, Europe/Berlin) and BB_RELEASE_LINE (the release
+line updates follow, 0.9) are the ones it takes.
 Everything on the stick is lost; the tool says so and takes --yes or a typed
 yes. It runs as root (sudo) on Linux and a Mac, and as an administrator on
 Windows, since a disk is written whole. A stick made this way boots the
@@ -33,6 +37,9 @@ RELEASES = "https://github.com/aquilaelabs/builderbot/releases"
 API = "https://api.github.com/repos/aquilaelabs/builderbot/releases"
 CHUNK = 4 << 20
 GB = 1e9
+# The stick's builderbot.env (image/lay-disk): 4 KiB behind this line.
+ENV_MARK = b"# builderbot.env BB-STICK-ENV-1"
+ENV_SIZE = 4096
 
 
 def say(s):
@@ -106,18 +113,24 @@ def fetch(url, dest, say_progress=True):
                 say(f"  {os.path.basename(dest)}: {said * 5}%")
 
 
-def release_image(tag):
+TAG = r"v\d+\.\d+\.\d+(?:-dev\.\d+)?"
+
+
+def release_image(tag, channel="normal"):
     """The stick image of a release, fetched beside the tool with its sha256
-    checked; the newest release when tag is 'latest'."""
+    checked; the newest release when tag is 'latest', or on the dev channel
+    the newest pre-release a dev build's tag made (R179)."""
     if tag == "latest":
         req = urllib.request.Request(API, headers={"Accept": "application/json", "User-Agent": "builderbot-stick"})
         with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310
             rows = json.loads(r.read())
-        live = [x for x in rows if not x.get("draft") and not x.get("prerelease") and re.fullmatch(r"v\d+\.\d+\.\d+", str(x.get("tag_name") or ""))]
+        dev = channel == "dev"
+        live = [x for x in rows if not x.get("draft") and bool(x.get("prerelease")) == dev
+                and re.fullmatch(TAG if dev else r"v\d+\.\d+\.\d+", str(x.get("tag_name") or ""))]
         if not live:
-            die("no published release")
+            die("no published release" + (" on that channel" if dev else ""))
         tag = live[0]["tag_name"]
-    if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+    if not re.fullmatch(TAG, tag):
         die("a release is named by its tag, vX.Y.Z")
     name = f"builderbot-os-{tag[1:]}.stick.raw.xz"
     base = f"{RELEASES}/download/{tag}/{name}"
@@ -137,6 +150,51 @@ def check_sha(path, sha_file):
     if h.hexdigest() != want:
         die(f"{path} does not match its sha256 ({h.hexdigest()[:12]} against {want[:12] or 'none'}): not written")
     say(f"{os.path.basename(path)}: sha256 matches")
+
+
+# ---- the stick's builderbot.env --------------------------------------------------
+KEY = re.compile(r"[A-Z][A-Z0-9_]{0,40}")
+VALUE = re.compile(r"[A-Za-z0-9_./:+-]{0,200}")
+
+
+def env_block(sets):
+    """The 4 KiB the stick's builderbot.env is, with these KEY=VALUE lines:
+    the marker line first, so another write finds it again, and blank
+    padding, which the boot's reader passes over."""
+    lines = []
+    for s in sets:
+        k, sep, v = s.partition("=")
+        if not sep or not KEY.fullmatch(k) or not VALUE.fullmatch(v):
+            die(f"--set {s}: a KEY=VALUE, the key in capitals, the value letters, digits and _ . / : + -")
+        lines.append(f"{k}={v}")
+    body = ENV_MARK + b": KEY=VALUE lines the boot reads (TZ, BB_RELEASE_LINE)\n" + "".join(x + "\n" for x in lines).encode()
+    if len(body) > ENV_SIZE - 1:
+        die(f"--set: {len(body)} bytes of lines, and builderbot.env holds {ENV_SIZE}")
+    return body + b" " * (ENV_SIZE - 1 - len(body)) + b"\n"
+
+
+def patched(src, block):
+    """The image's bytes in CHUNKs, builderbot.env's 4 KiB put in place
+    where its marker is. A chunk is held until the next is read, so a file
+    across the line between two is found and written whole. With block
+    None the bytes pass as they are; with a block and no marker in the
+    image, the write stops before the end (an image older than the file)."""
+    held, found = b"", block is None
+    for chunk in iter(lambda: src.read(CHUNK), b""):
+        buf = held + chunk
+        if not found:
+            at = buf.find(ENV_MARK)
+            if at >= 0 and at + ENV_SIZE <= len(buf):
+                buf = buf[:at] + block + buf[at + ENV_SIZE:]
+                found = True
+        keep = 0 if found else min(len(buf), ENV_SIZE + len(ENV_MARK))
+        out, held = (buf[:len(buf) - keep], buf[len(buf) - keep:]) if keep else (buf, b"")
+        if out:
+            yield out
+    if not found:
+        die("this image has no builderbot.env to write --set into (made before 0.9.0): nothing past the start of the stick is right, so write it again without --set or with a newer image")
+    if held:
+        yield held
 
 
 # ---- the write ----------------------------------------------------------------
@@ -176,16 +234,14 @@ def open_disk(dev):
     return open(dev, "r+b", buffering=0)
 
 
-def write_image(image, dev, verify_after=True):
+def write_image(image, dev, verify_after=True, sets=()):
     size_xz = os.path.getsize(image)
     say(f"writing {os.path.basename(image)} ({size_xz / GB:.1f} GB compressed) to {dev}")
+    block = env_block(sets) if sets else None
     h = hashlib.sha256()
     written = 0
     with lzma.open(image, "rb") as src, open_disk(dev) as dst:
-        while True:
-            chunk = src.read(CHUNK)
-            if not chunk:
-                break
+        for chunk in patched(src, block):
             dst.write(chunk)
             h.update(chunk)
             written += len(chunk)
@@ -237,7 +293,7 @@ def cmd_write(a):
     d = pick(a.disk)
     image = a.image
     if not image:
-        image = release_image(a.release or ("latest" if a.latest else ""))
+        image = release_image(a.release or "latest", a.channel)
     elif not os.path.isfile(image):
         die(f"no such image: {image}")
     if not image.endswith(".xz"):
@@ -246,7 +302,7 @@ def cmd_write(a):
     if not a.yes:
         if input("Type yes to write it: ").strip().lower() != "yes":
             die("nothing written")
-    write_image(image, d["id"], verify_after=not a.no_verify)
+    write_image(image, d["id"], verify_after=not a.no_verify, sets=a.set or ())
     say("Done. Boot the machine from the stick: it comes up as its own controller, and the dashboard's first page, at http://ITS-ADDRESS:7680 on the LAN, makes the owner or restores a saved configuration.")
 
 
@@ -255,7 +311,7 @@ def cmd_verify(a):
     h = hashlib.sha256()
     n = 0
     with lzma.open(a.image, "rb") as src:
-        for chunk in iter(lambda: src.read(CHUNK), b""):
+        for chunk in patched(src, env_block(a.set) if a.set else None):
             h.update(chunk)
             n += len(chunk)
     verify(d["id"], n, h.hexdigest())
@@ -269,17 +325,18 @@ def main(argv=None):
     w.add_argument("disk")
     w.add_argument("--image", help="builderbot-os-VERSION.stick.raw.xz, a file you have")
     w.add_argument("--release", help="the release's tag to fetch the image from (vX.Y.Z)")
-    w.add_argument("--latest", action="store_true", help="fetch the newest release's image")
+    w.add_argument("--latest", action="store_true", help="fetch the newest release's image (what it does when nothing else is named)")
+    w.add_argument("--set", action="append", metavar="KEY=VALUE", help="a line for the stick's builderbot.env: TZ=Region/City, BB_RELEASE_LINE=X.Y")
+    w.add_argument("--channel", choices=["normal", "dev"], default="normal", help=argparse.SUPPRESS)
     w.add_argument("--yes", action="store_true", help="do not ask")
     w.add_argument("--no-verify", action="store_true", help="skip reading the stick back")
     w.set_defaults(fn=cmd_write)
     v = sub.add_parser("verify", help="read a stick back against an image")
     v.add_argument("disk")
     v.add_argument("--image", required=True)
+    v.add_argument("--set", action="append", metavar="KEY=VALUE", help="the lines the stick was written with")
     v.set_defaults(fn=cmd_verify)
     a = ap.parse_args(argv)
-    if a.cmd == "write" and not (a.image or a.release or a.latest):
-        ap.error("write takes --image FILE, --release vX.Y.Z or --latest")
     a.fn(a)
 
 

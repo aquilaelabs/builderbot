@@ -4197,6 +4197,12 @@ if not settings.debug_available():
             print("dashboard: DEBUG_MODE is not 1, so every debug and dev option was turned off", flush=True)
     except Exception as e:                                # noqa: BLE001 (a start must not fail on this)
         print(f"dashboard: debug options not reset: {e}", flush=True)
+else:
+    try:
+        if settings.boot_channel():
+            print("dashboard: the boot asked for the dev channel: the dev switch is on and updates follow the pre-releases", flush=True)
+    except Exception as e:                                # noqa: BLE001
+        print(f"dashboard: the boot's channel not taken: {e}", flush=True)
 # The briefing reads a project's own settings for its "While tests run"
 # section (what a change asked for during a run does); prefs is imported
 # after preamble is configured, so it is handed over here.
