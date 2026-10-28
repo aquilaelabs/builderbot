@@ -768,7 +768,9 @@ function renderToolchainsInto(i){
     surf.list.innerHTML = skTpl(`${pageHead({title: GHOST, cls: "tcact", facts: [["Store", GHOST], ["Versions checked", GHOST]]})}
       <div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
       ${tcSections("", skTable(TC_COLS, 6, "tcs"), "")}
-      ${state?.can?.admin ? docSection("toolchains", "packs", "Tool packs", "", skTable(TP_COLS, 2, "tprecords")) : ""}`);
+      ${state?.can?.admin ? docSection("toolchains", "packs", "Tool packs", "", skTable(TP_COLS, 2, "tprecords"))
+        // ...and the catalog's section, drawn waiting as the page draws it (R218: the template is the page's twin).
+        + docSection("toolchains", "catalog", "Vetted catalog", "", skRows(2)) : ""}`);
     return;
   }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${
