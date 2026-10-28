@@ -235,6 +235,72 @@ function wireStorageShares(root, n){
   }));
 }
 
+// The controller's own machine's ZFS pools (R162 step 1): each as zpool
+// says it (size, used, health, the members by layout, the last scrub), with
+// Scrub, Export and Destroy on its row; and New pool, a form that names the
+// disks by model, size and serial before anything is written, every press
+// a system job the root agent runs from its table.
+function storagePools(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.zfs ? `No zpool on this machine yet: Storage on its ${pageLink("machine", "Features section")} installs it.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const pools = n.pools || [];
+  const free = (n.disks || []).filter(d => !d.system && !(d.parts || []).some(p => p.holds && p.holds !== "nothing") && (!d.holds || d.holds === "nothing"));
+  const used = (n.disks || []).filter(d => !d.system && !free.includes(d));
+  const diskLine = d => `${esc(d.name)}: ${esc(d.model || "unnamed")}, ${esc(humanBytes((d.size_mb || 0) * 1048576))}, serial ${esc(d.serial || "none")}`;
+  const rows = pools.map(p => {
+    const pct = p.size_mb ? (p.alloc_mb || 0) / p.size_mb * 100 : 0;
+    const bad = !["online", ""].includes(p.health);
+    return `<div class="row stack2 stpool${bad ? " bad" : ""}" data-pool="${esc(p.name)}"><div class="grow">
+      <div class="name">${esc(p.name)} <span class="pill${bad ? " bad" : " ok"}">${esc(p.health || "unknown")}</span>${p.mount ? ` <span class="pill">${esc(p.mount)}</span>` : ""}</div>
+      <div class="ndmeters">${meter("used", pct, `${sgb(p.alloc_mb)} / ${sgb(p.size_mb)}`, `${sgb(p.free_mb)} free`)}</div>
+      ${(p.vdevs || []).map(v => `<div class="sub">${esc(v.type === "single" ? "disk" : v.type)}: ${v.disks.map(d => `<code>${esc(d.id.replace(/^\/dev\/disk\/by-id\//, ""))}</code>${d.state && d.state !== "online" ? ` <span class="pill bad">${esc(d.state)}</span>` : ""}`).join(", ")}</div>`).join("")}
+      ${p.scrub ? `<div class="sub dim">${esc(p.scrub)}</div>` : ""}${p.errors && !/no known data errors/i.test(p.errors) ? `<div class="sub bad">${esc(p.errors)}</div>` : ""}
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-stpool="scrub" data-name="${esc(p.name)}">Scrub</button>${actMore([
+        `<button type="button" data-stpool="export" data-name="${esc(p.name)}" title="unmount its datasets and let the disks go, to import elsewhere">Export</button>`,
+        `<button type="button" class="danger" data-stpool="destroy" data-name="${esc(p.name)}" title="everything on it is gone">Destroy</button>`])}</span>` : ""}</div>`;
+  }).join("");
+  const form = !admin || why ? "" : `<div class="field stnewpool"><div class="hint">New pool: a name, a layout, and the disks it takes, each wiped. ${free.length ? `${free.length} disk${free.length === 1 ? "" : "s"} hold nothing` : "no disk here holds nothing"}${used.length ? `; ${used.length} hold something and take a tick to wipe` : ""}.</div>
+      <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" id="stPoolName" placeholder="tank" maxlength="31" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="pick"><span class="pickw">Layout</span><select id="stPoolLayout">
+        <option value="mirror">mirror: two or more disks holding the same, one may fail</option>
+        <option value="raidz2">raidz2: four or more disks, any two may fail</option>
+        <option value="raidz1">raidz1: three or more disks, one may fail</option>
+        <option value="single">single: one disk, nothing protects it</option></select></label></div>
+      <div class="field"><div class="lbox" id="stPoolDisks">${[...free, ...used].map(d => `<label class="ndcap"><input type="checkbox" data-stdiskpick="${esc(d.name)}"${used.includes(d) ? ' data-held="1"' : ""}> ${diskLine(d)}${used.includes(d) ? ` <span class="pill warn">holds ${esc((d.parts || []).find(p => p.holds && p.holds !== "nothing")?.holds || d.holds)}</span>` : ""}</label>`).join("") || `<div class="sub dim">no disk to make a pool from</div>`}</div></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stPoolWipe"> wipe disks that hold something (what is on them is gone)</label></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stpool="create">Make the pool</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No pool yet${n.zfs ? ": the form below makes one" : ""}.</div>`}${form}`;
+  const sick = pools.filter(p => !["online", ""].includes(p.health)).length;
+  return docSection("storage", "pools", "Pools", pools.length ? `${pools.length}${sick ? `, ${sick} not online` : ""}` : "", body, {cls: sick ? "bad" : ""});
+}
+function wireStoragePools(root, n){
+  root.querySelectorAll("[data-stpool]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stpool, body = {action: "storage-pool", id: n.node, pool: act, name: b.dataset.name || ""};
+    if (act === "create"){
+      body.name = ($("stPoolName")?.value || "").trim();
+      body.layout = $("stPoolLayout")?.value || "mirror";
+      body.disks = [...root.querySelectorAll("[data-stdiskpick]:checked")].map(i => i.dataset.stdiskpick);
+      body.wipe = !!$("stPoolWipe")?.checked;
+      if (!body.name || !body.disks.length){ notify("a pool takes a name and at least one disk", true); return; }
+      const held = [...root.querySelectorAll("[data-stdiskpick]:checked[data-held]")].length;
+      if (held && !body.wipe){ notify(`${held} of the disks picked hold something: tick wipe to take them`, true); return; }
+      const names = body.disks.map(d => { const x = (n.disks || []).find(y => y.name === d); return x ? `${d} (${x.model || "unnamed"}, ${humanBytes((x.size_mb || 0) * 1048576)}, serial ${x.serial || "none"})` : d; });
+      if (!await askYes(`Make the pool ${body.name} as a ${body.layout} of:\n\n${names.join("\n")}\n\nEverything on these disks is gone.`, {title: "Make the pool?", verb: "Make it", danger: true})) return;
+    } else if (act === "destroy"){
+      if (!await askYes(`Destroy the pool ${body.name}?\n\nEverything on it is gone; its disks hold nothing after.`, {title: "Destroy the pool?", verb: "Destroy it", danger: true})) return;
+      body.confirm = body.name;
+    } else if (act === "export"){
+      if (!await askYes(`Export the pool ${body.name}? Its datasets are unmounted and the disks let go, to import elsewhere or here again.`, {title: "Export the pool?", verb: "Export"})) return;
+    }
+    busy(b, act === "scrub" ? "Scrubbing" : "Working");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+}
+
 function storageProjects(n, where){
   const rows = [...(n.projects || [])];
   if (n.other) rows.push({name: "other projects", other: true, ...n.other});
@@ -313,6 +379,7 @@ function storageBody(n, where){
   return `<div data-stnode="${esc(n.node)}">
     ${head}
     ${storageMachineDisks(n)}
+    ${storagePools(n)}
     ${storageShares(n)}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
@@ -345,6 +412,7 @@ function renderStorageInto(i){
     : noNodeYet("the disks measured here are a node's");
   wireStorageTab(d.el);
   if (n) wireStorageShares(d.el, n);
+  if (n) wireStoragePools(d.el, n);
 }
 
 function wireStorageTab(root){

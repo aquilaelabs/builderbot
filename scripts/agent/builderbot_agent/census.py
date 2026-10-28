@@ -47,6 +47,7 @@ from . import vmhw
 from .disks import disks_now
 from .osimage import os_release
 from .shares import shares_now
+from .pools import pools_now
 from .vms import isos_now, vm_memory, vm_pool, vms_now, vms_other
 
 
@@ -364,6 +365,8 @@ def census(state):
         "disks": disks_now(),
         # ...and its shares (R162 step 1), as BuilderBot's own files say them.
         "shares": shares_now(),
+        # ...and its ZFS pools (R162 step 1), as zpool says them.
+        "pools": pools_now(),
         # Whether a session here sees only its own project (R35).
         "isolation": isolation_now(),
         # ...and reaches only its own project's containers (R79), as the

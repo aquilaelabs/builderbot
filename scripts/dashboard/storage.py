@@ -39,6 +39,8 @@ def node_view(n, may_see):
             "shares": (n.get("reported") or {}).get("shares") or [],
             "smb": bool((((n.get("reported") or {}).get("features") or {}).get("shares") or {}).get("smb")),
             "nfs": bool((((n.get("reported") or {}).get("features") or {}).get("shares") or {}).get("nfs")),
+            "pools": (n.get("reported") or {}).get("pools") or [],
+            "zfs": bool((((n.get("reported") or {}).get("features") or {}).get("storage") or {}).get("zfs")),
             "measured": bool(st.get("at")), "at": int(st.get("at") or 0), "took_s": int(st.get("took_s") or 0),
             "age_s": max(0, int(time.time()) - int(st.get("at") or 0)) if st.get("at") else None,
             "filesystems": st.get("filesystems") or [], "stores": st.get("stores") or {},
