@@ -99,7 +99,13 @@ def _answers_at(name):
     route = (row or {}).get("route") or {}
     url = route.get("url") or ""
     if not url:
-        if row is not None and not row.get("ports"):
+        if row is None and isinstance(d, dict):
+            # The list a session reads is its project's node's: an instance
+            # shipped to a hosting node is not in it, and this line used to
+            # go missing without a word (report #129, B424).
+            print(f"  {'answers at':<12} not known from here: {name} is not on the project's node's list; "
+                  "an instance on a hosting node is read on that node's Containers page")
+        elif row is not None and not row.get("ports"):
             print(f"  {'answers at':<12} nowhere: its compose file publishes no port")
         elif route.get("why"):
             # Why not, where the route can say (B339): a port kept on its
