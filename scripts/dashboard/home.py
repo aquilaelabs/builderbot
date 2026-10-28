@@ -35,6 +35,9 @@ KEPT_WAIT_S = 1.5
 _kept = {}
 
 
+backups_summary = None    # storebackups.summary over the own machine's census (R162 step 5)
+
+
 def configure(*, nodes_mod, devapp_mod):
     globals().update(nodes=nodes_mod, devapp=devapp_mod)
 
@@ -119,4 +122,11 @@ def read(jobs_rows, job_names, machines, light=False):
                         "online": sum(1 for n in ns if n.get("state") == "online" and n.get("live") is not False)}
         if not light:
             out["containers"] = _containers(ns)
+        # The own machine's backups (R162 step 5): the tile says the last
+        # good run, or what failed or went stale.
+        own = next((n for n in ns if (n.get("config") or {}).get("own")), None)
+        if own and backups_summary:
+            sm = backups_summary((own.get("reported") or {}).get("store_backups") or [])
+            if sm.get("count"):
+                out["backups"] = sm
     return out, 200

@@ -1510,6 +1510,13 @@ def _census(c):
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
+    # ...and its backups' last runs (R162 step 5), each to its shape.
+    if isinstance(c.get("store_backups"), list):
+        mb = lambda v: int(v) if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0  # noqa: E731
+        out["store_backups"] = [{"id": re.sub(r"[^a-z0-9_]", "", str(b.get("id") or ""))[:16], "name": str(b["name"]), "last_at": mb(b.get("last_at")),
+                                 "ok": b.get("ok") is True, "error": re.sub(r"[^\w .,:;/()'@%+-]", "", str(b.get("error") or ""))[:200],
+                                 "size_mb": mb(b.get("size_mb")), "runs": mb(b.get("runs")), "took_s": mb(b.get("took_s"))}
+                                for b in c["store_backups"][:32] if isinstance(b, dict) and re.fullmatch(r"[a-z][a-z0-9-]{0,30}", str(b.get("name") or ""))]
     # ...and its other disks and shares (R162 step 4), each to its shape.
     if isinstance(c.get("ext_mounts"), list):
         out["ext_mounts"] = [{"id": re.sub(r"[^a-z0-9_]", "", str(m.get("id") or ""))[:16], "name": str(m["name"]), "kind": str(m.get("kind") or "")[:4],
@@ -2204,6 +2211,9 @@ smb_resolve = None
 history_add = None
 # The other disks and shares the own machine mounts (extmounts.wanted, R162 step 4).
 ext_mounts = None
+# ...and the backups it copies (storebackups.wanted, R162 step 5), with its scheduled names for the bell.
+store_backups = None
+backup_summary = None
 # ...and how many of a node's seals are under a key before today's.
 token_stale = None
 # ...and whether there is an install key to make any of it from.
@@ -3508,6 +3518,57 @@ def power_attention():
     return out
 
 
+def backup_attention():
+    """The bell's rows (kind backup) for the controller's own machine's
+    backups (R162 step 5): one whose last run failed (bad), one scheduled
+    that has not had a good run in two days (or ever); keyed on the state."""
+    out = []
+    if not backup_summary:
+        return out
+    for n in node_list():
+        if n.get("kind") != "agent" or not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        sm = backup_summary(rep.get("store_backups") or [])
+        by = {r.get("name"): r for r in rep.get("store_backups") or []}
+        for name in sm.get("failed") or []:
+            out.append({"kind": "backup", "id": n["id"], "node": n["name"], "what": "failed", "bad": True, "key": f"backup:failed:{n['id']}:{name}:{(by.get(name) or {}).get('last_at', 0)}",
+                        "said": f"the backup {name} failed: {(by.get(name) or {}).get('error') or 'see its job'}"})
+        for name in sm.get("stale") or []:
+            last = (by.get(name) or {}).get("last_at", 0)
+            out.append({"kind": "backup", "id": n["id"], "node": n["name"], "what": "stale", "bad": False, "key": f"backup:stale:{n['id']}:{name}:{last // 86400}",
+                        "said": f"the backup {name} has not run in two days" if last else f"the backup {name} is scheduled but has never run"})
+    return out
+
+
+def node_storage_backup(principal, node_id, name):
+    """Run one of the own machine's backups now (R162 step 5): a system job
+    naming the record's row, which the agent copies with rsync; refused
+    anywhere else and while a system job is in flight."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "backups are copied by the controller's own machine (the installed edition's Storage page)"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot copy a backup"}
+    name = str(name or "").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,30}", name) or not any(b.get("name") == name for b in (store_backups() if store_backups else [])):
+        return {"error": f"{name or 'nothing'} is not a backup on the record"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-backup", "config": {"name": name}, "timeout": 86400})
+    if r.get("ok"):
+        audit(principal, "storage-backup", node_id, {"job": r["job"], "name": name})
+    return r
+
+
 def node_host_update(principal, node_id, reboot=False):
     """The controller's own machine's own packages updated (R164 step 3):
     apt on its node by the root agent, a restart after when asked for;
@@ -4287,6 +4348,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             "smb_users": (smb_users() if smb_users and own_machine(n) else []),
             # ...and the other disks and shares it mounts (R162 step 4).
             "ext_mounts": (ext_mounts() if ext_mounts and own_machine(n) else []),
+            # ...and the backups it copies (R162 step 5).
+            "store_backups": (store_backups() if store_backups and own_machine(n) else []),
             # ...and its coding agents' sign-ins sealed there (R126), with
             # each account's public key to seal them with.
             "token_seal": token_seal_on(nid),
@@ -6653,6 +6716,7 @@ def verb(principal, req):
              "storage-pool": lambda: node_storage_pool(principal, nid, req),
              "storage-snapshot": lambda: node_storage_snapshot(principal, nid, req),
              "storage-array": lambda: node_storage_array(principal, nid, req),
+             "storage-backup": lambda: node_storage_backup(principal, nid, field(req, "name")),
              "host-update": lambda: node_host_update(principal, nid, req.get("reboot") is True),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),

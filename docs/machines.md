@@ -361,6 +361,23 @@ it is not plugged in. Eject (Unmount, for a share) turns the row off: the
 agent unmounts it and the row says the disk is safe to pull; Remove
 forgets it, nothing on it touched.
 
+**Backups** (R162): under the other disks and shares, what the machine
+copies where: a folder on it (a pool's mount, the array, a disk or share
+under `/mnt/other`, or the controller's state) to another of those, by
+rsync, each run its own dated folder under `DEST/NAME` hard-linked to the
+run before so a run costs only what changed, `latest` the newest whole
+run, the oldest pruned past the runs kept, and a run that fails leaving no
+half folder. Run now is a system job; a daily or weekly schedule from the
+row is a row on the Schedules page like the snapshots' and the array's.
+The last run of each (when, whether it succeeded, the size of all its runs)
+comes with the census: the row says it, Home's backups tile says the last
+good run, and a run that failed or a scheduled backup with no good run in
+two days is a row on the bell (kind backup). A destination under `/mnt`
+that is not mounted is refused, so a copy never lands on the system disk.
+A cloud store (restic or rclone to S3 or B2) is not here yet: a share on
+another machine mounted under Other disks and shares is the way off the
+box today.
+
 **People on shares** (R164): an SMB share's users are BuilderBot's own
 accounts, named on the share by account name (each becomes its own Unix
 user on the machine, `bbu-` and the account's id, made when first named)
