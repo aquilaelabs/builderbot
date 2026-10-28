@@ -149,9 +149,11 @@ class Installer(unittest.TestCase):
         inst = read(self.INST)
         self.assertIn('OWN_MARK="$ETC/own-node"', inst)
         self.assertIn('ETC="$P/etc/builderbot-controller"', inst)
-        link = os.path.join(EXTRA, "etc", "systemd", "system", "multi-user.target.wants", "builderbot-os-firstboot.service")
-        self.assertTrue(os.path.islink(link))
-        self.assertTrue(os.path.exists(os.path.join(os.path.dirname(link), os.readlink(link))))
+        # Enabled by the post-install script, not a link in the extra tree
+        # (a symlink does not travel with the tree, B417).
+        post = read(IMG, "mkosi.postinst")
+        self.assertIn("systemctl enable builderbot-os-firstboot.service builderbot-os-installer.service builderbot-os-health.service", post)
+        self.assertFalse(os.path.exists(os.path.join(EXTRA, "etc", "systemd", "system", "multi-user.target.wants")))
 
     def test_the_postinst_stages_the_controller_from_the_checkout(self):
         post = read(IMG, "mkosi.postinst")
