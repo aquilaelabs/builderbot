@@ -9,6 +9,7 @@ where gh is here, writes the other slot, puts its kernel beside it, names it
 for the next boot, and asks for a restart; nothing running changes until
 then, and the slot that runs now is the one to fall back to.
 """
+import contextlib
 import hashlib
 import os
 import re
@@ -61,7 +62,44 @@ def os_release():
             out[key] = got if got in ("a", "b") else ""
         except (OSError, subprocess.SubprocessError):
             out[key] = ""
+    # On trial (R161 step 2): the slot an update wrote, booted and not yet
+    # marked good; and a fallback the health check recorded, said until the
+    # next update.
+    try:
+        st = subprocess.run(["bash", tool, "status"], capture_output=True, text=True, timeout=10, check=False).stdout
+        out["trial"] = "\ntrial:" in "\n" + st
+    except (OSError, subprocess.SubprocessError):
+        out["trial"] = False
+    fb = os.path.join(_env("BB_OS_WORK", "/var/lib/builderbot-os"), "fell-back")
+    try:
+        with open(fb, encoding="utf-8", errors="replace") as f:
+            out["fell_back"] = f.read().strip()[:200]
+    except OSError:
+        out["fell_back"] = ""
     return out
+
+
+def keep_state_before(say, running):
+    """The controller's configuration as it is before an update (R160 step
+    4, R161 step 2): a copy beside the old slot, so going back to that slot
+    boots the configuration it had, and the two newest copies kept."""
+    src = _env("BB_OS_STATE", "/var/lib/builderbot-controller/config")
+    if not os.path.isdir(src):
+        say("no controller configuration here to copy before the update\n")
+        return
+    keep = os.path.join(_env("BB_OS_WORK", "/var/lib/builderbot-os"), "before")
+    os.makedirs(keep, mode=0o700, exist_ok=True)
+    dest = os.path.join(keep, f"{running or 'unknown'}.tar.gz")
+    r = subprocess.run(["tar", "-czf", dest + ".new", "-C", os.path.dirname(src), "--exclude=logs", "--exclude=jobs",
+                        os.path.basename(src)], capture_output=True, text=True, check=False)
+    if r.returncode != 0:
+        say(f"the configuration's copy before the update did not take: {r.stderr.strip()[-300:]}\n")
+        return
+    os.replace(dest + ".new", dest)
+    say(f"the configuration as it is, kept at {dest}\n")
+    olds = sorted((os.path.join(keep, f) for f in os.listdir(keep) if f.endswith(".tar.gz")), key=os.path.getmtime)
+    for old in olds[:-2]:
+        os.unlink(old)
 
 
 def _sha256(path):
@@ -196,10 +234,18 @@ class OsImageMixin:
         except OSError as e:
             say(f"the ESP did not take slot {other}'s kernel: {e}\n")
             return "failed", 72
+        keep_state_before(say, rel.get("version") or "")
         rc = self._sh(job, ["bash", tool, "next", other], timeout=30)
         if rc != 0:
             say(f"GRUB was not told to boot slot {other}: the slot is written and the next boot stays on slot {cur}\n")
             return "failed", 73
+        # On trial (R161 step 2): two boots without the health check's word
+        # go back to the slot running now.
+        rc = self._sh(job, ["bash", tool, "trial", cur, ver], timeout=30)
+        if rc != 0:
+            say(f"the trial was not set in GRUB's environment: slot {other} boots next without a fallback count\n")
+        with contextlib.suppress(OSError):
+            os.unlink(os.path.join(_env("BB_OS_WORK", "/var/lib/builderbot-os"), "fell-back"))
         shutil.rmtree(work, ignore_errors=True)
         say(f"slot {other} holds BuilderBot OS {ver}, and the next boot starts it: restart this machine to finish (Reboot under This machine's Advanced). "
             f"Slot {cur} keeps {rel.get('version') or 'the image running now'} to fall back to.\n")

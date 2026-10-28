@@ -194,7 +194,7 @@ function updatesSection(){
   const os = r.os && r.os.version ? r.os : null;
   // BuilderBot OS (R160 step 4): the image whole into the other slot, a
   // restart to finish; elsewhere the installer's bundle (R90 step 5).
-  const runs = os ? `BuilderBot OS ${esc(os.version)} from slot ${esc(os.slot || "?")}${os.next && os.next !== os.slot ? `, and slot ${esc(os.next)} boots next: restart to finish the update` : ""}`
+  const runs = os ? `BuilderBot OS ${esc(os.version)} from slot ${esc(os.slot || "?")}${os.next && os.next !== os.slot ? `, and slot ${esc(os.next)} boots next: restart to finish the update` : os.trial ? ", on trial until the health check marks it good" : ""}${os.fell_back ? `; ${esc(os.fell_back)}` : ""}`
     : esc(r.running || "an unstamped build");
   const how = os ? `Update fetches the release's image (its root, kernel and initrd), checks each against its sha256 and the root against its build attestation, writes the slot not in use and names it for the next boot; the restart is yours, from This machine, and the slot running now stays to fall back to. An offline machine takes the same files from a folder here (a stick, a share).`
     : `Update fetches the release's bundle, checks its sha256 and its build attestation, holds the state to its version gate, switches to it and comes back by itself if the new build does not answer; the one before is kept, and Rollback on This machine's Updates takes it back.`;

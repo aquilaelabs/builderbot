@@ -16,6 +16,7 @@ than a first boot), hold-next (the next start is to hold).
 """
 import json
 import threading
+import os
 import time
 from pathlib import Path
 
@@ -50,12 +51,24 @@ def _marker(name):
     return STATE / name
 
 
+def _safe_mode():
+    """Safe mode on BuilderBot OS (R161 step 2): bbsafe=1 on the kernel's
+    command line, which GRUB's Safe mode entry adds."""
+    try:
+        with open(os.environ.get("BB_CMDLINE") or "/proc/cmdline", encoding="utf-8", errors="replace") as f:
+            return "bbsafe=1" in f.read().split()
+    except OSError:
+        return False
+
+
 def boot():
     """At the controller's start: whether this start is held, and why. On a
     container install nothing is held and the markers are left alone."""
     if not _bare():
         return status()
     why = []
+    if _safe_mode():
+        why.append("Safe mode was chosen at the boot menu")
     if _marker("hold-next").exists():
         why.append("asked at the last restart (Hold the next start)")
         with _lock:

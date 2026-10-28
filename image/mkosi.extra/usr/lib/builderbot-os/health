@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# The health check a trial slot waits on (R161 step 2): the dashboard
+# answering on its port and the node's agent running, within ten minutes of
+# the boot; then the slot is marked good (slot good) and stays. A boot that
+# never gets here is counted by GRUB, and the second such boot goes back to
+# the slot before. Says nothing when no trial is on.
+set -euo pipefail
+SLOT="${BB_OS_SLOT:-/usr/lib/builderbot-os/slot}"
+WORK="${BB_OS_WORK:-/var/lib/builderbot-os}"
+# A boot that GRUB brought back to the slot before (R161 step 2): said in a
+# file the census reports until the next update, and the mark cleared.
+if [ "$(bash "$SLOT" fell-back 2>/dev/null)" = yes ]; then
+    mkdir -p "$WORK"
+    echo "the slot written by the last update did not come up healthy twice, so this boot is back on slot $(bash "$SLOT" current 2>/dev/null || echo '?') as it was" > "$WORK/fell-back"
+fi
+PORT="$(sed -n 's/^DASHBOARD_PORT=//p' /etc/builderbot-controller/controller.env 2>/dev/null | head -1)"
+PORT="${PORT:-7680}"
+for i in $(seq 1 120); do
+    code="$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:${PORT}/" 2>/dev/null || true)"
+    if [ "$code" != "000" ] && [ -n "$code" ] && systemctl is-active --quiet builderbot-agent 2>/dev/null; then
+        bash "$SLOT" good
+        echo "healthy after $((i * 5)) s: the dashboard answers $code and the agent runs; slot $(bash "$SLOT" current) is marked good"
+        exit 0
+    fi
+    sleep 5
+done
+echo "not healthy within ten minutes: the dashboard answered '${code:-nothing}', the agent $(systemctl is-active builderbot-agent 2>/dev/null || echo unknown); the slot stays on trial" >&2
+exit 1

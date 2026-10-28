@@ -57,6 +57,25 @@ class Held(unittest.TestCase):
         held.arm_next(True)
         self.assertEqual(held.arm_next(False)["armed"], False)
 
+    def test_safe_mode_at_the_boot_menu_holds_the_start(self):
+        # R161 step 2: GRUB's Safe mode entry puts bbsafe=1 on the command
+        # line, and the start is held with that said.
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            c = os.path.join(d, "cmdline")
+            with open(c, "w") as f:
+                f.write("root=/dev/loop0 bbslot=a bbsafe=1 quiet\n")
+            with mock.patch.dict(os.environ, {"BB_CMDLINE": c}):
+                got = held.boot()
+            self.assertTrue(got["held"])
+            self.assertIn("Safe mode was chosen at the boot menu", got["why"])
+            with open(c, "w") as f:
+                f.write("root=/dev/loop0 bbslot=a quiet\n")
+            held.start()
+            held.shutdown_clean()
+            with mock.patch.dict(os.environ, {"BB_CMDLINE": c}):
+                self.assertFalse(held.boot()["held"], "a boot without Safe mode, after a clean stop, is not held")
+
     def test_a_container_install_holds_nothing(self):
         held.configure(state=self.tmp, bare_metal=lambda: False, write_json_fn=write_json)
         self.assertEqual(held.boot(), {"held": False, "why": [], "since": 0, "armed": False})

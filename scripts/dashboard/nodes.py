@@ -1431,7 +1431,10 @@ def _census(c):
                      "snapshot": re.sub(r"[^0-9TZ]", "", str(o.get("snapshot") or ""))[:20],
                      "built": re.sub(r"[^0-9TZ:-]", "", str(o.get("built") or ""))[:24],
                      "slot": o.get("slot") if o.get("slot") in ("a", "b") else "",
-                     "next": o.get("next") if o.get("next") in ("a", "b") else ""}
+                     "next": o.get("next") if o.get("next") in ("a", "b") else "",
+                     # On trial, and a fallback said (R161 step 2).
+                     "trial": o.get("trial") is True,
+                     "fell_back": re.sub(r"[^\w .,:;()'-]", "", str(o.get("fell_back") or ""))[:200]}
     # The domains its libvirt has that BuilderBot did not make (R165 step 1):
     # a name, a state and a size, read-only on the VMs page.
     if isinstance(c.get("vms_other"), list):

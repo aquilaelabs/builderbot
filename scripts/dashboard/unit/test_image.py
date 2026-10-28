@@ -9,6 +9,7 @@ where they are laid out; the Debian family treats the image's packages as
 fixed; the workflow pins the mkosi build.sh pins."""
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -278,6 +279,44 @@ class Workflow(unittest.TestCase):
             r = sh(f"bash {tool} status", {"BB_CMDLINE": c, "BB_ESP": os.path.join(d, "esp"), "BB_OS_RELEASE": os.path.join(d, "none")})
             self.assertIn("root in memory: yes", r.stdout)
             self.assertEqual(sh(f"bash {tool} ram", {"BB_CMDLINE": c, "BB_ESP": os.path.join(d, "esp")}).stdout.strip(), "off")
+
+    def test_a_trial_slot_is_counted_by_grub_and_marked_good_by_the_health_check(self):
+        # R161 step 2: GRUB counts the boots of a slot on trial and goes
+        # back after two without the health check's word; Safe mode boots
+        # the slot held; the slot tool sets and ends a trial in GRUB's
+        # environment, which grub-editenv reads back.
+        g = read(IMG, "grub.cfg")
+        self.assertIn('if [ "$bb_trial" = 1 ]', g)
+        self.assertIn('set bb_slot="$bb_prev"', g)
+        self.assertIn("save_env bb_slot bb_trial bb_tries bb_fell_back", g)
+        self.assertIn('menuentry "Safe mode', g)
+        self.assertIn("bbsafe=1", g)
+        unit = read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-health.service")
+        self.assertIn("ConditionKernelCommandLine=bbslot", unit)
+        self.assertIn("ExecStart=/usr/lib/builderbot-os/health", unit)
+        self.assertIn('bash "$SLOT" good', read(EXTRA, "usr", "lib", "builderbot-os", "health"))
+        if not shutil.which("grub-editenv"):
+            self.skipTest("no grub-editenv here")
+        tool = os.path.join(EXTRA, "usr", "lib", "builderbot-os", "slot")
+        with tempfile.TemporaryDirectory() as d:
+            esp = os.path.join(d, "esp"); os.makedirs(os.path.join(esp, "grub"))
+            c = os.path.join(d, "cmdline"); open(c, "w").write("bbslot=a\n")
+            env = {"BB_CMDLINE": c, "BB_ESP": esp, "BB_OS_RELEASE": os.path.join(d, "none")}
+            self.assertEqual(sh(f"bash {tool} next b", env).returncode, 0)
+            r = sh(f"bash {tool} trial a 0.9.1", env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            got = sh(f"grub-editenv {esp}/grub/grubenv list", env).stdout
+            for want in ("bb_slot=b", "bb_trial=1", "bb_tries=0", "bb_prev=a", "bb_ver_b=0.9.1"):
+                self.assertIn(want, got, got)
+            st = sh(f"bash {tool} status", env).stdout
+            self.assertIn("trial: slot b, 0 boot(s) so far, back to slot a", st)
+            self.assertEqual(sh(f"bash {tool} good", env).returncode, 0)
+            got = sh(f"grub-editenv {esp}/grub/grubenv list", env).stdout
+            self.assertIn("bb_trial=0", got)
+            self.assertEqual(sh(f"bash {tool} fell-back", env).stdout.strip(), "no")
+            sh(f"grub-editenv {esp}/grub/grubenv set bb_fell_back=1", env)
+            self.assertEqual(sh(f"bash {tool} fell-back", env).stdout.strip(), "yes")
+            self.assertEqual(sh(f"bash {tool} fell-back", env).stdout.strip(), "no", "read once, then cleared")
 
     def test_build_sh_says_how_without_root(self):
         r = sh("bash image/build.sh --help")
