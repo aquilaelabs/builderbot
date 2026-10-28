@@ -166,7 +166,9 @@ function vmOthersHtml(rows){
 
 // A VM whose repository is gone is in no project (the operator, 26 Oct),
 // grouped and chipped as No project.
-const vmOwner = p => (vmsData?.unowned || []).includes(p) ? "No project" : projLabel(p);
+// ...and the machine's own (R165 step 3): the NAS's apps and desktops, no
+// project's, grouped and chipped as such.
+const vmOwner = p => p === "machine" ? "This machine's own" : (vmsData?.unowned || []).includes(p) ? "No project" : projLabel(p);
 function vmGroupsHtml(rows){
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
   const owners = [...new Set(rows.map(v => v.project))].sort((a, b) => byName(vmOwner(a), vmOwner(b)));
@@ -377,7 +379,7 @@ function openNewVm(forProject = ""){
   m.innerHTML = `<div class="box"><h3>New VM</h3>
     <div class="prefrow ctlrow">
       <div class="setrow col ctlrow">${lbl("vmName", "Name")}<input id="vmName" maxlength="31" autocomplete="off" spellcheck="false" placeholder="db"></div>
-      <div class="setrow col ctlrow">${lbl("vmProject", "Project")}<select id="vmProject">${optionList(projects.map(p => [p, projLabel(p)]), forProject)}</select></div>
+      <div class="setrow col ctlrow">${lbl("vmProject", "Belongs to", "a project, whose sessions reach it; or this machine's own, an administrator's alone")}<select id="vmProject">${optionList(projects.map(p => [p, vmOwner(p)]), forProject)}</select></div>
     </div>
     <div class="prefrow ctlrow">
       <div class="setrow col ctlrow">${lbl("vmNode", "Node", "a node with VM host installed")}<select id="vmNode">${optionList(hosts.map(h => [h.id, h.name]))}</select></div>

@@ -44,6 +44,14 @@ class Controller(unittest.TestCase):
     def new(self, **kw):
         return vms.create("user:test", "web", {"name": "db", "os": "debian 13", "keys": [KEY], **kw}, ["n1"])
 
+    def test_a_vm_may_belong_to_the_machine_rather_than_a_project(self):
+        # R165 step 3: keyed under the machine's own name, on any VM host a
+        # person may use, listed by that name and by no project's.
+        r = vms.create("user:test", vms.MACHINE, {"name": "ha", "os": "debian 13", "keys": [KEY]}, ["n1"])
+        self.assertNotIn("error", r, r)
+        self.assertEqual([v["key"] for v in vms.view([vms.MACHINE])], ["machine/ha"])
+        self.assertEqual(vms.view(["web"]), [])
+
     def test_a_vm_s_hardware_is_checked_before_its_node_sees_it(self):
         # R100: a thread another VM is pinned to is refused unless shared, a
         # memory ceiling under its start is refused (none is its start), the

@@ -8055,11 +8055,14 @@ class Handler(BaseHTTPRequestHandler):
         gone = set()
         if not sess and users.is_admin(me):
             gone = {v.get("project") or "" for v in vms.view()} - {""}
-            gone = {p for p in gone if not registry.is_project(p)}
+            gone = {p for p in gone if not registry.is_project(p) and p != vms.MACHINE}
             seen |= gone
+            # ...and the machine's own VMs (R165 step 3), always offered to
+            # an administrator, with or without one yet.
+            seen.add(vms.MACHINE)
         # Which of them it may change, for the page's buttons: the server
         # refuses the rest whatever is pressed.
-        can = {p: "write" if sess or p in gone or roles.level_of(me, "vms", p) == "write" else "read" for p in seen}
+        can = {p: "write" if sess or p in gone or p == vms.MACHINE or roles.level_of(me, "vms", p) == "write" else "read" for p in seen}
         # ...and on which it may take a Console from whoever has it: the
         # project's owner's and the administrators' (the operator, 21 Oct).
         uid = users.uid_of(me) or ""
@@ -8093,7 +8096,9 @@ class Handler(BaseHTTPRequestHandler):
         orphan = (bool(project) and not registry.is_project(project) and not sess and users.is_admin(me)
                   and action not in ("new", "iso-add", "iso-rm")
                   and any(v.get("project") == project for v in vms.view([project])))
-        if not project or not (registry.is_project(project) or orphan):
+        # The machine's own (R165 step 3): an administrator's, with or without one yet.
+        machine = project == vms.MACHINE and not sess and users.is_admin(me)
+        if not project or not (registry.is_project(project) or orphan or machine):
             return self._json({"error": "which project's VM? name one"}, 400)
         # The address this controller was reached at, which a VM made a node
         # dials (R91 step 14): the asker's own, as Enroll node's script uses.
