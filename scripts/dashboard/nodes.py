@@ -3921,6 +3921,9 @@ def ctr_spark(nid, names=None):
 JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear", "vm",
              # A walk of the node's disks now, for the Storage tab (R169).
              "storage",
+             # The node's own scanners over the projects whose node it is
+             # (R145, the Scanners page).
+             "scan",
              # One project's phone off the node, from the Storage page (R123).
              "avd-remove",
              # The idle phones' quick-boot snapshots, the room keeper's (R129).

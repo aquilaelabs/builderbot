@@ -36,7 +36,7 @@ const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
   {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["agents", "Agents"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
-  {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["vms", "VMs"], ["nginx", "nginx"]]},
+  {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["vms", "VMs"], ["nginx", "nginx"], ["scanners", "Scanners"]]},
   // The controller, a group of its own (the operator, 22 Oct): how this
   // BuilderBot behaves, with room for the pages a bare-metal install and
   // the USB edition add beside Settings (R90, R56). After Containers, so a
@@ -83,7 +83,7 @@ function railAllows(kind){
     // An administrator's own cron (R117), its own area.
     case "schedules": return !!a.schedules;
     // The nginx tab is the Nodes tab's area (R171); Storage its own (R169).
-    case "nodes": case "nginx": return !!a.nodes;
+    case "nodes": case "nginx": case "scanners": return !!a.nodes;
     case "storage": return !!a.storage;
     case "runner": return state?.can?.runner !== false && a.runner !== "";
     default: return true;

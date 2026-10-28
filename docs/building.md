@@ -196,11 +196,14 @@ needs setting up, so every BuilderBot and every project gets it. R117.
 
 ## Static analysis reports
 
-Setting up the scanners that write these reports, and the script that
-runs them, is [scanners.md](scanners.md).
+The scanners that write these reports are BuilderBot's own, deployed to
+each node and run on a schedule from the Scanners page
+([scanners.md](scanners.md)); each node sends its SARIF up to the
+controller over the agent's own API, so nothing is mounted for it.
 
-If you run a scanner on the host, only its **output** is mounted, read-only,
-from `SCANNER_REPORTS_PATH`:
+A scanner you run on the host yourself still works for this release
+(`SCANNER_REPORTS_PATH`, deprecated in 0.9.0): only its **output** is
+mounted, read-only:
 
 ```
 /mnt/user/appdata/scanners/reports:/reports:ro

@@ -338,6 +338,17 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bnginx="${esc(a.nid)}">nginx page</a></span></div></div>`;
   }
+  // A scanner run that failed on a node, or a node behind the newest
+  // scanner versions (R145): to the Scanners page.
+  if (a.kind === "scan"){
+    return `<div class="bnote att${a.what === "failed" ? " bad" : ""}">
+      <div class="bt">${a.what === "failed" ? `Scan failed on ${esc(a.node)}` : `Scanner update on ${esc(a.node)}`}</div>
+      <div class="bsum">${a.what === "failed" ? esc(a.said) : `${esc(a.said)} ${/,/.test(a.said) ? "are" : "is"} out`}</div>
+      <div class="bfoot"><span>on the Scanners page</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          ${a.job ? `<a href="#" data-bjob="${esc(a.job)}">its log</a>` : ""}
+          <a href="#" data-bscanners="1">Scanners page</a></span></div></div>`;
+  }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
   if (a.kind === "nginx"){
@@ -788,5 +799,11 @@ function wireNeeds(root, after = () => {}){
     e.preventDefault();
     after();
     openNginxTab(a.dataset.bnginx);
+  });
+  // ...and a scan's note to the Scanners page (R145).
+  root.querySelectorAll("[data-bscanners]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openScannersTab();
   });
 }

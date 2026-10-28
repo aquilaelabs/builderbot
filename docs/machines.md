@@ -482,10 +482,7 @@ administrators hold and no other role is given unless somebody says so, and
 a session's token is refused at it whatever it asks; bb has no verb for
 schedules, and a schedule's runs are not among the jobs a session reads.
 
-The static analysis scan ([scanners.md](scanners.md)) is built in: off until
-it is turned on, which asks for the node it runs on and where that node sees
-the projects and the reports folder the controller reads at `/reports`; then
-Sundays at 4:00 until its timetable is changed. On the container edition that
-is a node with Docker that sees the share; on a bare-metal install, the
-controller's own node.
+The static analysis scan is not a schedule here since 0.9.0: it is the
+Scanners page's own ([scanners.md](scanners.md)), which deploys BuilderBot's
+scanners to each node and runs them on one timetable.
 

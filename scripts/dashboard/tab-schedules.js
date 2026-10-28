@@ -3,7 +3,7 @@
 // timetable said in words, the node it runs on and as whom, its last run
 // (its state, when, and its log on the Jobs page) and its next; Run now,
 // Edit, Turn on or off, and Remove behind its More. New schedule in the
-// bar opens the same dialog a row's Edit does. The static analysis scan is
+// bar opens the same dialog a row's Edit does. The static analysis scan, once
 // built in: off until turned on, which asks for its node and its paths.
 //
 // Chrome from docSurface(); the hard rules are uniform.mjs's. Data from
@@ -92,16 +92,11 @@ const SCHED_WHEN = [["0 * * * *", "Hourly"], ["0 4 * * *", "Daily, at 4:00"], ["
 function schedForm(s){
   const v = k => esc(String(schedDraft[k] ?? s?.[k] ?? ""));
   const nodes = (schedData.nodes || []);
-  const scan = s?.builtin === "scan";
-  const env = {...(s?.env || {}), ...(schedDraft.env || {})};
   const cron = schedDraft.cron ?? s?.cron ?? SCHED_WHEN[1][0];
   const custom = schedDraft.custom ?? !SCHED_WHEN.some(([c]) => c === cron);
-  const envField = (k, label, hint) => `<div class="field">${lbl("schEnv" + k, label)}
-      <input id="schEnv${k}" data-schedenv="${k}" type="text" value="${esc(env[k] || "")}" spellcheck="false" autocomplete="off">
-      <div class="hint">${esc(hint)}</div></div>`;
   return `<div data-schedform="${esc(s?.id || "new")}">
-      ${scan ? "" : `<div class="field">${lbl("schName", "Name")}
-        <input id="schName" data-schedf="name" type="text" value="${v("name")}" autocomplete="off"></div>`}
+      <div class="field">${lbl("schName", "Name")}
+        <input id="schName" data-schedf="name" type="text" value="${v("name")}" autocomplete="off"></div>
       <div class="prefrow ctlrow">
         <div class="setrow col ctlrow">${lbl("schWhen", "When")}
           <select id="schWhen">${optionList([...SCHED_WHEN, ["", "Custom"]], custom ? "" : cron)}</select></div>
@@ -114,12 +109,9 @@ function schedForm(s){
           placeholder="0 4 * * 0">
         <div class="hint" id="schCronSaid">${esc(s?.words || "0 4 * * 0 is Sundays at 4:00")}</div></div>
       <div class="field" id="schAsRow">${schedAs(s)}</div>
-      ${scan ? envField("SCANNER_SOURCE_PATH", "Where the projects are on that node", "the share BuilderBot's /workspace is, as that node mounts it")
-        + envField("SCANNER_REPORTS_PATH", "The reports folder", "the folder the controller reads at /reports, as that node mounts it")
-        + envField("SCANNER_CACHE_PATH", "The scanners' cache", "kept between runs; the reports folder's parent when left empty")
-        : `<div class="field">${lbl("schScript", "Script")}
+      <div class="field">${lbl("schScript", "Script")}
         <textarea id="schScript" data-schedf="script" rows="8" spellcheck="false">${v("script")}</textarea>
-        <div class="hint">Run by bash where it runs: on the controller, as the controller's account, with all it holds; on a node, as its jobs account. Its output is the job's log on the Jobs page.</div></div>`}
+        <div class="hint">Run by bash where it runs: on the controller, as the controller's account, with all it holds; on a node, as its jobs account. Its output is the job's log on the Jobs page.</div></div>
     </div>`;
 }
 
@@ -195,9 +187,6 @@ function wireSchedForm(m, s){
     cronF.hidden = !!when.value;
     if (!when.value) m.querySelector("#schCron").focus();
   };
-  m.querySelectorAll("[data-schedenv]").forEach(f => f.oninput = () => {
-    schedDraft.env = {...(schedDraft.env || {}), [f.dataset.schedenv]: f.value};
-  });
   m.querySelector("[data-schedsave]").onclick = async e => {
     const b = e.currentTarget, id = b.dataset.schedsave, body = {action: "save", ...(id ? {id} : {})};
     for (const k of ["name", "cron", "node", "as", "script"]) if (k in schedDraft) body[k] = schedDraft[k];
@@ -246,11 +235,11 @@ function wireSchedules(root){
   root.querySelectorAll("[data-schedon]").forEach(b => b.onclick = async () => {
     const turning = b.dataset.on === "1";
     const s = (schedData.schedules || []).find(x => x.id === b.dataset.schedon);
-    // Turning on a schedule with no node, or the scan without its paths,
-    // opens its form: the server would refuse it, saying what is missing.
-    if (turning && (!s?.node || (s?.builtin === "scan" && !(s.env || {}).SCANNER_REPORTS_PATH))){
+    // Turning on a schedule with no node opens its form: the server would
+    // refuse it, saying what is missing.
+    if (turning && !s?.node){
       openSchedForm(s);
-      return notify(s?.builtin === "scan" ? "the scan needs its node and paths before it is turned on" : "pick its node first");
+      return notify("pick its node first");
     }
     busy(b, turning ? "Turning on" : "Turning off");
     await postSchedule({action: "save", id: b.dataset.schedon, on: turning});

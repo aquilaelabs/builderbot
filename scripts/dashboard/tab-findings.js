@@ -209,9 +209,9 @@ function renderFindingsInto(i){
   }
   if (findings.available === false){
     // How to set the scanners up, one press away in Help (docs/scanners.md).
-    d.list.innerHTML = `<div class="empty">no scanner reports: the reports
-      folder is not connected. <a href="#/help/scanners">Setting up the static analysis stack</a>
-      says how, with the script that runs it.</div>`;
+    d.list.innerHTML = `<div class="empty">no scanner reports yet: the Scanners page under Containers
+      deploys BuilderBot's scanners to each node and runs them on a schedule, and what they send up lands here.
+      <a href="#/help/scanners">The scanners</a> says how.</div>`;
     return;
   }
   const rows = fxRows();

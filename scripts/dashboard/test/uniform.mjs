@@ -156,6 +156,11 @@ const DRIVERS = {
     open: () => page.evaluate(() => openNginxTab()),
     readyWhen: '.nginxtab [data-ngnode], .nginxtab .empty',
   },
+  // The Scanners page (R145): the schedule's section is always there.
+  scanners: {
+    open: () => page.evaluate(() => openScannersTab()),
+    readyWhen: '.scannerstab details[data-sect="scanners:schedule"] > summary .sst',
+  },
   vms: {
     // A card per project with VMs, or the empty band where there is none
     // or no node has VM host (R91).

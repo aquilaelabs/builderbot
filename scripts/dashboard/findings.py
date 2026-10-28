@@ -241,6 +241,9 @@ def _int(v):
 # already holds, and nothing in here knows who is asking.
 CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
 REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
+# The reports the nodes' own scanners sent up (R145, scanners.report_files),
+# set by the server: read beside the host folder, which is deprecated.
+STATE_REPORTS = None
 
 
 def _project_of(uri, known, nonproject=frozenset()):
@@ -460,11 +463,22 @@ def _valid_projects(ps):
             if not any(i["level"] == "error" for i in p["issues"])}
 
 
+def _sent_up():
+    """The reports the nodes' scanners sent up (R145), or []."""
+    try:
+        return list(STATE_REPORTS()) if STATE_REPORTS else []
+    except OSError:
+        return []
+
+
 def mounted():
     """Whether there is a reports directory, False for one that cannot even
     be looked at: pathlib's is_dir() raises for a mount gone stale under the
     container (NFS errno 116) rather than answering, and the status poll
-    asks this every time (B326)."""
+    asks this every time (B326). A report a node's scanner sent up counts
+    the same way (R145)."""
+    if _sent_up():
+        return True
     try:
         return REPORTS.is_dir()
     except OSError:
@@ -472,17 +486,19 @@ def mounted():
 
 
 def report_files():
-    """Every report under REPORTS, the .sarif then the .sarif.json, each
-    sorted; None when there is no directory that can be read. A stale mount
-    is one of those: counts() runs on every /api/status, and one unreadable
-    directory answered the whole poll with an error and held every page on
-    loading (B326)."""
+    """Every report: the ones the nodes' scanners sent up (R145), then those
+    under REPORTS, the .sarif then the .sarif.json, each sorted; None when
+    there is neither. A stale mount is one of those: counts() runs on every
+    /api/status, and one unreadable directory answered the whole poll with
+    an error and held every page on loading (B326)."""
+    sent = _sent_up()
     if not mounted():
         return None
     try:
-        return sorted(REPORTS.glob("*.sarif")) + sorted(REPORTS.glob("*.sarif.json"))
+        host = (sorted(REPORTS.glob("*.sarif")) + sorted(REPORTS.glob("*.sarif.json"))) if REPORTS.is_dir() else []
     except OSError:
-        return None
+        host = []
+    return sent + host
 
 
 def payload(ps):
@@ -550,9 +566,10 @@ def reports_ages():
     """Each report, when it was written, and whether it is too far behind."""
     out = []
     try:
-        for f in sorted(REPORTS.glob("*.sarif")) + sorted(REPORTS.glob("*.sarif.json")):
+        files = _sent_up() + ((sorted(REPORTS.glob("*.sarif")) + sorted(REPORTS.glob("*.sarif.json"))) if REPORTS.is_dir() else [])
+        for f in files:
             try:
-                out.append({"name": f.name, "when": int(f.stat().st_mtime)})
+                out.append({"name": f.name if f.parent == REPORTS else f"{f.parent.name}/{f.name}", "when": int(f.stat().st_mtime)})
             except OSError:
                 pass
     except OSError:
@@ -574,7 +591,7 @@ def reports_mtime():
     """Newest mtime among the scanner reports, so a client showing the
     findings tab can notice a re-run scan without anyone pressing reload."""
     try:
-        files = list(REPORTS.glob("*.sarif")) + list(REPORTS.glob("*.sarif.json"))
+        files = _sent_up() + ((list(REPORTS.glob("*.sarif")) + list(REPORTS.glob("*.sarif.json"))) if REPORTS.is_dir() else [])
         return max((int(f.stat().st_mtime) for f in files), default=0)
     except OSError:
         return 0

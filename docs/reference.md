@@ -24,7 +24,7 @@ runner's token is typed on the CI runner page.
 | `BANNER_LINK` | *(empty)* | A link at the banner's end, http(s) or a path on this site; anything else is dropped |
 | `BANNER_LINK_LABEL` | *(empty)* | The link's words; "more" when empty |
 | `FEATURES_OFF_WHY` | *(empty)* | The sentence a switched-off feature shows; "switched off on this install" when empty |
-| `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and read by `bb findings` and the Analysis view; empty where no scanner runs |
+| `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | deprecated in 0.9.0, removed in the release after: the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and still read by `bb findings` and the Analysis view beside what the Scanners page's own scanners send up ([scanners.md](scanners.md)); empty where no host scanner runs |
 | `BUILDERBOT_PULL` | `missing` | BuilderBot's own dev instance only: compose's pull policy, `build` to build this checkout (with `BUILDERBOT_TAG=dev`) |
 
 Mounts: the projects folder, the state directories (`home`, `config`), the

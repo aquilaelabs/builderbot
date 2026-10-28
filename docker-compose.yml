@@ -121,6 +121,8 @@ services:
       # Unraid template mounts it, so a dev instance of BuilderBot names its
       # own directory in its env and reads a scan the same way (26 Sep); with
       # no scanner the directory is empty and the Analysis view says so.
+      # Deprecated in 0.9.0 (the Scanners page runs BuilderBot's own on each
+      # node and takes their reports up); still read, gone the release after.
       - ${SCANNER_REPORTS_PATH:-/mnt/user/appdata/scanners/reports}:/reports:ro
 
       # Optional: send the persistent log somewhere else (e.g. an array

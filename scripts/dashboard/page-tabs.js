@@ -190,6 +190,8 @@ const TOOL_ICONS = {
     <path d="M2.5 5.5h7.5"/><path d="M8 3.3l2.2 2.2L8 7.7"/>
     <path d="M13.5 10.5H6"/><path d="M8.2 8.3L6 10.5l2.2 2.2"/>
     <rect x="11" y="2.5" width="2.5" height="11" rx="0.6"/></svg>`,
+  // A magnifier over lines of code, for the Scanners page (R145).
+  scanners: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="3.8"/><path d="M9.3 9.3L13.5 13.5"/><path d="M4.8 5.8h3.4M4.8 7.6h2.2"/></svg>`,
   // A screen inside a screen: a machine run on a machine, for the VMs page.
   vms: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><rect x="4.5" y="5" width="7" height="4" rx="0.6"/>
@@ -283,6 +285,11 @@ const TABKINDS = {
               icon: TOOL_ICONS.nginx,
               render: (i) => renderNginxInto(i), live: () => `${nginxRev}/${nodesRev}`,
               open: () => loadNginx() },
+  // The Scanners page (R145): BuilderBot's own scanners on each node.
+  scanners: { multi: false, label: () => "Scanners",
+              icon: TOOL_ICONS.scanners,
+              render: (i) => renderScannersInto(i), live: () => `${scannersRev}/${nodesRev}/${jobsRev}`,
+              open: () => loadScanners() },
   // The VMs page (R91): its records, and the census a node's hello carries.
   vms:      { multi: false, label: () => "VMs",
               icon: TOOL_ICONS.vms,

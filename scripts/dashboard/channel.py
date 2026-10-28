@@ -23,6 +23,7 @@ import runners
 import signing
 import toolchains
 import vms
+import scanners
 import wssync
 import claudesync
 import workspace
@@ -228,6 +229,14 @@ def sync_put(auth, q, stream, length):
     if (no := _node_only(auth)):
         return no
     return wssync.put(auth["node"], q.get("project", [""])[0], q, stream, length)
+
+
+def scan_put(auth, q, stream, length):
+    """One SARIF from a node's scan run (R145), raw in the body, kept as that
+    node's for the scanner named."""
+    if (no := _node_only(auth)):
+        return no
+    return scanners.take_report(auth["node"], q.get("scanner", [""])[0], stream, length, q.get("projects", [""])[0][:4000])
 
 
 # ---- a synced node's Claude conversations (B613, claudesync.py) -----------------

@@ -42,6 +42,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/roles` | prefix | `_get_roles` | GET /api/roles: the Roles page (R152): the areas, every role, and each account with its Global roles, the roles it holds on each project and the projects it is on. |  |
 | GET | `/api/users` | prefix | `_get_users` | GET /api/users. |  |
 | GET | `/api/nginx` | prefix | `_get_nginx` | The nginx page (nginxproxy.view): every node's nginx, for an account that may read the Nodes page; never a session's. |  |
+| GET | `/api/scanners` | exact | `_get_scanners` | The Scanners page (scanners.view): every node's scanners, the schedule, the versions and what nothing covers, for an account that may read the Nodes page; never a session's. | refused: nodes |
 | GET | `/api/storage` | prefix | `_get_storage` | The Storage page (storage.view, R169): every node this account holds the Storage area on, what its disks hold, by project where the account sees the project and as one line otherwise. |  |
 | GET | `/api/schedules` | exact | `_get_schedules` | GET /api/schedules (R117): every schedule, its words, its next run and its last run's state, and the nodes it may run on. |  |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes page's read (nodes.tab_view), scoped to this account. |  |
@@ -103,6 +104,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/bell` | exact | `_bell` | Put a bell note away for this account, bring every one back (bellseen.py), or resume a session an outage held (R251). |  |
 | POST | `/api/notices` | exact | `_notices` | Keep, delete or clear what the page said to this account: notices.act. |  |
 | POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove, check and update on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
+| POST | `/api/scanners` | exact | `_scanners` | Deploy, update, remove, run now, the schedule and a version check (scanners.py): compose and scan jobs on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
 | POST | `/api/images` | exact | `_images` | Check for updates on the Containers page (imagecheck.py, R195): every container's registry images on one node, or all, asked now. | refused: docker-write |
 | POST | `/api/storage` | exact | `_storage` | Measure now on the Storage page: a node's disks walked at once (nodes.node_storage_measure). |  |
 | POST | `/api/schedules` | exact | `_schedules` | POST /api/schedules (R117): save (add or change, turning one on or off among them), remove, or run now. |  |

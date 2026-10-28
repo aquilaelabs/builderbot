@@ -1736,3 +1736,26 @@ Layout of the Roles tab on a desktop frame (12 columns by 8 rows), from the Blan
   3. Form (fields a person fills in): Roles: roles as a list (kind, holders) beside the picked one: Kind, Read and Write per area, across the middle, rows 5 to 7 of 8
 Notes:
   Under People on the rail, beside Users, and from the People field of a project's settings for its owner (R152, the operator, 7 Oct). owner and admin are built in and read as every area, with nothing to change and no Save; the owner's account reads as fixed in People. A project's owner who is not an administrator sees only the projects they own and the roles on the user's projects. In Roles, Write waits for Read, and the global areas are off for a role on the user's projects; Remove comes last. In People, a project's roles show only once its tick is on, and Global roles are an administrator's to give. An Everywhere role this account may change opens an instance area's row on its instances (R260, the operator, 16 Oct): beside the area's name a quiet link in the second color, each node or each runner, or N of M nodes when it is held on some, opens a line per node (Nodes, Toolchains, Jobs, New projects, Storage) or per runner (CI runner) under the area, indented, its Read and Write boxes in the area's columns. The area's own boxes tick or clear every instance and show partly ticked when some are held; every instance at one level is the area held on every one, those added later included. No other area opens. R255 step 9 (the operator, 16 Oct: every project listed for an account on none of them, and half the desk empty): each section a list beside the one picked, the list a column of rows, the picked row in the accent's tint; an account's projects are only those it is on, Add to project puts it on another; on a phone the list, then the detail over it, its head the way back.
+
+### the Scanners page (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Scanners page on a desktop frame (12 columns by 10 rows: the frame shows 8 of them, and the page scrolls), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: Check versions, and Deploy on N nodes while any node holding projects has none, across the top, row 1 of 10
+  2. Content (the main reading or working area): the page head: the newest versions known, when checked, how many nodes scan, across the middle, row 2 of 10
+  3. Card (a box holding one thing): Schedule: one timetable for every node (daily, weekly, monthly, Custom), Run now on every node, Turn on or off, across the middle, rows 3 to 4 of 10
+  4. List (rows of like things): a section per node: deployed with its versions, not deployed, deploying or update out in its head, across the middle, rows 5 to 8 of 10
+  5. Card (a box holding one thing): one node: Runs, Scans, Last run (state pill, when, its log), Reports; then Run now, Update when behind, Remove last, in the middle, columns 2 to 11 of 12, rows 6 to 7 of 10, inside block 4 (List: a section per node)
+  6. Table (columns of data): Not covered: each project no scanner reaches, with why (no node, hosts containers only, no scanners on NODE), across the bottom, rows 9 to 10 of 10
+Notes:
+  A page of the Containers group beside nginx (R145, the operator, 26 Oct). Every node at once rather than one picked in the bar: the question the page answers is whether every project is covered, which one node's view cannot. Each node is a section whose head says its state as a word (not deployed, deployed, deploying, update out) with the section tinted warn when an update is out, as the nginx page's Image section is. The schedule is one for all nodes, a section of its own first, its timetable in words in its head. Not covered closes the page: a table, never a hint, since each row is a project somebody may act on. A failed run and versions behind are the bell's (kind scan), each with a link to the page and a failed run's log. The SARIF a node sends up lands on the Analysis page as a host scanner's report did, so that page changes nothing.
+This page's own rules:
+  scanners/every-node: scripts/dashboard/tab-scanners.js, scripts/dashboard/scanners.py; scanners (`bb design show scanners/every-node` reads it)
+
+#### Rules of the Scanners page's own
+
+##### scanners/every-node
+
+Applies to: scripts/dashboard/tab-scanners.js, scripts/dashboard/scanners.py; scanners
+
+The Scanners page lists every node as a section rather than picking one in the bar: its question is coverage across nodes. A node's state is a word in its section's head, never a colored word alone; Deploy is the one action on a node without scanners, and Remove is last on one with them.

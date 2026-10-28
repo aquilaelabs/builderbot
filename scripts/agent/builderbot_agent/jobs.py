@@ -235,6 +235,9 @@ class Job(threading.Thread):
                 state, code = self.agent.system(self, spec)
             elif self.job.get("type") == "compose":
                 state, code = self.agent.compose(self, spec)
+            elif self.job.get("type") == "scan":
+                # The node's own scanners over its projects (R145, scan.py).
+                state, code = self.agent.scan(self, spec)
             elif self.job.get("type") == "vm":
                 state, code = self.agent.vm(self, spec)
             elif self.job.get("type") == "toolchain":

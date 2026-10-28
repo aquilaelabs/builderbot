@@ -26,13 +26,14 @@ from .accounts import AccountsMixin
 from .tokens import TokensMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
+from .scan import ScanMixin
 from .configplane import ConfigPlaneMixin
 from .vms import VmsMixin
 from . import storage
 
 
 class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, AccountsMixin,
-            TokensMixin):
+            TokensMixin, ScanMixin):
     def __init__(self, state):
         self.state = state
         # Its own directory under the toolchain store, by its node id (R196),

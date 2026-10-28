@@ -120,7 +120,7 @@ scripts/
     server.py                    the routes, the transport and the gates; each handler one call into a module beside it
     index.html                   the markup, the stylesheet and the wiring that runs at load
     terminal.html                one terminal on a page of its own: a tab popped out of the dock, and the Android app's session screen (R133)
-    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Schedules, nginx, Storage, Toolchains, Agents, Emulator, Phone, Apps, Settings, Keys, Audit, Users, Profile, Findings, Projects)
+    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Schedules, nginx, Scanners, Storage, Toolchains, Agents, Emulator, Phone, Apps, Settings, Keys, Audit, Users, Profile, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws
@@ -205,6 +205,7 @@ scripts/
     tokenkeys.py                 the controller's half of the sealed sign-ins (R126): each account's public key per node, made from the account's own key, and the keys a person's own terminal carries, each seal's by the key it names
     installkey.py                the install key the install made itself (R154): where it is kept, its fingerprint, shown to save, changed with everything kept under it sealed again
     accountkeys.py               each account's own key for its sign-ins on the nodes (R154), in account-keys.json sealed under the install key, changed from Profile
+    scanners.py                  BuilderBot's own scanners on each node (R145): the compose project of Semgrep, Trivy and mobsfscan deployed and updated per node, one schedule for every node's runs, the SARIF each sends up, and the bell's rows
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
     acme.py                      an ACME client on the cryptography library: Let's Encrypt certificates for the nginx page by HTTP-01 or DNS-01, renewed (R150)
     unlocks.py                   a person's tokens opened per use for the window they pick and logged, git's handout of an opened one, and a store under a key of the person's own opened only while unlocked (R158 step 5, R157)
@@ -346,7 +347,6 @@ tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfi
 tools/companion-build.py         builds the Windows companion as one .pyz with the four agent modules its sync is (R270)
 tools/app-schemes.py             writes the Android app's twelve color schemes, both halves, from the design record (bb design json | tools/app-schemes.py)
 tools/ratchet.txt                those ceilings, one per file
-tools/scan.sh                    the static analysis stack, run once with plain docker run: Semgrep, Trivy and mobsfscan, versions pinned, SARIF into the reports folder (docs/scanners.md)
 pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python
                                  version, with the None checks off, since a module's configure() fills what it declares as None
 tools/version-stamp              this repo's own stamp hook: a bump moves the compatibility
@@ -367,7 +367,7 @@ docs/toolchains.md               the toolchain store, the Toolchains and Emulato
 docs/agents.md                   the coding agents: the agent table, the Agents page, installing and signing in to each on a node (R95)
 docs/tool-packs.md               tool packs: adding one, a project's Toolchains setting, and writing a bbtool.json
 docs/containers.md               the Containers page and nginx: dev instances, how one is reached, networks, image updates
-docs/scanners.md                 setting up the static analysis stack and running it (tools/scan.sh)
+docs/scanners.md                 the Scanners page: BuilderBot's own scanners on each node, their schedule, and the reports
 docs/versions.md                 versions and release lines: bb version line, forward, backport, a patch line's rules
 docs/vms.md                      the VMs page and bb vm: VM host, the OS catalog, the dial, the limits, the network, snapshots, a VM made a node
 docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node

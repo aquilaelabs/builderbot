@@ -393,6 +393,19 @@ the bell and tried again a few hours later. The client is `acme.py`,
 BuilderBot's own on the `cryptography` library; `BB_ACME_DIRECTORY` points
 it at another ACME directory (a staging one, or a private CA).
 
+## Scanners
+
+The Scanners page, beside nginx, deploys BuilderBot's own static analysis
+scanners (Semgrep, Trivy, mobsfscan) to each node that holds projects as
+one compose project of one-shot services, their versions pinned at the
+deploy like nginx's image (R145), and runs them there on one schedule over
+the projects whose node it is; each node sends its SARIF up to the
+controller over the agent's own API, so nothing of the controller's is
+mounted on a node, and the Analysis page reads what came. The page says
+each node's state and versions, Update when newer are out (checked weekly),
+each node's last run with its log, Run now, Remove, and the projects
+nothing covers with why. The whole of it is [scanners.md](scanners.md).
+
 ## Each project's containers on their own network
 
 **Each project's containers on their own network (R178, the operator, 11

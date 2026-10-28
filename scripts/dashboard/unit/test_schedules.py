@@ -45,15 +45,16 @@ class Store(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, self.dir, True)
-        scan = os.path.join(self.dir, "scan.sh")
-        with open(scan, "w") as f:
-            f.write("#!/bin/sh\necho scanning\n")
-        schedules.configure(state=self.dir, write_json=_write, scan=scan)
+        schedules.configure(state=self.dir, write_json=_write)
 
-    def test_the_scan_is_built_in_and_off(self):
-        rows = schedules.listing()
-        self.assertEqual([(r["id"], r["on"], r["words"]) for r in rows], [("scan", False, "Sundays at 4:00")])
-        self.assertIn("scanning", rows[0]["script"])
+    def test_the_scan_is_the_scanners_pages_now(self):
+        # The row the built-in scan kept before 0.9.0 is not listed, and
+        # not a schedule to save or remove (migration 0016 moved it).
+        self.assertEqual(schedules.listing(), [])
+        _write(schedules.FILE, {"schedules": {"scan": {"id": "scan", "on": True, "cron": "0 4 * * 0", "builtin": "scan"}}})
+        self.assertEqual(schedules.listing(), [])
+        self.assertIn("Scanners page", schedules.save({"id": "scan", "on": False}, "u")["error"])
+        self.assertIn("Scanners page", schedules.remove("scan")["error"])
 
     def test_a_schedule_is_held_to_its_shapes(self):
         self.assertIn("five fields", schedules.save({"name": "x", "cron": "every day", "script": "true"}, "u")["error"])
@@ -64,25 +65,13 @@ class Store(unittest.TestCase):
         self.assertEqual((s["name"], s["on"], s["as"], s["words"]), ("Backup", True, "job", "daily at 4:00"))
         self.assertIn("jobs account (job) or as root", schedules.save({"id": s["id"], "as": "admin"}, "u")["error"])
         self.assertTrue(schedules.remove(s["id"])["ok"])
-        self.assertIn("built in", schedules.remove("scan")["error"])
-
-    def test_the_scan_is_turned_on_with_its_node_and_paths(self):
-        self.assertIn("pick the node", schedules.save({"id": "scan", "on": True}, "u")["error"])
-        self.assertIn("reports folder", schedules.save({"id": "scan", "on": True, "node": "n1"}, "u")["error"])
-        r = schedules.save({"id": "scan", "on": True, "node": "n1",
-                            "env": {"SCANNER_SOURCE_PATH": "/mnt/ws", "SCANNER_REPORTS_PATH": "/mnt/reports"}}, "u")
-        self.assertTrue(r["schedule"]["on"])
-        argv = schedules._argv(schedules.get("scan"))
-        self.assertEqual(argv[:2], ["bash", "-c"])
-        self.assertIn('export SCANNER_REPORTS_PATH="/mnt/reports"', argv[2])
-        self.assertIn("scanning", argv[2])
 
 
 class Timer(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, self.dir, True)
-        schedules.configure(state=self.dir, write_json=_write, scan=None)
+        schedules.configure(state=self.dir, write_json=_write)
         self.base = time.mktime((2026, 10, 25, 3, 59, 10, 0, 0, -1))
         self.sid = schedules.save({"name": "Nightly", "cron": "0 4 * * *", "script": "true", "node": "n1"},
                                   "u")["schedule"]["id"]

@@ -24,22 +24,15 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
 await page.goto(URL);
 await ready(page);
 
-// The page, on the rail beside Jobs, with the scan built in and off.
+// The page, on the rail beside Jobs: a person's own cron, nothing built in
+// since the scan became the Scanners page's (R145).
 await page.evaluate(() => openSchedulesTab());
-await page.waitForSelector('.schedulestab .schedrow[data-sched="scan"]', { timeout: 15000 });
-const scan = await page.$eval('.schedulestab .schedrow[data-sched="scan"]', r => r.textContent.replace(/\s+/g, ' '));
-ok(/Static analysis scan/.test(scan) && /\boff\b/.test(scan) && /built in/.test(scan) && /Sundays at 4:00/.test(scan),
-   `the Schedules page carries the static analysis scan, built in, off, Sundays at 4:00 (${scan.slice(0, 120)})`);
+await page.waitForSelector('.schedulestab #bSchedNew', { timeout: 15000 });
+ok((await page.$$('.schedulestab .schedrow[data-sched="scan"]')).length === 0,
+   'the Schedules page carries no built-in scan: that is the Scanners page\'s now');
 ok(await page.evaluate(() => location.hash) === '#/jobs/schedules'
    && await page.evaluate(() => groupOf('schedules')?.key) === 'jobs',
    'it is a page of the Jobs group, at its own address');
-
-// Turning the scan on without its node and paths opens its form instead.
-await page.click('.schedulestab [data-schedon="scan"]');
-await page.waitForSelector('#schedmodal:not([hidden]) [data-schedform="scan"] [data-schedenv="SCANNER_REPORTS_PATH"]', { timeout: 10000 });
-ok(true, 'turning the scan on with nothing set opens its dialog for its node and paths');
-await page.click('#schedmodal [data-schedcancel]');
-await page.waitForFunction(() => document.getElementById('schedmodal').hidden, null, { timeout: 5000 });
 
 // A schedule added on the page: its timetable in words once saved.
 await page.click('#bSchedNew');
@@ -123,7 +116,7 @@ ok(off && off.next_at === null, 'Turn off takes it off the timetable');
 await page.evaluate(id => { const b = document.querySelector(`.schedulestab [data-schedrm="${id}"]`); b?.click(); }, row.id);
 const gone = await until(async () => !(await api('/api/schedules')).body.schedules.some(x => x.id === row.id));
 ok(!!gone && (await api('/api/schedules', { action: 'remove', id: 'scan' })).status === 400,
-   'Remove takes it away, and the built-in scan is turned off, never removed');
+   'Remove takes it away, and the scan row of before is nobody\'s to remove here');
 
 // A session's token is refused, reading or writing; so is an account
 // without the Schedules area.

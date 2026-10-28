@@ -520,7 +520,7 @@ notices.configure(state=STATE, write_json=write_json)
 # never on the share; the built-in scan's script two levels above, as the
 # image and a checkout both keep it.
 import schedules                                                 # noqa: E402
-schedules.configure(state=STATE, write_json=write_json, scan=HERE.parent.parent / "tools" / "scan.sh")
+schedules.configure(state=STATE, write_json=write_json)
 # ...and BuilderBot's own docs, read on the Help page: helpdocs.py (R258).
 import helpdocs                                                  # noqa: E402
 
@@ -1706,6 +1706,7 @@ def _schedules_loop():
     while True:
         time.sleep(30)
         try:
+            scanners.tick()
             schedules.tick(schedule_queue, _job_state)
         except Exception as e:  # noqa: BLE001 (a bad schedule never stops the timer)
             print(f"dashboard: schedules: {type(e).__name__}: {e}", flush=True)
@@ -1877,6 +1878,9 @@ def _attention(who):
             # R192), for whoever may act on the Docker tab, which Update is.
             + ([] if users.may(who, "docker-write")
                else nginxproxy.attention(lambda nid: nginxproxy.deployed(devapp, nid)) + nginxproxy.acme_rows()
+               # ...and a scanner run that failed, or a node behind the
+               # newest scanner versions (scanners.attention, R145).
+               + scanners.attention()
                # ...and a container whose registry image moved (imagecheck, R195).
                + imagecheck.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid,
                                       allowed=lambda p: users.may(who, "docker-write", p) == ""
@@ -4337,6 +4341,16 @@ def _vm_do(principal, project, req, session):
 nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
                      node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
                      taken_ports=devapp.taken_ports)
+# BuilderBot's own scanners on each node (R145, scanners.py): deployed and
+# run as compose and scan jobs there, their reports sent up.
+import scanners                                                  # noqa: E402
+scanners.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
+                   node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
+                   project_nodes=lambda: nodes.project_nodes() if nodes.project_nodes else {},
+                   project_names=lambda: list(prefs.all_projects(WORKSPACE)),
+                   job_add=nodes.job_add, job_state=_job_state,
+                   next_after=schedules.next_after, cron_words=schedules.words)
+findings.STATE_REPORTS = scanners.report_files
 # A DNS-01 challenge's record goes through the Cloudflare API token Settings
 # holds (R150).
 nginxproxy.cf_token = lambda: settings.secret("cf_api_token")
@@ -5362,6 +5376,7 @@ GET_ROUTES = (
     ("prefix", "/api/roles", "_get_roles"),
     ("prefix", "/api/users", "_get_users"),
     ("prefix", "/api/nginx", "_get_nginx"),
+    ("exact", "/api/scanners", "_get_scanners"),
     ("prefix", "/api/storage", "_get_storage"),
     ("exact", "/api/schedules", "_get_schedules"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
@@ -5436,6 +5451,7 @@ POST_ROUTES = (
     ("exact", "/api/bell", "_bell"),
     ("exact", "/api/notices", "_notices"),
     ("exact", "/api/nginx", "_nginx"),
+    ("exact", "/api/scanners", "_scanners"),
     ("exact", "/api/images", "_images"),
     ("exact", "/api/storage", "_storage"),
     ("exact", "/api/schedules", "_schedules"),
@@ -8675,7 +8691,7 @@ class Handler(BaseHTTPRequestHandler):
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
-        if verb in ("artifact", "sync-put", "claude-put", "devimage-put", "devdata-put", "signing-put"):
+        if verb in ("artifact", "sync-put", "claude-put", "devimage-put", "devdata-put", "signing-put", "scan-put"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
@@ -8690,6 +8706,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(*channel.devdata_put(auth, q, self.rfile, length))
             if verb == "signing-put":
                 return self._json(*channel.signing_put(auth, q, self.rfile, length))
+            if verb == "scan-put":
+                return self._json(*channel.scan_put(auth, q, self.rfile, length))
             return self._json(*channel.artifact(auth, q, self.rfile, length))
         if verb in ("sync-file", "sync-tar", "claude-file", "devimage", "devdata"):
             got, status = {"sync-file": channel.sync_file, "sync-tar": channel.sync_tar,
@@ -10840,6 +10858,49 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the nginx page is the Nodes page's area: ask for Read on Nodes"}, 403)
         return self._json(nginxproxy.view(devapp, devactions.state))
 
+    def _get_scanners(self):
+        """The Scanners page (scanners.view): every node's scanners, the
+        schedule, the versions and what nothing covers, for an account that
+        may read the Nodes page; never a session's."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a node's scanners are a person's"}, 403)
+        if self._refused("nodes"):
+            return
+        return self._json(scanners.view())
+
+    def _scanners(self, req):
+        """Deploy, update, remove, run now, the schedule and a version check
+        (scanners.py): compose and scan jobs on a node, so docker-write like
+        a written container, and never a session's."""
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a node's scanners are a person's"}, 403)
+        if self._refused("docker-write"):
+            return
+        act, nid = field(req, "action"), field(req, "node")
+        by = (self._who() or {}).get("name") or ""
+        if act == "deploy-all":
+            r = scanners.deploy_all(by)
+        elif act == "check":
+            r = {"ok": True, "latest": scanners.check_versions()}
+        elif act == "run":
+            r = scanners.run_now(by, nid)
+        elif act == "schedule":
+            r = scanners.set_schedule(on=req.get("on") if "on" in req else None,
+                                      cron=req.get("cron") if "cron" in req else None)
+        elif not nid or not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        elif act == "deploy":
+            r = scanners.deploy(nid, by)
+        elif act == "update":
+            r = scanners.update(nid, by)
+        elif act == "remove":
+            r = scanners.remove(nid, by)
+        else:
+            return self._json({"error": f"unknown action {act!r}"}, 400)
+        if not r.get("error"):
+            db.audit(f"user:{by}", f"scanners-{act}", nid or "all", {})
+        return self._result(r)
+
     def _nginx(self, req):
         """Deploy, save, certificate, remove, check and update on one node's
         nginx (nginxproxy.py): writing a compose file and building it on a
@@ -11690,6 +11751,7 @@ def main():
         threading.Thread(target=imagecheck.check_loop, name="image-check", daemon=True).start()
     if nginxproxy.AUTOCHECK and "image-updates" not in featuresoff.off():  # the nginx image, weekly (R192)
         threading.Thread(target=nginxproxy.check_loop, name="nginx-check", daemon=True).start()
+        threading.Thread(target=scanners.check_loop, name="scanners-check", daemon=True).start()
         # ...and the ACME renewals (R150), thirty days before a pair ends.
         threading.Thread(target=nginxproxy.renew_loop, args=(containers, devactions, devapp),
                          name="nginx-acme", daemon=True).start()

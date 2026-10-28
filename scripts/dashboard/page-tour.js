@@ -102,6 +102,10 @@ const TOUR_STEPS = {
   audit: [
     {say: "Audit: who did what to this BuilderBot, every change since the first day, newest first. Pick a person or a machine in the bar to read theirs alone."},
   ],
+  scanners: [
+    {say: "Scanners: BuilderBot's own static analysis (Semgrep, Trivy, mobsfscan) on each node that holds projects, run on one schedule; what they find is on the Analysis page."},
+    {at: TOUR_FIRST, say: "The schedule first, then a section per node with Deploy, Run now, Update and Remove, and last the projects nothing covers, each with why."},
+  ],
   nodes: [
     {say: "Nodes are the machines your builds, tests, containers, VMs and sessions run on. The controller itself runs none of them."},
     {at: TOUR_BAR, say: "Pick a node here. Enroll node makes the script that adds a machine."},
