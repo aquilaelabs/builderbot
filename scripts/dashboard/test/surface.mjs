@@ -83,7 +83,6 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'loadKeyMine', 'keyMineSection', 'keyStorePurge', 'wireKeyMine', 'keyStoreHeld', 'keyStoreSecret', 'keyStoreUnlock', 'keyStoreOwn', 'keyStoreNewKey',
   'openAuditTab', 'loadAudit', 'openNetworkTab', 'networkReach', 'networkDialStatus', 'networkDial', 'renderNetworkInto', 'openMachineTab', 'ownMachine', 'machineHead', 'renderMachineInto', 'wireHeld', 'ndRowHtml', 'nodeMachineSection', 'nodePowerSection', 'nodeReportSection', 'loadHistory', 'wireReportSection', 'wireMachineSection', 'drawHeldBand', 'auditRows', 'renderAuditInto', 'wireAudit',
   'connectionIntro', 'connectionStatus', 'updatesSection', 'loadBackup', 'backupSection', 'wireBackup', 'wireUpdates', 'loadMove', 'moveStatus', 'moveSection', 'wireMove', 'drawMovedBand', 'nginxAcmeLines',
-  'loadRouter', 'routerAct', 'nodeRouterSection', 'wireRouterSection',
   'usbHolder', 'usbWords', 'nodeUsbSection', 'wireUsbSection',
   'openScannersTab', 'loadScanners', 'scannersAct', 'scannersVersions', 'scannersLastRun', 'scannersNodeSection', 'scannersScheduleSection', 'scannersUncovered', 'scannersBar', 'renderScannersInto', 'wireScannersTab',
   'tourSeen', 'tourSoon', 'tourRetry', 'tourLoading', 'tourSample', 'tourSampleProject', 'tourFlip', 'tourSampleCard', 'tourTarget', 'tourStart', 'tourKeepSample', 'tourDraw', 'glanceWaiting', 'tourGo', 'tourEnd', 'tourLeft', 'tourReset', 'rnVmCapsOf', 'rnVmCapsNow', 'rnVmCapsSet', 'openVmsTab', 'loadVms', 'vmPill', 'vmRow', 'nodeFeaturesSection', 'vmGroupsHtml', 'vmOthersHtml', 'vmBar', 'renderVmsInto', 'wireVms', 'openNewVm', 'vmHwLine', 'vmHwFields', 'vmHwRead', 'vmHwWire', 'openVmHardware', 'vmConsolesChecked', 'vmReapConsoles',
@@ -103,7 +102,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   // The Library (R170): its functions (a let or a const is no property of the window).
   'openLibrary', 'openLibraryOn', 'libPick', 'loadLibrary', 'libMatch', 'libPills', 'libState', 'libActs', 'libDetail', 'libRow',
   'libFilterBand', 'libSections', 'renderLibraryInto', 'wireLibrary', 'keepFocus', 'libWithToolchains', 'libAct', 'libLook', 'libDriverPick',
-  'openNewContainerApp', 'tpAppHtml', 'tpAppSeen', 'tpAppLook', 'tpOpenApp', 'tpWhatHtml',
+  'openNewContainerApp', 'tpAppHtml', 'tpAppSeen', 'tpAppLook', 'tpOpenApp', 'tpWhatHtml', 'libConfigField', 'libConfigForm', 'libServiceLines', 'libConfigRead',
   'reschedRevs', 'rnDrawAuth', 'rnDrawKey', 'rnDrawStore', 'rnKeyAct', 'drawSetup', 'setupFinish', 'setupNeeded', 'setupNode', 'setupOwn',
   'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillTestNode', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnDrawGitPol', 'rnWhyOff', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnSavePeople', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveLayout', 'sendCode', 'sendKey',

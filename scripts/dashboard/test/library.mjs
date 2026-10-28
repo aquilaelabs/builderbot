@@ -195,6 +195,39 @@ if (await page.$('.doc .librarytab [data-libkind="app"][data-libact="install"]')
   ok(true, 'Remove in there takes it off the catalog, and the card goes');
 }
 
+// ---- a service's card: the model router (R172) ------------------------------
+// Configure under Details takes what the Node settings section took: a
+// provider's key (shown only as set once saved), the endpoints, Ollama and
+// the projects; Install is dead until something is behind it, and live then.
+{
+  const RT = '.doc .librarytab .lcard[data-lrow="service:model-router"]';
+  ok(await page.$(RT) !== null && await page.$eval(RT, c => /official/.test(c.querySelector('.lcmeta').textContent) && c.querySelector('[data-libact="install"]')?.disabled === true),
+     'the model router is a Services card, official, its Install dead while nothing is behind it');
+  await page.evaluate(() => { libOpen.add('service:model-router'); libRev++; drawPanes(); });
+  await page.waitForSelector(`${RT}.open .lcform`, { timeout: 10000 });
+  const fields = await page.$$eval(`${RT} .lcform [data-lcf], ${RT} .lcform [data-lcadd], ${RT} .lcform [data-lcproj]`, es => es.map(e => e.dataset.lcf || e.dataset.lcadd || `proj:${e.value}`));
+  ok(fields.includes('anthropic') && fields.includes('openai') && fields.includes('ollama') && fields.includes('custom') && fields.some(f => f.startsWith('proj:')),
+     `its Configure form is the pack's config block: the providers' keys, the endpoints, Ollama and the projects (${fields.join(', ')})`);
+  await page.fill(`${RT} .lcform [data-lcf="anthropic"]`, 'sk-ant-test-0000');
+  await page.click(`${RT} .lcform [data-lcadd="custom"]`);
+  await page.waitForSelector(`${RT} .lcform .lcrow[data-lclist="custom"]`, { timeout: 5000 });
+  ok(await page.$eval(`${RT} .lcform [data-lcf="anthropic"]`, i => i.value === 'sk-ant-test-0000'), 'a row added keeps what was typed, as a draft');
+  await page.fill(`${RT} .lcform .lcrow [data-lcsub="name"]`, 'groq');
+  await page.fill(`${RT} .lcform .lcrow [data-lcsub="base"]`, 'https://api.groq.com/openai/v1');
+  await page.fill(`${RT} .lcform .lcrow [data-lcsub="key"]`, 'gsk-test');
+  await page.click(`${RT} .lcform [data-lcsave]`);
+  await page.waitForFunction(() => { const r = lib?.rows.find(x => x.kind === 'service'); return r && r.values.anthropic === true && r.values.custom.length === 1; }, null, { timeout: 15000 });
+  const saved = await page.evaluate(() => { const r = lib.rows.find(x => x.kind === 'service'); return { anthropic: r.values.anthropic, custom: r.values.custom, ready: r.ready }; });
+  ok(saved.anthropic === true && saved.custom[0].name === 'groq' && saved.custom[0].key === true && saved.ready === '',
+     `Save keeps the key sealed and shows it only as set, the endpoint with its key as set, and the card is ready to deploy (${JSON.stringify(saved)})`);
+  ok(await page.$eval(`${RT} .lcform [data-lcf="anthropic"]`, i => i.value === '' && /type to replace/.test(i.placeholder))
+     && await page.$eval(`${RT} [data-libact="install"]`, b => !b.disabled),
+     '...the field empties with "type to replace" in its place, and Install comes live');
+  const st = await page.evaluate(async () => (await (await fetch('/api/router?node=' + encodeURIComponent(libNode))).json()));
+  ok(st.providers?.anthropic === true && st.custom?.[0]?.name === 'groq', 'what the card saved is the router\'s own record');
+  await page.evaluate(() => { libOpen.delete('service:model-router'); libRev++; drawPanes(); });
+}
+
 // ---- no node ---------------------------------------------------------------
 await page.evaluate(() => { nodesList = []; libNode = ''; lib = null; loadLibrary(); });
 await page.waitForSelector('.doc .librarytab .libnone', { timeout: 20000 });

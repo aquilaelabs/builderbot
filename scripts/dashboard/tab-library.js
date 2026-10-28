@@ -25,7 +25,7 @@ const libSeen = {};            // what a pack's Look brought back, by row key ("
 // The sections, in the page's order: what a session runs first, then what
 // it builds with, then what a person adds, then what the box hosts, then
 // what the person takes to their own machines.
-const LIB_KINDS = [["agent", "Coding agents"], ["toolchain", "Toolchains"], ["pack", "Tool packs"], ["app", "Apps"], ["companion", "For you"]];
+const LIB_KINDS = [["agent", "Coding agents"], ["toolchain", "Toolchains"], ["pack", "Tool packs"], ["service", "Services"], ["app", "Apps"], ["companion", "For you"]];
 const LIB_TIERS = [["official", "Official"], ["vetted", "Vetted"], ["sideloaded", "Sideloaded"]];
 
 function openLibrary(){
@@ -121,6 +121,7 @@ function libState(r){
   const w = (t, cls = "") => `<span class="state${cls ? " " + cls : ""}">${t}</span>`;
   if (r.running) return w(`${esc(r.doing === "remove" ? "removing" : r.doing === "check" ? "checking" : r.kind === "agent" && r.installed ? "updating" : "installing")}<span class="dots"></span>`);
   if (r.kind === "app") return w("");
+  if (r.kind === "service") return r.installed ? w("deployed", "ok") : r.ready ? w(esc(r.ready), "warn") : w("");
   if (r.kind === "companion") return r.download ? w(esc(r.version ? `held, ${r.version}` : "held")) : w(esc(r.absent ? `not in ${r.absent}` : "not fetched yet"), "warn");
   if (r.wrong_platform) return w(esc(r.wrong_platform), "warn");
   if (r.machine){
@@ -146,6 +147,9 @@ function libActs(r, may){
     ? `<a class="btn primary" href="${esc(r.download.url)}" download title="${esc(r.download.file)} · sha256 ${esc((r.download.sha256 || "").slice(0, 12))}…">Download</a>`
     : `<button type="button" class="primary" disabled>Download</button>`;
   if (r.kind === "app") return `${may.apps ? a("install", "Install", "primary") : ""}${r.tier === "sideloaded" && may.packs ? a("edit", "Edit") : ""}`;
+  // A service deploys and goes as a written container does (docker-write), once something is behind it.
+  if (r.kind === "service") return !may.apps ? "" : r.installed ? a("remove", "Remove", "danger")
+    : `<button type="button" class="primary" data-libact="install" data-libkind="service" data-libname="${esc(r.name)}"${r.ready ? " disabled" : ""}${r.ready ? ` title="${esc(r.ready)}"` : ""}>Install</button>`;
   if (!may.install || !n) return "";
   if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install");
   if (r.machine && !r.machine.managed) return "";
@@ -169,6 +173,74 @@ function libDriverPick(m){
           : "the one recommended for this card")}</option>`}
       ${opts.filter(o => m.here || o.pkg !== m.recommended).map(o => `<option value="${esc(o.pkg)}"${o.pkg === picked ? " selected" : ""}>${esc(tcDriverOption(o, m))}</option>`).join("")}
     </select></label>`;
+}
+
+// What a pack or a service asks for on this node (R172): its config
+// block drawn as a form under Details, the answers as the page may see
+// them (a secret only as set: typed to replace, "clear" to take it out),
+// and Save sending them to the card's own route.
+function libConfigField(f, v, key, i = null){
+  const id = `lc-${key}-${f.name}${i === null ? "" : "-" + i}`.replace(/[^A-Za-z0-9_-]/g, "_");
+  const at = i === null ? `data-lcf="${esc(f.name)}"` : `data-lcsub="${esc(f.name)}"`;
+  const label = lbl(id, f.label, f.help || "");
+  switch (f.kind){
+    case "secret": return `<div class="field setrow col ctlrow">${label}<input id="${id}" type="password" ${at} autocomplete="off" spellcheck="false" placeholder="${v ? "set: type to replace, or 'clear'" : f.required ? "required" : ""}"></div>`;
+    case "text": return `<div class="field setrow col ctlrow">${label}<input id="${id}" type="text" ${at} autocomplete="off" spellcheck="false" value="${esc(v || "")}"></div>`;
+    case "switch": return `<div class="field"><label class="ndcap"><input id="${id}" type="checkbox" ${at}${v ? " checked" : ""}> ${esc(f.label)}${f.help ? helpIcon(f.help) : ""}</label></div>`;
+    case "choice": return `<div class="field setrow col ctlrow">${label}<select id="${id}" ${at}>${(f.choices || []).map(c => `<option value="${esc(c.value)}"${c.value === v ? " selected" : ""}>${esc(c.label)}</option>`).join("")}</select></div>`;
+    case "projects": {
+      const all = (lib?.rows || []).find(x => x.kind === "service")?.all_projects || [];
+      return `<div class="field"><div class="fsub">${esc(f.label)}${f.help ? helpIcon(f.help) : ""}</div><div class="chips">${all.length ? all.map(p => `<label class="chip"><input type="checkbox" data-lcproj="${esc(f.name)}" value="${esc(p)}"${(v || []).includes(p) ? " checked" : ""}> ${esc(p)}</label>`).join("") : `<span class="dim">no projects yet</span>`}</div></div>`;
+    }
+    case "list": {
+      const rows = (v || []).map((row, j) => `<div class="field ctlrow lcrow" data-lclist="${esc(f.name)}" data-lcrow="${j}">${
+        (f.fields || []).map(sf => sf.kind === "secret"
+          ? `<input type="password" data-lcsub="${esc(sf.name)}" placeholder="${row[sf.name] ? "set: type to replace" : esc(sf.label)}" autocomplete="off" spellcheck="false" aria-label="${esc(sf.label)}">`
+          : `<input type="text" data-lcsub="${esc(sf.name)}" placeholder="${esc(sf.help || sf.label)}" value="${esc(row[sf.name] || "")}" autocomplete="off" spellcheck="false" aria-label="${esc(sf.label)}">`).join("")}
+        <button type="button" data-lcrm="${esc(f.name)}" data-lcrow="${j}">Remove</button></div>`).join("");
+      return `<div class="field"><div class="fsub">${esc(f.label)}${f.help ? helpIcon(f.help) : ""}</div></div>${rows}<div class="field"><div class="addbar ctlrow"><button type="button" data-lcadd="${esc(f.name)}">Add a row</button></div></div>`;
+    }
+    default: return "";
+  }
+}
+function libConfigForm(r){
+  if (!r.config?.length) return "";
+  const key = `${r.kind}:${r.name}`, draft = libDraft[key];
+  const v = draft || r.values || {};
+  return `<div class="field agpart lcform" data-lcform="${esc(key)}"><div class="fsub">Configure on ${esc(lib?.name || "this node")}</div>
+    ${r.config.map(f => libConfigField(f, v[f.name], key)).join("")}
+    <div class="actbar"><span class="state">${r.kind === "service" && r.installed ? "saving rebuilds it with the change" : ""}</span><button type="button" class="primary" data-lcsave="${esc(key)}">Save</button></div></div>`;
+}
+// What a service says of itself on its card (R172): the router's address,
+// the models known and the spend, with the presses that read them again,
+// and Ollama's models pulled and removed.
+function libServiceLines(r){
+  const st = r.status || {};
+  if (r.service !== "router") return "";
+  if (!r.installed) return `<span class="sub">A model router here: LiteLLM holding the provider keys, offered to the projects you tick, each spending through a key of its own. Install deploys it as a written container once something is behind it.</span>`;
+  const models = (st.models || []).filter(m => !m.wild);
+  const pulled = (st.ollama?.models || []).map(m => `<div class="row"><span class="grow">${esc(m)}</span><button type="button" data-libsvc="ollama-remove" data-libmodel="${esc(m)}">Remove</button></div>`).join("");
+  return `<span class="sub">LiteLLM answers at <code>${esc(st.url || "")}/v1</code> for the projects allowed, each with a key of its own.</span>
+    <div class="actbar"><span class="state">${models.length ? `${models.length} model${models.length === 1 ? "" : "s"} known${st.models_at ? `, read ${esc(ago(st.models_at))}` : ""}` : "no models read yet"}${
+      Object.keys(st.spend || {}).length ? ` · spent ${Object.entries(st.spend).map(([p, s]) => `${esc(p)} $${Number(s).toFixed(2)}`).join(", ")}` : ""}</span>
+      <button type="button" data-libsvc="models">Read the models</button><button type="button" data-libsvc="spend">Read the spend</button></div>
+    ${st.ollama?.on ? `<div class="field"><div class="ctlrow"><input type="text" data-libpull placeholder="a model Ollama lists, such as qwen2.5-coder:7b" autocomplete="off" spellcheck="false">
+      <button type="button" data-libsvc="ollama-pull">Pull</button></div>${pulled ? `<div class="rows">${pulled}</div>` : `<div class="sub dim">Nothing pulled yet.</div>`}</div>` : ""}`;
+}
+// What was typed into a Configure form and not saved yet, by card: kept
+// across the redraws a poll brings, dropped on Save.
+const libDraft = {};
+function libConfigRead(form, r){
+  const v = {};
+  for (const f of r.config || []){
+    if (f.kind === "secret" || f.kind === "text") v[f.name] = form.querySelector(`[data-lcf="${CSS.escape(f.name)}"]`)?.value ?? "";
+    else if (f.kind === "switch") v[f.name] = !!form.querySelector(`[data-lcf="${CSS.escape(f.name)}"]`)?.checked;
+    else if (f.kind === "choice") v[f.name] = form.querySelector(`[data-lcf="${CSS.escape(f.name)}"]`)?.value ?? "";
+    else if (f.kind === "projects") v[f.name] = [...form.querySelectorAll(`[data-lcproj="${CSS.escape(f.name)}"]:checked`)].map(i => i.value);
+    else if (f.kind === "list") v[f.name] = [...form.querySelectorAll(`.lcrow[data-lclist="${CSS.escape(f.name)}"]`)].map(row =>
+      Object.fromEntries((f.fields || []).map(sf => [sf.name, row.querySelector(`[data-lcsub="${CSS.escape(sf.name)}"]`)?.value ?? ""])));
+  }
+  return v;
 }
 
 // The whole description, on the open row (rows-you-open): what it fetches
@@ -215,8 +287,20 @@ function libDetail(r){
         : `<span class="sub"><button type="button" class="link" data-liblook="${esc(key)}">Look</button> at what it fetches and runs, before anything is installed.</span>`);
     }
   }
+  if (r.kind === "service"){
+    lines.push(libServiceLines(r));
+    lines.push(libConfigForm(r));
+    return lines.filter(Boolean).join("");
+  }
+  if ((r.kind === "pack" || r.kind === "toolchain") && r.config?.length && r.values && lib?.may?.packs) lines.push(libConfigForm(r));
   if (r.kind === "agent"){
     const a = agentById(r.agent);
+    // Any model runs through the router on this node (R172): its card says so.
+    if (r.agent === "open"){
+      const rt = (lib?.rows || []).find(x => x.kind === "service" && x.service === "router");
+      lines.push(rt?.installed ? `<span class="sub">Runs through the model router on this node${(rt.status?.models || []).length ? `, ${rt.status.models.filter(m => !m.wild).length} models known` : ""}.</span>`
+        : `<span class="sub warn">Needs the model router on this node: its card is under Services.</span>`);
+    }
     lines.push(`<span class="sub">${a?.product ? `${esc(a.product)}, installed` : "Installed"} for the node's session account; ${r.latest ? `the latest is ${esc(r.latest)}` : "its latest is not known yet"}.${
       a?.provider ? ` Signs in with ${/^(?:[AEIOU]|x(?=[A-Z]))/.test(a.provider) ? "an" : "a"} ${esc(a.provider)} account.` : ""}</span>`);
     if (r.error) lines.push(`<span class="sub bad">${esc(r.error)}</span>`);
@@ -244,6 +328,8 @@ const LIB_ICONS = {
   agent: () => TOOL_ICONS.agents, toolchain: () => TOOL_ICONS.toolchains, app: () => TOOL_ICONS.docker,
   pack: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.2 8 2.6l5.5 2.6v5.6L8 13.4l-5.5-2.6z"/><path d="M2.5 5.2 8 7.8l5.5-2.6"/><path d="M8 7.8v5.6"/><path d="M5.2 3.9l5.6 2.7"/></svg>`,
   companion: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.2" y="3" width="11.6" height="7.6" rx="1.2"/><path d="M6 13.4h4M8 10.6v2.8"/></svg>`,
+  // A service (R172): what a node runs for the others, as a box with a plug.
+  service: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.4" y="4.2" width="11.2" height="7.6" rx="1.2"/><path d="M5.2 8h5.6M5.2 4.2V2.6M10.8 4.2V2.6"/></svg>`,
 };
 
 // One card (the Projects page's shape, R170: a store browses as cards):
@@ -400,6 +486,36 @@ function wireLibrary(root){
   if (add) add.onclick = () => libWithToolchains(() => tpOpen(""));
   root.querySelectorAll("[data-libact]").forEach(b => b.onclick = () => libAct(b, b.dataset.libact, b.dataset.libkind, b.dataset.libname));
   root.querySelectorAll("[data-liblook]").forEach(b => b.onclick = () => libLook(b.dataset.liblook));
+  // Configure (R172): what is typed is kept as a draft across redraws, a
+  // row added or removed redraws from the draft, Save posts and drops it.
+  root.querySelectorAll(".lcform").forEach(form => {
+    const key = form.dataset.lcform, r = (lib?.rows || []).find(x => `${x.kind}:${x.name}` === key);
+    if (!r) return;
+    const read = () => { libDraft[key] = libConfigRead(form, r); return libDraft[key]; };
+    form.addEventListener("input", read);
+    form.addEventListener("change", read);
+    form.querySelectorAll("[data-lcadd]").forEach(b => b.onclick = () => { const v = read(); v[b.dataset.lcadd] = [...(v[b.dataset.lcadd] || []), {}]; libRev++; drawPanes(); });
+    form.querySelectorAll("[data-lcrm]").forEach(b => b.onclick = () => { const v = read(); v[b.dataset.lcrm].splice(Number(b.dataset.lcrow), 1); libRev++; drawPanes(); });
+    const save = form.querySelector("[data-lcsave]");
+    if (save) save.onclick = () => pressing(save, async () => {
+      busy(save, "Saving");
+      const j = await (await postJSON("/api/library", {action: "configure", node: libNode, pack: r.name, values: read()})).json().catch(() => ({error: "no answer"}));
+      if (j.error){ notify(j.error, true); return; }
+      delete libDraft[key];
+      notify(j.job ? "saved: the router is rebuilt with the change, its row on the Containers page has the build" : "saved");
+      await loadLibrary();
+    });
+  });
+  root.querySelectorAll("[data-libsvc]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const card = b.closest(".lcard"), r = (lib?.rows || []).find(x => `${x.kind}:${x.name}` === card?.dataset.lrow);
+    if (!r) return;
+    const act = b.dataset.libsvc;
+    busy(b, act === "ollama-pull" ? "Pulling" : act === "ollama-remove" ? "Removing" : "Reading");
+    const model = act === "ollama-pull" ? card.querySelector("[data-libpull]")?.value || "" : b.dataset.libmodel || "";
+    const j = await (await postJSON("/api/library", {action: act, node: libNode, pack: r.name, model})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true); else if (act === "ollama-pull") notify(`pulling ${model}: a job on the Jobs page`);
+    await loadLibrary();
+  }));
   // The Toolchains page's own presses on its lines, wired the same.
   root.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = async () => { await tcAct("sysdeps", [b.dataset.tcsys]); loadLibrary(); });
   root.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = async () => { await tcAct("install", [b.dataset.tcneed]); loadLibrary(); });
@@ -441,6 +557,15 @@ async function libAct(b, act, kind, name){
   const n = (nodesList || []).find(x => x.id === libNode), where = n?.name || "this node";
   if (kind === "app"){
     if (act === "edit") tpOpenApp(name); else openNewContainerApp(name);
+    return;
+  }
+  if (kind === "service"){
+    if (act === "remove" && !await askYes(`Remove ${r.label} from ${where}? Its keys stay here sealed; the projects lose their way to it.`, {verb: "Remove", danger: true})) return;
+    busy(b, act === "remove" ? "Removing" : "Deploying");
+    const j = await (await postJSON("/api/library", {action: act, node: libNode, pack: r.name})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    else if (j.job) notify(`${act === "remove" ? "removing" : "deploying"} ${r.label}: its row on the Containers page has the build`);
+    await loadLibrary();
     return;
   }
   if (kind === "agent"){

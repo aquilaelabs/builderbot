@@ -9,6 +9,7 @@ project's directory, the pack's name, then the verb and its words. The
 catalog is read through sdkmeta, packs and all.
 """
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

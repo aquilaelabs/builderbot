@@ -156,6 +156,7 @@ the scripts it runs:
 | `layout` | `bin`: directories inside the pack to put on `PATH`. `env`: variables to set, each a path inside the pack or `=VALUE`. `tool`: a file whose presence means it is installed. |
 | `system.apt` | Debian packages the node needs; installed first where the node lets BuilderBot administer it. |
 | `verbs` | The commands a session calls as `bb tool NAME VERB`. |
+| `config` | What it asks for on each node (R172): a list of fields, each `{name, label, kind, help, required, env}`, the kind one of `secret`, `text`, `choice` (with `choices`), `list` (with `fields`, rows of them), `switch` or `projects`. The Library draws them as Configure under the pack's card for the node picked; the answers are kept on the controller, a secret sealed and never shown again, and handed to the node, where a field with `env` reaches the pack's verbs as that environment variable (a switch as `1` or empty, a list as JSON). |
 | `guidance` | A Markdown file in the repository telling a session, whichever coding agent runs it, when and how to use the pack. It reads it with `bb help tool-NAME`. |
 
 ### Verbs

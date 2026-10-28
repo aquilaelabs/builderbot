@@ -336,6 +336,7 @@ scripts/
 packs/                           the official packs (R169 step 1): every shipped toolchain and every coding agent as a pack in bbtool.json's format, tagged official and bundled for an install with no network, written by tools/packs-export.py from the tables and held to them by bb lint
     official/                    one folder per shipped toolchain (a colon in its name a hyphen), its bbtool.json carrying the recipe config/toolchains.json has under shipped
     agents/                      one folder per coding agent, its bbtool.json carrying the adapter agents.py's table has under agent
+    services/                    one folder per deployed thing of BuilderBot's that is a pack (R172): the model router, its service block and its config block, what its Installed row asks for per node
 apps/                            the companions a person installs (R98 step 1): the phone app, the editor extension and the
                                  Windows companion, each released by its own workflow and offered on the Apps page
   android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin

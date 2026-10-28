@@ -5741,6 +5741,7 @@ GET_ROUTES = (
     ("exact", "/api/nasapps", "_get_nasapps"),
     ("prefix", "/api/catalog", "_get_catalog"),
     ("prefix", "/api/library", "_get_library"),
+    ("exact", "/api/library", "_library"),
     ("exact", "/api/storebackups", "_get_storebackups"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
@@ -11300,8 +11301,17 @@ class Handler(BaseHTTPRequestHandler):
         # ...and an agent's on what this person added to it there (the Agents page's Yours).
         uid = users.uid_of(who)
         mine = next((x for x in plugins.of(uid) if x["node"] == nid), {}) if uid and n else {}
+        # The services (R172): the model router on this node, its status as
+        # the Node settings section read it; a person who may write
+        # containers may deploy it, as the nginx page's. The added packs'
+        # answers here, for Configure on their cards.
+        services = []
+        if n and not users.may(who, "docker-write"):
+            services.append({"manifest": toolpacks.validate(router.pack(), shipped=())[0], "status": router.status(nid),
+                             "ready": router._ready(nid), "all_projects": sorted(prefs.all_projects(WORKSPACE))})
+        pack_values = {name: packconfig.get(nid, name, fields) for name, fields in toolpacks.configs().items()} if n and users.is_admin(who) else {}
         return self._json({"node": nid, "name": tc.get("name") or (n or {}).get("name") or "", "live": bool(tc.get("live", (n or {}).get("live"))),
-                           "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view()),
+                           "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view(), services, pack_values),
                            "job": tc.get("job") or {"running": False}, "catalog_error": cat.get("error", ""),
                            "may": {"install": may_install, "apps": may_apps, "packs": users.is_admin(who)},
                            "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb"), "checked": tc.get("checked") or 0},
@@ -11309,6 +11319,68 @@ class Handler(BaseHTTPRequestHandler):
                            "sandbox": bool(tc.get("sandbox")), "managed": bool(tc.get("administers")) and not tc.get("locked"),
                            "catalog_repo": library.repo_of(settings.get("catalog_url") or ""),
                            "yours": {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}})
+
+    def _library(self, req):
+        """POST /api/library (R172): a card's Configure, Install and Remove
+        for a service (the model router, router.py's own verbs, docker-write
+        as the nginx page), the router's models, spend and Ollama's pulls,
+        and Configure for an added pack with a config block (packconfig,
+        an administrator's, as the pack is); never a session's."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "the library is a person's"}, 403)
+        act, nid, pack = field(req, "action"), field(req, "node"), field(req, "pack")
+        if not nid or not nodes.node(nid):
+            return self._json({"error": "which node?"}, 400)
+        by = who.get("name") or ""
+        if pack == "model-router":
+            if self._refused("docker-write"):
+                return None
+            gpu = bool(((nodes.node(nid) or {}).get("reported") or {}).get("gpu_card"))
+            if act == "configure":
+                v = req.get("values") if isinstance(req.get("values"), dict) else {}
+                r = router.set_keys(nid, {"providers": {pid: v.get(pid) for pid in router.PROVIDERS if pid in v},
+                                          **({"custom": v["custom"]} if isinstance(v.get("custom"), list) else {}),
+                                          **({"ollama": v.get("ollama") is True} if "ollama" in v else {})})
+                if not r.get("error") and isinstance(v.get("projects"), list):
+                    have = set(router.status(nid).get("projects") or [])
+                    want = {str(p) for p in v["projects"]}
+                    for p in sorted(want - have):
+                        r = router.allow(nid, p, by)
+                        if r.get("error"):
+                            break
+                    for p in sorted(have - want):
+                        router.disallow(nid, p)
+                if not r.get("error") and router.record(nid).get("deployed"):
+                    r = router.apply(nid, containers, devactions, devapp, gpu) | {"saved": True}
+            elif act == "install":
+                r = router.deploy(nid, containers, devactions, devapp, gpu)
+            elif act == "remove":
+                r = router.remove(nid, devactions, devapp)
+            elif act == "ollama-pull":
+                r = router.ollama_pull(nid, field(req, "model"), by)
+            elif act == "ollama-remove":
+                r = router.ollama_remove(nid, field(req, "model"), by)
+            elif act == "models":
+                r = router.refresh_models(nid)
+            elif act == "spend":
+                r = {"ok": True, "spend": router.refresh_spend(nid)}
+            else:
+                return self._json({"error": f"unknown action {act!r}"}, 400)
+            if not r.get("error"):
+                db.audit(f"user:{by}", f"router-{act}", nid, {})
+            return self._result(r)
+        if not users.is_admin(who):
+            return self._json({"error": "configuring a pack is an administrator's"}, 403)
+        fields = toolpacks.configs().get(pack)
+        if not fields:
+            return self._json({"error": f"{pack or 'nothing'} is not an added pack that asks for anything"}, 400)
+        if act != "configure":
+            return self._json({"error": "a pack's card takes configure"}, 400)
+        r = packconfig.set_values(nid, pack, fields, req.get("values"))
+        if not r.get("error"):
+            db.audit(f"user:{by}", "pack-configure", nid, {"pack": pack})
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _get_catalog(self):
         """GET /api/catalog[?fresh=1] (R169 step 2): the vetted catalog's

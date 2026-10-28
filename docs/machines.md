@@ -36,13 +36,7 @@ answers, and each store's room; the toolchains its census found, which is what a
 build), Projects (the projects bound to it), Sessions (whether it runs them,
 and which are open), GPU (where it has a card), USB (on a VM host: each USB
 device with what holds it, **Give to a VM** and **Take back**, and its
-controllers; [vms.md](vms.md#usb-devices)), Model router (R144: LiteLLM
-on this node with the provider keys you give it, kept sealed on the
-controller and written into the router's compose file on the node, Ollama
-beside it where you turn it on with its models pulled and removed here, and
-the projects allowed to use it, each handed the address and a key of its
-own at a session's start so its spend is its own; **Deploy**, **Save and
-rebuild**, **Remove**, **Read the models** and **Read the spend**), Features (what the machine has
+controllers; [vms.md](vms.md#usb-devices)), Model router (R144, R172: a card of the Library's with this node picked, under Services, where it is configured, deployed and removed; the row here says so), Features (what the machine has
 beyond the base, each with **Install** or **Uninstall**: VM host, the IOMMU
 on a VM host's kernel command line, and the
 hosting firewall on a hosting-only node), Coding agents (one line saying
