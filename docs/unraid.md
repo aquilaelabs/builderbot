@@ -104,11 +104,11 @@ Get the template onto the flash drive, from the Unraid terminal:
 
 ```bash
 curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-builderbot.xml \
-  https://raw.githubusercontent.com/aquilaelabs/builderbot/main/unraid/builderbot.xml
+  https://raw.githubusercontent.com/aquilaelabs/builderbot/main/platforms/unraid/builderbot.xml
 ```
 
 **Or copy it over.** The flash drive is an SMB share: open
-`unraid/builderbot.xml` on GitHub → **Raw** → save, then drop it into
+`platforms/unraid/builderbot.xml` on GitHub → **Raw** → save, then drop it into
 `\\<TOWER>\flash\config\plugins\dockerMan\templates-user\` as
 `my-builderbot.xml`.
 

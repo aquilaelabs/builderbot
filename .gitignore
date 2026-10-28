@@ -22,11 +22,11 @@ __pycache__/
 
 # The companion app: Gradle and the build outputs, never the tree. The
 # wrapper jar is committed on purpose: it is what makes ./gradlew work.
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
-android/.kotlin/
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/
+apps/android/local.properties
+apps/android/.kotlin/
 
 # What a build produced, for the Artifacts tab and never for history.
 dist/

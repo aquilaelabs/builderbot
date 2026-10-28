@@ -20,7 +20,7 @@
 // and "0.0.0-unknown" is the honest last resort rather than a number somebody
 // would trust.
 fun ask(vararg argv: String): String? = try {
-    val pb = ProcessBuilder(*argv).directory(rootDir.parentFile).redirectErrorStream(false)
+    val pb = ProcessBuilder(*argv).directory(rootDir.parentFile.parentFile).redirectErrorStream(false)
     pb.environment()["BB_RELAYED"] = "1"
     val p = pb.start()
     val out = p.inputStream.bufferedReader().readText().trim()
@@ -51,7 +51,7 @@ tasks.register<Copy>("bbApk") {
     dependsOn("assembleDebug")
     from(layout.buildDirectory.dir("outputs/apk/debug"))
     include("app-debug.apk")
-    into(rootDir.parentFile.resolve("dist"))
+    into(rootDir.parentFile.parentFile.resolve("dist"))
     rename { (findProperty("bbOut") as String?)?.takeIf { it.isNotBlank() } ?: it }
 }
 

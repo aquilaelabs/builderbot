@@ -6,7 +6,7 @@ basic auth); who may call what is decided in the handler, and the last column na
 permission a handler refuses on (`refused: NAME`), or that it refuses a locked project
 (`readonly`) or a name that is not a project the account sees (`not_project`). A `prefix`
 route takes every path it prefixes, in the order listed; an `exact` one takes its path alone.
-The companion app's own contract is `android/api-surface.json`.
+The companion app's own contract is `apps/android/api-surface.json`.
 
 | Method | Path | Match | Handler | What it does | Refuses on |
 |---|---|---|---|---|---|

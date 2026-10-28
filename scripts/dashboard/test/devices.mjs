@@ -135,7 +135,7 @@ ok(woke.status === 200 && (woke.changes || []).some(c => c[0] === 'from-laptop.t
      `...and a file written on the controller's disk reaches a waiting device by its poll's scan (${Date.now() - t1} ms)`);
 }
 
-// ---- the app itself (windows/bbcompanion), its own command line against this server -----------
+// ---- the app itself (apps/windows/bbcompanion), its own command line against this server -----------
 // The agent's sync, shared, on the device door: signed in, a project picked
 // into a folder, the first copy made; then a change made in the folder goes
 // up and one made elsewhere comes down, with nothing but the app running.

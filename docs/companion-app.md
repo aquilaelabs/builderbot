@@ -6,7 +6,7 @@ Download it from **Apps**, under Build on the rail. This doc covers what it
 does, pairing it with several BuilderBots, its lock, Claude from the phone,
 its notifications, and how it is kept in step with the dashboard and built.
 
-`android/` is an Android app that does most of what the dashboard does,
+`apps/android/` is an Android app that does most of what the dashboard does,
 minus the terminals: the projects and their notebooks (roadmap, bugs,
 briefing, wiki, design, artifacts, containers, tests, the repository's state),
 the approvals, the nodes, the jobs, the accounts and your profile, in the
@@ -87,7 +87,7 @@ dashboard's bell carries the same questions. There is no push service: the phone
 your BuilderBot directly, on your network or over your tailnet, so nothing
 needs an account with anybody, and nothing is kept in the repository.
 
-**Keeping it in step with the dashboard.** `android/api-surface.json` names
+**Keeping it in step with the dashboard.** `apps/android/api-surface.json` names
 every path the app calls and the fields it reads, and carries a number that
 `server.py`'s `APP_API` and the app's `TARGET_API` both carry. The dashboard
 suite's `appapi.mjs` holds the running server to that file, each field's
@@ -101,7 +101,7 @@ with the file, the constant and a changelog line moved in that change.
 **Building it.** `.github/workflows/android-app.yml` builds the unsigned
 release APK on a node's runner: the JDK and the Android SDK come from the
 node's toolchain store, the same environment every `bb` job gets, on a push
-to `main` that touches `android/`, names it by `bb version --file`, drops it
+to `main` that touches `apps/android/`, names it by `bb version --file`, drops it
 into BuilderBot's `dist/` where the runner's machine mounts the projects
 share. For a release it is handed to the controller as the artifact
 `bb-release-apk-TAG`, which the controller has signed on BuilderBot's node

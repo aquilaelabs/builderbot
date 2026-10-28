@@ -847,7 +847,7 @@ before the controller's window is answered 426 with the way to update, by
 name. The device door's `projects` and `apps` answers say the controller's
 `door` and `door_min`, so an app newer than its controller says so plainly.
 What each released app reads is pinned with its types (the Android app's
-in `android/api-surface.json`): a field may be added at any time, and removed
+in `apps/android/api-surface.json`): a field may be added at any time, and removed
 only in the release after the apps that read it stopped, with the pin moved
 in the same change and a changelog line.
 

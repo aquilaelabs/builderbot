@@ -1,5 +1,5 @@
 // A person's editor on a project's files (R159): the controller's Files API
-// and the VS Code extension in vscode/, which signs in as the person and can
+// and the VS Code extension in apps/vscode/, which signs in as the person and can
 // do nothing their account cannot. Every check here is the SERVER's answer
 // for an account: with read and write, read only, no access, not on the
 // project, a role that caps it at read, the editor's switch off, a session's
@@ -15,8 +15,8 @@ import Module from 'node:module';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const require = createRequire(import.meta.url);
-const { Client, Refused, signIn, API } = require(`${REPO}/vscode/lib/client.js`);
-const { Term } = require(`${REPO}/vscode/lib/term.js`);
+const { Client, Refused, signIn, API } = require(`${REPO}/apps/vscode/lib/client.js`);
+const { Term } = require(`${REPO}/apps/vscode/lib/term.js`);
 const base = URL.replace(/\/$/, '');
 const ADMIN = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
 const admin = async (path, body) => {
@@ -220,7 +220,7 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   const commands = {}, opened = [], errors = [];
   const load = Module._load;
   Module._load = function (req, ...rest) { return req === 'vscode' ? vscode : load.call(this, req, ...rest); };
-  const ext = require(`${REPO}/vscode/extension.js`);
+  const ext = require(`${REPO}/apps/vscode/extension.js`);
   Module._load = load;
   ext.activate({ subscriptions: [], secrets: { get: async k => secrets.get(k), store: async (k, v) => secrets.set(k, v),
                                                 delete: async k => secrets.delete(k) } });
@@ -290,7 +290,7 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   // node, so the server takes it as an agent's session and says there is
   // nowhere to run one.
   {
-    const ext = require(`${REPO}/vscode/extension.js`);
+    const ext = require(`${REPO}/apps/vscode/extension.js`);
     const facts = await ext.sessionFacts(owner, 'alpha');
     const ag = await run(owner, ext.sessionArg('codex', 'alpha', facts.boot));
     ok(typeof facts.boot === 'string' && facts.boot && facts.running instanceof Set

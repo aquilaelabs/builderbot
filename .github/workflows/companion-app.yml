@@ -1,6 +1,6 @@
 # The apps a person installs, for each release (R272 step 2): the Windows
 # companion (R270) as an .exe, built with PyInstaller on a hosted Windows
-# runner from windows/bbcompanion and the four node-agent modules its sync
+# runner from apps/windows/bbcompanion and the four node-agent modules its sync
 # is, and as a .pyz for any machine with Python; and the VS Code extension
 # as a .vsix. Each attached to the release with its sha256 beside it, as
 # the Android app's APK is (android-app.yml), named for the release's
@@ -77,12 +77,12 @@ jobs:
           set -eo pipefail
           python -m pip install --disable-pip-version-check --quiet pyinstaller
           v="${TAG#v}"
-          printf '%s\n' "$v" > windows/bbcompanion/VERSION
+          printf '%s\n' "$v" > apps/windows/bbcompanion/VERSION
           printf 'from bbcompanion.__main__ import entry\nentry()\n' > "$RUNNER_TEMP/companion.py"
           python -m PyInstaller --noconfirm --onefile --windowed --name "builderbot-companion-$v" \
             --paths windows --paths scripts/agent \
             --hidden-import builderbot_agent.wssync --hidden-import builderbot_agent.controller \
-            --add-data "windows/bbcompanion/VERSION;bbcompanion" \
+            --add-data "apps/windows/bbcompanion/VERSION;bbcompanion" \
             --distpath dist "$RUNNER_TEMP/companion.py"
           echo "EXE=dist/builderbot-companion-$v.exe" >> "$GITHUB_ENV"
 

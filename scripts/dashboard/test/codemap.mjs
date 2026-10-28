@@ -130,7 +130,7 @@ ok(/suites:.*\bphone\b/.test(pre('scripts/dashboard/page-bell.js')),
 // The other C-shaped languages: the companion app's Kotlin. `fun` opens a
 // definition, a trailing lambda (Row(...) { ... }) is a call and not a
 // method, and a default lambda in a parameter list does not open the body.
-const kt = map('defs', 'android/app/src/main/java/dev/builderbot/app/ui/Parts.kt');
+const kt = map('defs', 'apps/android/app/src/main/java/dev/builderbot/app/ui/Parts.kt');
 ok(/^\d+-\d+  function Pill$/m.test(kt) && /function Panel/.test(kt), 'Kotlin functions are definitions with their span');
 const pill = map('who-calls', 'Pill');
 ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from HomeScreen\b/.test(pill) && !/from Row\b/.test(pill),

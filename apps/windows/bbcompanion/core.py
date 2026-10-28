@@ -19,7 +19,9 @@ import threading
 try:
     from builderbot_agent import controller as _controller, wssync as _wssync
 except ImportError:                                   # a checkout: the agent beside this tree
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "agent"))
+    # From the checkout (apps/windows/bbcompanion): the agent's package three
+    # levels up, under scripts/agent.
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "scripts", "agent"))
     from builderbot_agent import controller as _controller, wssync as _wssync
 
 from . import names, pc, update

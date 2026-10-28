@@ -146,7 +146,7 @@ def settings():
         m = re.match(r"^#?\s*([A-Z][A-Z0-9_]+)=(.*)$", ln.rstrip("\n"))
         if m:
             example[m.group(1)] = m.group(2).strip()
-    root = ET.parse("unraid/builderbot.xml").getroot()
+    root = ET.parse("platforms/unraid/builderbot.xml").getroot()
     tmpl = {c.get("Target"): c.get("Default") or "" for c in root.iter("Config") if c.get("Type") == "Variable"}
     paths = {c.get("Target"): c.get("Default") or "" for c in root.iter("Config") if c.get("Type") == "Path"}
     # A row may name two at once, `PUID` / `PGID` | `99` / `100`, paired in order.

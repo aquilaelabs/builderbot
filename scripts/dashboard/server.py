@@ -3120,8 +3120,8 @@ def uptime():
         return r["out"].strip() or "?"
 
 
-# The API surface the companion app is written against (android/). One
-# number, moved with the app: android/api-surface.json names every path
+# The API surface the companion app is written against (apps/android/). One
+# number, moved with the app: apps/android/api-surface.json names every path
 # and field the app reads and carries the same number, test/appapi.mjs
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a

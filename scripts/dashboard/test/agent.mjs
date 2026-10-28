@@ -297,7 +297,7 @@ sys.exit(2)
 const SCREEN_PORT = 17684 + Math.floor(Math.random() * 1000);
 // A terminal through the controller, as the page opens one (R133): its
 // screen, what is typed into it, and the reason it closes with.
-const { connect: wsConnect } = createRequire(import.meta.url)(`${REPO}/vscode/lib/ws.js`);
+const { connect: wsConnect } = createRequire(import.meta.url)(`${REPO}/apps/vscode/lib/ws.js`);
 const termRun = async (arg, type, hdr) => {
   const sock = await wsConnect(URL.replace(/\/$/, '').replace(/^http/, 'ws') + '/termws?arg='
     + encodeURIComponent(arg) + '&cols=120&rows=30', { headers: hdr });

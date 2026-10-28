@@ -16,7 +16,9 @@ docker-compose.yml               compose variant of the stack
 .env.example                     annotated compose configuration
 lab/compose.yml                  the lab's Gitea and Forgejo for bb tests lab, a stack of its own beside the dev instance
 lab/.env.example                 the lab's one setting: the address other machines reach it at
-unraid/builderbot.xml            Unraid Docker template (one-click updates)
+platforms/                       each place the container edition installs (R98 step 1), its template and generated files; the installed
+                                 edition's own parts (host/, modules/, installer/, image/) land beside it as they are built (R56)
+  unraid/builderbot.xml          Unraid Docker template (one-click updates)
 scripts/
   entrypoint.sh                  the container's boot: uid remap, the timezone, then lib/boot.sh's steps and gosu
   host-boot.sh                   a bare-metal install's boot under systemd: lib/boot.sh's steps, then setpriv to its account (R90)
@@ -95,6 +97,7 @@ scripts/
   lib/rules-check.py             `bb rules check`: a rule's check command, run in this tree
   lib/tests-verbs.py             `bb tests`: the registry verbs
   lib/tests-verdict.py           what went wrong, from a run's log (bb tests last, the end of a run)
+  lib/tests-away.py              which node a project's suites go to (R151): the test node its settings name, its workers from its cores and memory, its queue
   lib/preamble-verbs.py          `bb preamble`
   lib/router-key.py              `bb router-key`: the model router's address, this project's own key and its models (R144)
   lib/findings-verbs.py          `bb findings history` and `bb findings sample`
@@ -277,6 +280,7 @@ scripts/
     toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
     gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit
     sessnet.py                   each session kept to its own project's network (R79)
+    scan.py                      the scan job (R145): each scanner run as compose with the node's project copies mounted read-only, its SARIF sent up as scan-put
     accounts.py                  each account a Unix user of its own on the node (R125): its user made, its home moved to it and back, the terminal's environment for bb-session tty
     tokenwatch.py                who opens an account's coding-agent token on the node (R125): the files held at 600, a reader that is neither the account nor the agent said on the next hello
     tokens.py                    the coding agents' sign-ins sealed on the node (R126): sealed where a login wrote them, opened into a tmpfs for a person's terminal, wiped after the last session
@@ -296,25 +300,27 @@ scripts/
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only
   agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
-android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
-vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
-  package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
-  extension.js                   the builderbot: file system, the sign-in, open project, search and the session's terminal
-  lib/client.js                  the controller as the extension speaks to it: sign-in through /login, the Files API, /term
-  lib/ws.js                      a websocket client in Node's own modules, for the terminal
-  lib/term.js                    BuilderBot's own terminal on /termws, from VS Code: the frames the dashboard's dock speaks
-  README.md                      what VS Code shows on the extension's page: setting it up, installing and using it
-windows/                         the Windows companion app (R270): a person's machine keeping a project's folder in step through the device door
-  README.md                      what it does, signing in, picking a project and a folder, building it
-  bbcompanion/__init__.py        the package: what the app is
-  bbcompanion/__main__.py        its command line (sign in, add, remove, run, sign out) and the packaged app's start
-  bbcompanion/core.py            the node agent's own sync on the device door: the projects picked, a long poll per project, what Windows cannot hold left out
-  bbcompanion/names.py           Windows' rules for a file's name: device names, a trailing dot or space, the refused characters, two names one by case
-  bbcompanion/creds.py           the device token in Windows' credential store, or a file only its owner reads elsewhere
-  bbcompanion/settings.py        the projects kept and their folders, the controller's address
-  bbcompanion/pc.py              this PC lent to a project: the verbs its person set up, run on a session's ask, the folder written as the project's path
-  bbcompanion/update.py          kept current by its controller: what it holds asked at start and daily, a newer copy checked and swapped in at the next start
-  bbcompanion/app.py             the window: sign in, the projects and each one's state, Add, Remove, Open folder, Conflicts
+apps/                            the companions a person installs (R98 step 1): the phone app, the editor extension and the
+                                 Windows companion, each released by its own workflow and offered on the Apps page
+  android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
+  vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
+    package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
+    extension.js                   the builderbot: file system, the sign-in, open project, search and the session's terminal
+    lib/client.js                  the controller as the extension speaks to it: sign-in through /login, the Files API, /term
+    lib/ws.js                      a websocket client in Node's own modules, for the terminal
+    lib/term.js                    BuilderBot's own terminal on /termws, from VS Code: the frames the dashboard's dock speaks
+    README.md                      what VS Code shows on the extension's page: setting it up, installing and using it
+  windows/                         the Windows companion app (R270): a person's machine keeping a project's folder in step through the device door
+    README.md                      what it does, signing in, picking a project and a folder, building it
+    bbcompanion/__init__.py        the package: what the app is
+    bbcompanion/__main__.py        its command line (sign in, add, remove, run, sign out) and the packaged app's start
+    bbcompanion/core.py            the node agent's own sync on the device door: the projects picked, a long poll per project, what Windows cannot hold left out
+    bbcompanion/names.py           Windows' rules for a file's name: device names, a trailing dot or space, the refused characters, two names one by case
+    bbcompanion/creds.py           the device token in Windows' credential store, or a file only its owner reads elsewhere
+    bbcompanion/settings.py        the projects kept and their folders, the controller's address
+    bbcompanion/pc.py              this PC lent to a project: the verbs its person set up, run on a session's ask, the folder written as the project's path
+    bbcompanion/update.py          kept current by its controller: what it holds asked at start and daily, a newer copy checked and swapped in at the next start
+    bbcompanion/app.py             the window: sign in, the projects and each one's state, Add, Remove, Open folder, Conflicts
 nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
 nodes/provision-macos.sh            a provisioner for macOS, not offered by default takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
@@ -346,7 +352,7 @@ test/nettest/.env.example        the two addresses it needs: the controller's an
 tools/american-spelling.sh       the house rule spelling's check: no British spelling on a line this branch adds
 tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
 tools/upgrade-snapshot.py        a lived-in /config made by this tree's controller through its API, written to scripts/dashboard/test/upgrade/VERSION/ for the upgrade suite; a release runs it
-tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
+tools/vscode-vsix.py             packages apps/vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
 tools/companion-build.py         builds the Windows companion as one .pyz with the four agent modules its sync is (R270)
 tools/app-schemes.py             writes the Android app's twelve color schemes, both halves, from the design record (bb design json | tools/app-schemes.py)
 tools/ratchet.txt                those ceilings, one per file

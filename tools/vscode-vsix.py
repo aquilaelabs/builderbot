@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package vscode/ as a .vsix (R159 step 7), with nothing installed.
+"""Package apps/vscode/ as a .vsix (R159 step 7), with nothing installed.
 
 A .vsix is a zip: the extension's files under extension/, a manifest VS
 Code's installer reads, and the content types. vsce makes the same thing
@@ -18,7 +18,7 @@ import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml (escaping the manifest it writes; nothing is parsed)
 
-HERE = Path(__file__).resolve().parent.parent / "vscode"
+HERE = Path(__file__).resolve().parent.parent / "apps" / "vscode"
 FILES = ("package.json", "extension.js", "README.md", "lib/client.js", "lib/ws.js", "lib/term.js")
 
 TYPES = """<?xml version="1.0" encoding="utf-8"?>

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "windows"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "apps", "windows"))
 from bbcompanion import update  # noqa: E402
 
 

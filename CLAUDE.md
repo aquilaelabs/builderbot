@@ -143,7 +143,7 @@ ref and nowhere else; `bb ci-log` reads a run's output.
   `bb-tty` validates its one URL argument against directories that exist.
   The terminal, at `/termws`, is there for anything else.
 - **A setting that has to be in the environment lands in five places:**
-  `.env.example`, `docker-compose.yml`, `unraid/builderbot.xml`,
+  `.env.example`, `docker-compose.yml`, `platforms/unraid/builderbot.xml`,
   `docs/reference.md`, and `docs/unraid.md` when it needs host-side setup.
 - **The briefing** is `config/templates/briefing.md`, assembled per session
   by `preamble.py` with the project's rules, roadmap and bugs: the core

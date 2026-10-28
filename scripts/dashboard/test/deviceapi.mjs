@@ -6,7 +6,7 @@
 // handshake: an app from before the controller's window is refused with the
 // way to update, and the controller says the version it speaks for an app
 // newer than it to say so. The Android app's surface is
-// android/api-surface.json, held by test/appapi.mjs. No browser.
+// apps/android/api-surface.json, held by test/appapi.mjs. No browser.
 import { ok, done, DIR, URL, pinBreaks as breaks } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -14,7 +14,7 @@ import { createRequire } from 'node:module';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const require = createRequire(import.meta.url);
-const client = require(`${REPO}/vscode/lib/client.js`);
+const client = require(`${REPO}/apps/vscode/lib/client.js`);
 const base = URL.replace(/\/$/, '');
 const pins = JSON.parse(readFileSync(new globalThis.URL('./device-api.json', import.meta.url), 'utf8'));
 const ADMIN = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
@@ -43,9 +43,9 @@ ok(!set.error && set.editor === true, `alpha opens in an editor and on a device 
 writeFileSync(`${tree}/pin-probe.txt`, 'a needle for the search\n');
 
 // ---- the companion, as it calls: its headers, its token --------------------------------
-// What windows/bbcompanion/update.py's headers() says, read from the source
+// What apps/windows/bbcompanion/update.py's headers() says, read from the source
 // so the test and the app cannot drift on the names.
-const updatePy = readFileSync(`${REPO}/windows/bbcompanion/update.py`, 'utf8');
+const updatePy = readFileSync(`${REPO}/apps/windows/bbcompanion/update.py`, 'utf8');
 const appDoor = Number((updatePy.match(/^DOOR = (\d+)/m) || [])[1]);
 const SAYS_PC = { 'X-BB-Door': String(appDoor), 'X-BB-App': 'companion/0.0.0' };
 let token = '';
@@ -103,7 +103,7 @@ const COMPANION = {
   },
 };
 
-// ---- the extension, through its own client (vscode/lib/client.js) ---------------------
+// ---- the extension, through its own client (apps/vscode/lib/client.js) ---------------------
 const cookie = await client.signIn(base, 'pin.rw', 'pinrwpass1');
 const ed = new client.Client(base, cookie);
 const files = async (action, extra = {}) => {
@@ -189,7 +189,7 @@ ok(pins.apps.android?.contract && existsSync(`${REPO}/${pins.apps.android.contra
   ok(proj.json?.door >= appDoor && proj.json?.door_min <= appDoor,
      `this tree's companion speaks a door the controller keeps (app ${appDoor}, controller ${proj.json?.door_min} to ${proj.json?.door})`);
   // The extension: its headers on every call, and the same refusal.
-  const pkg = JSON.parse(readFileSync(`${REPO}/vscode/package.json`, 'utf8'));
+  const pkg = JSON.parse(readFileSync(`${REPO}/apps/vscode/package.json`, 'utf8'));
   const h = ed.headers();
   ok(h['X-BB-Api'] === String(client.API) && h['X-BB-App'] === `vscode/${pkg.version}` && pkg.builderbotApi === client.API,
      `the extension says its Files API and its release on every call (${h['X-BB-Api']} ${h['X-BB-App']})`);

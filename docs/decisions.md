@@ -633,3 +633,25 @@ at the end of every turn and resumed only in the agent it is with. What an
 agent has no hook for is said in the project's settings rather than implied.
 Steps 12 to 14, a model router and an open agent for any model, wait for
 0.8.0 (the operator, 22 Oct).
+
+## The repository laid out by part
+
+**The tree is laid out by what each part is, before the platforms and the
+installed edition land (the operator, 21 and 27 Oct 2026, R98 step 1 and
+R56 step 1).** `apps/` holds the companions a person installs (the phone
+app, the editor extension, the Windows companion), each released by its
+own workflow and offered on the Apps page; `platforms/` holds each place
+the container edition installs, its template and generated files (Unraid
+today, each NAS as its page is written); the installed edition's own parts
+(`host/`, `modules/`, `installer/`, `image/`) land beside them as they are
+built, and the official tool packs under `packs/`. The product stays where
+it was: `scripts/` the controller and the agent, `nodes/` what runs on a
+node, `config/`, `docs/`, `lab/`, `test/`, `tools/`. Each file moved with
+`git mv`, so its history is one line; every path that named one came along
+in the same change, and `docs/layout.md` names the new rows, which
+`bb lint` holds to the tree. No copy was kept at an old path: nobody is
+known to install from the template's old URL, and the changelog says where
+it went. With the catalog (R169) the layout spans two repositories:
+builderbot keeps everything a release ships, builderbot-catalog what
+changes between releases (the index, its signing, the community packs and
+their vetting).

@@ -4654,7 +4654,7 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
     # what compose passes
     # into the container is held against the other three, by name and by
     # default, and every template path against its compose volume.
-    if [ -f docker-compose.yml ] && [ -f .env.example ] && [ -f unraid/builderbot.xml ] && [ -f docs/reference.md ]; then
+    if [ -f docker-compose.yml ] && [ -f .env.example ] && [ -f platforms/unraid/builderbot.xml ] && [ -f docs/reference.md ]; then
         section "settings (compose, .env.example, Unraid template, reference)"
         python3 "$BB_LIB/lint-checks.py" settings || rc=1
     fi

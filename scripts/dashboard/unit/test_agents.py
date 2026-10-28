@@ -380,9 +380,9 @@ class Copies(unittest.TestCase):
 
     def test_the_android_app_s_copy_is_the_live_rows(self):
         # The companion app finds and starts any live agent's session (R128):
-        # its table (android/.../Agents.kt) is the live rows, Claude first,
+        # its table (apps/android/.../Agents.kt) is the live rows, Claude first,
         # with each other agent's own models.
-        path = os.path.join(HERE, "..", "..", "..", "android", "app", "src", "main", "java",
+        path = os.path.join(HERE, "..", "..", "..", "apps", "android", "app", "src", "main", "java",
                             "dev", "builderbot", "app", "Agents.kt")
         with open(path) as f:
             kt = f.read()
@@ -400,7 +400,7 @@ class Copies(unittest.TestCase):
 
     def test_the_vscode_extension_s_copy_is_the_live_rows(self):
         # Its session terminal opens any live agent's session (R128).
-        with open(os.path.join(HERE, "..", "..", "..", "vscode", "extension.js")) as f:
+        with open(os.path.join(HERE, "..", "..", "..", "apps", "vscode", "extension.js")) as f:
             js = f.read()
         body = js[js.index("const AGENTS = ["):js.index("];", js.index("const AGENTS = ["))]
         rows = re.findall(r"\{ id: '(\w+)', name: '([^']+)', product: '([^']+)' \}", body)
