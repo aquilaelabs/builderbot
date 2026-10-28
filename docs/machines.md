@@ -298,6 +298,18 @@ exactly its packages and removed with them, refused while a pool or a
 share still stands; on BuilderBot OS the packages are the image's. The
 row says which of each one's tools answer.
 
+**Pools** (R162): under the disks, the own machine's ZFS pools as `zpool`
+says them (size and what is used, health, the members by layout, the last
+scrub, errors), each with Scrub, Export and Destroy (which takes the pool's
+name again); and a form for a new pool: a name, a layout (a mirror, raidz2,
+raidz1 or a single disk) and the disks it takes, each named by model, size
+and serial, those that hold something taken only with wipe ticked, and the
+whole said again before anything is written. Every press is a system job
+the machine's root agent runs from its table (`zpool` on the disks'
+`/dev/disk/by-id` links), never the controller's account; the system disk
+is never offered. Nothing here is on another node: pools are the controller's
+own machine's.
+
 **Disks** (R162): on the controller's own machine the page opens with the
 machine's disks as its agent lists them (`lsblk`, and `smartctl` where it
 is installed): each by name, model, size, serial, spinning or solid state,
