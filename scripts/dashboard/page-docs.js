@@ -941,7 +941,15 @@ function floatPlace(m, anchor){
   const ceil = Math.max(head?.height ? head.bottom : 0, area?.height ? area.top : 0);
   // At its button on a phone too (the operator, 18 Oct: a bottom sheet was
   // the bottom bar's More's, not a menu's), as wide as the screen allows.
-  const a = anchor.getBoundingClientRect(), w = Math.min(m.offsetWidth, innerWidth - 16), h = m.offsetHeight;
+  // A button under the dock or over the page's bar (the row scrolled past
+  // the pane's edge) is brought into the pane first, or the menu was a
+  // 40px strip with its items out of reach (B419).
+  let a = anchor.getBoundingClientRect();
+  if (a.bottom > foot || a.top < ceil){
+    anchor.scrollIntoView({block: "center", inline: "nearest"});
+    a = anchor.getBoundingClientRect();
+  }
+  const w = Math.min(m.offsetWidth, innerWidth - 16), h = m.offsetHeight;
   if (phone) m.style.maxWidth = `${innerWidth - 16}px`;
   // (a button the dock covers still opens its menu above the dock)
   const aTop = Math.min(a.top, foot), aBottom = Math.min(a.bottom, foot);
