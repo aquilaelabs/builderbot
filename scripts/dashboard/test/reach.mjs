@@ -25,27 +25,37 @@ await page.evaluate(() => openProfileTab());
 await page.waitForSelector('.profiletab .snav [data-spick="reach"]', { timeout: patience(20000) });
 await page.click('.profiletab .snav [data-spick="reach"]');
 await page.waitForSelector('.doc details[data-sect="profile:reach"]', { timeout: patience(20000) });
-await page.waitForFunction(() => document.querySelector('#pfReachKind'), null, { timeout: patience(15000) });
+await page.waitForFunction(() => document.querySelector('[data-reachadd="webhook"]'), null, { timeout: patience(15000) });
 await settled(page);
 ok(await page.$eval('.doc details[data-sect="profile:reach"]', d => /Nothing yet/.test(d.textContent)), 'nothing reaches you yet, said in words');
 
 // Add a webhook: the form for its kind, the fields, the kinds, Save.
-await page.selectOption('#pfReachKind', 'webhook');
+await page.click('[data-reachadd="webhook"]');
 await page.waitForSelector('[data-reachform="webhook"]', { timeout: patience(10000) });
 await page.fill('#pfReachName', 'the harness');
 await page.fill('#pfReachF_url', HOOK);
 await page.evaluate(() => { document.querySelector('[data-reachk="sync"]').checked = false; });
 await page.click('[data-reachsave]');
-await page.waitForSelector('.pfreach .row[data-reach]', { timeout: patience(15000) });
-const row = await page.$eval('.pfreach .row[data-reach]', r => r.textContent.replace(/\s+/g, ' '));
-ok(/Webhook: the harness/.test(row) && /session asking/.test(row) && !/two places/.test(row) && /never/.test(row),
+await page.waitForSelector('details[data-sect="profile:reach-webhook"] .row[data-reach]', { timeout: patience(15000) });
+const row = await page.$eval('details[data-sect="profile:reach-webhook"] .row[data-reach]', r => r.textContent.replace(/\s+/g, ' '));
+ok(/the harness/.test(row) && /session asking/.test(row) && !/two places/.test(row) && !/sent/.test(row),
    `the destination is listed with what it takes and never sent (${row.slice(0, 120)})`);
+
+// The switch (R173): off keeps the destination with its settings and says
+// so; on brings it back; more than one kind is on at once, each its own block.
+await page.evaluate(() => document.querySelector('details[data-sect="profile:reach-webhook"] [data-reachon]').click());
+await page.waitForFunction(() => /\boff\b/.test(document.querySelector('details[data-sect="profile:reach-webhook"] .row[data-reach]')?.textContent || ''), null, { timeout: patience(15000) });
+ok(await page.evaluate(() => (pfReach.dest || []).every(d => d.on === false) && pfReach.dest.length === 1), 'switched off, it stays with its settings and reads off');
+await page.evaluate(() => document.querySelector('details[data-sect="profile:reach-webhook"] [data-reachon]').click());
+await page.waitForFunction(() => (pfReach?.dest || []).some(d => d.on === true), null, { timeout: patience(15000) });
+ok(await page.$$eval('details[data-sect^="profile:reach-"]', ds => ds.length >= 8 && ds.every(d => d.querySelector('[data-reachadd]'))),
+   `every kind is a block of its own with Set up or Add another, so more than one is on at once (${await page.$$eval('details[data-sect^="profile:reach-"]', ds => ds.length)} blocks)`);
 
 // Test: a line arrives at the receiver, and the row says sent.
 await page.click('[data-reachtest]');
 const arrived = await (async () => { const end = Date.now() + patience(15000); while (Date.now() < end){ if (got.length) return got[0]; await new Promise(r => setTimeout(r, 200)); } return null; })();
 ok(!!arrived && /can reach you here/.test(arrived.body) && arrived.path === '/bell', `Test sends a line the receiver gets (${arrived ? arrived.body.slice(0, 60) : 'nothing'})`);
-await page.waitForFunction(() => /sent/.test(document.querySelector('.pfreach .row[data-reach]')?.textContent || ''), null, { timeout: patience(15000) });
+await page.waitForFunction(() => /sent/.test(document.querySelector('details[data-sect="profile:reach-webhook"] .row[data-reach]')?.textContent || ''), null, { timeout: patience(15000) });
 ok(true, 'the row says it was sent');
 
 // The secret address is kept sealed and listed on the Keys page by name only.
@@ -58,10 +68,10 @@ ok(!!mine && /the harness/.test(mine.name) && (mine.sealed === true || !sealing)
 // Remove: the row was just drawn again with its sent pill, so the press
 // goes to the button that is there now.
 await settled(page);
-await page.evaluate(() => document.querySelector('.pfreach .row[data-reach] [data-reachrm]').click());
+await page.evaluate(() => document.querySelector('details[data-sect="profile:reach-webhook"] .row[data-reach] [data-reachrm]').click());
 await page.waitForSelector('.modal.askdlg:not([hidden]) button.danger', { timeout: patience(10000) });
 await page.evaluate(() => document.querySelector('.modal.askdlg:not([hidden]) button.danger').click());
-await page.waitForFunction(() => !document.querySelector('.pfreach .row[data-reach]'), null, { timeout: patience(15000) });
+await page.waitForFunction(() => !document.querySelector('details[data-sect="profile:reach-webhook"] .row[data-reach]'), null, { timeout: patience(15000) });
 ok(true, 'Remove takes it away');
 hook.close();
 await done(browser);

@@ -329,25 +329,31 @@ async function loadReach(){
   profileRev++; drawPanes();
 }
 
-const PF_REACH_COLS = [{label: "Where"}, {label: "Takes"}, {label: "Quiet", w: "7rem"}, {label: "Last sent", w: "minmax(0,.7fr)"}, {act: true, w: "9rem"}];
 
+// One block per channel kind (R173, the operator, 28 Oct: the Add pulldown
+// hid that several can be on): each a row with its switch, its destinations
+// under it and Add for another of that kind, the form opening in place.
 function profileReach(){
   if (pfReach === null){ if (!pfReachAsked) loadReach(); return `<div class="field">${skRows(1)}</div>`; }
   if (pfReach.error) return `<div class="hint bad">${esc(pfReach.error)}</div>`;
-  const ch = pfReach.channels || {}, kinds = pfReach.kinds || [];
-  const rows = (pfReach.dest || []).map(d => `<div class="row" data-reach="${esc(d.id)}">${tblLine(PF_REACH_COLS, [
-    `${esc(ch[d.kind]?.label || d.kind)}: ${esc(d.name)}${d.on ? "" : ` <span class="dim">(off)</span>`}`,
-    esc((d.kinds || []).map(k => (kinds.find(x => x[0] === k) || [k, k])[1].replace(/^(a |an )/, "")).join(", ") || "nothing"),
-    esc(d.quiet ? `${d.quiet.from} to ${d.quiet.to}` : "none"),
-    d.last?.at ? `<span class="pill ${d.last.ok ? "ok" : "bad"}">${d.last.ok ? "sent" : "failed"}</span> ${esc(ago(d.last.at))}${d.last.why ? ` ${esc(d.last.why)}` : ""}` : "never",
-    `<button type="button" data-reachtest="${esc(d.id)}">Test</button><button type="button" class="danger" data-reachrm="${esc(d.id)}">Remove</button>`])}</div>`).join("");
-  const list = rows ? tblWrap(PF_REACH_COLS, rows, "pfreach")
-    : `<div class="hint">Nothing yet. The bell's rows reach you here as well as on the page: an ask waiting on you, what a node needs, a red CI run, an invitation, a file changed in two places.</div>`;
-  const form = pfReachForm ? profileReachForm(pfReachForm, ch, kinds) : "";
-  return `${list}${form}
-    <div class="actbar"${pfReachForm ? " hidden" : ""}><span class="sp"></span>
-      <label class="pick"><span class="pickw">Add</span><select id="pfReachKind"><option value="">a destination</option>${
-        Object.entries(ch).map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join("")}</select></label></div>`;
+  const ch = pfReach.channels || {}, kinds = pfReach.kinds || [], dests = pfReach.dest || [];
+  const blocks = Object.entries(ch).map(([k, c]) => {
+    const mine = dests.filter(d => d.kind === k), on = mine.filter(d => d.on).length;
+    const rows = mine.map(d => `<div class="row" data-reach="${esc(d.id)}"><div class="grow">
+        <div class="name">${esc(d.name)}${d.on ? "" : ` <span class="pill">off</span>`}${
+          d.last?.at ? ` <span class="pill ${d.last.ok ? "ok" : "bad"}">${d.last.ok ? "sent" : "failed"} ${esc(ago(d.last.at))}</span>` : ""}</div>
+        <div class="sub">Takes ${esc((d.kinds || []).map(x => (kinds.find(y => y[0] === x) || [x, x])[1].replace(/^(a |an )/, "")).join(", ") || "nothing")}${
+          d.quiet ? `; quiet ${esc(d.quiet.from)} to ${esc(d.quiet.to)}` : ""}${d.last?.why ? `; ${esc(d.last.why)}` : ""}</div></div>
+        <div class="acts"><label class="ndcap"><input type="checkbox" data-reachon="${esc(d.id)}"${d.on ? " checked" : ""}> on</label>
+          <button type="button" data-reachedit="${esc(d.id)}">Edit</button><button type="button" data-reachtest="${esc(d.id)}">Test</button>
+          <button type="button" class="danger" data-reachrm="${esc(d.id)}">Remove</button></div></div>`).join("");
+    const form = pfReachForm && pfReachForm.kind === k ? profileReachForm(pfReachForm, ch, kinds) : "";
+    const status = on ? `${on} on` : mine.length ? "off" : "";
+    return docSection("profile", `reach-${k}`, c.label, status, `${rows ? `<div class="rows">${rows}</div>` : ""}${form}
+      <div class="field"><div class="addbar ctlrow" data-add="reach-${esc(k)}"${form ? " hidden" : ""}><button type="button" data-reachadd="${esc(k)}">${mine.length ? `Add another ${esc(c.label)}` : `Set up ${esc(c.label)}`}</button></div></div>`,
+      {cls: on ? "ok" : "", open: !!(mine.length || form), item: true});
+  }).join("");
+  return `${dests.length ? "" : `<div class="field"><div class="hint">Nothing yet. The bell's rows reach you here as well as on the page: an ask waiting on you, what a node needs, a red CI run, an invitation, a file changed in two places. More than one can be on at once.</div></div>`}${blocks}`;
 }
 
 function profileReachForm(f, ch, kinds){
@@ -370,8 +376,17 @@ function profileReachForm(f, ch, kinds){
 }
 
 function wireReach(root){
-  const sel = root.querySelector("#pfReachKind");
-  if (sel) sel.onchange = () => { if (sel.value){ pfReachForm = {kind: sel.value}; profileRev++; drawPanes(); } };
+  root.querySelectorAll("[data-reachadd]").forEach(b => b.onclick = () => { pfReachForm = {kind: b.dataset.reachadd}; profileRev++; drawPanes(); });
+  root.querySelectorAll("[data-reachedit]").forEach(b => b.onclick = () => {
+    const d = (pfReach?.dest || []).find(x => x.id === b.dataset.reachedit);
+    if (d){ pfReachForm = {kind: d.kind, id: d.id}; profileRev++; drawPanes(); }
+  });
+  // The switch: off keeps its settings, so a kind is turned on again as it was.
+  root.querySelectorAll("[data-reachon]").forEach(i => i.onchange = async () => {
+    const r = await pfTf({action: "reach-on", id: i.dataset.reachon, on: i.checked});
+    if (r.error) notify(r.error, true);
+    loadReach();
+  });
   root.querySelectorAll("[data-reachcancel]").forEach(b => b.onclick = () => { pfReachForm = null; profileRev++; drawPanes(); });
   root.querySelectorAll("[data-reachsave]").forEach(b => b.onclick = async () => {
     const form = root.querySelector("[data-reachform]");
@@ -398,10 +413,6 @@ function wireReach(root){
     busy(b, "Removing");
     await pfTf({action: "reach-remove", id: b.dataset.reachrm});
     loadReach();
-  });
-  root.querySelectorAll("[data-reach]").forEach(row => row.ondblclick = () => {
-    const d = (pfReach?.dest || []).find(x => x.id === row.dataset.reach);
-    if (d){ pfReachForm = {kind: d.kind, id: d.id}; profileRev++; drawPanes(); }
   });
 }
 

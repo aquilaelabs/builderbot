@@ -239,21 +239,24 @@ repositories with the projects that use them, *Unlock for* with the window
 a token stays opened (a quarter of an hour, an hour, eight hours, or while
 signed in), *Lock*, and *Purge*; **Uses of your tokens** lists each time
 one was opened and for what; **Where the bell reaches you** is the places
-the bell's rows are sent as well as shown (R149): email (through the
-server under Controller settings, Mail), a webhook, or ntfy, Gotify,
-Pushover, Telegram, Discord or Slack, each with what it takes (an ask
-waiting on you, what a node or a project needs, a red CI run, an
-invitation, a file changed in two places) and a quiet window during which
-nothing is sent; a row is sent once and not again while it is unchanged,
-Test sends a line to check the way, and a token or address typed is sealed
-under the install key; and **Signed in as you**, last, is
+the bell's rows are sent as well as shown (R149): one block per kind
+(R173), email (through the server under Controller settings, Mail), a
+webhook, ntfy, Gotify, Pushover, Telegram, Discord and Slack, each with
+Set up (or Add another of that kind), its destinations under it with a
+switch each, so more than one kind is on at once and one switched off
+keeps its settings; a destination takes what you tick (an ask waiting on
+you, what a node or a project needs, a red CI run, an invitation, a file
+changed in two places) and a quiet window during which nothing is sent; a
+row is sent once and not again while it is unchanged, Test sends a line
+to check the way, and a token or address typed is sealed under the install
+key; and **Signed in as you**, last, is
 the browsers signed in as this account (a line a browser, named with its
 system and the address it came from, this one first, each with **Sign out**,
 which ends that one's sign-in) and the devices (a line a device, with when it
 last called and **Disconnect**, which signs that one out). A browser's
 sign-in is bound to the browser it was made in: its cookie presented from
 another is refused, so one copied off a device opens nothing elsewhere. The plugins and MCP servers a person added to each coding agent
-are on the Agents page, per agent on each node.
+are on the Installed page, per agent on each node.
 
 ### Two-factor sign-in
 

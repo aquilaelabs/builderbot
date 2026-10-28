@@ -193,6 +193,10 @@ def verb(me, act, req, origin=""):
         if not r.get("error") and audit:
             audit(f"user:{me['name']}", "reach-set", r["dest"]["kind"], {})
         return r, (400 if r.get("error") else 200), None
+    if act == "reach-on":
+        # R173: a destination switched off or on, its settings kept.
+        r = reach.set_on(me.get("uid") or "", str(req.get("id") or ""), req.get("on") is True)
+        return r, (400 if r.get("error") else 200), None
     if act == "reach-remove":
         r = reach.remove(me.get("uid") or "", field(req, "id"))
         return r, (400 if r.get("error") else 200), None
