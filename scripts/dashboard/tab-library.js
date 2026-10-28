@@ -85,7 +85,12 @@ async function loadLibrary(){
   // The lines the Toolchains and Agents pages draw read their own page's
   // state: the node's sandbox flag (Install them now on a system line) and
   // this person's plugins and MCP servers there (an agent's Yours).
-  if (!lib.error){ tcSandboxNow = !!lib.sandbox; agYours = lib.yours || {plugins: [], mcp: {}}; }
+  if (!lib.error){
+    tcSandboxNow = !!lib.sandbox; agYours = lib.yours || {plugins: [], mcp: {}};
+    // ...and tcAct refuses a second job by the Toolchains page's record of
+    // the one running, which this read keeps current for it.
+    if (toolchains && !toolchains.nonode && !toolchains.error) toolchains.job = lib.job; else toolchains = {name: lib.name, job: lib.job, items: []};
+  }
   // One follow-up while a job writes a row, not a poll: the toolchains
   // revision moves when the job ends, and the row's "installing" until then.
   clearTimeout(libFollow); libFollow = null;
@@ -118,6 +123,14 @@ function libState(r){
   if (r.kind === "app") return w("");
   if (r.kind === "companion") return r.download ? w(esc(r.version ? `held, ${r.version}` : "held")) : w(esc(r.absent ? `not in ${r.absent}` : "not fetched yet"), "warn");
   if (r.wrong_platform) return w(esc(r.wrong_platform), "warn");
+  if (r.machine){
+    const m = r.machine, st = m.state;
+    if (!m.managed) return w("installed by hand on this machine", "");
+    if (r.name === "nvidia-driver") return st === "absent" ? w("") : st === "loaded" ? w("running the card", "ok")
+      : w(st === "nocard" ? "installed, no card now" : st === "leaving" ? "removed, until a restart" : m.newer ? "update available" : "installed, takes the card at a restart", "warn");
+    return st === "absent" ? w("") : st === "ready" ? w(m.driver_loaded ? "ready" : "installed, needs the driver running", m.driver_loaded ? "ok" : "warn")
+      : w(st === "nocard" ? "installed, no card now" : "installed, Docker not configured", "warn");
+  }
   if (r.installed) return w(r.update ? "update available" : "installed", r.update ? "warn" : "ok");
   if (r.unknown) return w("installed, version unknown");
   return w("");
@@ -135,10 +148,27 @@ function libActs(r, may){
   if (r.kind === "app") return `${may.apps ? a("install", "Install", "primary") : ""}${r.tier === "sideloaded" && may.packs ? a("edit", "Edit") : ""}`;
   if (!may.install || !n) return "";
   if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install");
+  if (r.machine && !r.machine.managed) return "";
   const verb = r.update ? a("install", "Update", "primary") : r.installed ? "" : a("install", "Install", r.kind === "agent" && r.agent === "claude" ? "primary" : "");
   const edit = r.kind === "pack" && r.pack ? a("edit", "Edit") : "";
   const rm = r.installed && r.kind !== "pack" ? a("remove", "Remove", "danger") : r.kind === "pack" && r.pack ? a("remove", "Remove", "danger") : "";
   return `${verb}${edit}${rm}`;
+}
+
+// The driver's version on its card (R102, the operator 6 Oct: the branch
+// is picked before Install), as the Toolchains page's row had it: the
+// recommended one first, the rest by version, dead once one is installed.
+function libDriverPick(m){
+  const opts = m.options || [];
+  if (!opts.length || m.state === "nocard" || !m.managed) return "";
+  const picked = m.here ? m.package : (opts.some(o => o.pkg === tcDriverPick) ? tcDriverPick : "");
+  return `<label class="pick libdrvpick">Version <select id="libDrvSel" aria-label="driver version"${m.here || !lib?.may?.install ? " disabled" : ""}${
+      m.here ? ` title="installed: remove it first to install another version"` : ""}>
+      ${m.here ? "" : `<option value=""${picked ? "" : " selected"}>${esc(m.recommended
+          ? tcDriverOption(opts.find(o => o.pkg === m.recommended) || {pkg: m.recommended, version: "recommended"}, m)
+          : "the one recommended for this card")}</option>`}
+      ${opts.filter(o => m.here || o.pkg !== m.recommended).map(o => `<option value="${esc(o.pkg)}"${o.pkg === picked ? " selected" : ""}>${esc(tcDriverOption(o, m))}</option>`).join("")}
+    </select></label>`;
 }
 
 // The whole description, on the open row (rows-you-open): what it fetches
@@ -149,6 +179,14 @@ function libDetail(r){
   const lines = [];
   if (r.platforms?.length) lines.push(`<span class="sub">Platforms: ${esc(r.platforms.join(", "))}</span>`);
   const key = `${r.kind}:${r.name}`;
+  if (r.machine){
+    // The machine's own rows say their state in the words the Toolchains
+    // page gave them (tcDriverLine, tcToolkitLine), and whose the machine is.
+    lines.push(r.name === TC_DRIVER ? tcDriverLine(r.machine) : tcToolkitLine(r.machine));
+    if (!r.machine.managed) lines.push(`<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: ${r.name === TC_DRIVER ? "its driver" : "the toolkit"} is installed there by hand.</span>`);
+    if (r.machine.settling) lines.push(`<span class="sub">The node is reporting what the last job left<span class="dots"></span></span>`);
+    return lines.filter(Boolean).join("");
+  }
   if (r.kind === "toolchain" || r.kind === "pack"){
     // The Toolchains page's open row, line for line: what it adds to a
     // session, its terms, its system packages, what it needs, where it
@@ -219,6 +257,7 @@ function libRow(r, may){
     <div class="lchead"><span class="lcicon">${(LIB_ICONS[r.kind] || LIB_ICONS.toolchain)()}</span>
       <div class="lctitle"><div class="name">${esc(r.label)}</div><div class="lcmeta">${libPills(r)}</div></div></div>
     <div class="lcabout">${esc(r.about)}</div>
+    ${r.machine && r.name === TC_DRIVER ? libDriverPick(r.machine) : ""}
     <div class="ldetail">${open ? libDetail(r) : ""}</div>${err}
     <div class="pcacts actbar">${libState(r)}<button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button>${libActs(r, may)}</div>
   </div>`;
@@ -281,9 +320,16 @@ function renderLibraryInto(i){
   }
   const may = lib.may || {};
   const job = lib.job || {}, busy = !!job.running;
+  const node = pnodes.find(x => x.id === libNode) || {};
+  const stale = nodeStale(node), pro = node.reported?.store_ro === true;
+  const clean = may.install && !pro ? (lib.cleanable || []) : [];
   d.setBar(nodeBar(nodePick("libNodeSel", pnodes, libNode), may.install
-    ? `<button type="button" data-libcheck${busy ? " disabled" : ""}>${barSaid("Check for updates", "Check")}</button>${
-        may.packs ? `<button type="button" class="primary" data-libadd>${barSaid("Add your own", "Add")}</button>` : ""}` : ""));
+    ? `${busy ? abortBtn('data-libabort', job.aborting) : ""}
+       <button type="button" data-libcheck${busy || stale ? " disabled" : ""} title="ask each upstream what it has now">${
+         busy && job.action === "check" ? `${barSaid("Checking for updates", "Checking")}<span class="dots"></span>`
+         : (lib.rows || []).some(r => r.latest) ? barSaid("Re-check for updates", "Re-check") : barSaid("Check for updates", "Check")}</button>${
+        may.packs ? `<button type="button" class="primary" data-libadd>${barSaid("Add your own", "Add")}</button>` : ""}${
+        clean.length ? `<button type="button" class="danger" data-libclean${busy ? " disabled" : ""}>Remove</button>` : ""}` : ""));
   if (lib.error){
     paint(d.list, `<div class="field"><div class="notice bad">${esc("could not read the library: " + lib.error)}</div></div>`);
     return;
@@ -296,8 +342,20 @@ function renderLibraryInto(i){
     ["Installed", `${inst} of ${all.filter(r => r.kind !== "app" && r.kind !== "companion").length}`],
     ["Updates due", due ? String(due) : ""],
     ["Store", lib.store?.root ? `${lib.store.root}${free ? ", " + free : ""}` : ""],
+    ["Versions checked", lib.store?.checked ? ago(lib.store.checked) : ""],
+    ["Remove takes", clean.length ? clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ") : "", {html: true}],
   ]});
-  paint(d.list, `<div data-libnode="${esc(libNode)}">${head}${libFilterBand(all)}<div class="field libgroups">${libSections(rows, may)}</div></div>`);
+  // What the Toolchains page said over its rows (step 5): a node that has
+  // not reported, a store it cannot write, and the system packages its
+  // held recipes lack, with the one press that installs them.
+  const unmet = Object.entries(lib.sysdeps?.unmet || {});
+  const notes = `${stale ? `<div class="field"><div class="notice warn libstale">${esc(staleWhy(node))}. Nothing installs here until it is.</div></div>` : ""}${
+    pro ? `<div class="field"><div class="notice warn libro">${esc(lib.name || "This node")}'s toolchain store is read-only to it, so nothing installs here: what is in it is what it has. Make it writable on the machine to install.</div></div>` : ""}${
+    unmet.length ? `<div class="field"><div class="notice warn libsys">System packages ${esc(lib.name || "this node")} lacks for what its store holds (${esc(lib.sysdeps.family || "")}): ${
+      unmet.map(([r, ps]) => `${esc(r)}: ${esc(ps.join(" "))}`).join("; ")}. ${lib.sandbox && may.install
+        ? `<button type="button" data-libsysdeps${busy || stale ? " disabled" : ""} title="install these on ${esc(lib.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
+        : "This node's owner installs them: the agent does not administer the machine."}</div></div>` : ""}`;
+  paint(d.list, `<div data-libnode="${esc(libNode)}">${notes}${head}${libFilterBand(all)}<div class="field libgroups">${libSections(rows, may)}</div></div>`);
   wireLibrary(d.el);
 }
 
@@ -323,6 +381,21 @@ function wireLibrary(root){
   });
   const chk = root.querySelector("[data-libcheck]");
   if (chk) chk.onclick = () => pressing(chk, async () => { busy(chk, "Checking"); await tcAct("check"); await loadLibrary(); });
+  const ab = root.querySelector("[data-libabort]");
+  if (ab) ab.onclick = async () => { await tcAct("abort"); loadLibrary(); };
+  const sd = root.querySelector("[data-libsysdeps]");
+  if (sd) sd.onclick = () => pressing(sd, async () => { busy(sd, "Installing"); await tcAct("sysdeps"); await loadLibrary(); });
+  const cl = root.querySelector("[data-libclean]");
+  if (cl) cl.onclick = async () => {
+    const dirs = (lib?.cleanable || []).map(c => c.dir);
+    if (!dirs.length || !await askYes(`Take ${dirs.join(", ")} off the store?\n\nNo node runs from ${dirs.length === 1 ? "it" : "them"}; what is in ${dirs.length === 1 ? "it" : "them"} is gone for good.`, {verb: "Remove", danger: true})) return;
+    busy(cl, "Removing");
+    const j = await (await postJSON("/api/toolchains", {action: "clean", node: libNode, names: dirs})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    loadLibrary();
+  };
+  const dsel = root.querySelector("#libDrvSel");
+  if (dsel) dsel.onchange = () => { tcDriverPick = dsel.value; };
   const add = root.querySelector("[data-libadd]");
   if (add) add.onclick = () => libWithToolchains(() => tpOpen(""));
   root.querySelectorAll("[data-libact]").forEach(b => b.onclick = () => libAct(b, b.dataset.libact, b.dataset.libkind, b.dataset.libname));
@@ -339,8 +412,8 @@ async function libLook(key){
   const r = (lib?.rows || []).find(x => `${x.kind}:${x.name}` === key);
   if (!r || libSeen[key] === "looking") return;
   libSeen[key] = "looking"; libRev++; drawPanes();
-  const body = r.catalog ? {action: "preview", url: r.catalog.url, commit: r.catalog.commit, sha256: r.catalog.sha256}
-    : {action: "preview", url: r.pack.url, commit: r.pack.commit};
+  const body = r.catalog ? {action: "preview", url: r.catalog.url, commit: r.catalog.commit, sha256: r.catalog.sha256, path: r.catalog.path || ""}
+    : {action: "preview", url: r.pack.url, commit: r.pack.commit, path: r.pack.path || ""};
   const j = await (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
   libSeen[key] = j;
   libRev++; drawPanes();

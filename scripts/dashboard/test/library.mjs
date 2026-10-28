@@ -134,6 +134,24 @@ if (await page.$('.doc .librarytab [data-libkind="app"][data-libact="install"]')
   await page.evaluate(() => { $('cmodal').hidden = true; });
 }
 
+// ---- the bar's Check for updates (step 5) ------------------------------------
+// The check is the Toolchains job's: the bar says it is checking while it
+// runs, and the head says when versions were last checked once it ends.
+{
+  await page.click('.doc .librarytab [data-libcheck]');
+  await page.waitForFunction(() => lib?.job?.action === 'check' && !lib.job.running, null, { timeout: 60000 });
+  ok(await page.$eval('.doc .librarytab [data-libcheck]', b => !b.disabled && /check/i.test(b.textContent)),
+     'Check for updates runs the check job on the node and the bar comes back');
+  // The stub's check leaves no time on the node's record, so the fact is
+  // drawn only where the node has one; a fact with nothing to say is left out.
+  // ...drawn on the paint after the read lands, so waited for rather than read at once.
+  const when = await page.waitForFunction(() => {
+    const said = /Versions checked/.test(document.querySelector('.doc .librarytab .pghead')?.textContent || '');
+    return said === !!(lib.store?.checked) ? {checked: lib.store?.checked || 0, said} : null;
+  }, null, { timeout: 10000 }).then(h => h.jsonValue());
+  ok(when.said === !!when.checked, `...and the head says when versions were checked only once the node has a time (${when.checked ? 'said' : 'none yet, not drawn'})`);
+}
+
 // ---- Add your own: an app of the person's own (step 3) -----------------------
 // The bar's Add your own opens one dialog for a tool pack or an app; an app
 // is a compose file with the known blanks, looked at before it is kept,

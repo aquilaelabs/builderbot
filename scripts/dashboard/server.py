@@ -10918,12 +10918,12 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "preview":
             # From the catalog (R169 step 4): at the commit it pins, the
             # archive's sha256 checked too.
-            r = toolpacks.fetch(field(req, "url"), field(req, "commit"), shipped=shipped, sha256=field(req, "sha256"))
+            r = toolpacks.fetch(field(req, "url"), field(req, "commit"), shipped=shipped, sha256=field(req, "sha256"), path=field(req, "path"))
         elif action == "add" and field(req, "staged"):
             r = toolpacks.add_staged(field(req, "staged"), by, shipped)
         elif action == "add":
             r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped, sha256=field(req, "sha256"),
-                              tier="vetted" if field(req, "sha256") else "url")
+                              tier="vetted" if field(req, "sha256") else "url", path=field(req, "path"))
         elif action == "source":
             r = toolpacks.source(field(req, "name"))
         elif action == "where":
@@ -11296,7 +11296,8 @@ class Handler(BaseHTTPRequestHandler):
                            "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view()),
                            "job": tc.get("job") or {"running": False}, "catalog_error": cat.get("error", ""),
                            "may": {"install": may_install, "apps": may_apps, "packs": users.is_admin(who)},
-                           "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb")},
+                           "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb"), "checked": tc.get("checked") or 0},
+                           "sysdeps": tc.get("sysdeps") or {}, "cleanable": tc.get("cleanable") or [], "locked": bool(tc.get("locked")),
                            "sandbox": bool(tc.get("sandbox")), "managed": bool(tc.get("administers")) and not tc.get("locked"),
                            "catalog_repo": library.repo_of(settings.get("catalog_url") or ""),
                            "yours": {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}})

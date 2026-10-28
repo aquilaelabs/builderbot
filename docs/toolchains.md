@@ -14,7 +14,7 @@ emulator, and a phone lent to a project.
 The image carries no toolchain beyond node, python and the Playwright
 module. Everything a build needs: the JDK, the Android SDK, the emulator,
 Flutter, .NET: is a recipe installed into a **node's toolchain store**, from
-the Toolchains page with that node picked; the page lists nodes and nothing else,
+the Library with that node picked; the page lists nodes and nothing else,
 and with none enrolled it says so. The controller's own store: the SDK
 share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`): holds
 only what its boot keeps for `bb capture shot`, the Playwright browsers; nothing is
@@ -66,12 +66,12 @@ an image exists at every level in several flavors under names only
 Google's index knows (API 37 is `android-37.0`).
 
 **The NVIDIA driver is the machine's, not the store's.** On a node whose
-census names an NVIDIA card, the Toolchains page shows the driver as a row of
-its own above the store's. It behaves as the other rows do: a tick box, so
-it goes into Install selected with whatever else is ticked (last, since it
-ends at a restart), a bin to remove it, and **Check for updates** reads
-apt's lists again on the node, so the row says when a newer version of the
-installed branch is there to tick. It is not a recipe, though: the kernel
+census names an NVIDIA card, the Library shows the driver as a card of its
+own among the toolchains, with the container toolkit's beside it. It
+behaves as the other cards do: Install on the card (its version picked on
+the card first), Remove on it once it is there, and **Check for updates**
+reads apt's lists again on the node, so the card says when a newer version
+of the installed branch is there. It is not a recipe, though: the kernel
 module is built for that machine's kernel and the libraries must match it,
 so it is installed as root on that node alone, through `bb-sandbox
 gpu-driver`, and it takes the card only when the machine restarts, since
