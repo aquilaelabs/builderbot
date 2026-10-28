@@ -378,6 +378,17 @@ A cloud store (restic or rclone to S3 or B2) is not here yet: a share on
 another machine mounted under Other disks and shares is the way off the
 box today.
 
+**Pools by purpose** (R162): there is no cache tier and no mover. A
+pool of solid-state disks holds the hot data and the array the shares,
+media and backups, and a share names the one place it lives on when it is
+made (the pool or the array, picked on the form, its folder under it),
+nothing moved behind a person's back; writes go to that place at its
+speed, the array's parity being periodic. A pool of one disk has no
+redundancy, so where the array stands the Backups section offers one press
+that backs it up to the array nightly (seven runs kept), and a dead disk is
+restored from last night's run. A special vdev or a SLOG on a single disk
+is never offered: losing one loses the pool.
+
 **People on shares** (R164): an SMB share's users are BuilderBot's own
 accounts, named on the share by account name (each becomes its own Unix
 user on the machine, `bbu-` and the account's id, made when first named)
