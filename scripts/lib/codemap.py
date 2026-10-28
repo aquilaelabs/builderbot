@@ -2031,11 +2031,14 @@ def env_reads(root, files, fresh):
             text = (Path(root) / rel).read_text(errors="replace")
         except OSError:
             continue
-        calls = [c for c in files[rel]["calls"] if c.get("qual") != "env"]
+        # Only the rows this pass wrote go: a python call on a variable
+        # named env (env.update(...)) is qualified "env" too, and the map
+        # has to keep it (B406).
+        calls = [c for c in files[rel]["calls"] if not (c.get("qual") == "env" and c.get("setting"))]
         for n, line in enumerate(text.splitlines(), 1):
             for name in {m.group(1) for m in _ENV_READ.finditer(line)}:
                 if name in names:
-                    calls.append({"name": name, "qual": "env", "file": rel, "line": n, "caller": ""})
+                    calls.append({"name": name, "qual": "env", "file": rel, "line": n, "caller": "", "setting": True})
         files[rel]["calls"] = calls
 
 
