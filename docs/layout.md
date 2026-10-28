@@ -313,6 +313,7 @@ scripts/
     configplane.py               the configuration plane: the node's system, storage and network, as root
     osimage.py                   BuilderBot OS on the machine (R160 step 4): the image, its slot and the next boot's for the census, and the os-update job that writes the other slot
     disks.py                     the machine's disks for the census (R162 step 1): lsblk's JSON and smartctl's, each whole disk with what its partitions hold
+    pools.py                     the machine's ZFS pools for the census and the storage-pool job (R162 step 1): made, grown, scrubbed, a member replaced, exported, destroyed, each disk held to the census
     agent.py                     Agent: hello, the loop and self-update, made of the parts above
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only

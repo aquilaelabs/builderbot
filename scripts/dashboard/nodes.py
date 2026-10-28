@@ -1447,6 +1447,22 @@ def _census(c):
                                                              ("temp_c", int(sm["temp_c"]) if isinstance(sm.get("temp_c"), int) else None),
                                                              ("hours", int(sm["hours"]) if isinstance(sm.get("hours"), int) else None))
                                            if v is not None}})
+    # ...and its ZFS pools (R162 step 1): name, sizes, health, the members
+    # by layout, the last scrub and the errors line, each to its shape.
+    if isinstance(c.get("pools"), list):
+        pw = lambda v, n: re.sub(r"[^\w .,:;/()'@+-]", "", str(v or ""))[:n]  # noqa: E731
+        out["pools"] = []
+        for pl in c["pools"][:32]:
+            if not isinstance(pl, dict) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", str(pl.get("name") or "")):
+                continue
+            out["pools"].append({"name": pl["name"],
+                                 **{k: int(pl[k]) if isinstance(pl.get(k), int) else 0 for k in ("size_mb", "alloc_mb", "free_mb")},
+                                 "health": pw(pl.get("health"), 16), "mount": pw(pl.get("mount"), 120),
+                                 "scrub": pw(pl.get("scrub"), 160), "errors": pw(pl.get("errors"), 120),
+                                 "vdevs": [{"type": pw(v.get("type"), 12), "state": pw(v.get("state"), 12),
+                                            "disks": [{"id": pw(d.get("id"), 120), "state": pw(d.get("state"), 12)}
+                                                      for d in (v.get("disks") or [])[:64] if isinstance(d, dict)]}
+                                           for v in (pl.get("vdevs") or [])[:32] if isinstance(v, dict)]})
     # The machine's time zone (R161 step 3), a name under zoneinfo.
     if isinstance(c.get("timezone"), str):
         out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
@@ -3042,6 +3058,69 @@ def node_feature(principal, node_id, fid, op):
     return r
 
 
+POOL_ACTIONS = ("create", "add", "scrub", "replace", "export", "destroy")
+POOL_LAYOUTS = {"single": 1, "mirror": 2, "raidz1": 3, "raidz2": 4}
+
+
+def node_storage_pool(principal, node_id, req):
+    """A ZFS pool on the controller's own machine (R162 step 1): a system
+    job on its node, whose root agent runs zpool from its table with each
+    argument checked here first and again there; the disks named must be
+    ones the machine's census lists and none the system's. Refused anywhere
+    else, and without the storage feature's zpool."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "pools are made on the controller's own machine (the installed edition's Storage page); another node's disks are its own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot make a pool"}
+    if not ((rep.get("features") or {}).get("storage") or {}).get("zfs"):
+        return {"error": "no zpool on the machine yet: install Storage on its Features section first"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    action = str(req.get("pool") or "")
+    name = str(req.get("name") or "").strip()
+    if action not in POOL_ACTIONS:
+        return {"error": f"a pool action is one of {', '.join(POOL_ACTIONS)}"}
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", name):
+        return {"error": "a pool's name is a letter, then letters, digits, hyphens and underscores, 31 at most"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    known = {d["name"]: d for d in rep.get("disks") or [] if isinstance(d, dict)}
+    cfg = {"pool": action, "name": name}
+    if action in ("create", "add"):
+        layout = str(req.get("layout") or "single")
+        disks = [str(x) for x in (req.get("disks") or []) if isinstance(x, str)]
+        if layout not in POOL_LAYOUTS:
+            return {"error": f"a layout is one of {', '.join(POOL_LAYOUTS)}"}
+        if len(disks) < POOL_LAYOUTS[layout] or len(set(disks)) != len(disks):
+            return {"error": f"a {layout} takes {POOL_LAYOUTS[layout]} disk(s) at least, each once"}
+        for d in disks:
+            if d not in known:
+                return {"error": f"{d} is not a disk {n['name']} lists"}
+            if known[d].get("system"):
+                return {"error": f"{d} is the system disk, which never goes into a pool"}
+        cfg.update(layout=layout, disks=disks, wipe=req.get("wipe") is True)
+    elif action == "replace":
+        old, new = str(req.get("old") or "")[:120], str(req.get("new") or "")
+        if not old or new not in known or known[new].get("system"):
+            return {"error": "replace takes the member to replace and a disk the machine lists that is not the system's"}
+        cfg.update(old=old, new=new, wipe=req.get("wipe") is True)
+    elif action == "destroy":
+        if str(req.get("confirm") or "") != name:
+            return {"error": "destroying a pool takes its name typed again"}
+        cfg["confirm"] = name
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-pool", "config": cfg, "timeout": 900})
+    if r.get("ok"):
+        audit(principal, "storage-pool", node_id, {"job": r["job"], **cfg})
+    return r
+
+
 def node_machine(principal, node_id, hostname="", timezone=""):
     """The controller's own machine's name and time zone (R161 step 3, R56
     step 8): a system job on its node, whose root agent sets them through
@@ -3060,8 +3139,8 @@ def node_machine(principal, node_id, hostname="", timezone=""):
         return {"error": why}
     if not n.get("live"):
         return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
-    if system_job_for(node_id):
-        return {"error": "a system job is already in flight on this node; one at a time"}
+    # The shapes before the queue: a name that is not one is told so
+    # without a job in the way.
     host = str(hostname or "").strip().lower()
     tz = str(timezone or "").strip()
     if host and not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", host):
@@ -3070,6 +3149,8 @@ def node_machine(principal, node_id, hostname="", timezone=""):
         return {"error": "a time zone is named as Region/City"}
     if not host and not tz:
         return {"error": "nothing to set"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
     cfg = {k: v for k, v in (("hostname", host), ("timezone", tz)) if v}
     r = job_add(principal, {"node": node_id}, "system", {"apply": "machine", "config": cfg, "timeout": 120})
     if r.get("ok"):
@@ -6123,6 +6204,7 @@ def verb(principal, req):
              "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
              "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
              "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone")),
+             "storage-pool": lambda: node_storage_pool(principal, nid, req),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,
