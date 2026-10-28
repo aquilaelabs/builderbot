@@ -1458,6 +1458,7 @@ def _census(c):
             nfs = sh.get("nfs") if isinstance(sh.get("nfs"), dict) else {}
             out["shares"].append({"name": sh["name"], "path": sw(sh.get("path"), 200),
                                   "smb": {"on": smb.get("on") is True, "guest": smb.get("guest") is True, "ro": smb.get("ro") is True,
+                                          "tm": smb.get("tm") is True,
                                           "users": [sw(u, 32) for u in (smb.get("users") or [])[:64] if isinstance(u, str)]},
                                   "nfs": {"on": nfs.get("on") is True, "ro": nfs.get("ro") is True,
                                           "clients": [sw(c, 80) for c in (nfs.get("clients") or [])[:64] if isinstance(c, str)]}})
@@ -2158,6 +2159,10 @@ def token_seal_on(nid):
 # made from the install key (tokenkeys.py). nid -> {uid: hex}, or {} where
 # the controller has no install key and so cannot ever open a seal.
 token_pubs = None
+# The accounts' SMB passwords for the controller's own machine (R164 step
+# 1): users.smb_users, and the resolver of a share's names (users.smb_resolve).
+smb_users = None
+smb_resolve = None
 # ...and how many of a node's seals are under a key before today's.
 token_stale = None
 # ...and whether there is an install key to make any of it from.
@@ -3176,6 +3181,11 @@ def node_storage_share(principal, node_id, req):
         if nfs.get("on") and not sh.get("nfs"):
             return {"error": "no NFS server on the machine yet: install Shares on its Features section first"}
         users = [str(u).strip() for u in (smb.get("users") or []) if isinstance(u, str) and str(u).strip()]
+        # An account's name or role:NAME to the Unix users Samba is told (R164 step 1).
+        if smb_resolve and users:
+            users, why = smb_resolve(users)
+            if why:
+                return {"error": why}
         clients = [str(c).strip() for c in (nfs.get("clients") or []) if isinstance(c, str) and str(c).strip()]
         if smb.get("on") and not smb.get("guest") and not users:
             return {"error": "an SMB share takes the users who may reach it, or everybody as a guest"}
@@ -3187,7 +3197,7 @@ def node_storage_share(principal, node_id, req):
         for c in clients:
             if not re.fullmatch(r"[A-Za-z0-9*][A-Za-z0-9*./:_-]{0,80}", c):
                 return {"error": f"{c!r} is not a client (an address, a network like 192.168.1.0/24, a name, or *)"}
-        cfg.update(path=path, smb={"on": bool(smb.get("on")), "guest": bool(smb.get("guest")), "ro": bool(smb.get("ro")), "users": users[:64]},
+        cfg.update(path=path, smb={"on": bool(smb.get("on")), "guest": bool(smb.get("guest")), "ro": bool(smb.get("ro")), "tm": smb.get("tm") is True, "users": users[:64]},
                    nfs={"on": bool(nfs.get("on")), "ro": bool(nfs.get("ro")), "clients": clients[:64]})
     why = node_locked(n)
     if why:
@@ -3200,6 +3210,26 @@ def node_storage_share(principal, node_id, req):
     if r.get("ok"):
         audit(principal, "storage-share", node_id, {"job": r["job"], **cfg})
     return r
+
+
+def smb_shares_for(uid):
+    """The SMB shares on the controller's own machine a person reaches (R164
+    step 1), for Profile: {host, address, rows: [{name, ro, guest, tm}]} with
+    the address to map each by, or None where no own machine serves any."""
+    me = "bbu-" + uid[2:] if re.fullmatch(r"u_[0-9a-f]{8}", str(uid or "")) else ""
+    for n in node_list():
+        if not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        if not ((rep.get("features") or {}).get("shares") or {}).get("smb"):
+            return None
+        rows = [{"name": sh["name"], "ro": bool(sh["smb"].get("ro")), "guest": bool(sh["smb"].get("guest")), "tm": bool(sh["smb"].get("tm"))}
+                for sh in rep.get("shares") or [] if isinstance(sh, dict) and (sh.get("smb") or {}).get("on")
+                and (sh["smb"].get("guest") or (me and me in (sh["smb"].get("users") or [])))]
+        addrs = ((rep.get("network") or {}).get("addresses") or [])
+        return {"host": str(rep.get("hostname") or n.get("name") or ""), "address": str(addrs[0]).split("/")[0] if addrs else "",
+                "rows": rows}
+    return None
 
 
 POOL_ACTIONS = ("create", "add", "scrub", "replace", "export", "destroy")
@@ -3999,6 +4029,10 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             "ports_local": ports_local_on(nid),
             # Each account a Unix user of its own there (R125).
             "account_users": account_users_on(nid),
+            # ...and, on the controller's own machine, the accounts' SMB
+            # passwords as Samba keeps them (R164 step 1): its agent imports
+            # them and removes the ones gone.
+            "smb_users": (smb_users() if smb_users and own_machine(n) else []),
             # ...and its coding agents' sign-ins sealed there (R126), with
             # each account's public key to seal them with.
             "token_seal": token_seal_on(nid),

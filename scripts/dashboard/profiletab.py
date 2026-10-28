@@ -26,6 +26,9 @@ audit = None             # db.audit
 two_factor_required = None   # account -> whether a role of it requires a second factor
 
 
+smb_shares = None
+
+
 def configure(**deps):
     globals().update(deps)
 
@@ -71,6 +74,11 @@ def view(me):
             "signins": logins.rows(uid, me.get("lid") or "") if logins else [],
             # Its second factors (R127), never a secret, and whether a role
             # of it requires one.
+            # The SMB shares on the controller's own machine this person
+            # reaches (R164 step 1), and whether an SMB password is set;
+            # left out where no own machine serves shares.
+            "smb": ({"set": bool(acct.get("smb_nt")), "at": int(acct.get("smb_at") or 0), **sh}
+                    if (sh := (smb_shares(uid) if smb_shares else None)) is not None else None),
             "two_factor": mfa.summary(uid) if mfa else {"on": False},
             "two_factor_required": bool(two_factor_required and two_factor_required(acct))}, 200
 
@@ -148,6 +156,13 @@ def verb(me, act, req, origin=""):
     if act == "password":
         r = users.change_password(me["name"], str(req.get("current") or ""),
                                   str(req.get("password") or ""))
+        return r, (400 if r.get("error") else 200), None
+    if act == "smb-password":
+        # Set or cleared (R164 step 1); the own machine's agent takes it up
+        # at its next hello, a minute at most.
+        r = users.set_smb_password(me["name"], str(req.get("password") or ""))
+        if r.get("ok") and audit:
+            audit(me["name"], "smb-password", me["name"], {"set": r["set"]})
         return r, (400 if r.get("error") else 200), None
     if act == "save":
         r = users.profile_set(me["name"], req.get("profile") or {})

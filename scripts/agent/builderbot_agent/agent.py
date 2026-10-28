@@ -329,6 +329,10 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 self.account_users_pass()
                 self.refresh_session_tool()
                 self.session_renew()
+            # The accounts' SMB passwords on the controller's own machine
+            # (R164 step 1), imported into Samba once per change.
+            if isinstance(r.get("smb_users"), list):
+                self.smb_users_want(r["smb_users"])
             # The coding agents' sign-ins sealed (R126): the controller's
             # switch, and each account's public key here, kept in node.json.
             ts, pubs = bool(r.get("token_seal")), r.get("token_pubs") if isinstance(r.get("token_pubs"), dict) else {}

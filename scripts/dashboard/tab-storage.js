@@ -200,16 +200,18 @@ function storageShares(n){
   const shares = n.shares || [];
   const rows = shares.map(s => `<div class="row stack2 stshare" data-share="${esc(s.name)}"><div class="grow">
       <div class="name">${esc(s.name)} <code>${esc(s.path)}</code></div>
-      ${s.smb?.on ? `<div class="sub">SMB${s.smb.ro ? ", read-only" : ""}: ${s.smb.guest ? "everybody, as a guest" : (s.smb.users || []).map(esc).join(", ") || "nobody yet"} · \\\\${esc(n.name)}\\${esc(s.name)}</div>` : ""}
+      ${s.smb?.on ? `<div class="sub">SMB${s.smb.ro ? ", read-only" : ""}${s.smb.tm ? ", a Time Machine target" : ""}: ${s.smb.guest ? "everybody, as a guest" : (s.accounts || s.smb.users || []).map(esc).join(", ") || "nobody yet"} · \\\\${esc(n.name)}\\${esc(s.name)}</div>` : ""}
       ${s.nfs?.on ? `<div class="sub">NFS${s.nfs.ro ? ", read-only" : ""}: ${(s.nfs.clients || []).map(esc).join(", ")} · ${esc(n.name)}:${esc(s.path)}</div>` : ""}
       </div>${admin && !why ? `<span class="acts"><button type="button" class="danger" data-stshare="remove" data-name="${esc(s.name)}">Remove</button></span>` : ""}</div>`).join("");
   const mounts = (n.pools || []).map(p => p.mount).filter(Boolean);
-  const form = !admin || why ? "" : `<div class="field stnewshare"><div class="hint">New share: a name, a folder on a pool${mounts.length ? ` (${mounts.map(esc).join(", ")})` : ""}, and who reaches it over SMB, NFS or both.</div>
+  const form = !admin || why ? "" : `<div class="field stnewshare"><div class="hint">New share: a name, a folder on a pool${mounts.length ? ` (${mounts.map(esc).join(", ")})` : ""}, and who reaches it over SMB, NFS or both. A person reaches an SMB share with their account's name and the SMB password they set on Profile; a role names everybody holding it now.</div>
       <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" id="stShareName" placeholder="media" maxlength="63" autocomplete="off" spellcheck="false"></label></div>
       <div class="field"><label class="pick"><span class="pickw">Folder</span><input type="text" id="stSharePath" placeholder="${esc(mounts[0] ? mounts[0] + "/media" : "/mnt/tank/media")}" autocomplete="off" spellcheck="false"></label></div>
       <div class="field"><label class="ndcap"><input type="checkbox" id="stShareSmb" checked> SMB (Windows, a Mac, a phone)</label>
         <label class="ndcap"><input type="checkbox" id="stShareGuest"> everybody as a guest, no password</label>
-        <label class="pick"><span class="pickw">Users</span><input type="text" id="stShareUsers" placeholder="the machine's users who may reach it, separated by spaces" autocomplete="off" spellcheck="false"></label></div>
+        ${(n.accounts || []).length || (n.roles || []).length ? `<div class="lbox" id="stShareWho">${(n.roles || []).map(r => `<label class="ndcap"><input type="checkbox" data-stsharewho="role:${esc(r)}"> everybody with the role ${esc(r)}</label>`).join("")}${(n.accounts || []).map(a => `<label class="ndcap"><input type="checkbox" data-stsharewho="${esc(a)}"> ${esc(a)}</label>`).join("")}</div>` : ""}
+        <label class="pick"><span class="pickw">Other users</span><input type="text" id="stShareUsers" placeholder="the machine's own users, separated by spaces" autocomplete="off" spellcheck="false"></label>
+        <label class="ndcap"><input type="checkbox" id="stShareTm"> a Mac's Time Machine target</label></div>
       <div class="field"><label class="ndcap"><input type="checkbox" id="stShareNfs"> NFS (Linux, a hypervisor)</label>
         <label class="pick"><span class="pickw">Clients</span><input type="text" id="stShareClients" placeholder="192.168.1.0/24, or * for any" autocomplete="off" spellcheck="false"></label></div>
       <div class="field"><label class="ndcap"><input type="checkbox" id="stShareRo"> read-only</label></div>
@@ -224,7 +226,9 @@ function wireStorageShares(root, n){
       body.name = ($("stShareName")?.value || "").trim();
       body.path = ($("stSharePath")?.value || "").trim();
       const ro = !!$("stShareRo")?.checked;
-      body.smb = {on: !!$("stShareSmb")?.checked, guest: !!$("stShareGuest")?.checked, ro, users: ($("stShareUsers")?.value || "").split(/[\s,]+/).filter(Boolean)};
+      const who = [...root.querySelectorAll("[data-stsharewho]:checked")].map(i => i.dataset.stsharewho);
+      body.smb = {on: !!$("stShareSmb")?.checked, guest: !!$("stShareGuest")?.checked, ro, tm: !!$("stShareTm")?.checked,
+                  users: [...who, ...($("stShareUsers")?.value || "").split(/[\s,]+/).filter(Boolean)]};
       body.nfs = {on: !!$("stShareNfs")?.checked, ro, clients: ($("stShareClients")?.value || "").split(/[\s,]+/).filter(Boolean)};
       if (!body.name || !body.path){ notify("a share takes a name and a folder", true); return; }
     } else if (!await askYes(`Stop sharing ${body.name}? The folder and what is in it stay; nobody reaches it over SMB or NFS after.`, {title: "Remove the share?", verb: "Remove", danger: true})) return;

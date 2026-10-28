@@ -319,6 +319,20 @@ the machine's root agent runs from its table (`zpool` on the disks'
 is never offered. Nothing here is on another node: pools are the controller's
 own machine's.
 
+**People on shares** (R164): an SMB share's users are BuilderBot's own
+accounts, named on the share by account name (each becomes its own Unix
+user on the machine, `bbu-` and the account's id, made when first named)
+or by role (`role:NAME` on the API; the form offers each role, and it
+names everybody holding the role at that moment, not later joiners), with
+the machine's own Unix users still accepted by name. A person reaches a
+share with their account's name and an SMB password of their own, set on
+Profile under Your shares, which also lists the shares named to them and
+the address to map each by; the password is kept only as the NT hash
+Samba keeps, handed to the own machine's agent in its hello and imported
+into Samba's database there, never written in a job or shown again. A
+share ticked as a Mac's Time Machine target is offered to the Finder as
+one (`fruit:time machine`), found by mDNS as Samba registers it.
+
 **Snapshots** (R162): under the pools, each pool's snapshots as `zfs`
 lists them, counted by kind (hourly, daily, weekly, manual) with the
 newest ten named, and Snapshot now, which takes one of every dataset at

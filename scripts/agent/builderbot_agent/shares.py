@@ -5,16 +5,27 @@ read whole for the census and written whole by the storage-share job, which
 checks the name, the path (a folder under /mnt or /srv that is there) and
 the users and clients named before Samba and NFS are told to read again.
 Who may reach a share is a Unix user the machine has (an account's own,
-R125, or one named) or everybody as a guest; the SMB passwords an account
-sets are R164's.
+R125, or one named) or everybody as a guest. The SMB passwords the accounts
+set on Profile (R164 step 1) come with the hello as Samba keeps them (the
+NT hash per Unix user) and are imported into Samba's own database here,
+the users made where they are missing and the ones gone removed; a share
+may be a Mac's Time Machine target.
 """
+import hashlib
+import json
 import os
 import re
 import shutil
 import subprocess
 
+from .base import log
+from .stores import save_state
+
 SMB_FILE = "/etc/samba/smb.conf.d/builderbot.conf"
 NFS_FILE = "/etc/exports.d/builderbot.exports"
+# The accounts' SMB passwords as handed over, written for pdbedit to import
+# (smbpasswd's line format) and removed once read.
+SMB_USERS_FILE = "/run/builderbot/smbusers"
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}")
 USER_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
 CLIENT_RE = re.compile(r"[A-Za-z0-9*][A-Za-z0-9*./:_-]{0,80}")
@@ -43,7 +54,7 @@ def shares_now():
         m = re.fullmatch(r"\[([^\]]+)\]", line)
         if m:
             cur = m.group(1).strip()
-            smb[cur] = {"path": "", "guest": False, "ro": False, "users": []}
+            smb[cur] = {"path": "", "guest": False, "ro": False, "tm": False, "users": []}
             continue
         if cur and "=" in line and not line.startswith((";", "#")):
             k, _, v = line.partition("=")
@@ -56,6 +67,8 @@ def shares_now():
                 smb[cur]["ro"] = v.lower() == "yes"
             elif k == "valid users":
                 smb[cur]["users"] = [u for u in v.split() if USER_RE.fullmatch(u)][:64]
+            elif k == "fruit:time machine":
+                smb[cur]["tm"] = v.lower() == "yes"
     for line in _read(_env("BB_NFS_FILE", NFS_FILE)).splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
@@ -76,11 +89,11 @@ def shares_now():
     for name in names:
         s = smb[name]
         n = nfs.get(s["path"]) or {}
-        out.append({"name": name, "path": s["path"], "smb": {"on": True, "guest": s["guest"], "ro": s["ro"], "users": s["users"]},
+        out.append({"name": name, "path": s["path"], "smb": {"on": True, "guest": s["guest"], "ro": s["ro"], "tm": s["tm"], "users": s["users"]},
                     "nfs": {"on": bool(n), "ro": bool(n.get("ro")), "clients": n.get("clients") or []}})
     for path, n in nfs.items():
         if not any(o["path"] == path for o in out):
-            out.append({"name": os.path.basename(path.rstrip("/")) or path, "path": path, "smb": {"on": False, "guest": False, "ro": False, "users": []},
+            out.append({"name": os.path.basename(path.rstrip("/")) or path, "path": path, "smb": {"on": False, "guest": False, "ro": False, "tm": False, "users": []},
                         "nfs": {"on": True, "ro": n["ro"], "clients": n["clients"]}})
     return out[:64]
 
@@ -96,7 +109,11 @@ def render(shares):
                 smb.append("    guest ok = yes\n    force user = nobody\n")
             else:
                 smb.append(f"    guest ok = no\n    valid users = {' '.join(s['smb']['users'])}\n")
-            smb.append("    vfs objects = fruit streams_xattr\n    fruit:metadata = stream\n\n")
+            # A Mac's Time Machine target (R164 step 1): fruit says so to the
+            # Finder, catia keeps the names it writes; the Mac finds it by
+            # mDNS, which Samba registers itself.
+            smb.append("    vfs objects = catia fruit streams_xattr\n    fruit:metadata = stream\n"
+                       + ("    fruit:time machine = yes\n" if s["smb"].get("tm") else "") + "\n")
         if s["nfs"]["on"]:
             opts = "ro" if s["nfs"]["ro"] else "rw"
             nfs.append(f"{s['path']} " + " ".join(f"{c}({opts},sync,no_subtree_check,root_squash)" for c in s["nfs"]["clients"]) + "\n")
@@ -105,6 +122,72 @@ def render(shares):
 
 class SharesMixin:
     """Agent's share jobs: one of the parts class Agent (agent.py) is made of."""
+
+    def smb_users_want(self, rows):
+        """The accounts' SMB passwords as the hello hands them (R164 step 1):
+        [{user, nt}], applied once per change (its digest kept in node.json):
+        each user made where it is missing (a system user, no login shell,
+        the bbu group), the set imported into Samba's database whole, and
+        every bbu- user Samba knows that is not in the set removed. Root,
+        with Samba installed; nothing otherwise."""
+        want = sorted(({"user": str(r.get("user") or ""), "nt": str(r.get("nt") or "").upper()} for r in rows if isinstance(r, dict)),
+                      key=lambda r: r["user"])
+        want = [r for r in want if re.fullmatch(r"bbu-[0-9a-f]{8}", r["user"]) and re.fullmatch(r"[0-9A-F]{32}", r["nt"])]
+        sig = hashlib.sha256(json.dumps(want).encode()).hexdigest()
+        pdbedit = shutil.which("pdbedit")
+        if sig == self.state.get("smb_users_sig") or not pdbedit or os.geteuid() != 0:
+            return
+        group = getattr(self, "_account_group", None)
+        if group:
+            group()
+        import pwd
+        for r in want:
+            try:
+                pwd.getpwnam(r["user"])
+            except KeyError:
+                p = subprocess.run(["useradd", "-r", "-M", "-U", "-d", "/nonexistent", "-s", "/usr/sbin/nologin", "-G", "bbu", r["user"]],
+                                   capture_output=True, text=True, timeout=30, check=False)
+                if p.returncode != 0:
+                    log(f"shares: could not make {r['user']}: {(p.stderr or '').strip()[:160]}")
+        have = set()
+        for line in (self._out([pdbedit, "-L"]) or "").splitlines():
+            u = line.split(":", 1)[0]
+            if re.fullmatch(r"bbu-[0-9a-f]{8}", u):
+                have.add(u)
+        for u in sorted(have - {r["user"] for r in want}):
+            subprocess.run([pdbedit, "-x", "-u", u], capture_output=True, timeout=30, check=False)
+        lines = []
+        for r in want:
+            try:
+                uid = pwd.getpwnam(r["user"]).pw_uid
+            except KeyError:
+                continue
+            lines.append(f"{r['user']}:{uid}:{'X' * 32}:{r['nt']}:[U          ]:LCT-00000000:\n")
+        path = _env("BB_SMB_USERS_FILE", SMB_USERS_FILE)
+        try:
+            os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                f.write("".join(lines))
+            if lines:
+                p = subprocess.run([pdbedit, "-i", f"smbpasswd:{path}", "-e", "tdbsam"], capture_output=True, text=True, timeout=60, check=False)
+                if p.returncode != 0:
+                    log(f"shares: pdbedit did not take the passwords: {(p.stderr or p.stdout or '').strip()[:200]}")
+                    return
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        self.state["smb_users_sig"] = sig
+        save_state(self.state)
+        log(f"shares: {len(lines)} SMB password(s) in Samba, {len(have - {r['user'] for r in want})} removed")
+
+    def _out(self, argv, timeout=30):
+        try:
+            return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False).stdout
+        except (OSError, subprocess.SubprocessError):
+            return ""
 
     def _apply_storage_share(self, job, cfg):
         say = job.say
@@ -159,7 +242,7 @@ class SharesMixin:
                 say(f"refused: {path} is shared already under another name\n")
                 return "failed", 66
             rest.append({"name": name, "path": path,
-                         "smb": {"on": bool(smb.get("on")), "guest": bool(smb.get("guest")), "ro": bool(smb.get("ro")), "users": users[:64]},
+                         "smb": {"on": bool(smb.get("on")), "guest": bool(smb.get("guest")), "ro": bool(smb.get("ro")), "tm": smb.get("tm") is True, "users": users[:64]},
                          "nfs": {"on": bool(nfs.get("on")), "ro": bool(nfs.get("ro")), "clients": clients[:64]}})
             say(f"share {name}: {path}, {'SMB' if smb.get('on') else ''}{' and ' if smb.get('on') and nfs.get('on') else ''}{'NFS' if nfs.get('on') else ''}\n")
         else:

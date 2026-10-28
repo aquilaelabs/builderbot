@@ -4254,6 +4254,9 @@ try:
     # rather than by one importing the other, which is the same seam every
     # other module pair uses.
     nodes.layout_of = toolchains.layout_for_node
+    # The accounts' SMB passwords and a share's names (R164 step 1).
+    nodes.smb_users = users.smb_users
+    nodes.smb_resolve = users.smb_resolve
     # ...and the digest of the bb bundle, so a node can tell from hello alone
     # whether the bb its sessions run is the one this controller ships.
     nodes.bundle_digest = lambda: workspace.bundle()["digest"]
@@ -5082,7 +5085,8 @@ devices.configure(users=users.load, access=lambda acct, p: ftp.access_for(acct, 
                   projects=lambda acct: project_names(acct),
                   flags=lambda acct, p: projects.app_flags(p, users.uid_of(acct)))
 profiletab.configure(devices=devices, logins=logins, reach=reach, smtp_set=lambda: bool(settings.get("smtp_host")), mfa=mfa, audit=db.audit,
-                     two_factor_required=lambda u: roles.two_factor_required(u))
+                     two_factor_required=lambda u: roles.two_factor_required(u),
+                     smb_shares=lambda uid: None if NODES_OK else nodes.smb_shares_for(uid))
 
 # The apps a person installs, fetched from this controller's release and
 # served from /apps (R272 step 3); which of them are offered is the
@@ -11180,9 +11184,16 @@ class Handler(BaseHTTPRequestHandler):
                                        level_of=roles.level_of)
         # The own machine's snapshot schedules (R162 step 5), the Schedules
         # page's rows the Storage page makes and lists beside its pools.
+        names = users.smb_names()
         for row in payload.get("nodes") or []:
             if row.get("own"):
                 row["snapshot_schedules"] = schedules.snapshot_schedules(row["node"])
+                # A share's users as people (R164 step 1), and who may be named.
+                for sh in row.get("shares") or []:
+                    sh["accounts"] = [names.get(u, u) for u in (sh.get("smb") or {}).get("users") or []]
+                if users.is_admin(who):
+                    row["accounts"] = sorted(names.values(), key=str.lower)
+                    row["roles"] = sorted({r for u in users.all_users() for r in u.get("roles") or [] if not r.startswith("Owner of ")})
         return self._json(payload, status)
 
     def _storage(self, req):
