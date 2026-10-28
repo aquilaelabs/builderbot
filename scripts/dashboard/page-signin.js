@@ -135,15 +135,13 @@ function wireSignin(root){
   });
 }
 
-// Open the Agents page on one node with its Claude section unfolded and in
-// view: where a Claude button sends its press when that node has no sign-in
-// of this account's yet.
+// Open the Installed page on one node with the agent's row open on its
+// sign-in and in view (R172): where a Claude button sends its press when
+// that node has no sign-in of this account's yet.
 function openNodeClaude(nodeId, agent = "claude"){
-  // The Agents page on that node (R95 step 15), the agent's section open.
-  sectOpen[`agents:${agent}`] = true;
-  openLibraryOn(nodeId);
+  openInstalledOn(nodeId, agent);
   const show = (tries) => {
-    const s = document.querySelector(`.agentstab [data-agnode="${CSS.escape(nodeId)}"] [data-sect="agents:${CSS.escape(agent)}"]`);
+    const s = document.querySelector(`.installedtab [data-instnode="${CSS.escape(nodeId)}"] .irow.open [data-signin][data-siagent="${CSS.escape(agent)}"]`)?.closest(".irow");
     if (s) return s.scrollIntoView({block: "start", behavior: "smooth"});
     if (tries > 0) setTimeout(() => show(tries - 1), 150);
   };

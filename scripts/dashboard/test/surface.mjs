@@ -102,7 +102,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   // The Library (R170): its functions (a let or a const is no property of the window).
   'openLibrary', 'openLibraryOn', 'libPick', 'loadLibrary', 'libMatch', 'libPills', 'libState', 'libActs', 'libDetail', 'libRow',
   'libFilterBand', 'libSections', 'renderLibraryInto', 'wireLibrary', 'keepFocus', 'libWithToolchains', 'libAct', 'libLook', 'libDriverPick',
-  'openNewContainerApp', 'tpAppHtml', 'tpAppSeen', 'tpAppLook', 'tpOpenApp', 'tpWhatHtml', 'libConfigField', 'libConfigForm', 'libServiceLines', 'libConfigRead',
+  'openNewContainerApp', 'tpAppHtml', 'tpAppSeen', 'tpAppLook', 'tpOpenApp', 'tpWhatHtml', 'openInstalledTab', 'openInstalledOn', 'instPick', 'loadInstalled', 'instHere', 'instState', 'instActs', 'instDetail', 'instConfigField', 'instConfigForm', 'instConfigRead', 'instServiceLines', 'instRow', 'renderInstalledInto', 'wireInstalled', 'instAct',
   'reschedRevs', 'rnDrawAuth', 'rnDrawKey', 'rnDrawStore', 'rnKeyAct', 'drawSetup', 'setupFinish', 'setupNeeded', 'setupNode', 'setupOwn',
   'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillTestNode', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnDrawGitPol', 'rnWhyOff', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnSavePeople', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveLayout', 'sendCode', 'sendKey',

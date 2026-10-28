@@ -42,7 +42,7 @@ const RAIL = [
   // the USB edition add beside Settings (R90, R56). After Containers, so a
   // phone's bar keeps its four.
   {key: "controller", label: "Controller", icon: "controller", tools: [["machine", "This machine"], ["settings", "Settings"], ["network", "Network"], ["keys", "Keys"], ["audit", "Audit"], ["debug", "Debug"]]},
-  {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
+  {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"], ["installed", "Installed"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"], ["schedules", "Schedules"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
@@ -85,6 +85,8 @@ function railAllows(kind){
     // The Library (R170): the Toolchains and Agents pages as one, so either
     // area draws it; what each row offers is the server's to gate.
     case "library": return !!a.toolchains || !!a.nodes;
+    // What is installed on a node (R172): the same areas as the Library.
+    case "installed": return !!a.toolchains || !!a.nodes;
     case "jobs": return !!a.jobs;
     // An administrator's own cron (R117), its own area.
     case "schedules": return !!a.schedules;
@@ -124,7 +126,7 @@ function railOn(){
 const OPENERS = {
   home: () => openHome(),
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
-  nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
+  nodes: () => openNodesTab(), storage: () => openStorageTab(), installed: () => openInstalledTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
   // The Toolchains, Agents and Apps pages are the Library since R170: their addresses and every door land there.
   library: () => openLibrary(), toolchains: () => openLibrary(), agents: () => openLibrary(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), debug: () => openDebugTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
@@ -164,7 +166,7 @@ function shellPush(to){
 // The Jobs page has no node; its second segment is the chip it is narrowed
 // to (#/jobs/failed-today, which Home's "failed today" opens, B74).
 const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
-  toolchains: () => libNode, agents: () => libNode, library: () => libNode, emulator: () => emuNode, phone: () => phNode,
+  toolchains: () => libNode, agents: () => libNode, library: () => libNode, installed: () => instNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
 // Toolchains' "local" (the controller's own store, for a shell and the
 // suite) is no node, so an address naming it opens on the node tcPick picks.
@@ -175,6 +177,7 @@ const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, sto
   toolchains: v => { const n = v === "local" ? "" : v; if (n && n !== libNode){ libNode = n; lib = null; } },
   agents: v => { if (v && v !== libNode){ libNode = v; lib = null; } },
   library: v => { if (v !== libNode){ libNode = v; lib = null; } },
+  installed: v => { if (v !== instNode){ instNode = v; inst = null; } },
   emulator: v => { if (v !== emuNode){ emuNode = v; emu = null; emuTicked.clear(); } },
   phone: v => { if (v !== phNode){ phNode = v; phIp = ""; } },
   runner: v => { runnerNode = v; },

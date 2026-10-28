@@ -53,6 +53,11 @@ const DRIVERS = {
     open: () => page.evaluate(() => openLibrary()),
     readyWhen: '.librarytab .libgroup[data-libgroup="toolchain"], .librarytab .empty',
   },
+  // What is installed on a node (R172): a section per kind with anything there.
+  installed: {
+    open: () => page.evaluate(() => openInstalledTab()),
+    readyWhen: '.installedtab details.sect, .installedtab .empty',
+  },
   toolchains: {
     open: () => page.evaluate(() => openToolchains()),
     readyWhen: '.tctab .tc',

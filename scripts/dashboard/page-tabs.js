@@ -228,6 +228,12 @@ const TABKINDS = {
               icon: TOOL_ICONS.toolchains,
               render: (i) => renderLibraryInto(i), live: () => `${libRev}/${nodesRev}/${signinRev()}`,
               open: () => loadLibrary() },
+  // What is installed on a node (R172): the Library's read kept to what is
+  // there, its own node, and the sign-in, which rides the status poll.
+  installed: { multi: false, label: () => "Installed",
+              icon: TOOL_ICONS.nodes,
+              render: (i) => renderInstalledInto(i), live: () => `${instRev}/${nodesRev}/${signinRev()}`,
+              open: () => loadInstalled() },
   toolchains: { multi: false, label: () => "Toolchains",
               icon: TOOL_ICONS.toolchains,
               render: (i) => renderToolchainsInto(i), live: () => tcRev,
