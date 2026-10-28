@@ -435,7 +435,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            squashfs-tools dosfstools e2fsprogs fdisk grub-efi-amd64-bin grub-pc-bin grub-common xorriso mtools zstd qemu-utils python3-pip apt-utils
+            squashfs-tools dosfstools e2fsprogs fdisk grub-efi-amd64-bin grub-pc-bin grub-common xorriso mtools xz-utils qemu-utils python3-pip apt-utils
           # Debian 13's archive keys, newer than the runner's own keyring
           # package, from the same snapshot the image is pinned to.
           snap="$(tr -d '[:space:]' < image/SNAPSHOT)"
@@ -546,7 +546,8 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
-            out/builderbot-os-*.raw.zst
+            out/builderbot-os-*.raw.xz
+            out/builderbot-os-*.stick.raw.xz
             out/builderbot-os-*.iso
             out/builderbot-os-*.qcow2
             out/builderbot-os-*.ova

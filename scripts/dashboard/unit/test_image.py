@@ -345,6 +345,15 @@ class Workflow(unittest.TestCase):
         self.assertIn("builderbot-os-env.service", read(IMG, "mkosi.postinst"))
         self.assertIn("EnvironmentFile=-/run/builderbot-os/env", read(ROOT, "nodes", "install-controller.sh"))
 
+    def test_the_disk_is_xz_and_the_stick_variant_runs_from_memory(self):
+        # R161 step 5: xz, which the stick maker opens with Python's own
+        # library; the stick's disk is the same with bb_toram=1 set.
+        b = read(IMG, "build.sh")
+        self.assertIn('xz -q -T0 -6 "$RAW"', b)
+        self.assertIn('grub-editenv "$MNT/grub/grubenv" set bb_toram=1', b)
+        self.assertIn("stick.raw.xz", read(ROOT, ".github", "workflows", "build-image.yml"))
+        self.assertTrue(os.access(os.path.join(ROOT, "tools", "builderbot-stick.py"), os.X_OK))
+
     def test_build_sh_says_how_without_root(self):
         r = sh("bash image/build.sh --help")
         self.assertEqual(r.returncode, 0, r.stderr)

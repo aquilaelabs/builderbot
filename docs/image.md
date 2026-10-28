@@ -36,7 +36,7 @@ how it boots, and how it is built. The decisions behind it are in
 ## The disk
 
 `image/build.sh` lays the image into one GPT disk, `builderbot-os-VERSION.raw`
-(compressed with zstd). Every partition has a fixed UUID, the same on every
+(compressed with xz), and the same disk with the slot loaded into memory at boot as `builderbot-os-VERSION.stick.raw.xz`, the USB edition's. Every partition has a fixed UUID, the same on every
 disk BuilderBot makes, held in `image/partitions.sh` and read by the build,
 the initramfs, `fstab` and GRUB alike:
 
@@ -84,6 +84,22 @@ copy you kept; held to the same gate as a move (never onto an older build),
 restored and restarted, the machine is the controller as it was, its nodes
 checking back in. Pushing a copy to another BuilderBot or a node is the
 step's next piece.
+
+## The stick maker
+
+`tools/builderbot-stick.py` writes a release's stick image onto a USB
+stick on Windows, a Mac or Linux with nothing but Python's own library: `list`
+names the removable disks here (the system disk marked, and never written),
+`write DISK --latest` (or `--release vX.Y.Z`, or `--image FILE`) fetches
+`builderbot-os-VERSION.stick.raw.xz` with its sha256, checks it, says what
+is on the stick is lost, writes the disk whole and reads it back; `verify`
+reads a stick back against an image. It runs as root (sudo) on Linux and a
+Mac and as an administrator on Windows, where it locks and dismounts the
+stick's volumes first. A stick made this way boots the appliance with the
+slot loaded into memory and keeps its configuration on the stick's data
+partition. The stick's own network settings file (a plain file on the ESP,
+read at boot and written by the Network page) is the Network page's
+bare-metal half; until then the stick takes DHCP.
 
 ## Installing it on a machine
 
@@ -172,7 +188,7 @@ and the disk is assembled on a loop device):
 
 ```bash
 pip install mkosi==25.3          # the version build.sh pins
-sudo apt install squashfs-tools dosfstools e2fsprogs fdisk grub-efi-amd64-bin grub-pc-bin grub-common zstd
+sudo apt install squashfs-tools dosfstools e2fsprogs fdisk grub-efi-amd64-bin grub-pc-bin grub-common xz-utils xorriso mtools qemu-utils
 sudo image/build.sh --out image/out
 ```
 
