@@ -322,6 +322,14 @@ release, service, `bb` and wall, and this machine's node; the state, the
 env file, the secrets, the account and the projects stay, and `--install`
 puts it back on them. `--remove --purge` takes all but the projects.
 
+**The appliance image.** A machine that is only BuilderBot can run the
+installed edition from the appliance image instead: Debian pinned to a
+snapshot with the controller staged in, a read-only root in two slots so an
+update is a whole image and a bad one falls back, and the machine its own
+node at its first boot. [image.md](image.md) says what it is and how it is
+built; the installer ISO, the VM disk and the USB stick made from it are on
+their way (R160, R161).
+
 ## Building locally instead of pulling
 
 ```bash

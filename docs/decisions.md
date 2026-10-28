@@ -673,3 +673,27 @@ to a disk, pool, share or account is a job from the root agent's fixed
 table, audited under the person's name. The data services serve with the
 dashboard stopped, which a test proves. [nas.md](nas.md) is the design
 whole.
+
+## The appliance image
+
+**The installed editions are made from one Debian image, pinned to a
+snapshot, with a read-only root in two slots and a named list of what
+persists (the operator, 22 Oct 2026: Debian stable and mkosi; the layout,
+28 Oct, R160 step 1).** Debian over Arch and Alpine because its ZFS is
+packaged with its kernel and built against it in the image, so the two never
+part; every package from one dated snapshot.debian.org archive, so a build
+is reproducible and a security rebuild is a change of one date. The root is
+a squashfs with a tmpfs over it, as SteamOS 3's is read-only: an update is a
+whole root written into the other slot, and GRUB, the same menu under UEFI
+and BIOS as NAS boards need, boots the slot its environment names. What
+persists is two things and no more, both on the data partition and both
+mounted by the initramfs so PID 1 sees them from its first read: /var, and
+/etc as an overlay whose upper half is on /var, so a changed file is kept
+and the next image's files still show through. Every partition has a fixed
+UUID, the same on every disk BuilderBot makes, so a slot is found by what it
+is and not by where a firmware put it. apt is diverted to a stub that says
+why: a package installed into a root that forgets would be gone at the next
+boot without a word, and a package the node needs is the image's to carry.
+Debian's own docker in place of Docker's repository, since a pinned snapshot
+has to hold everything the image is made of. [image.md](image.md) is the
+image whole.

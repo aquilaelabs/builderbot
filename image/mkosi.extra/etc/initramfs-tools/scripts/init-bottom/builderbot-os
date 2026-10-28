@@ -1,0 +1,33 @@
+#!/bin/sh
+# BuilderBot OS (R160 step 1): what persists on an immutable root, mounted
+# before the system starts so PID 1 sees it from its first read.
+#
+# overlayroot has just put a tmpfs over the read-only root, so anything
+# written anywhere lives until the next boot. Two places are made to last:
+# the data partition at /var (the state, the projects, docker, libvirt, the
+# logs), and /etc as an overlay whose upper half is on that partition, so a
+# changed file in /etc (an account made, a hostname set, a unit enabled) is
+# kept across boots while every file the next image brings still shows
+# through. Nothing else persists: an apt install into the root is gone at
+# the next boot, which is what makes an update a whole image.
+# rootmnt is where init mounted the root, set before any init-bottom script runs.
+# shellcheck disable=SC2154
+PREREQ="overlayroot"
+prereqs() { echo "$PREREQ"; }
+case "${1:-}" in prereqs) prereqs; exit 0 ;; esac
+# shellcheck source=/dev/null  # the initramfs's own library, with rootmnt set by init
+. /scripts/functions
+DATA=/dev/disk/by-partuuid/6a5c2f3e-0b7d-4b2a-9c1e-b0b1de5b0e0d
+i=0
+while [ ! -b "$DATA" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+if [ ! -b "$DATA" ]; then
+    panic "BuilderBot OS: the data partition (PARTUUID ...0e0d) is not here: the disk this slot booted from has lost it, or another disk was put in its place"
+fi
+mkdir -p "${rootmnt}/var"
+mount -t ext4 -o defaults,noatime "$DATA" "${rootmnt}/var" \
+    || panic "BuilderBot OS: the data partition did not mount (fsck it from a rescue system, or Safe mode once R161 step 2 lands)"
+mkdir -p "${rootmnt}/var/lib/builderbot-os/etc/upper" "${rootmnt}/var/lib/builderbot-os/etc/work"
+mount -t overlay overlay \
+    -o "lowerdir=${rootmnt}/etc,upperdir=${rootmnt}/var/lib/builderbot-os/etc/upper,workdir=${rootmnt}/var/lib/builderbot-os/etc/work" \
+    "${rootmnt}/etc" \
+    || panic "BuilderBot OS: /etc's overlay did not mount"

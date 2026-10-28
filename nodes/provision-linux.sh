@@ -706,9 +706,16 @@ ${extra}
 [Install]
 WantedBy=multi-user.target
 EOF
-            systemctl daemon-reload
-            systemctl enable "$name" >/dev/null 2>&1
-            systemctl restart "$name" ;;
+            # Staged into an image being built (install-controller.sh
+            # --stage): no systemd runs there, so the unit is enabled for the
+            # first boot and nothing is started.
+            if [ "${BB_SVC_NO_START:-0}" = 1 ]; then
+                systemctl enable "$name" >/dev/null 2>&1
+            else
+                systemctl daemon-reload
+                systemctl enable "$name" >/dev/null 2>&1
+                systemctl restart "$name"
+            fi ;;
         openrc)
             cat > "/etc/init.d/${name}" <<EOF
 #!/sbin/openrc-run

@@ -49,6 +49,10 @@ on:
         description: "Rebuild every layer from scratch (slow; the host then re-pulls the whole image)"
         type: boolean
         default: false
+      appliance:
+        description: "Build the appliance image too (BuilderBot OS, image/build.sh; an hour on a hosted runner)"
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -406,3 +410,65 @@ jobs:
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes "BuilderBot ${TAG#v}: see CHANGELOG.md."
           gh release upload "$TAG" "$NAME" "$NAME.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+
+  # The appliance image (R160 step 1): BuilderBot OS, built by image/build.sh
+  # on a hosted runner, since mkosi installs packages and the disk is laid
+  # out on a loop device, neither of which the self-hosted node's container
+  # has. On a tag, and on a dispatch with its box ticked; the files go on the
+  # release beside the controller bundle, with a build attestation on the
+  # two an install reads (the disk and a slot). What a release waits on, a
+  # boot of the image in a VM and the lab suite against it, is R160 step 5.
+  appliance:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.appliance)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: The tools mkosi and the disk need
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            squashfs-tools dosfstools e2fsprogs fdisk grub-efi-amd64-bin grub-pc-bin grub-common zstd python3-pip apt-utils
+          # Debian 13's archive keys, newer than the runner's own keyring
+          # package, from the same snapshot the image is pinned to.
+          snap="$(tr -d '[:space:]' < image/SNAPSHOT)"
+          curl -fsSL -o keyring.deb "https://snapshot.debian.org/archive/debian/${snap}/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb"
+          echo "9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac  keyring.deb" | sha256sum -c -
+          sudo dpkg -i keyring.deb
+          # The version build.sh pins (MKOSI_PIN), so a config key means the same here as there.
+          pin="$(grep -oE 'MKOSI_PIN:-[0-9.]+' image/build.sh | head -1 | cut -d- -f2)"
+          sudo pip install --break-system-packages "mkosi==${pin}"
+          mkosi --version
+      - name: Build the image
+        shell: bash
+        run: sudo -E image/build.sh --out out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: builderbot-os
+          path: out/builderbot-os-*
+          if-no-files-found: error
+      - name: Attest the disk and the slot
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            out/builderbot-os-*.raw.zst
+            out/builderbot-os-*.root.squashfs
+      - name: Put it on the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$tag" --notes "BuilderBot ${tag#v}: see CHANGELOG.md."
+          gh release upload "$tag" out/builderbot-os-* --repo "$GITHUB_REPOSITORY" --clobber

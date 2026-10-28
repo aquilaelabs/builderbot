@@ -32,11 +32,30 @@ apt_waiting() {
     return "$rc"
 }
 # pkg_refresh: the package index, once, before the first install.
+# On a BuilderBot OS disk (image/, R160 step 1) the packages are the image's,
+# pinned when it was built, and its root forgets at the next boot: nothing is
+# fetched, and a package the provisioner needs that the image lacks is a
+# build of the image to fix, said here by name.
+on_os_image() { [ -r "${BB_OS_RELEASE:-/usr/lib/builderbot-os/release}" ]; }
 pkg_refresh() {
+    on_os_image && return 0
     export DEBIAN_FRONTEND=noninteractive; apt_waiting apt-get update -qq
 }
 # pkg NAME...: install what is named, quietly.
 pkg() {
+    if on_os_image; then
+        local p alt have=0 miss=()
+        for p in "$@"; do
+            have=0
+            for alt in ${p//|/ }; do
+                dpkg-query -W -f='${db:Status-Status}' "$alt" 2>/dev/null | grep -qx installed && { have=1; break; }
+            done
+            [ "$have" = 1 ] || miss+=("$p")
+        done
+        [ "${#miss[@]}" -eq 0 ] && return 0
+        echo "not in the BuilderBot OS image: ${miss[*]} (image/mkosi.conf lists what it carries; a package the node needs is added there)" >&2
+        return 1
+    fi
     DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
                 apt_waiting apt-get -o Dpkg::Use-Pty=0 -o DPkg::Lock::Timeout=600 install -y -qq "$@"
 }

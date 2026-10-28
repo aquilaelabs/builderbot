@@ -112,6 +112,13 @@ Actions:
                  the env file, the secrets, the account and the projects
                  stay; --purge takes all but the projects too. Says what
                  will go and asks; --yes does not ask.
+  --stage        inside the appliance image's root as it is built
+                 (image/mkosi.postinst): what --install does up to the
+                 service, which is enabled and not started; the packages are
+                 the image's. The node half waits for the first boot.
+  --firstboot    the first boot of an appliance disk, from its unit: the
+                 controller is up by its own service, the wall goes up, and
+                 this machine enrolls as its node, once.
 
 Options:
   --workspace PATH   the projects folder (default /srv/builderbot/projects);
@@ -628,6 +635,54 @@ Its state is $(env_get DASHBOARD_STATE), its projects $(env_get WORKSPACE).
 EOF
 }
 
+# ---- the appliance image (R160 step 1) ----------------------------------------
+# cmd_stage: inside the image's root while mkosi builds it: root, the
+# packages in, no service manager running, the checkout at $TREE. What
+# --install does up to the service, enabled for the first boot and not
+# started; the version is the build's (BB_STAGE_VERSION and BB_STAGE_REV from
+# image/build.sh), since the checkout's git is another user's in the chroot.
+cmd_stage() {
+    local ver rev dir py
+    load_core
+    [ "$(id -u)" -eq 0 ] || die "--stage runs as root inside the image's root"
+    [ -d /usr/lib/builderbot-os ] || die "--stage is for the appliance image's tree (image/), which carries /usr/lib/builderbot-os"
+    INIT=systemd
+    py="$(pick_python)" || die "the image has no python 3.${PY_MIN} or newer: image/mkosi.conf"
+    printf '   python: %s\n' "$py"
+    extras
+    make_account
+    folders
+    if [ -n "${BB_STAGE_VERSION:-}" ]; then ver="$BB_STAGE_VERSION"; rev="${BB_STAGE_REV:-unstamped}"
+    else read -r ver rev <<<"$(tree_stamp "$TREE")"; fi
+    dir="$RELEASES/$(release_name "$ver")"
+    say "release ${ver}, staged"
+    install -d -m 0755 "$RELEASES"
+    lay_out "$TREE" "$dir" "$ver" "$rev"
+    flip "$dir"
+    env_file
+    bb_wrapper
+    sudoers
+    say "service: ${SERVICE}, enabled for the first boot"
+    BB_SVC_NO_START=1 service
+}
+
+# cmd_firstboot: the first boot of an appliance disk
+# (builderbot-os-firstboot.service): the controller is up by its own
+# service, so this is --install's last step, the wall and this machine as
+# the controller's node. own_node writes the marker the unit's condition
+# reads, so it runs once; a boot that fails it (no network yet) runs it
+# again at the next.
+cmd_firstboot() {
+    load_core
+    [ "$(id -u)" -eq 0 ] || die "--firstboot runs as root, from its unit"
+    [ -f "$ENV_FILE" ] || die "no staged controller here ($ENV_FILE): --firstboot is the appliance image's"
+    INIT=systemd
+    say "first boot: waiting for the controller on port ${PORT}"
+    wait_up || die "the controller did not answer on port ${PORT}: journalctl -u ${SERVICE} says why"
+    wall_write
+    own_node || die "this machine did not become its controller's node (above): the unit runs again at the next boot"
+}
+
 # ---- updates: the release fetched and put in place as an image pull is -----
 # fetch_tree [TAG]: the release's tree, unpacked in a folder of its own,
 # printed. The newest release when no tag is named, read from the releases
@@ -957,7 +1012,7 @@ main() {
     [ $# -gt 0 ] || { usage; exit 0; }
     while [ $# -gt 0 ]; do
         case "$1" in
-            --check|--install|--update|--rollback|--remove)
+            --check|--install|--update|--rollback|--remove|--stage|--firstboot)
                 [ -z "$ACTION" ] || die "one action at a time: ${ACTION} and $1"
                 ACTION="$1"; shift ;;
             --workspace) WORKSPACE_DIR="${2:?--workspace needs a path}"; shift 2 ;;
@@ -989,6 +1044,8 @@ main() {
         --update) cmd_update ;;
         --rollback) cmd_rollback ;;
         --remove) cmd_remove ;;
+        --stage) cmd_stage ;;
+        --firstboot) cmd_firstboot ;;
         *) usage; exit 1 ;;
     esac
 }

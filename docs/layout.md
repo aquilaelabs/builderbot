@@ -19,6 +19,15 @@ lab/.env.example                 the lab's one setting: the address other machin
 platforms/                       each place the container edition installs (R98 step 1), its template and generated files; the installed
                                  edition's own parts (host/, modules/, installer/, image/) land beside it as they are built (R56)
   unraid/builderbot.xml          Unraid Docker template (one-click updates)
+image/                           BuilderBot OS, the appliance image the installed editions are made from (R160 step 1): Debian stable by mkosi, pinned to the snapshot in SNAPSHOT, the controller staged in, sealed as a squashfs and laid into a disk with two root slots by build.sh; docs/image.md says what persists and how it boots
+  SNAPSHOT                       the snapshot.debian.org timestamp every package is pinned to
+  mkosi.conf                     the tree: Debian trixie, its packages (the controller's own come from config/controller-packages.tsv)
+  mkosi.postinst                 inside the tree once its packages are in: install-controller.sh --stage, apt diverted, the services enabled
+  mkosi.sandbox/                 apt's settings for a dated snapshot (its Release files are past their date by design)
+  mkosi.extra/                   what is laid into the tree: the initramfs script that mounts /var and /etc's overlay, fstab, the slot tool, the apt stub, the first-boot unit
+  partitions.sh                  the disk's fixed partition UUIDs, sizes and labels, one place for build.sh, the initramfs, fstab and GRUB
+  grub.cfg                       GRUB's menu on the ESP: the two slots, bb_slot from grubenv naming the one to boot
+  build.sh                       the build: mkosi, the squashfs, the disk on a loop device with GRUB for UEFI and BIOS, the stamps
 scripts/
   entrypoint.sh                  the container's boot: uid remap, the timezone, then lib/boot.sh's steps and gosu
   host-boot.sh                   a bare-metal install's boot under systemd: lib/boot.sh's steps, then setpriv to its account (R90)
@@ -366,6 +375,7 @@ tools/version-stamp              this repo's own stamp hook: a bump moves the co
 docs/README.md                   the index of these docs, linked from the README
 docs/reference.md                the configuration reference, every bb command (its bb block written by tools/bb-ref.sh) and signing Android releases
 docs/unraid.md                   step-by-step Unraid walkthrough
+docs/image.md                    BuilderBot OS, the appliance image: what it is, the disk and its slots, what persists, how it boots, how it is built
 docs/install.md                  setup, start to finish: the checklist with the decisions each step needs
 docs/architecture.md             the map: the seven parts, how they reach each other, where each is explained
 docs/api.md                      every /api/ route with its method, handler, first sentence and what it refuses on, written by tools/api-doc.py

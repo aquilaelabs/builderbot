@@ -1,0 +1,5 @@
+// A dated snapshot's Release files are past their Valid-Until by design
+// (the build is pinned to a day, not to now), so apt is told not to mind,
+// and to try again when snapshot.debian.org is slow.
+Acquire::Check-Valid-Until "false";
+Acquire::Retries "5";

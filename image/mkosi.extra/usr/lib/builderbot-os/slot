@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# The two root slots of a BuilderBot OS disk (R160 step 1), read and set:
+#
+#   slot current         the slot this boot came from (a or b), from the kernel's command line
+#   slot other           the one an update writes
+#   slot next [a|b]      the slot GRUB boots next time (set, or printed when none is named)
+#   slot status          the running release, both slots and which is next
+#
+# GRUB keeps the choice in its environment block on the ESP (bb_slot), the one
+# place this tool writes. Counting a new slot's tries and marking it good is
+# R161 step 2's, on top of this.
+set -euo pipefail
+ESP="${BB_ESP:-/boot/efi}"
+ENVF="$ESP/grub/grubenv"
+CMDLINE="${BB_CMDLINE:-/proc/cmdline}"
+RELEASE="${BB_OS_RELEASE:-/usr/lib/builderbot-os/release}"
+
+current() {
+    local w
+    local line
+    read -r line < "$CMDLINE"
+    for w in $line; do
+        case "$w" in bbslot=a|bbslot=b) printf '%s\n' "${w#bbslot=}"; return 0 ;; esac
+    done
+    echo "slot: this boot named no slot (bbslot= is not on the kernel's command line), so it is not a BuilderBot OS boot" >&2
+    return 1
+}
+other() { [ "$(current)" = a ] && echo b || echo a; }
+next() {
+    case "${1:-}" in
+        "")
+            if [ -s "$ENVF" ]; then grub-editenv "$ENVF" list | sed -n 's/^bb_slot=//p' | grep . || echo a
+            else echo a; fi ;;
+        a|b)
+            [ -d "$ESP/grub" ] || { echo "slot: no GRUB at $ESP/grub: is the ESP mounted?" >&2; return 1; }
+            [ -s "$ENVF" ] || grub-editenv "$ENVF" create
+            grub-editenv "$ENVF" set "bb_slot=$1" ;;
+        *) echo "slot next takes a or b" >&2; return 2 ;;
+    esac
+}
+status() {
+    local cur nxt
+    cur="$(current 2>/dev/null || echo '?')"; nxt="$(next)"
+    [ -r "$RELEASE" ] && sed 's/^/release: /' "$RELEASE"
+    printf 'booted: slot %s\nnext boot: slot %s\n' "$cur" "$nxt"
+}
+case "${1:-}" in
+    current) current ;;
+    other) other ;;
+    next) next "${2:-}" ;;
+    status) status ;;
+    *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

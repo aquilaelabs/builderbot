@@ -1,0 +1,17 @@
+[Unit]
+Description=BuilderBot OS: this machine made its own controller's first node, once
+# Once: install-controller.sh --firstboot writes the own-node marker when
+# the node is enrolled, and the unit does not run again. The controller's
+# service is the image's, enabled when it was built, so it is up first.
+ConditionPathExists=!/etc/builderbot-controller/own-node
+After=network-online.target builderbot-controller.service
+Wants=network-online.target builderbot-controller.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/builderbot/nodes/install-controller.sh --firstboot
+TimeoutStartSec=15min
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

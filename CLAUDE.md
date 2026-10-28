@@ -46,7 +46,7 @@ scratch state directory, fake projects and a private tmux server, from a
 copy of the tree, one run at a time. A project whose settings name a
 **Test node** (beside its nodes) runs `bb tests run`, `bb dashboard test`
 and the gate's suites there as a job, the tree snapshotted and the lines
-streamed back (R151). Its discipline is the house rule
+streamed back. Its discipline is the house rule
 `tests`. `surface.mjs` holds the page's top-level names; a new one is
 added there. `lib.mjs` is the pattern a suite follows (real touch over
 CDP, dialogs recorded, console errors collected). `BB_TEST_TIMING=1`
