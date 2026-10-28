@@ -97,8 +97,12 @@ class ConfigPlaneMixin:
             return self._apply_feature(job, cfg)
         if what == "controller-update":
             return self._apply_controller_update(job, cfg)
+        if what == "storage-share":
+            return self._apply_storage_share(job, cfg)
         if what == "storage-pool":
             return self._apply_storage_pool(job, cfg)
+        if what == "storage-snapshot":
+            return self._apply_storage_snapshot(job, cfg)
         if what == "machine":
             return self._apply_machine(job, cfg)
         if what == "os-update":

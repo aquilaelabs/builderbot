@@ -66,6 +66,21 @@ class Store(unittest.TestCase):
         self.assertIn("jobs account (job) or as root", schedules.save({"id": s["id"], "as": "admin"}, "u")["error"])
         self.assertTrue(schedules.remove(s["id"])["ok"])
 
+    def test_a_system_schedule_is_one_of_the_tables_jobs_and_says_what_it_does(self):
+        # The Storage page's snapshot schedules (R162 step 5): no script,
+        # root on the node, the config held to the table's shape.
+        self.assertIn("one of the table's jobs", schedules.save({"name": "x", "cron": "0 * * * *", "node": "n1", "system": {"apply": "reboot"}}, "u")["error"])
+        self.assertIn("keep is missing", schedules.save({"name": "x", "cron": "0 * * * *", "node": "n1",
+                                                         "system": {"apply": "storage-snapshot", "config": {"pool": "tank", "kind": "hourly", "keep": "7"}}}, "u")["error"])
+        r = schedules.save({"name": "Snapshots of tank, hourly", "cron": "0 * * * *", "node": "n1",
+                            "system": {"apply": "storage-snapshot", "config": {"pool": "tank", "kind": "hourly", "keep": 24, "extra": 1}}}, "user:sam")
+        s = r["schedule"]
+        self.assertEqual((s["as"], s["script"], s["system"]), ("root", "", {"apply": "storage-snapshot", "config": {"pool": "tank", "kind": "hourly", "keep": 24}}))
+        self.assertEqual(s["does"], "a hourly snapshot of the pool tank, 24 kept")
+        self.assertEqual([(x["pool"], x["kind"], x["keep"], x["on"]) for x in schedules.snapshot_schedules("n1")], [("tank", "hourly", 24, True)])
+        self.assertEqual(schedules.snapshot_schedules("n2"), [])
+        self.assertTrue(schedules.remove(s["id"])["ok"])
+
 
 class Timer(unittest.TestCase):
     def setUp(self):

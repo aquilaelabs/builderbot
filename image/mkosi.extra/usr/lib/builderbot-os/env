@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# What a BuilderBot OS boot hands the controller's environment beyond its env
+# file (R161 step 6): the lines of builderbot.env on the ESP, the stick's
+# plain config partition, which a person edits with the stick in another
+# machine when the dashboard will not come up, and builderbot.debug=1 typed
+# at the GRUB menu for one boot without changing the stick. Written to
+# /run/builderbot-os/env, which the controller's unit reads if it is there;
+# nothing of it is kept across a boot that has neither, so every such
+# option is off at a start that did not ask for it. Only a short list of
+# names is taken: the file is on a FAT partition anybody can write.
+set -euo pipefail
+ESP="${BB_ESP:-/boot/efi}"
+OUT="${BB_OS_RUN:-/run/builderbot-os}/env"
+CMDLINE="${BB_CMDLINE:-/proc/cmdline}"
+ALLOW="DEBUG_MODE BB_RELEASE_LINE TZ"
+mkdir -p "$(dirname "$OUT")"
+: > "$OUT.new"
+if [ -r "$ESP/builderbot.env" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%%#*}"; line="${line//$'\r'/}"
+        case "$line" in *=*) ;; *) continue ;; esac
+        k="${line%%=*}"; v="${line#*=}"
+        k="${k//[[:space:]]/}"
+        case " $ALLOW " in *" $k "*) printf '%s=%s\n' "$k" "${v//[^A-Za-z0-9_./:+-]/}" >> "$OUT.new" ;; esac
+    done < "$ESP/builderbot.env"
+fi
+read -r cmdline < "$CMDLINE" || cmdline=""
+for w in $cmdline; do
+    case "$w" in builderbot.debug=1) printf 'DEBUG_MODE=1\n' >> "$OUT.new" ;; esac
+done
+chmod 0640 "$OUT.new"
+mv -f "$OUT.new" "$OUT"

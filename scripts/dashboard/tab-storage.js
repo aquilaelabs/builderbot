@@ -187,6 +187,54 @@ function storageMachineDisks(n){
   return docSection("storage", "disks", "Disks", disks.length ? `${disks.length}${failing ? `, ${failing} failing` : ""}` : "", body, {cls: failing ? "bad" : ""});
 }
 
+// The controller's own machine's shares (R162 step 1): each as BuilderBot's
+// own two files say it (the path, SMB with its users or as a guest, NFS
+// with its clients), with Remove; and a form for a new one, every press a
+// system job the root agent runs, which writes the files whole and tells
+// Samba and NFS to read again. The SMB password an account sets is R164's.
+function storageShares(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.smb && !n.nfs ? `No Samba or NFS on this machine yet: Shares on its ${pageLink("machine", "Features section")} installs them.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const shares = n.shares || [];
+  const rows = shares.map(s => `<div class="row stack2 stshare" data-share="${esc(s.name)}"><div class="grow">
+      <div class="name">${esc(s.name)} <code>${esc(s.path)}</code></div>
+      ${s.smb?.on ? `<div class="sub">SMB${s.smb.ro ? ", read-only" : ""}: ${s.smb.guest ? "everybody, as a guest" : (s.smb.users || []).map(esc).join(", ") || "nobody yet"} · \\\\${esc(n.name)}\\${esc(s.name)}</div>` : ""}
+      ${s.nfs?.on ? `<div class="sub">NFS${s.nfs.ro ? ", read-only" : ""}: ${(s.nfs.clients || []).map(esc).join(", ")} · ${esc(n.name)}:${esc(s.path)}</div>` : ""}
+      </div>${admin && !why ? `<span class="acts"><button type="button" class="danger" data-stshare="remove" data-name="${esc(s.name)}">Remove</button></span>` : ""}</div>`).join("");
+  const mounts = (n.pools || []).map(p => p.mount).filter(Boolean);
+  const form = !admin || why ? "" : `<div class="field stnewshare"><div class="hint">New share: a name, a folder on a pool${mounts.length ? ` (${mounts.map(esc).join(", ")})` : ""}, and who reaches it over SMB, NFS or both.</div>
+      <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" id="stShareName" placeholder="media" maxlength="63" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="pick"><span class="pickw">Folder</span><input type="text" id="stSharePath" placeholder="${esc(mounts[0] ? mounts[0] + "/media" : "/mnt/tank/media")}" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stShareSmb" checked> SMB (Windows, a Mac, a phone)</label>
+        <label class="ndcap"><input type="checkbox" id="stShareGuest"> everybody as a guest, no password</label>
+        <label class="pick"><span class="pickw">Users</span><input type="text" id="stShareUsers" placeholder="the machine's users who may reach it, separated by spaces" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stShareNfs"> NFS (Linux, a hypervisor)</label>
+        <label class="pick"><span class="pickw">Clients</span><input type="text" id="stShareClients" placeholder="192.168.1.0/24, or * for any" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stShareRo"> read-only</label></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stshare="set">Share it</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No share yet${n.smb || n.nfs ? ": the form below makes one" : ""}.</div>`}${form}`;
+  return docSection("storage", "shares", "Shares", shares.length ? String(shares.length) : "", body);
+}
+function wireStorageShares(root, n){
+  root.querySelectorAll("[data-stshare]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stshare, body = {action: "storage-share", id: n.node, share: act, name: b.dataset.name || ""};
+    if (act === "set"){
+      body.name = ($("stShareName")?.value || "").trim();
+      body.path = ($("stSharePath")?.value || "").trim();
+      const ro = !!$("stShareRo")?.checked;
+      body.smb = {on: !!$("stShareSmb")?.checked, guest: !!$("stShareGuest")?.checked, ro, users: ($("stShareUsers")?.value || "").split(/[\s,]+/).filter(Boolean)};
+      body.nfs = {on: !!$("stShareNfs")?.checked, ro, clients: ($("stShareClients")?.value || "").split(/[\s,]+/).filter(Boolean)};
+      if (!body.name || !body.path){ notify("a share takes a name and a folder", true); return; }
+    } else if (!await askYes(`Stop sharing ${body.name}? The folder and what is in it stay; nobody reaches it over SMB or NFS after.`, {title: "Remove the share?", verb: "Remove", danger: true})) return;
+    busy(b, act === "set" ? "Sharing" : "Removing");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act === "set" ? "shared" : "removed"}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+}
+
 // The controller's own machine's ZFS pools (R162 step 1): each as zpool
 // says it (size, used, health, the members by layout, the last scrub), with
 // Scrub, Export and Destroy on its row; and New pool, a form that names the
@@ -249,6 +297,86 @@ function wireStoragePools(root, n){
     busy(b, act === "scrub" ? "Scrubbing" : "Working");
     const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
     notify(j.error || `${act}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+}
+
+// Snapshots (R162 step 5): each pool's bb- snapshots as the census counts
+// them, the pool's hourly, daily and weekly schedules (the Schedules
+// page's rows, made here as system jobs on the machine), Snapshot now, and
+// the newest ten with Roll back (the name typed again) and Delete.
+const SNAP_KINDS = [["hourly", "Hourly", "0 * * * *"], ["daily", "Daily, at 4:00", "0 4 * * *"], ["weekly", "Weekly, Sundays at 4:00", "0 4 * * 0"]];
+function storageSnapshots(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.zfs ? `No zfs on this machine yet: Storage on its ${pageLink("machine", "Features section")} installs it.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const pools = n.pools || [], snaps = n.snapshots || {}, scheds = n.snapshot_schedules || [];
+  const when = at => at ? new Date(at * 1000).toLocaleString() : "";
+  const rows = pools.map(p => {
+    const v = snaps[p.name] || {count: 0, used_mb: 0, kinds: {}, newest: []};
+    const mine = scheds.filter(x => x.pool === p.name);
+    const kinds = SNAP_KINDS.map(([k, label]) => {
+      const sch = mine.find(x => x.kind === k);
+      return `<span class="pill${sch?.on ? " ok" : ""}" data-snapkind="${k}">${esc(label.split(",")[0].toLowerCase())}: ${sch ? `${sch.keep} kept${sch.on ? "" : ", off"}` : "none"}</span>`;
+    }).join(" ");
+    const newest = (v.newest || []).map(x => `<div class="row stsnap" data-snap="${esc(x.name)}"><div class="grow"><code>${esc(x.name)}</code> <span class="dim">${esc(when(x.at))}</span></div>${
+      admin && !why ? `<span class="acts">${actMore([
+        `<button type="button" data-stsnap="rollback" data-pool="${esc(p.name)}" data-name="${esc(x.name)}" title="the pool as it was then; everything since is gone">Roll back</button>`,
+        `<button type="button" class="danger" data-stsnap="destroy" data-pool="${esc(p.name)}" data-name="${esc(x.name)}">Delete</button>`], true)}</span>` : ""}</div>`).join("");
+    return `<div class="row stack2 stpoolsnaps" data-pool="${esc(p.name)}"><div class="grow">
+      <div class="name">${esc(p.name)} <span class="pill">${v.count} snapshot${v.count === 1 ? "" : "s"}${v.used_mb ? `, ${esc(humanBytes(v.used_mb * 1048576))}` : ""}</span></div>
+      <div class="sub">${kinds}</div>
+      ${newest ? `<div class="rows">${newest}</div>` : `<div class="empty">No snapshot of ${esc(p.name)} yet.</div>`}
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-stsnap="take" data-pool="${esc(p.name)}" title="one of every dataset, kept beside the manual ones">Snapshot now</button></span>` : ""}</div>`;
+  }).join("");
+  const form = !admin || why || !pools.length ? "" : `<div class="field stsnapform"><div class="hint">A schedule: the pool, how often, and how many of that kind to keep; the oldest past that goes when the next is taken.</div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Pool</span><select id="stSnapPool">${optionList(pools.map(p => [p.name, p.name]), pools[0].name)}</select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">How often</span><select id="stSnapKind">${optionList(SNAP_KINDS.map(([k, label]) => [k, label]), "daily")}</select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Keep</span><input type="number" id="stSnapKeep" min="1" max="200" value="7"></label></div>
+      </div>
+      <div class="actbar"><span class="sp"></span>${scheds.length ? actMore(scheds.map(x => `<button type="button" class="danger" data-stsnapsched="${esc(x.id)}">Remove ${esc(x.pool)} ${esc(x.kind)}</button>`), true) : ""}<button type="button" class="primary" data-stsnap="schedule">Save the schedule</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No pool yet: snapshots are a pool's.</div>`}${form}`;
+  const total = pools.reduce((a, p) => a + ((snaps[p.name] || {}).count || 0), 0);
+  return docSection("storage", "snapshots", "Snapshots", pools.length ? `${total}${scheds.length ? `, ${scheds.filter(x => x.on).length} scheduled` : ""}` : "", body);
+}
+function wireStorageSnapshots(root, n){
+  root.querySelectorAll("[data-stsnap]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stsnap;
+    if (act === "schedule"){
+      const pool = $("stSnapPool")?.value || "", kind = $("stSnapKind")?.value || "daily", keep = parseInt($("stSnapKeep")?.value || "0", 10);
+      if (!pool || !(keep >= 1 && keep <= 200)){ notify("a schedule takes a pool and keeps 1 to 200 snapshots", true); return; }
+      const was = (n.snapshot_schedules || []).find(x => x.pool === pool && x.kind === kind);
+      const body = {action: "save", ...(was ? {id: was.id} : {}), name: `Snapshots of ${pool}, ${kind}`, cron: SNAP_KINDS.find(k => k[0] === kind)[2],
+                    node: n.node, on: true, system: {apply: "storage-snapshot", config: {pool, kind, keep}}};
+      busy(b, "Saving");
+      const j = await (await postJSON("/api/schedules", body)).json().catch(() => ({error: "no answer"}));
+      notify(j.error || `${pool}: ${kind} snapshots, ${keep} kept (${j.schedule?.words || ""}); the row is on the Schedules page too`, !!j.error);
+      await refresh();
+      return;
+    }
+    const body = {action: "storage-snapshot", id: n.node, snapshot: act, pool: b.dataset.pool || "", name: b.dataset.name || "", dataset: b.dataset.pool || ""};
+    if (act === "rollback"){
+      const typed = await askText(`Roll ${body.pool} back to ${body.name}?\n\nEverything written to the pool since then is gone, and every snapshot since it with it.`, {verb: "Roll back", label: "The snapshot's name, typed again"});
+      if (typed === null || typed === undefined) return;
+      if (String(typed).trim() !== body.name){ notify("the name typed is not the snapshot's; nothing rolled back", true); return; }
+      body.confirm = body.name;
+    } else if (act === "destroy"){
+      if (!await askYes(`Delete the snapshot ${body.name} of ${body.pool}?`, {title: "Delete the snapshot?", verb: "Delete it", danger: true})) return;
+    } else {
+      body.kind = "manual"; body.keep = 50;
+    }
+    busy(b, act === "take" ? "Taking" : "Working");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+  root.querySelectorAll("[data-stsnapsched]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const x = (n.snapshot_schedules || []).find(y => y.id === b.dataset.stsnapsched);
+    if (!await askYes(`Remove the ${x?.kind || ""} schedule of ${x?.pool || "the pool"}? The snapshots it took stay.`, {title: "Remove the schedule?", verb: "Remove"})) return;
+    const j = await (await postJSON("/api/schedules", {action: "remove", id: b.dataset.stsnapsched})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "the schedule is gone", !!j.error);
     await refresh();
   }));
 }
@@ -332,6 +460,8 @@ function storageBody(n, where){
     ${head}
     ${storageMachineDisks(n)}
     ${storagePools(n)}
+    ${storageSnapshots(n)}
+    ${storageShares(n)}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
     ${(n.phones || []).length ? docSection("storage", "phones", "Phones", `${n.phones.length}, ${sgb(n.phones.reduce((a, p) => a + (p.mb || 0), 0))}`, storagePhones(n)) : ""}
@@ -362,7 +492,9 @@ function renderStorageInto(i){
   d.list.innerHTML = n ? storageBody(n, where)
     : noNodeYet("the disks measured here are a node's");
   wireStorageTab(d.el);
+  if (n) wireStorageShares(d.el, n);
   if (n) wireStoragePools(d.el, n);
+  if (n) wireStorageSnapshots(d.el, n);
 }
 
 function wireStorageTab(root){

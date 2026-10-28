@@ -41,6 +41,11 @@ TIMEOUT_DEFAULT = TIMEOUT_MAX
 # for it: run once, and say how late.
 LATE_S = 180
 AS = ("job", "root")
+# A schedule the controller's own pages make (R162 step 5): a system job
+# from the root agent's table rather than a script, on the node named;
+# the table's entries a page may schedule, each with the shape its config
+# must have, checked here before the record and again on the node.
+SYSTEM_APPLIES = {"storage-snapshot": {"pool": str, "kind": str, "keep": int}}
 SCAN_ID = "scan"           # the row the built-in scan kept before 0.9.0, unlisted now (migration 0016)
 DAYS = ("Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays")
 DAY_NAMES = {d[:3].lower(): i for i, d in enumerate(DAYS)}
@@ -133,6 +138,34 @@ def next_after(expr, after):
     return None
 
 
+def system_words(sysj):
+    """What a system schedule does, in words, for its row."""
+    if not isinstance(sysj, dict):
+        return ""
+    cfg = sysj.get("config") or {}
+    if sysj.get("apply") == "storage-snapshot":
+        return f"a {cfg.get('kind', '')} snapshot of the pool {cfg.get('pool', '')}, {cfg.get('keep', 0)} kept"
+    return str(sysj.get("apply") or "")
+
+
+SNAP_CRON = {"hourly": "0 * * * *", "daily": "0 4 * * *", "weekly": "0 4 * * 0"}
+
+
+def snapshot_schedules(node_id):
+    """The storage-snapshot schedules on one node (R162 step 5), for the
+    Storage page's Snapshots section: [{id, pool, kind, keep, on, words,
+    next_at}], the pool's hourly, daily and weekly each one row."""
+    out = []
+    for r in listing():
+        sysj = r.get("system") or {}
+        if r.get("node") != node_id or sysj.get("apply") != "storage-snapshot":
+            continue
+        cfg = sysj.get("config") or {}
+        out.append({"id": r["id"], "pool": cfg.get("pool", ""), "kind": cfg.get("kind", ""), "keep": cfg.get("keep", 0),
+                    "on": bool(r.get("on")), "words": r.get("words", ""), "next_at": r.get("next_at")})
+    return out
+
+
 def words(expr):
     """A timetable as a person says it: "every 15 minutes", "hourly at :30",
     "daily at 4:00", "Sundays at 4:00", "on the 1st at 4:00"; the fields
@@ -196,6 +229,7 @@ def listing():
     for s in rows.values():
         r = dict(s)
         r["words"] = words(r.get("cron"))
+        r["does"] = system_words(r.get("system")) if r.get("system") else ""
         r["next_at"] = next_after(r.get("cron"), now) if r.get("on") else None
         out.append(r)
     return out
@@ -237,6 +271,21 @@ def _clean(req, was):
         if not script.strip():
             return None, "a schedule needs a script"
         s["script"] = script
+    if "system" in req:
+        sysj = req.get("system")
+        if sysj is None:
+            s.pop("system", None)
+        else:
+            if not isinstance(sysj, dict) or sysj.get("apply") not in SYSTEM_APPLIES:
+                return None, f"a system schedule runs one of the table's jobs: {', '.join(SYSTEM_APPLIES)}"
+            shape = SYSTEM_APPLIES[sysj["apply"]]
+            cfg = sysj.get("config") if isinstance(sysj.get("config"), dict) else {}
+            for k, kind in shape.items():
+                if not isinstance(cfg.get(k), kind) or isinstance(cfg.get(k), bool):
+                    return None, f"the {sysj['apply']} job's {k} is missing or not a {kind.__name__}"
+            s["system"] = {"apply": sysj["apply"], "config": {k: cfg[k] for k in shape}}
+            s["script"] = ""
+            s["as"] = "root"
     if "on" in req:
         s["on"] = req.get("on") is True
     return s, ""
@@ -259,6 +308,8 @@ def save(req, by):
             was = {"id": sid, "name": "", "cron": "", "node": "", "as": "job", "timeout": TIMEOUT_DEFAULT,
                    "script": "", "on": True, "by": by, "made": int(time.time())}
             for k in ("name", "cron", "script"):
+                if k == "script" and isinstance(req.get("system"), dict):
+                    continue
                 if not str(req.get(k) or "").strip():
                     return {"error": f"a new schedule needs its {k}"}
         s, why = _clean(req, was)

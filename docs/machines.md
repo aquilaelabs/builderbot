@@ -298,6 +298,15 @@ exactly its packages and removed with them, refused while a pool or a
 share still stands; on BuilderBot OS the packages are the image's. The
 row says which of each one's tools answer.
 
+**Shares** (R162): the own machine's SMB and NFS shares as BuilderBot's own
+two files say them (an include of `smb.conf`, and `exports.d`): each a
+folder on a pool, served over SMB to named users of the machine or to
+everybody as a guest, over NFS to named clients (an address, a network, a
+name, `*`), read-only or not, with the address to map it by and Remove;
+and a form for a new one. Every press is a job the machine's root agent
+runs: it writes the two files whole, checks Samba accepts them, and tells
+Samba and NFS to read again. The SMB password an account sets for itself is
+R164's.
 **Pools** (R162): under the disks, the own machine's ZFS pools as `zpool`
 says them (size and what is used, health, the members by layout, the last
 scrub, errors), each with Scrub, Export and Destroy (which takes the pool's
@@ -309,6 +318,20 @@ the machine's root agent runs from its table (`zpool` on the disks'
 `/dev/disk/by-id` links), never the controller's account; the system disk
 is never offered. Nothing here is on another node: pools are the controller's
 own machine's.
+
+**Snapshots** (R162): under the pools, each pool's snapshots as `zfs`
+lists them, counted by kind (hourly, daily, weekly, manual) with the
+newest ten named, and Snapshot now, which takes one of every dataset at
+once. Each named one has Roll back (the pool as it was then; the name is
+typed again, since everything written since is gone, and every later
+snapshot with it) and Delete. A schedule per pool and kind, saved from the
+form (the pool, how often, how many of that kind to keep), is a row on the
+Schedules page like any other, its timetable in words and its last run's
+log on the Jobs page, except that it runs one of the machine's own jobs
+from the root agent's table rather than a script: when it runs, the
+oldest of its kind past what is kept goes. Snapshots are named
+`bb-KIND-DATE-TIME`; ones made by hand with other names are left alone and
+not counted.
 
 **Disks** (R162): on the controller's own machine the page opens with the
 machine's disks as its agent lists them (`lsblk`, and `smartctl` where it
@@ -383,6 +406,11 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   **Update from the folder** takes the files from a folder on the machine.
   The container edition has no such section: its image is pulled by the
   host.
+- **Backup** and **Backup copies** (R161): the backup password, under which
+  a sealed copy of the configuration is written after every change onto the
+  machine's pools and under the state (the five newest kept), Back up now,
+  the copies listed with Download for those under the state; a fresh
+  install's first page restores one ([image.md](image.md)).
 - **Update window**: a newer release applied by itself at an hour, daily or
   one weekday, the way Update does it; off by default.
 - **Idle sessions**: the idle rule, which ends any agent's session after N minutes

@@ -74,7 +74,7 @@ function schedRow(s, may){
       <div class="grow">
         <div class="top"><b>${esc(s.name || "")}</b> <span class="pill${s.on ? " ok" : ""}">${s.on ? "on" : "off"}</span>${
           s.builtin ? ` <span class="pill">built in</span>` : ""}</div>
-        ${factGrid([["When", s.words || ""], ["Where", where], ["Last run", lastSaid, {html: true}],
+        ${factGrid([["When", s.words || ""], ...(s.does ? [["Does", s.does]] : []), ["Where", where], ["Last run", lastSaid, {html: true}],
                     ["Next run", s.on && s.next_at ? schedWhen(s.next_at) : ""]], "schedfacts")}
       </div>${acts}
     </div>`;
@@ -108,10 +108,12 @@ function schedForm(s){
         <input id="schCron" data-schedf="cron" type="text" value="${esc(cron)}" spellcheck="false" autocomplete="off"
           placeholder="0 4 * * 0">
         <div class="hint" id="schCronSaid">${esc(s?.words || "0 4 * * 0 is Sundays at 4:00")}</div></div>
-      <div class="field" id="schAsRow">${schedAs(s)}</div>
+      ${s?.system ? `<div class="field">${lbl("schDoes", "Does")}
+        <div class="hint" id="schDoes">${esc(s.does || s.system.apply)}: one of the machine's own jobs, made on the Storage page, which is where its keep count is set.</div></div>`
+      : `<div class="field" id="schAsRow">${schedAs(s)}</div>
       <div class="field">${lbl("schScript", "Script")}
         <textarea id="schScript" data-schedf="script" rows="8" spellcheck="false">${v("script")}</textarea>
-        <div class="hint">Run by bash where it runs: on the controller, as the controller's account, with all it holds; on a node, as its jobs account. Its output is the job's log on the Jobs page.</div></div>
+        <div class="hint">Run by bash where it runs: on the controller, as the controller's account, with all it holds; on a node, as its jobs account. Its output is the job's log on the Jobs page.</div></div>`}
     </div>`;
 }
 
@@ -173,6 +175,7 @@ function wireSchedForm(m, s){
       const row = m.querySelector("#schAsRow"), n = (schedData.nodes || []).find(x => x.id === f.value);
       // Off a sandbox, the jobs account: root is not this node's to give.
       if (!n?.sandbox && (schedDraft.as ?? s?.as) === "root") schedDraft.as = "job";
+      if (!row) return;             // a system schedule has no Runs as
       row.innerHTML = schedAs(s);
       const as = row.querySelector("[data-schedf]");
       if (as) wireField(as);

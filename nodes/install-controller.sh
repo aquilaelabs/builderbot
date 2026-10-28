@@ -532,9 +532,12 @@ sudoers() {
 # rest after it is done (KillMode=mixed), which is the order `docker stop`
 # gives the container: the terminals are saved before tmux goes.
 service() {
+    # On BuilderBot OS the boot's own settings (builderbot-os-env.service)
+    # are read beside the env file; elsewhere the file is simply not there.
     svc_install "$SERVICE" "BuilderBot controller" "/opt/builderbot/scripts/host-boot.sh supervise" \
         "KillMode=mixed
-TimeoutStopSec=30"
+TimeoutStopSec=30
+EnvironmentFile=-/run/builderbot-os/env"
 }
 
 # wait_up: the dashboard answering on its port, or why not.

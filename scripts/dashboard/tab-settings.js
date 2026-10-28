@@ -75,6 +75,8 @@ const SETTINGS_SAYS = {
   move: "to another home, its nodes following",
   updates: "the release running, the newest, and Update",
   updwin: "when a newer release is applied by itself",
+  backup: "the password the copies are sealed under",
+  copies: "the copies kept on the disks, and one now",
   reset: "start over at the setup page",
 };
 
@@ -115,6 +117,7 @@ function renderSettingsInto(i){
            `<div class="row stack2" data-group="Idle sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
     ${state?.release?.running !== undefined ? sect("updates", "Updates", state.release.newer ? `${state.release.newer} is out` : state.release.latest ? "up to date" : "", updatesSection()) : ""}
+    ${sect("copies", "Backup copies", backupData?.made_at ? `last ${ago(backupData.made_at)}` : backupData?.on === false ? "off" : "", backupSection())}
     ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
     ${state?.can?.admin ? sect("move", "Move this controller", moveStatus(), moveSection()) : ""}
     ${
@@ -207,6 +210,38 @@ function updatesSection(){
         ${os ? `<button type="button" data-osfrom="${esc(r.node || "")}"${r.node ? "" : " disabled"}>Update from the folder</button>` : ""}
         <button type="button" class="primary" data-relupdate="${esc(r.node || "")}" data-os="${os ? "1" : ""}"${r.newer && r.node ? "" : " disabled"}>${r.newer ? `Update to ${esc(r.newer)}` : "Update"}</button></div>
     </div></div>`;
+}
+// ---- the copies kept (R161 step 4) ----
+// Back up now writes a copy to every folder where they go; the list is what
+// is there, newest first, each under the state downloadable (sealed).
+let backupData = null, backupAsked = false;
+async function loadBackup(){
+  backupAsked = true;
+  try{ backupData = await (await fetch("/api/backup")).json(); }
+  catch(e){ backupData = {error: "backup: " + failWords(e)}; }
+  settingsRev++; drawPanes();
+}
+function backupSection(){
+  if (backupData === null){ if (!backupAsked) loadBackup(); return `<div class="field">${skRows(2)}</div>`; }
+  const b = backupData;
+  if (b.error) return `<div class="hint bad">${esc(b.error)}</div>`;
+  const owner = state?.me?.role === "owner";
+  const rows = (b.copies || []).map(c => `<div class="row"><div class="grow"><div class="name">${esc(c.name)}</div>
+      <div class="sub">${esc(c.where)} · ${esc(humanBytes(c.size || 0))} · ${c.made_at ? esc(ago(c.made_at)) : ""}${c.version ? ` · ${esc(c.version)}` : ""}</div></div>
+      ${owner && !/\.builderbot\/backup$/.test(c.where) ? `<span class="acts"><a class="btn" href="/api/backup-file?name=${encodeURIComponent(c.name)}" download>Download</a></span>` : ""}</div>`).join("");
+  return `<div class="row stack2" data-group="Backup copies"><div class="grow">
+      <div class="sub">${b.on ? `Copies go to ${(b.where || []).map(esc).join(", ")}${b.made_at ? `; the last was written ${esc(ago(b.made_at))} (${esc(humanBytes(b.size || 0))})` : "; none written yet"}.` : "No backup password set: nothing is copied until one is, under Backup."}${(b.failed || []).length ? ` <span class="bad">Not written: ${esc(b.failed.join("; "))}.</span>` : ""}</div>
+      ${rows ? `<div class="rows">${rows}</div>` : ""}
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-backupnow${b.on && owner ? "" : " disabled"}>Back up now</button></div>
+    </div></div>`;
+}
+function wireBackup(root){
+  root.querySelectorAll("[data-backupnow]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Writing");
+    const j = await (await postJSON("/api/backup", {action: "now"})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `written: ${j.name} to ${(j.where || []).length} place${(j.where || []).length === 1 ? "" : "s"}`, !!j.error);
+    await loadBackup();
+  }));
 }
 // ---- moving this controller (R90 step 12) ----
 // Prepare to move writes the bundle and shows the token once; Download the
@@ -432,6 +467,14 @@ const SETTING_GROUPS = [
   // Maintenance mode, the owner's alone (state.can.maintenance): every
   // other account is told why and kept out until it is off, and a band on
   // every page reminds the owner it is on.
+  // The backup password (R161 step 4): the copies of the state on the
+  // machine's pools and under the state are sealed under its key; the
+  // copies themselves are the Backup copies section's.
+  {key: "backup", title: "Backup",
+   heading: s => s?.settings?.backup_password?.set ? "on" : "off",
+   fields: [
+    {key: "backup_password", label: "Backup password", type: "secret",
+     hint: "Eight characters at least. With one set, a sealed copy of the configuration (accounts, nodes, projects, settings, the stores) is written after every change onto every pool of this machine and under the state, the five newest kept; a fresh install's first page restores one with this password. Keep the password where you keep the owner's: a copy without it is a sealed file."}]},
   // The update window (R160 step 4): a newer release applied by itself at
   // the hour named, daily or one weekday; off by default, so nothing moves
   // the install without a press or this choice.
@@ -721,6 +764,7 @@ function settingsSections(){
 
 function wireSettingsSections(el){
   wireUpdates(el);
+  wireBackup(el);
   wireMove(el);
   // Ask Let's Encrypt now (R158 step 2): the Connection section's own press.
   el.querySelectorAll("[data-tlsissue]").forEach(b => b.onclick = async () => {

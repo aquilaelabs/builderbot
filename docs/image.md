@@ -36,7 +36,7 @@ how it boots, and how it is built. The decisions behind it are in
 ## The disk
 
 `image/build.sh` lays the image into one GPT disk, `builderbot-os-VERSION.raw`
-(compressed with zstd). Every partition has a fixed UUID, the same on every
+(compressed with xz), and the same disk with the slot loaded into memory at boot as `builderbot-os-VERSION.stick.raw.xz`, the USB edition's. Every partition has a fixed UUID, the same on every
 disk BuilderBot makes, held in `image/partitions.sh` and read by the build,
 the initramfs, `fstab` and GRUB alike:
 
@@ -64,6 +64,42 @@ the other slot as on a disk. `slot status` says when the root is in memory.
 A machine needs the slot's size in memory beside what it runs (about 2 GB).
 The stick's own first run, its backup and the public stick maker are the
 USB edition's later steps.
+
+## The configuration backed up, and a new stick
+
+With a backup password set under Controller settings, Backup, the
+controller keeps a sealed copy of its configuration (the same bundle a move
+carries: the state without its logs, the stores, the secrets; never the
+repositories) after every change, once the state has been quiet for a
+quarter of an hour: under the state, and on every pool of the machine at
+`/mnt/POOL/.builderbot/backup`, the five newest in each; Back up now writes
+one at once, and each copy under the state is downloadable. The key is the
+password's (scrypt), so a copy carried off is a sealed file.
+
+A stick that dies is replaced by one written from the release's image with
+no configuration: its first page offers *Restoring a saved configuration*,
+lists the copies found on the machine's pools (newest first, with the
+machine and the version each came from) and takes the password, or takes a
+copy you kept; held to the same gate as a move (never onto an older build),
+restored and restarted, the machine is the controller as it was, its nodes
+checking back in. Pushing a copy to another BuilderBot or a node is the
+step's next piece.
+
+## The stick maker
+
+`tools/builderbot-stick.py` writes a release's stick image onto a USB
+stick on Windows, a Mac or Linux with nothing but Python's own library: `list`
+names the removable disks here (the system disk marked, and never written),
+`write DISK --latest` (or `--release vX.Y.Z`, or `--image FILE`) fetches
+`builderbot-os-VERSION.stick.raw.xz` with its sha256, checks it, says what
+is on the stick is lost, writes the disk whole and reads it back; `verify`
+reads a stick back against an image. It runs as root (sudo) on Linux and a
+Mac and as an administrator on Windows, where it locks and dismounts the
+stick's volumes first. A stick made this way boots the appliance with the
+slot loaded into memory and keeps its configuration on the stick's data
+partition. The stick's own network settings file (a plain file on the ESP,
+read at boot and written by the Network page) is the Network page's
+bare-metal half; until then the stick takes DHCP.
 
 ## Installing it on a machine
 
@@ -152,7 +188,7 @@ and the disk is assembled on a loop device):
 
 ```bash
 pip install mkosi==25.3          # the version build.sh pins
-sudo apt install squashfs-tools dosfstools e2fsprogs fdisk grub-efi-amd64-bin grub-pc-bin grub-common zstd
+sudo apt install squashfs-tools dosfstools e2fsprogs fdisk grub-efi-amd64-bin grub-pc-bin grub-common xz-utils xorriso mtools qemu-utils
 sudo image/build.sh --out image/out
 ```
 

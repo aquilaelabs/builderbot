@@ -1,0 +1,14 @@
+[Unit]
+Description=BuilderBot OS: the boot's own settings for the controller, from the ESP and the kernel's command line
+ConditionKernelCommandLine=bbslot
+DefaultDependencies=no
+After=boot-efi.mount local-fs.target
+Before=builderbot-controller.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/builderbot-os/env
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

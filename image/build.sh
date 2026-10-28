@@ -7,7 +7,8 @@
 #   sudo image/build.sh [--out DIR] [--tree-only] [--from-tree DIR]
 #
 # What comes out, under DIR (image/out by default), each with its .sha256:
-#   builderbot-os-VERSION.raw.zst        the whole disk (the USB stick starts here)
+#   builderbot-os-VERSION.raw.xz         the whole disk, for an installed machine or a VM
+#   builderbot-os-VERSION.stick.raw.xz   the same disk with GRUB loading the slot into memory: the USB edition
 #   builderbot-os-VERSION.iso            the installer: boots the same root live, lays a disk out with lay-disk
 #   builderbot-os-VERSION.qcow2          the same disk for Proxmox, Unraid and libvirt
 #   builderbot-os-VERSION.ova            the same disk for VMware and VirtualBox (a stream-optimized VMDK with its descriptor)
@@ -125,10 +126,10 @@ SQ_MIB=$(( ($(stat -c %s "$OUT/$NAME.root.squashfs") + 1048575) / 1048576 ))
 # ---- the disk ---------------------------------------------------------------
 # Laid out by image/lay-disk on a loop device, the same script the installer
 # on the ISO runs on a person's disk (R160 step 2), so the two cannot differ.
-for t in sfdisk losetup mkfs.vfat mkfs.ext4 grub-install zstd partprobe; do need "$t" "the image workflow installs it (grub-efi-amd64-bin, grub-pc-bin, dosfstools, e2fsprogs, fdisk, zstd)"; done
+for t in sfdisk losetup mkfs.vfat mkfs.ext4 grub-install xz partprobe; do need "$t" "the image workflow installs it (grub-efi-amd64-bin, grub-pc-bin, dosfstools, e2fsprogs, fdisk, xz-utils)"; done
 say "the disk: ${NAME}.raw"
 RAW="$OUT/$NAME.raw"
-rm -f "$RAW" "$RAW.zst"
+rm -f "$RAW" "$RAW.xz" "$OUT/$NAME.stick.raw" "$OUT/$NAME.stick.raw.xz"
 TOTAL_MIB=$(( 1 + 1 + BB_SIZE_ESP_MIB + 2 * BB_SIZE_SLOT_MIB + BB_SIZE_DATA_MIB + 2 ))
 truncate -s "${TOTAL_MIB}M" "$RAW"
 LOOP="$(losetup --find --show --partscan "$RAW")"
@@ -171,10 +172,26 @@ sed -e "s|@NAME@|$NAME|g" -e "s|@VMDK@|$NAME-disk1.vmdk|g" \
                  printf 'SHA256(%s)= %s\n' "$NAME-disk1.vmdk" "$(sha256sum "$NAME-disk1.vmdk" | cut -d' ' -f1)"; } > "$NAME.mf" \
   && tar -cf "$OUT/$NAME.ova" --owner=0 --group=0 --mtime="@$SOURCE_DATE_EPOCH" "$NAME.ovf" "$NAME.mf" "$NAME-disk1.vmdk" )
 rm -rf "$OVA"
+# The USB edition (R161 steps 1 and 5): the same disk with bb_toram=1 in
+# GRUB's environment, so a stick written from it runs from memory; the
+# stick maker (tools/builderbot-stick.py) writes this one.
+say "the stick: ${NAME}.stick.raw"
+STICK="$OUT/$NAME.stick.raw"
+cp --reflink=auto --sparse=always "$RAW" "$STICK"
+LOOP="$(losetup --find --show --partscan "$STICK")"
+trap 'losetup -d "$LOOP" 2>/dev/null || true' EXIT
+MNT="$(mktemp -d)"
+mount "${LOOP}p2" "$MNT"
+grub-editenv "$MNT/grub/grubenv" set bb_toram=1
+umount "$MNT"; rmdir "$MNT"
+losetup -d "$LOOP"; trap - EXIT
 say "compressing"
-zstd -q -T0 -19 --rm "$RAW" -o "$RAW.zst"
+# xz rather than zstd: a stick maker with nothing but Python's own library
+# opens it on Windows, a Mac and Linux alike (lzma is in the standard library).
+xz -q -T0 -6 "$RAW"
+xz -q -T0 -6 "$STICK"
 
 # ---- the stamps -------------------------------------------------------------
-( cd "$OUT" && for f in "$NAME.raw.zst" "$NAME.iso" "$NAME.qcow2" "$NAME.ova" "$NAME.root.squashfs" "$NAME.vmlinuz" "$NAME.initrd" "$NAME.release" "$NAME.packages"; do sha256sum "$f" > "$f.sha256"; done )
+( cd "$OUT" && for f in "$NAME.raw.xz" "$NAME.stick.raw.xz" "$NAME.iso" "$NAME.qcow2" "$NAME.ova" "$NAME.root.squashfs" "$NAME.vmlinuz" "$NAME.initrd" "$NAME.release" "$NAME.packages"; do sha256sum "$f" > "$f.sha256"; done )
 say "done"
 for f in "$OUT/$NAME".*; do printf '   %s  %s\n' "$(stat -c %s "$f")" "$(basename "$f")"; done

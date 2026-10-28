@@ -208,7 +208,8 @@ SETUP_FIELDS = """  <p class="note">Nobody owns this container yet. The first ac
     everyone else. Do it now: until you do, anyone who can reach this page
     can claim it.</p>
   <!--ERR-->
-  <p class="note"><a href="/login/move">Moving a controller here?</a> Its bundle and token land its whole state on this install instead.</p>
+  <p class="note"><a href="/login/move">Moving a controller here?</a> Its bundle and token land its whole state on this install instead.
+    <a href="/login/restore">Restoring a saved configuration?</a> A copy on this machine's disks, or one you kept, and its backup password.</p>
   <label for="u">Username</label>
   <input id="u" name="username" autocomplete="username" autocapitalize="none"
     required autofocus>
@@ -219,6 +220,18 @@ SETUP_FIELDS = """  <p class="note">Nobody owns this container yet. The first ac
   <input id="p2" name="password2" type="password" autocomplete="new-password"
     minlength="8" required>
   <button type="submit">Create the owner</button>"""
+
+RESTORE_FIELDS = """  <p class="note">A controller with a backup password keeps a sealed copy of its configuration on
+    its disks and lets you download one. Pick a copy and give the password, and this install becomes
+    that controller: its accounts, nodes, projects and settings. Nothing else is set up first.</p>
+  <!--ERR-->
+  <!--FOUND-->
+  <label for="b">Or a copy you kept (builderbot-backup-VERSION-DATE.bbbackup)</label>
+  <input id="b" name="bundle" type="file">
+  <label for="t">The backup password</label>
+  <input id="t" name="password" type="password" autocomplete="off" required>
+  <button type="submit">Restore it</button>
+  <p class="note"><a href="/">Not restoring one: make the first account instead</a>.</p>"""
 
 MOVE_FIELDS = """  <p class="note">A controller prepared to move writes a bundle and shows a move token once.
     Give both here and this install becomes that controller: its accounts, nodes, projects
@@ -1814,7 +1827,16 @@ def schedule_queue(s, argv, by):
         return {"error": "its node is not enrolled any more: pick another"}
     t = int(s.get("timeout") or schedules.TIMEOUT_DEFAULT)
     principal = "schedule:" + str(s.get("id") or "")
-    if s.get("as") == "root":
+    if s.get("system"):
+        # One of the root agent's table (R162 step 5), on the controller's
+        # own machine alone, as the page that made it may queue it by hand.
+        if not nodes.own_machine(n):
+            return {"error": f"{n['name']} is not the controller's own machine, where the table's jobs run"}
+        if nodes.system_job_for(nid):
+            return {"error": f"a system job is already running on {n['name']}; one at a time"}
+        r = nodes.job_add(principal, {"node": nid}, "system",
+                          {"apply": s["system"]["apply"], "config": dict(s["system"].get("config") or {}), "timeout": min(t, 900)})
+    elif s.get("as") == "root":
         if not (n.get("reported") or {}).get("sandbox"):
             return {"error": f"{n['name']} was not provisioned as a BuilderBot sandbox, so root there is its owner's: "
                              "run it as the jobs account, or on a sandbox node"}
@@ -5097,6 +5119,7 @@ def _update_in_window(version):
 # start, lifted by Start on This machine, armed for the next restart.
 import held                                                      # noqa: E402
 held.configure(state=STATE, bare_metal=lambda: BARE_METAL, write_json_fn=write_json)
+import backup                                                    # noqa: E402
 # Moving this controller to another home (R90 step 12, move.py): the bundle
 # and its token, the nodes told, the knock answered once restored here.
 import move                                                      # noqa: E402
@@ -5106,6 +5129,23 @@ move.configure(state=STATE, workspace=WORKSPACE, secrets_dir=os.environ.get("BB_
                install_key_fn=lambda: signing.MASTER or b"", store_paths_fn=lambda: {k: str(paths.of(k)) for k in paths.KINDS},
                page_url_fn=_page_url, node_ids_fn=lambda: [n["id"] for n in nodes.node_list() if n.get("kind") == "agent" and n.get("state") != "retired"],
                bare_metal_fn=lambda: BARE_METAL)
+
+
+def _own_pool_mounts():
+    """The mounts of the controller's own machine's pools (R162), as its
+    census says them: where a backup copy goes, and where a fresh install
+    looks for one."""
+    nid = _own_node_id()
+    n = nodes.node(nid) if nid else None
+    return [p.get("mount") for p in ((n or {}).get("reported") or {}).get("pools") or [] if isinstance(p, dict) and p.get("mount")]
+
+
+# The configuration backed up onto the machine's pools and found again at a
+# first run (R161 step 4, backup.py): the move's bundle under a password's key.
+backup.configure(state=STATE, pack_fn=move.pack, seal_fn=signing.seal, restore_fn=move.restore, manifest_fn=move.read_manifest,
+                 password_fn=lambda: settings.secret("backup_password") or "", dirs_fn=_own_pool_mounts,
+                 version_fn=lambda: image_stamp().get("version") or "", state_version_fn=stateversion.current, write_json_fn=write_json,
+                 host_fn=lambda: socket.gethostname())
 nodes.move_for_node = move.for_node
 channel.moved_answer = lambda nid: {"answer": move.answer_for(nid), "url": _page_url(), "pin": tls._loaded or ""}
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
@@ -5600,6 +5640,8 @@ GET_ROUTES = (
     ("exact", "/api/reset", "_get_reset"),
     ("exact", "/api/move", "_get_move"),
     ("exact", "/api/move-bundle", "_get_move_bundle"),
+    ("exact", "/api/backup", "_get_backup"),
+    ("exact", "/api/backup-file", "_get_backup_file"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/transcripts", "_get_transcripts"),
@@ -5711,6 +5753,7 @@ POST_ROUTES = (
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
     ("exact", "/api/move", "_move"),
+    ("exact", "/api/backup", "_backup"),
     ("prefix", "/api/create", "_create"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/git", "_git_act"),
@@ -7179,6 +7222,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._login_page()
         if path == "/login/move":
             return self._move_page() if not users.all_users() else self._login_page("This controller already has an account; a move lands only on a fresh install.")
+        if path == "/login/restore":
+            return self._restore_page() if not users.all_users() else self._login_page("This controller already has an account; a saved configuration lands only on a fresh install.")
         if path == "/login/setup" and self._authed():
             return self._setup_2fa_page()
         if path == "/logout":
@@ -8355,6 +8400,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._setup_post()
         if self.path.split("?")[0] == "/setup/move":
             return self._setup_move_post()
+        if self.path.split("?")[0] == "/setup/restore":
+            return self._setup_restore_post()
         # Moved (R90 step 12): read-only from here on, the move's own verbs aside.
         if move.moved_to() and self.path.split("?")[0].startswith("/api/") and not self.path.split("?")[0].startswith("/api/v1/agent/") \
                 and self.path.split("?")[0] not in ("/api/move", "/api/profile"):
@@ -11128,9 +11175,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "a node's disks are a person's to read here"}, 403)
         if NODES_OK:
             return self._json({"error": "the node store did not open: " + NODES_OK}, 500)
-        return self._json(*storage.view(nodes.node_list(), who, is_admin=users.is_admin,
-                                        nodes_for=roles.nodes_for, may_see=users.may_see,
-                                        level_of=roles.level_of))
+        payload, status = storage.view(nodes.node_list(), who, is_admin=users.is_admin,
+                                       nodes_for=roles.nodes_for, may_see=users.may_see,
+                                       level_of=roles.level_of)
+        # The own machine's snapshot schedules (R162 step 5), the Schedules
+        # page's rows the Storage page makes and lists beside its pools.
+        for row in payload.get("nodes") or []:
+            if row.get("own"):
+                row["snapshot_schedules"] = schedules.snapshot_schedules(row["node"])
+        return self._json(payload, status)
 
     def _storage(self, req):
         """Measure now on the Storage page: a node's disks walked at once
@@ -11878,6 +11931,142 @@ class Handler(BaseHTTPRequestHandler):
         with open(p, "rb") as f:
             shutil.copyfileobj(f, self.wfile)
 
+    def _get_backup(self):
+        """GET /api/backup (R161 step 4): the password set or not, the last
+        copy, where the copies go and the copies found; an administrator's."""
+        me = self._who() or {}
+        if not users.is_admin(me) or me.get("session"):
+            return self._json({"error": "the backup is an administrator's"}, 403)
+        return self._json(backup.status())
+
+    def _backup(self, req):
+        """POST /api/backup {action: now}: a copy written now, the owner's."""
+        me = self._who() or {}
+        if (users.account_of(me) or {}).get("role") != "owner" or me.get("session"):
+            return self._json({"error": "a backup now is the owner's"}, 403)
+        if field(req, "action") != "now":
+            return self._json({"error": "action is now"}, 400)
+        r = backup.make(self._principal(), "asked")
+        if r.get("ok"):
+            db.audit(self._principal(), "backup", "", {"name": r.get("name", ""), "where": r.get("where", [])})
+        return self._json(r, 400 if r.get("error") else 200)
+
+    def _get_backup_file(self):
+        """GET /api/backup-file?name=NAME: a copy under the state as a
+        download, the owner's; sealed, so a download is only ever a sealed
+        file."""
+        me = self._who() or {}
+        if (users.account_of(me) or {}).get("role") != "owner" or me.get("session"):
+            return self._json({"error": "a backup's download is the owner's"}, 403)
+        name = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("name") or [""])[0]
+        if not re.fullmatch(r"builderbot-backup-[A-Za-z0-9.+-]+-\d{8}-\d{6}(-\d+)?\.bbbackup", name):
+            return self._json({"error": "which copy?"}, 400)
+        p = Path(STATE) / "backup" / name
+        if not p.is_file():
+            return self._json({"error": "no such copy under the state"}, 404)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        self.send_header("Content-Length", str(p.stat().st_size))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        with open(p, "rb") as f:
+            shutil.copyfileobj(f, self.wfile)
+
+    def _restore_page(self, error=""):
+        """GET /login/restore (R161 step 4): the first run's third way in, a
+        saved configuration found on this machine's disks or uploaded, and
+        its backup password."""
+        found = backup.found(_own_pool_mounts())
+        rows = "".join(f'<label class="pick"><input type="radio" name="found" value="{html_escape(c["path"])}"{" checked" if i == 0 else ""}> '
+                       f'{html_escape(c["name"])} · {html_escape(c["host"] or "this machine")} · {time.strftime("%d %b %Y %H:%M", time.gmtime(c["made_at"]))}</label>'
+                       for i, c in enumerate(found))
+        fields = RESTORE_FIELDS.replace("<!--FOUND-->", (f'<p class="note">Found on this machine\'s disks, newest first:</p>{rows}' if rows
+                                                         else '<p class="note">No copy found on this machine\'s disks yet (its pools come in once the node reports); upload one below.</p>'))
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "restore a saved configuration")
+                .replace("<!--SAID-->", "Restoring a saved configuration?")
+                .replace("<!--ACTION-->", "/setup/restore")
+                .replace("<!--FIELDS-->", fields)
+                .replace("<!--ERR-->", f'<p class="err">{html_escape(error)}</p>' if error else "")
+                .replace("<!--NAME-->", "").replace("<!--NEXT-->", "/")
+                .replace("<form ", '<form enctype="multipart/form-data" ', 1)
+                .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _setup_restore_post(self):
+        """POST /setup/restore: a found copy or an uploaded one with the
+        backup password, before an owner exists, held to the version gate,
+        restored, and the dashboard re-executed on the restored state."""
+        if users.all_users():
+            return self._login_page("This controller already has an account; a saved configuration lands only on a fresh install.")
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            n = -1
+        if not 0 < n <= 16 << 30:
+            return self._restore_page("the upload is empty or past 16 GB")
+        spool = Path(STATE).parent / f".restore-upload-{os.getpid()}"
+        try:
+            with open(spool, "wb") as f:
+                left = n
+                while left > 0:
+                    chunk = self.rfile.read(min(1 << 20, left))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    left -= len(chunk)
+            import email.parser
+            with open(spool, "rb") as f:
+                msg = email.parser.BytesParser().parsebytes(b"Content-Type: " + self.headers.get("Content-Type", "").encode() + b"\r\n\r\n" + f.read())
+            password, found, uploaded = "", "", None
+            for part in msg.walk():
+                name = part.get_param("name", header="content-disposition")
+                if name == "password":
+                    password = (part.get_payload(decode=True) or b"").decode("utf-8", "replace").strip()
+                elif name == "found":
+                    found = (part.get_payload(decode=True) or b"").decode("utf-8", "replace").strip()
+                elif name == "bundle":
+                    uploaded = part.get_payload(decode=True) or None
+            if not password:
+                return self._restore_page("the backup password is needed")
+            if uploaded:
+                with open(spool, "wb") as f:
+                    f.write(uploaded)
+                src = str(spool)
+            else:
+                known = {c["path"] for c in backup.found(_own_pool_mounts())}
+                if found not in known:
+                    return self._restore_page("pick a copy found on this machine, or upload one")
+                src = found
+            r = backup.restore(src, password)
+        except (OSError, ValueError) as e:
+            return self._restore_page(f"the restore did not land: {e}")
+        finally:
+            with contextlib.suppress(OSError):
+                spool.unlink()
+        if r.get("error"):
+            return self._restore_page(r["error"])
+        print(f"dashboard: a saved configuration restored here: {r.get('counts')}; restarting on its state", flush=True)
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "restored")
+                .replace("<!--SAID-->", "Restored: the dashboard is starting on the saved configuration. Sign in as you did there in a moment.")
+                .replace("<!--ACTION-->", "/login").replace("<!--FIELDS-->", "").replace("<!--ERR-->", "")
+                .replace("<!--NAME-->", "").replace("<!--NEXT-->", "/").replace("<!--BANNER-->", "")).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Refresh", "8; url=/")
+        self.end_headers()
+        self.wfile.write(body)
+        self.wfile.flush()
+        threading.Timer(1.5, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
+
     def _move_page(self, error=""):
         """GET /login/move: the first run's other way in (R90 step 12): a
         controller's bundle and its token, before anybody owns this one."""
@@ -12217,6 +12406,7 @@ def main():
     threading.Thread(target=log_sweep_loop, name="log-sweep", daemon=True).start()
     if BARE_METAL and "internet" not in featuresoff.off():
         releasecheck.start()      # a newer release, asked of GitHub a while after the start, then daily
+        backup.start()            # a copy of the state onto the pools after every change (R161 step 4)
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes
     if not NODES_OK:
         threading.Thread(target=_room_loop, name="room", daemon=True).start()
