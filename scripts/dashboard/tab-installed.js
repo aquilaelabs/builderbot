@@ -312,6 +312,16 @@ function wireInstalled(root){
     const key = form.dataset.icform, r = (inst?.rows || []).find(x => `${x.kind}:${x.name}` === key);
     if (!r) return;
     const read = () => { instDraft[key] = instConfigRead(form, r); return instDraft[key]; };
+    // A secret typed and not saved comes back after a redraw (a row added,
+    // a poll): a password field is drawn empty, so the draft fills it.
+    const dr = instDraft[key];
+    if (dr) for (const f of r.config || []){
+      if (f.kind === "secret" && typeof dr[f.name] === "string" && dr[f.name]){ const i = form.querySelector(`[data-icf="${CSS.escape(f.name)}"]`); if (i && !i.value) i.value = dr[f.name]; }
+      if (f.kind === "list") form.querySelectorAll(`.icrow[data-iclist="${CSS.escape(f.name)}"]`).forEach((row, j) => {
+        for (const sf of f.fields || []) if (sf.kind === "secret" && typeof dr[f.name]?.[j]?.[sf.name] === "string" && dr[f.name][j][sf.name]){
+          const i = row.querySelector(`[data-icsub="${CSS.escape(sf.name)}"]`); if (i && !i.value) i.value = dr[f.name][j][sf.name]; }
+      });
+    }
     form.addEventListener("input", read);
     form.addEventListener("change", read);
     form.querySelectorAll("[data-icadd]").forEach(b => b.onclick = () => { const v = read(); v[b.dataset.icadd] = [...(v[b.dataset.icadd] || []), {}]; instRev++; drawPanes(); });

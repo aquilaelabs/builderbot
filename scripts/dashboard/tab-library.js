@@ -221,6 +221,20 @@ function libDetail(r){
   return lines.filter(Boolean).join("");
 }
 
+// The glyph a card wears for its kind: the rail's and the tabs' own where
+// one exists, a box with a tag for a pack and a screen for a companion.
+const LIB_ICONS = {
+  agent: () => TOOL_ICONS.agents, toolchain: () => TOOL_ICONS.toolchains, app: () => TOOL_ICONS.docker,
+  pack: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.2 8 2.6l5.5 2.6v5.6L8 13.4l-5.5-2.6z"/><path d="M2.5 5.2 8 7.8l5.5-2.6"/><path d="M8 7.8v5.6"/><path d="M5.2 3.9l5.6 2.7"/></svg>`,
+  companion: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.2" y="3" width="11.6" height="7.6" rx="1.2"/><path d="M6 13.4h4M8 10.6v2.8"/></svg>`,
+  // A service (R172): what a node runs for the others, as a box with a plug.
+  service: () => `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.4" y="4.2" width="11.2" height="7.6" rx="1.2"/><path d="M5.2 8h5.6M5.2 4.2V2.6M10.8 4.2V2.6"/></svg>`,
+};
+
+// One card (the Projects page's shape, R170: a store browses as cards):
+// its kind's glyph, its name with the tier and the versions as quiet pills,
+// what it is in two lines, and at its foot where it stands, Details, and
+// the verb. Open, it runs the grid's width with the whole description.
 function libRow(r, may){
   const key = `${r.kind}:${r.name}`, open = libOpen.has(key);
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : "";

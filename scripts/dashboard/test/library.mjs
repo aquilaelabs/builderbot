@@ -28,7 +28,7 @@ const sects = await page.$$eval('.doc .librarytab .libgroup', ds => ds.map(d => 
 ok(['agent', 'toolchain', 'pack', 'app', 'companion'].every(k => sects.includes(k)),
    `a group of cards per kind, always drawn, in the page's order (${sects.join(', ')})`);
 const shape = await page.evaluate(() => lib.rows.map(r => [r.kind, r.tier, typeof r.label, typeof r.about, typeof r.installed, typeof r.verb]));
-ok(shape.length > 0 && shape.every(([k, t, l, a, i, v]) => ['agent', 'toolchain', 'pack', 'app', 'companion'].includes(k)
+ok(shape.length > 0 && shape.every(([k, t, l, a, i, v]) => ['agent', 'toolchain', 'pack', 'service', 'app', 'companion'].includes(k)
    && ['official', 'vetted', 'sideloaded'].includes(t) && l === 'string' && a === 'string' && i === 'boolean' && v === 'string'),
    `every row is one shape: kind, tier, label, about, installed, verb (${shape.length} rows)`);
 ok(await page.evaluate(() => lib.rows.some(r => r.kind === 'toolchain') && document.querySelectorAll('.doc .librarytab .lcard').length === lib.rows.length),
@@ -59,7 +59,7 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
      'a kind chip shows that kind\'s group alone, the chip wearing .on');
   await page.click('.doc .librarytab [data-libkind=""]');
   await page.waitForFunction(() => libKind === '');
-  ok(await page.$$eval('.doc .librarytab .libgroup', ds => ds.length === 5), '...and All puts the five back');
+  ok(await page.$$eval('.doc .librarytab .libgroup', ds => ds.length === 6), '...and All puts the six back');
 } else ok(true, 'one kind only here, so no kind chips (chips need two groups)');
 
 // ---- a row opens on its description -----------------------------------
@@ -102,8 +102,8 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
   if (ag){
     await page.click(`.doc .librarytab .lcard[data-lrow="${ag}"] [data-libmore]`);
     await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), ag);
-    ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="${ag}"] .ldetail`, d => /session account/.test(d.textContent) && !!d.querySelector('[data-signin]')),
-       "Claude Code's row opens on its facts and this person's sign-in on the node");
+    ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="${ag}"] .ldetail`, d => /session account/.test(d.textContent) && /Installed page/.test(d.textContent) && !d.querySelector('[data-signin]')),
+       "Claude Code's row opens on its facts, pointing at the Installed page for this person's sign-in (R172: the Library is the catalog)");
   }
 }
 
