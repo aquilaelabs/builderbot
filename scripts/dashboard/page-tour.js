@@ -12,6 +12,8 @@
 // the page as a whole. A step whose part is not on screen is left out.
 const TOUR_PANE = "#pane0";
 const TOUR_BAR = `${TOUR_PANE} .docbarrow:not([hidden]), ${TOUR_PANE} .vbar`;
+// The Machines group's header (R177): the node picker where the page's bar was.
+const TOUR_MHEAD = ".pane .bar.machines .phead";
 const TOUR_SUB = `${TOUR_PANE} .bar .pseg`;
 const TOUR_FIRST = `${TOUR_PANE} .dmcard, ${TOUR_PANE} details.sect, ${TOUR_PANE} .doclist > .row, ${TOUR_PANE} .doclist .row`;
 const TOUR_STEPS = {
@@ -49,7 +51,7 @@ const TOUR_STEPS = {
   ],
   installed: [
     {say: "Installed is what a node has from the Library: its coding agents, toolchains, tool packs and services, and what each is set to there."},
-    {at: TOUR_BAR, say: "Pick the node here. Details on a row opens your sign-in to an agent, a toolchain's system packages, a pack's or a service's Configure, and Remove."},
+    {at: TOUR_MHEAD, say: "The node picked above holds here too. Details on a row opens your sign-in to an agent, a toolchain's system packages, a pack's or a service's Configure, and Remove."},
   ],
   library: [
     {say: "The Library is everything a BuilderBot installs or runs on a node: the coding agents, the toolchains for builds and tests, the tool packs you add, the apps a NAS runs, and the apps for your own machines."},
@@ -125,7 +127,7 @@ const TOUR_STEPS = {
   ],
   nodes: [
     {say: "Nodes are the machines your builds, tests, containers, VMs and sessions run on. The controller itself runs none of them."},
-    {at: TOUR_BAR, say: "Pick a node here. Enroll node makes the script that adds a machine."},
+    {at: TOUR_MHEAD, say: "Pick a node here; it holds across Nodes, Storage and Installed. Enroll node makes the script that adds a machine."},
     {at: TOUR_FIRST, say: "A node's sections: its health, the projects on it, its sessions, its features, and the advanced verbs at the end."},
   ],
   storage: [

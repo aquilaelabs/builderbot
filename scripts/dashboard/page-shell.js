@@ -373,8 +373,9 @@ function shellBar(t, i){
   const nav = `<span class="subnav pseg" role="tablist" aria-label="${esc(g ? g.label : tabLabel(t))}">${tools.map(([k, label]) =>
       `<button type="button" role="tab" aria-selected="${k === t.kind}" class="${k === t.kind ? "on" : ""}"${g ? ` data-subnav="${esc(k)}"` : ""}>${esc(label)}</button>`).join("")}</span>`;
   // The Machines group wears one header over its sub-nav (R177): the node
-  // picked once for Nodes, Storage and Installed.
-  return g?.key === "machines" ? machinesHeader(t) + nav : nav;
+  // picked once for Nodes, Storage and Installed; the group's actions on
+  // the sub-nav's line, at its right (the operator, 28 Oct).
+  return g?.key === "machines" ? machinesHeader(t) + `<span class="subrow">${nav}<span class="sp"></span>${machinesActions()}</span>` : nav;
 }
 function wireShellBar(bar){
   // The line under the tab on show slides to the one pressed (slideMark),
@@ -427,10 +428,14 @@ function machinesHeader(t){
   const from = n?.agent?.addr ? `dials in from ${n.agent.addr}` : "";
   const ag = n?.agent?.version ? `agent ${n.agent.version}` : "";
   const facts = [seen, from, ag].filter(Boolean).join(" · ");
-  const dead = featureOff("enroll") ? " disabled" : "";
   const pick = live.length ? nodePick("ndPick", live.map(x => ({id: x.id, name: x.name, live: x.live})), cur) : `<span class="pname">No node yet</span>`;
-  return `<span class="phead mchead">${pick}${facts ? `<span class="pfacts">${esc(facts)}</span>` : ""}<span class="sp"></span>
-    <button type="button" id="ndVm"${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
+  return `<span class="phead mchead">${pick}${facts ? `<span class="pfacts">${esc(facts)}</span>` : ""}<span class="sp"></span></span>`;
+}
+// The group's actions, on the sub-nav's line: dead with the enroll feature
+// off (the reason is on the Nodes page) and until the node list lands.
+function machinesActions(){
+  const dead = nodesList === null || featureOff("enroll") ? " disabled" : "";
+  return `<span class="actbar"><button type="button" id="ndVm"${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
     <button type="button" class="primary" id="ndEnroll"${dead}>${barSaid("Enroll node", "Enroll")}</button></span>`;
 }
 function wireMachinesHeader(bar){
