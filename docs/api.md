@@ -16,8 +16,8 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | GET | `/api/trace` | prefix | `_get_trace` | GET /api/trace?since=T: what this server was asked since T, grouped by endpoint (R75 step 4). |  |
 | GET | `/api/status` | prefix | `_get_status` | GET /api/status. |  |
 | GET | `/api/reset` | exact | `_get_reset` | GET /api/reset: how a Reset that un-enrolls its nodes first is getting on: each node, done or why not, and the error that stopped it. | refused: controller-read |
-| GET | `/api/move` | exact | `_get_move` | GET /api/move (R90 step 12): a move prepared here, or this controller moved, or this state arrived by a move; an administrator's. |  |
-| GET | `/api/move-bundle` | exact | `_get_move_bundle` | GET /api/move-bundle: the prepared bundle as a download, the owner's. |  |
+| GET | `/api/move` | exact | `_get_move` | GET /api/move (R90 step 12): a move armed here (and, asked with ?pieces=1, what a bundle may carry with each piece's size), or this controller moved, or this state arrived by a move with the nodes not yet here; an admini |  |
+| GET | `/api/move-bundle` | exact | `_get_move_bundle` | GET /api/move-bundle: the bundle as a download, packed fresh under the armed move's key at this moment (R175 step 1); the owner's. |  |
 | GET | `/api/backup` | exact | `_get_backup` | GET /api/backup (R161 step 4): the password set or not, the last copy, where the copies go and the copies found; an administrator's. |  |
 | GET | `/api/backup-file` | exact | `_get_backup_file` | GET /api/backup-file?name=NAME: a copy under the state as a download, the owner's; sealed, so a download is only ever a sealed file. |  |
 | GET | `/api/findings` | prefix | `_get_findings` | GET /api/findings: findings.view, scoped to the projects this account sees, and for a session to its own. |  |
@@ -126,7 +126,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | POST | `/api/storebackups` | exact | `_storebackups` | POST /api/storebackups (R162 step 5): set (add or change) or remove a backup's record; Run now is the nodes verb storage-backup. |  |
 | POST | `/api/pin` | prefix | `_pin` | Pin or unpin a command: macros.pin. | refused: command-pin |
 | POST | `/api/reset` | exact | `_reset` | POST /api/reset: start over at onboarding (settings.reset), and the dashboard re-executes itself so the next page is Create the owner. | refused: controller |
-| POST | `/api/move` | exact | `_move` | POST /api/move (R90 step 12): prepare (the bundle written, the token answered once), forget (withdrawn), moved (this controller marked moved to the new one, read-only from here on). |  |
+| POST | `/api/move` | exact | `_move` | POST /api/move (R90 step 12): prepare (the move armed, the token answered once, a bundle packed), forget (withdrawn), moved (this controller marked moved to the new one, read-only from here on), ask (the new address aske |  |
 | POST | `/api/backup` | exact | `_backup` | POST /api/backup {action: now}: a copy written now, the owner's. |  |
 | POST | `/api/create` | prefix | `_create` | New project: a fresh local repo, a clone or a link, and what the dialog chose besides (projects.create_from_dialog). | refused: create |
 | POST | `/api/profile` | prefix | `_profile` | The signed-in account's own settings (the Profile page): read on GET, saved on POST, by profiletab.py. |  |

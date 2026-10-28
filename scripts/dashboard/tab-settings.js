@@ -74,6 +74,7 @@ const SETTINGS_SAYS = {
   mail: "the SMTP server the bell goes out through",
   move: "to another home, its nodes following",
   updates: "the release running, the newest, and Update",
+  power: "restart the machine, or shut it down",
   updwin: "when a newer release is applied by itself",
   backup: "the password the copies are sealed under",
   copies: "the copies kept on the disks, and one now",
@@ -117,6 +118,7 @@ function renderSettingsInto(i){
            `<div class="row stack2" data-group="Idle sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
     ${state?.release?.running !== undefined ? sect("updates", "Updates", state.release.newer ? `${state.release.newer} is out` : state.release.latest ? "up to date" : "", updatesSection()) : ""}
+    ${state?.bare_metal && state?.own_node && state?.can?.admin ? sect("power", "Power", "", powerSection()) : ""}
     ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})
         // The copies made go right under the Backup group that makes them.
         + (g.key === "backup" ? sect("copies", "Backup copies", backupData?.made_at ? `last ${ago(backupData.made_at)}` : backupData?.on === false ? "off" : "", backupSection()) : "")).join("")}
@@ -255,62 +257,120 @@ function wireBackup(root){
   }));
 }
 // ---- moving this controller (R90 step 12) ----
-// Prepare to move writes the bundle and shows the token once; Download the
-// bundle takes it along; the nodes are told from their next hello; Mark as
-// moved, pressed once the new home is up, makes this one read-only, saying
-// where it went. The moved band is page-shell.js's (drawMovedBand).
+// Prepare to move arms the move and shows the token once (R175: no life on
+// it, and the nodes hear it on every hello from then on); Download the
+// bundle packs it fresh under that key at that moment; Forget it withdraws
+// the move (the key gone here, the nodes told nothing more); Mark as moved,
+// pressed once the new home is up, makes this one read-only, saying where
+// it went, and the controller marks itself so when the new one tells it or
+// answers its asking. The moved band is page-shell.js's (drawMovedBand).
 let moveData = null, moveAsked = false, moveToken = null;
 async function loadMove(){
   moveAsked = true;
-  try{ moveData = await (await fetch("/api/move")).json(); }
+  try{ moveData = await (await fetch("/api/move?pieces=1")).json(); }
   catch(e){ moveData = {error: "move: " + failWords(e)}; }
-  settingsRev++; drawPanes();
 }
 function moveStatus(){
   const m = moveData || {};
-  return m.moved ? "moved" : m.prepared ? "prepared" : "";
+  return m.moved ? "moved" : m.prepared ? "armed" : m.arrived?.restored_at ? "arrived" : "";
 }
+function moveSize(n){ return n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`; }
 function moveSection(){
   if (moveData === null){ if (!moveAsked) loadMove(); return `<div class="field">${skRows(2)}</div>`; }
   const m = moveData;
   if (m.error) return `<div class="hint bad">${esc(m.error)}</div>`;
+  const howWord = {pressed: "marked so here", told: "told by the new controller", asked: "learned by asking the new controller"}[m.how] || "";
   if (m.moved) return `<div class="row stack2" data-group="Move"><div class="grow">
-      <div class="sub bad">This controller moved to ${esc(m.to)} ${m.at ? esc(ago(m.at)) : ""}: it is read-only now, and its nodes have followed. What is here is a copy for a look back.</div></div></div>`;
-  const left = m.prepared ? `${Math.max(1, Math.round((m.left || 0) / 3600))} h` : "";
-  const sizeMb = m.size ? `${(m.size / 1048576).toFixed(1)} MB` : "";
-  const token = moveToken ? `<div class="field"><div class="hint warn">The move token, shown once and never kept here: <code>${esc(moveToken)}</code>. Give it with the bundle on the new install's first page (Moving a controller here?).</div></div>` : "";
+      <div class="sub bad">This controller moved to ${esc(m.to)} ${m.at ? esc(ago(m.at)) : ""}${howWord ? ` (${howWord}${m.landed_at ? `; the bundle landed ${esc(ago(m.landed_at))}` : ""})` : ""}: it is read-only now, and its nodes have followed. A node that comes back late is told where and knocks there by itself. What is here is a copy for a look back.</div></div></div>`;
+  // The state arrived by a move: what the old controller was told.
+  const ar = m.arrived || {};
+  const arrived = ar.restored_at ? `<div class="sub">This state arrived by a move${ar.from ? ` from ${esc(ar.from)}` : ""} ${esc(ago(ar.restored_at))}${
+      ar.told_at ? `; the old controller was told ${esc(ago(ar.told_at))}${ar.told_how && ar.told_how !== "taken" ? ` (${esc(ar.told_how)})` : ""}`
+      : ar.from ? `; the old controller is told once it answers${ar.tell_error ? ` (last: ${esc(ar.tell_error)})` : ""}` : "; the old controller named no address, so it learns by asking here"}.${
+      (m.not_here || []).length ? ` ${m.not_here.length} node${m.not_here.length === 1 ? " has" : "s have"} not checked in since: the Nodes page gives each its line.` : ""}</div>` : "";
+  const sizeMb = m.size ? moveSize(m.size) : "";
+  const token = moveToken ? `<div class="field"><div class="hint warn">The move token, shown once and never kept here: <code>${esc(moveToken)}</code>. Give it on the new install's first page (Moving a controller here?) with this controller's address, or with the bundle.</div></div>` : "";
+  const pieces = (m.pieces || []).map(pc => `<div class="field"><label class="ndcap"><input type="checkbox" data-movepiece="${esc(pc.key)}"${pc.on ? " checked" : ""}${pc.fixed ? " disabled" : ""}> ${esc(pc.label)} <span class="dim">(${moveSize(pc.size || 0)}${pc.about ? `; ${esc(pc.about)}` : ""})</span></label></div>`).join("");
+  const stores = Array.isArray(m.stores) ? m.stores : [];
   return `<div class="row stack2" data-group="Move"><div class="grow">
-      <div class="sub">To another container, to a machine of its own, or back: Prepare to move writes one sealed bundle (the state, the stores, the deploy key, the repositories if ticked) and shows a move token once, good for one move and 72 hours; the nodes hear where it is going and follow by themselves once the new home answers.</div>
-      ${m.prepared ? `<div class="sub">Prepared ${esc(ago(m.made_at))} for ${esc(m.to || "an address not named yet")}: ${esc(sizeMb)}${m.repos ? ", the repositories in it" : ""}${m.carries_key ? ", the install key in it" : ""}; the token is good for ${esc(left)} more.</div>` : ""}
+      ${arrived}
+      <div class="sub">To another container, to a machine of its own, or back: Prepare to move arms the move and shows a move token once; from then on every node hears where the controller is going, and follows by itself once the new home answers, however long that takes. The bundle (the state, the stores ticked, the deploy key, the repositories and the install key when ticked) is packed fresh each time it is downloaded, or pulled by the new install from here with the token.</div>
+      ${m.prepared ? `<div class="sub">Armed ${esc(ago(m.made_at))} for ${esc(m.to || "an address not named yet")}: ${m.heard} of ${m.nodes} node${m.nodes === 1 ? "" : "s"} ${m.heard === 1 ? "has" : "have"} heard it${m.packed_at ? `; last packed ${esc(ago(m.packed_at))}, ${esc(sizeMb)}` : ""}${stores.length ? `, with ${esc(stores.join(", "))}` : ""}${m.repos ? ", the repositories in it" : ""}${m.carries_key ? ", the install key in it" : ""}.${
+          m.asked_at ? ` Asked ${esc(m.to)} ${esc(ago(m.asked_at))} whether it landed: ${m.asked_error ? esc(m.asked_error) : "not yet"}.` : ""}</div>` : ""}
       ${token}
       ${m.prepared ? "" : `<div class="field"><label class="pick"><span class="pickw">New home</span><input type="text" id="moveTo" placeholder="https://builderbot.new.example" autocomplete="off" spellcheck="false"></label></div>
-      <div class="field"><label class="ndcap"><input type="checkbox" id="moveRepos"> the repositories too (leave off when both homes mount the same share)</label></div>
-      <div class="field"><label class="ndcap"><input type="checkbox" id="moveKey"> the install key too (else the new home asks for it)</label></div>`}
+      ${pieces}`}
       <div class="actbar"><span class="sp"></span>
-        ${m.prepared ? `<a class="btn" href="/api/move-bundle" download>Download the bundle</a><button type="button" data-moveforget>Forget it</button><button type="button" class="danger" data-movedone>Mark as moved</button>`
+        ${m.prepared ? `<a class="btn" href="/api/move-bundle" download>Download the bundle</a>${m.to ? `<button type="button" data-moveask>Ask the new home</button>` : ""}<button type="button" data-moveforget>Forget it</button><button type="button" class="danger" data-movedone>Mark as moved</button>`
                      : `<button type="button" class="primary" data-moveprep>Prepare to move</button>`}</div>
     </div></div>`;
 }
 function wireMove(root){
   root.querySelectorAll("[data-moveprep]").forEach(b => b.onclick = () => pressing(b, async () => {
     busy(b, "Preparing");
-    const j = await (await postJSON("/api/move", {action: "prepare", to: $("moveTo")?.value || "", repos: !!$("moveRepos")?.checked, carry_key: !!$("moveKey")?.checked})).json().catch(() => ({error: "no answer"}));
+    const on = k => !!root.querySelector(`[data-movepiece="${k}"]`)?.checked;
+    const stores = [...root.querySelectorAll('[data-movepiece^="store:"]')].filter(x => x.checked).map(x => x.dataset.movepiece.slice(6));
+    const j = await (await postJSON("/api/move", {action: "prepare", to: $("moveTo")?.value || "", repos: on("repos"), carry_key: on("install_key"), stores})).json().catch(() => ({error: "no answer"}));
     if (j.error){ notify(j.error, true); unbusy(b, "Prepare to move"); return; }
     moveToken = j.token;
     await loadMove();
   }));
   root.querySelectorAll("[data-moveforget]").forEach(b => b.onclick = () => pressing(b, async () => {
+    if (!await askYes("Forget this move?\n\nThe key is gone from here, so no node will follow a controller restored from its bundle, and the nodes hear of it no more. A bundle already downloaded still opens under its token, as a backup does.", {title: "Forget the move?", verb: "Forget it", danger: true})) return;
     const j = await (await postJSON("/api/move", {action: "forget"})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
     moveToken = null;
     await loadMove();
   }));
+  root.querySelectorAll("[data-moveask]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Asking");
+    const j = await (await postJSON("/api/move", {action: "ask"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    else notify(j.moved ? "it landed: this controller is marked moved" : `not landed there yet${j.asked_error ? `: ${j.asked_error}` : ""}`);
+    await loadMove();
+    if (j.moved) await refresh();
+  }));
   root.querySelectorAll("[data-movedone]").forEach(b => b.onclick = () => pressing(b, async () => {
-    if (!await askYes("Mark this controller as moved?\n\nFrom now on it is read-only and tells its nodes where it went; press this once the new home is up and answering.", {title: "Moved?", verb: "Mark as moved", danger: true})) return;
+    if (!await askYes("Mark this controller as moved?\n\nFrom now on it is read-only and tells its nodes where it went; press this once the new home is up and answering, or let it learn so by itself.", {title: "Moved?", verb: "Mark as moved", danger: true})) return;
     const j = await (await postJSON("/api/move", {action: "moved"})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
     await loadMove();
     await refresh();
+  }));
+}
+
+// Power (R175, the operator, 28 Oct): the machine this controller runs on,
+// restarted or shut down from here on a bare-metal install and the OS,
+// the same verbs This machine's Advanced section has; the container
+// edition has no machine of its own here.
+function powerSection(){
+  const n = typeof ownMachine === "function" ? ownMachine() : null;
+  const live = !!n?.live;
+  const busyWith = (n?.jobs || []).find(j => j.type === "system" && !["reboot", "poweroff"].includes(j.apply));
+  const inflight = w => (n?.jobs || []).some(j => j.apply === w);
+  const why = !n ? "This install's own machine is not enrolled as a node yet." : !live ? "Its agent is not dialing in: power the machine from its console." : busyWith ? "A system job is running on it; wait for it to finish." : "";
+  return `<div class="row stack2" data-group="Power"><div class="grow">
+      <div class="sub">Restart ends every session on this machine, everybody's, each closed first, and the machine comes back on its own with the dashboard. Shut down does the same and the machine stays off until somebody switches it on.</div>
+      ${why ? `<div class="sub warn">${esc(why)}</div>` : ""}
+      <div class="actbar"><span class="sp"></span>
+        <button type="button" class="danger" data-power="reboot"${why || inflight("reboot") ? " disabled" : ""}>${inflight("reboot") ? "Restarting…" : "Restart"}</button>
+        <button type="button" class="danger" data-power="poweroff"${why || inflight("poweroff") ? " disabled" : ""}>${inflight("poweroff") ? "Shutting down…" : "Shut down"}</button></div>
+    </div></div>`;
+}
+function wirePower(root){
+  root.querySelectorAll("[data-power]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.power, id = state?.own_node || "";
+    const here = (state?.sessions || []).filter(x => x.node_id === id);
+    const open = here.length ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open here, everybody's, each closed before the machine goes; transcripts are kept. ` : "";
+    if (!await askYes(act === "reboot"
+          ? `Restart this machine?\n\n${open}Whatever is running here stops; the dashboard is back once the machine is.`
+          : `Shut this machine down?\n\n${open}It does not come back on its own: switch it on from its console.`,
+        {title: act === "reboot" ? "Restart?" : "Shut down?", verb: act === "reboot" ? "Restart" : "Shut down", danger: true})) return;
+    busy(b, act === "reboot" ? "Restarting" : "Shutting down");
+    const j = await (await postJSON("/api/v1/nodes", {action: act, id})).json().catch(() => ({error: "no answer"}));
+    if (j.error){ notify(j.error, true); unbusy(b, act === "reboot" ? "Restart" : "Shut down"); return; }
+    notify(act === "reboot" ? "restarting: the page comes back with the machine" : "shutting down");
+    if (typeof loadNodes === "function") await loadNodes();
   }));
 }
 
@@ -790,6 +850,7 @@ function wireSettingsSections(el){
   wireUpdates(el);
   wireBackup(el);
   wireMove(el);
+  wirePower(el);
   // Ask Let's Encrypt now (R158 step 2): the Connection section's own press.
   el.querySelectorAll("[data-tlsissue]").forEach(b => b.onclick = async () => {
     busy(b, "Asking");

@@ -543,6 +543,12 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   **Update from the folder** takes the files from a folder on the machine.
   The container edition has no such section: its image is pulled by the
   host.
+- **Power** (a controller installed bare metal, the OS and the USB edition
+  among them, R175): Restart and Shut down for the machine the controller
+  runs on, through its own node's reboot and power-off verbs with This
+  machine's words and ask, dead with why while its agent is away or a
+  system job runs there. The container edition has neither this nor
+  Updates: its image and its container are its Docker manager's.
 - **Backup** and **Backup copies** (R161): the backup password, under which
   a sealed copy of the configuration is written after every change onto the
   machine's pools and under the state (the five newest kept), Back up now,
@@ -578,6 +584,12 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   each with whose it is, its project, whether it is working or waiting, and
   its node. Nodes are not accounts and keep running, and a band under the
   header reminds the owner it is on.
+- **Move this controller** (R90 step 12, R175): the move armed (the token
+  shown once, every node told from its next hello, however long it takes),
+  what the bundle carries ticked with each piece's size, Download the
+  bundle packed fresh each press, Ask the new home, Forget it, Mark as
+  moved; and, on a controller a move landed on, where it came from and
+  whether the old one has been told ([install.md](install.md#moving-a-controller)).
 - **Reset BuilderBot**, last.
 
 The page says plainly what still comes from the environment and why (the
