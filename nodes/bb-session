@@ -349,10 +349,13 @@ def wall_faults(c, w, guard=None):
             who[role] = (name, *got)
     # ...and each account's own user here (R125), which runs that account's
     # sessions: held to the same groups as the session account.
+    # One already named above (a node whose session account is itself an
+    # account user) is not said twice (B427).
+    named = {uid for _n, uid, _g in who.values()}
     for pw in pwd.getpwall():
         if pw.pw_name.startswith(ACCOUNT_USER):
             got = _ids(pw.pw_name)
-            if got:
+            if got and got[0] not in named:
                 who[f"the account user {pw.pw_name}"] = (pw.pw_name, *got)
     ctl = _ids(w["ACCOUNT"])
     banned = {}
