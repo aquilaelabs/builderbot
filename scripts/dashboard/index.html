@@ -3486,8 +3486,8 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   color:var(--ink);box-sizing:border-box;background-color:transparent;border-color:transparent;transition:background-color .15s,border-color .15s}
 .pane .bar.page.grouped .phead>label.pick>select:focus-visible{background-color:var(--btn);border-color:var(--line)}
 @media(hover:hover){ .pane .bar.page.grouped .phead>label.pick>select:hover{background-color:var(--btn);border-color:var(--line)} }
-.pane .bar.page.grouped .pname{font-weight:600;font-size:1.15rem;line-height:1.3;color:var(--ink);white-space:nowrap}
-.pane .bar.page.grouped .pfacts{font:var(--f-data);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.pane .bar.page.grouped .pname{font-weight:600;font-size:1.15rem;line-height:1.3;color:var(--ink);overflow-wrap:anywhere;min-width:0}
+.pane .bar.page.grouped .pfacts{font:var(--f-data);color:var(--dim);overflow-wrap:anywhere;min-width:0;flex:0 1 auto}
 .pane .bar.page.grouped .phead>.sp{flex:1}
 .pane .bar.page.grouped>.subrow{display:flex;align-items:center;gap:10px;flex:1 1 100%;min-width:0;min-height:var(--tap);margin-top:6px;position:relative}
 /* ...its rule the pane's whole width, as the notebook's over its strip,
@@ -3506,9 +3506,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pane .bar.page.grouped .subnav>button.off.on{color:var(--ink)}
 .pane .bar.page.grouped .subnav .navnote{font:var(--f-note);color:var(--dim);margin-left:5px}
 .pane .bar.proj .phead{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0;flex-wrap:wrap}
-.pane .bar.proj .pname{font-weight:600;font-size:1.15rem;line-height:1.3;color:var(--ink);white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.pane .bar.proj .pname{font-weight:600;font-size:1.15rem;line-height:1.3;color:var(--ink);overflow-wrap:anywhere;min-width:0;display:inline-flex;align-items:center;gap:6px}
 .pane .bar.proj .pname .lockmark svg{width:14px;height:14px}
-.pane .bar.proj .pfacts{font:var(--f-data);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:40ch}
+.pane .bar.proj .pfacts{font:var(--f-data);color:var(--dim);overflow-wrap:anywhere;min-width:0;max-width:40ch}
 .pane .bar.proj .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);white-space:nowrap}
 .pane .bar.proj .sp{flex:1}
 .pane .bar.proj .phead>button{min-height:32px;padding:4px 12px;font:var(--f-ui)}
