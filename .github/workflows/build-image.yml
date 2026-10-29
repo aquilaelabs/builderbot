@@ -460,7 +460,14 @@ jobs:
           echo "snapshot: $(cat image/SNAPSHOT)"
       - name: Build the image
         shell: bash
-        run: sudo -E image/build.sh --out out
+        run: |
+          set -o pipefail
+          # A failure's last lines as the job's error annotation, which GitHub
+          # shows without signing in, where the log itself needs a token.
+          if ! sudo -E image/build.sh --out out 2>&1 | tee build.log; then
+            tail -n 60 build.log | python3 -c 'import sys; t = sys.stdin.read(); print("::error title=Build the image::" + t.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))'
+            exit 1
+          fi
       - name: What moved since the last release
         if: github.event_name == 'schedule'
         shell: bash
