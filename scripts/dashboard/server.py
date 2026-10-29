@@ -4315,9 +4315,12 @@ try:
     # handed in the hello with the node's store root.
     packconfig.configure(state=STATE, write_json=write_json, seal=signing.seal, unseal=signing.unseal,
                          sealing=lambda: signing.MASTER is not None,
+                         # A person's own answers (R172 step 5), under their own key.
+                         account_key=lambda uid: accountkeys.key_of(uid), open_with=signing.open_with,
                          store_root=lambda nid: (lambda st: (st.get("path") or "") + ("/" + st["scope"] if st.get("scope") else ""))(
                              (((nodes.node(nid) or {}).get("reported") or {}).get("stores") or {}).get("toolchains") or {}))
     nodes.pack_config = lambda nid: packconfig.for_node(nid, toolpacks.configs())
+    nodes.pack_people = lambda nid: packconfig.for_people(nid, toolpacks.configs())
     if (_sealed := extmounts.seal_all()):
         print(f"dashboard: sealed {_sealed} share password(s) under the install's key", flush=True)
     # ...and the digest of the bb bundle, so a node can tell from hello alone
@@ -11399,16 +11402,30 @@ class Handler(BaseHTTPRequestHandler):
             services.append({"manifest": toolpacks.validate(router.pack(), shipped=())[0], "status": router.status(nid),
                              "ready": router._ready(nid), "all_projects": sorted(prefs.all_projects(WORKSPACE))})
         pack_values = {name: packconfig.get(nid, name, fields) for name, fields in toolpacks.configs().items()} if n and not users.may_node(who, "configure", nid) else {}
+        # ...and this person's own (R172 step 5), where they work on the node.
+        yours_ok = bool(n) and self._works_on_node(who, nid) and bool(users.uid_of(who))
+        pack_mine = {name: packconfig.get_mine(nid, name, fields, users.uid_of(who)) for name, fields in toolpacks.configs().items()
+                     if packconfig.person_fields(fields)} if yours_ok else {}
         return self._json({"node": nid, "name": tc.get("name") or (n or {}).get("name") or "", "live": bool(tc.get("live", (n or {}).get("live"))),
-                           "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view(), services, pack_values),
+                           "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view(), services, pack_values, pack_mine),
                            "job": tc.get("job") or {"running": False}, "catalog_error": cat.get("error", ""),
                            "may": {"install": may_install, "apps": may_apps, "packs": not users.may(who, "curate"),
-                                   "configure": bool(n) and not users.may_node(who, "configure", nid)},
+                                   "configure": bool(n) and not users.may_node(who, "configure", nid), "yours": yours_ok},
                            "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb"), "checked": tc.get("checked") or 0},
                            "sysdeps": tc.get("sysdeps") or {}, "cleanable": tc.get("cleanable") or [], "locked": bool(tc.get("locked")),
                            "sandbox": bool(tc.get("sandbox")), "managed": bool(tc.get("administers")) and not tc.get("locked"),
                            "catalog_repo": library.repo_of(settings.get("catalog_url") or ""),
                            "yours": {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}})
+
+    def _works_on_node(self, who, nid):
+        """Whether this account works on a project whose node is `nid`
+        (R172 step 5: a person-scoped setting asks nothing more)."""
+        if users.is_admin(who):
+            return True
+        for p in wssync.bound_projects(nid) or []:
+            if not users.may(who, "work", p):
+                return True
+        return False
 
     def _library(self, req):
         """POST /api/library (R172): a card's Configure, Install and Remove
@@ -11462,9 +11479,18 @@ class Handler(BaseHTTPRequestHandler):
             if not r.get("error"):
                 db.audit(f"user:{by}", f"router-{act}", nid, {})
             return self._result(r)
+        fields = toolpacks.configs().get(pack)
+        # A person's own answers (R172 step 5): theirs on a node whose
+        # projects they work on, no Configure grant asked.
+        if field(req, "scope") == "person":
+            if not fields or act != "configure":
+                return self._json({"error": f"{pack or 'nothing'} asks nothing of each person"}, 400)
+            if not self._works_on_node(who, nid):
+                return self._json({"error": "your own settings here are for whoever works on this node's projects"}, 403)
+            r = packconfig.set_mine(nid, pack, fields, req.get("values"), users.uid_of(who))
+            return self._json(r, 400 if r.get("error") else 200)
         if (why := users.may_node(who, "configure", nid)):
             return self._json({"error": why}, 403)
-        fields = toolpacks.configs().get(pack)
         if not fields:
             return self._json({"error": f"{pack or 'nothing'} is not an added pack that asks for anything"}, 400)
         if act != "configure":

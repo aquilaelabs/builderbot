@@ -56,7 +56,7 @@ def _tier(t):
     return "official" if t in ("official", "") else "vetted" if t == "vetted" else "sideloaded"
 
 
-def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(), pack_values=None):
+def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(), pack_values=None, pack_mine=None):
     """The one list, in the page's order: agents, toolchains, packs, the
     services (R172: a deployed thing of BuilderBot's, its configuration on
     the card), apps, the catalog's offers, the companions. `services` is
@@ -64,6 +64,9 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
     its answers on this node} for the packs with a config block."""
     out = []
     pack_values = pack_values or {}
+    # ...and this person's own answers, for the fields a pack scopes to a
+    # person (R172 step 5): None where it asks none of them, or they may not.
+    pack_mine = pack_mine or {}
     tc = node_payload or {}
     plat = str(tc.get("platform") or "")
     job = tc.get("job") or {}
@@ -110,6 +113,7 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
                     "pack": {k: pack.get(k) for k in ("url", "commit", "path", "by", "at", "tier", "verbs", "here")} if pack else None,
                     # What it asks for per node, and what it has been given here (R172).
                     "config": i.get("config") or [], "values": pack_values.get(i["name"]) if i.get("config") else None,
+                    "mine": pack_mine.get(i["name"]),
                     "verb": "update" if i.get("state") == "update" else ("" if i.get("installed") else "install")})
     for s in services or []:
         m, st = s.get("manifest") or {}, s.get("status") or {}

@@ -75,13 +75,16 @@ if "{dist}" in " ".join(spec["run"]):
     os.makedirs(dist, exist_ok=True)
 # What the pack is configured with on this node (R172): the agent writes
 # the fields that name an environment variable into the store, owned by
-# the session account, and the verb reads them from there.
-try:
-    with open(os.path.join(os.path.dirname(pack_dir), ".bb", "config", name + ".env"), encoding="utf-8") as f:
-        for line in f:
-            k, sep, v = line.rstrip("\n").partition("=")
-            if sep and re.fullmatch(r"[A-Z][A-Z0-9_]{0,40}", k):
-                os.environ[k] = v
-except OSError:
-    pass
+# the session account, and the verb reads them from there; then this
+# person's own answers from their home (R172 step 5), which win.
+for conf in (os.path.join(os.path.dirname(pack_dir), ".bb", "config", name + ".env"),
+             os.path.join(os.path.expanduser("~"), ".bb", "config", name + ".env")):
+    try:
+        with open(conf, encoding="utf-8") as f:
+            for line in f:
+                k, sep, v = line.rstrip("\n").partition("=")
+                if sep and re.fullmatch(r"[A-Z][A-Z0-9_]{0,40}", k):
+                    os.environ[k] = v
+    except OSError:
+        pass
 os.execvp(argv[0], argv)

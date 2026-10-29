@@ -2229,6 +2229,7 @@ token_pubs = None
 # 1): users.smb_users, and the resolver of a share's names (users.smb_resolve).
 smb_users = None
 pack_config = None         # nid -> [{pack, store, values, env}] (R172, packconfig.for_node)
+pack_people = None         # nid -> [{uid, pack, env}] (R172 step 5, packconfig.for_people)
 smb_resolve = None
 # The reporting's intake (history.add), on the controller's own machine's samples (R164 step 4).
 history_add = None
@@ -4455,6 +4456,9 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             # ...and what each added pack is configured with on this node
             # (R172): its values, the secrets opened, for the pack's verbs.
             "pack_config": (pack_config(nid) if pack_config else []),
+            # ...and each account's own answers there (R172 step 5), written
+            # into that account's home on the node.
+            "pack_people": (pack_people(nid) if pack_people else []),
             # ...and the other disks and shares it mounts (R162 step 4).
             "ext_mounts": (ext_mounts() if ext_mounts and own_machine(n) else []),
             # ...and the backups it copies (R162 step 5).

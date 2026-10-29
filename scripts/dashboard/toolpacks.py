@@ -182,6 +182,14 @@ def _config(c, errors, depth=0):
             continue
         field = {"name": name, "kind": kind, "label": str(f.get("label") or name)[:60], "help": str(f.get("help") or "")[:200],
                  "required": f.get("required") is True}
+        # Whose the value is (R172 step 5): the node's (one for everybody
+        # there), or each person's own on that node, kept under their key.
+        scope = str(f.get("scope") or "node")
+        if scope not in ("node", "person") or (depth and scope != "node"):
+            errors.append(f"config field {name}: scope is node or person" + (" (a list's rows are the list's)" if depth else ""))
+            continue
+        if scope == "person":
+            field["scope"] = "person"
         env = str(f.get("env") or "")
         if env and not ENV_NAME.fullmatch(env):
             errors.append(f"config field {name}: env is a NAME a verb reads it as")

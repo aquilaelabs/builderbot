@@ -377,6 +377,9 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # written into the store for its verbs, once per change.
             if isinstance(r.get("pack_config"), list):
                 self.pack_config_want(r["pack_config"])
+            # ...and each account's own (R172 step 5), into its home.
+            if isinstance(r.get("pack_people"), list):
+                self.pack_people_want(r["pack_people"])
             # Other disks and shares on the controller's own machine (R162
             # step 4): the record mounted and unmounted as it says.
             if isinstance(r.get("ext_mounts"), list):

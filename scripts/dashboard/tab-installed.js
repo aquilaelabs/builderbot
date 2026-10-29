@@ -170,7 +170,10 @@ function instDetail(r){
     if (r.reopen) lines.push(`<span class="sub warn">${r.reopen === 1 ? "1 session" : `${r.reopen} sessions`} open here started before this was installed: reopen ${r.reopen === 1 ? "it" : "them"} to use it.</span>`);
     if (r.pinned?.length) lines.push(`<span class="sub">Pinned by ${esc(r.pinned.map(projLabel).join(", "))}.</span>`);
     if (r.pack) lines.push(`<span class="sub">${r.pack.here ? "Made here" : `From <code>${esc(r.pack.url)}</code> at ${esc((r.pack.commit || "").slice(0, 12))}`}${r.pack.by ? `, added by ${esc(r.pack.by)}` : ""}.</span>`);
-    if (r.config?.length && r.values && inst?.may?.configure) lines.push(instConfigForm(r));
+    // This node's answers for whoever may Configure here, and each
+    // person's own for whoever works on this node's projects (R172 step 5).
+    if (r.config?.length && r.values && inst?.may?.configure) lines.push(instConfigForm(r, "node"));
+    if (r.config?.length && r.mine && inst?.may?.yours) lines.push(instConfigForm(r, "person"));
   }
   if (r.kind === "service"){
     lines.push(instServiceLines(r));
@@ -220,16 +223,23 @@ function instConfigField(f, v, key){
     default: return "";
   }
 }
-function instConfigForm(r){
-  if (!r.config?.length) return "";
-  const key = `${r.kind}:${r.name}`, v = instDraft[key] || r.values || {};
-  return `<div class="field agpart icform" data-icform="${esc(key)}"><div class="fsub">Configure on ${esc(inst?.name || "this node")}</div>
-    ${r.config.map(f => instConfigField(f, v[f.name], key)).join("")}
+// The fields of one scope: the node's (one answer for everybody there) or
+// a person's own (R172 step 5).
+const instScoped = (r, scope) => (r.config || []).filter(f => (f.scope || "node") === scope);
+function instConfigForm(r, scope = "node"){
+  const fields = instScoped(r, scope);
+  if (!fields.length) return "";
+  const key = `${r.kind}:${r.name}`, dk = `${key}|${scope}`, v = instDraft[dk] || (scope === "person" ? r.mine : r.values) || {};
+  const both = instScoped(r, "node").length && instScoped(r, "person").length;
+  const title = scope === "person" ? `Yours on ${inst?.name || "this node"}` : both ? `This node: ${inst?.name || ""}` : `Configure on ${inst?.name || "this node"}`;
+  return `<div class="field agpart icform" data-icform="${esc(key)}" data-icscope="${scope}"><div class="fsub">${esc(title)}</div>
+    ${scope === "person" ? `<div class="hint">Yours alone: your sessions' verbs here read these over the node's.</div>` : ""}
+    ${fields.map(f => instConfigField(f, v[f.name], `${key}-${scope}`)).join("")}
     <div class="actbar"><span class="state">${r.kind === "service" && r.installed ? "saving rebuilds it with the change" : ""}</span><button type="button" class="primary" data-icsave="${esc(key)}">Save</button></div></div>`;
 }
-function instConfigRead(form, r){
+function instConfigRead(form, r, scope = "node"){
   const v = {};
-  for (const f of r.config || []){
+  for (const f of instScoped(r, scope)){
     if (f.kind === "secret" || f.kind === "text" || f.kind === "choice") v[f.name] = form.querySelector(`[data-icf="${CSS.escape(f.name)}"]`)?.value ?? "";
     else if (f.kind === "switch") v[f.name] = !!form.querySelector(`[data-icf="${CSS.escape(f.name)}"]`)?.checked;
     else if (f.kind === "projects") v[f.name] = [...form.querySelectorAll(`[data-icproj="${CSS.escape(f.name)}"]:checked`)].map(i => i.value);
@@ -325,13 +335,14 @@ function wireInstalled(root){
   const sd = root.querySelector("[data-instsysdeps]");
   if (sd) sd.onclick = () => pressing(sd, async () => { busy(sd, "Installing"); await tcAct("sysdeps"); await loadInstalled(); });
   root.querySelectorAll(".icform").forEach(form => {
-    const key = form.dataset.icform, r = (inst?.rows || []).find(x => `${x.kind}:${x.name}` === key);
+    const key = form.dataset.icform, scope = form.dataset.icscope || "node", dk = `${key}|${scope}`;
+    const r = (inst?.rows || []).find(x => `${x.kind}:${x.name}` === key);
     if (!r) return;
-    const read = () => { instDraft[key] = instConfigRead(form, r); return instDraft[key]; };
+    const read = () => { instDraft[dk] = instConfigRead(form, r, scope); return instDraft[dk]; };
     // A secret typed and not saved comes back after a redraw (a row added,
     // a poll): a password field is drawn empty, so the draft fills it.
-    const dr = instDraft[key];
-    if (dr) for (const f of r.config || []){
+    const dr = instDraft[dk];
+    if (dr) for (const f of instScoped(r, scope)){
       if (f.kind === "secret" && typeof dr[f.name] === "string" && dr[f.name]){ const i = form.querySelector(`[data-icf="${CSS.escape(f.name)}"]`); if (i && !i.value) i.value = dr[f.name]; }
       if (f.kind === "list") form.querySelectorAll(`.icrow[data-iclist="${CSS.escape(f.name)}"]`).forEach((row, j) => {
         for (const sf of f.fields || []) if (sf.kind === "secret" && typeof dr[f.name]?.[j]?.[sf.name] === "string" && dr[f.name][j][sf.name]){
@@ -345,9 +356,9 @@ function wireInstalled(root){
     const save = form.querySelector("[data-icsave]");
     if (save) save.onclick = () => pressing(save, async () => {
       busy(save, "Saving");
-      const j = await (await postJSON("/api/library", {action: "configure", node: instNode, pack: r.name, values: read()})).json().catch(() => ({error: "no answer"}));
+      const j = await (await postJSON("/api/library", {action: "configure", node: instNode, pack: r.name, values: read(), ...(scope === "person" ? {scope} : {})})).json().catch(() => ({error: "no answer"}));
       if (j.error){ notify(j.error, true); return; }
-      delete instDraft[key];
+      delete instDraft[dk];
       notify(j.job ? "saved: the router is rebuilt with the change, its row on the Containers page has the build" : "saved");
       await loadInstalled();
     });

@@ -7,6 +7,14 @@ names a verb reads them as, which the agent writes into the store for
 that pack's verbs. The model router is not kept here: its service keeps
 its own record (router.py), and the Library sends its Configure there.
   STATE/packconfig.json   {nid: {pack: {field: value | "sealed:..." | [rows] | bool | [projects]}}}
+  STATE/packconfig-people.json  {nid: {pack: {uid: {field: ...}}}}: the
+                          fields a manifest scopes to a person (R172 step 5),
+                          each account's own on that node, a secret sealed
+                          under the account's own key (accountkeys), so it
+                          opens only as that account's sign-ins do. The hello
+                          hands each account's to the node, which writes them
+                          into that account's home, read by its sessions'
+                          verbs over the node's.
 """
 import base64
 import json
@@ -19,6 +27,8 @@ seal = None
 unseal = None
 sealing = None
 store_root = None          # nid -> the node's toolchain store root, for the hello
+account_key = None         # uid -> its own key (32 bytes), or None while it is locked
+open_with = None           # signing.open_with(key, blob): a seal under an account's own key opened
 SEALED = "sealed:"
 _lock = threading.RLock()
 
@@ -59,6 +69,129 @@ def _open(v):
         except Exception:                                   # noqa: BLE001 (Locked, or damaged: no value)
             return ""
     return v
+
+
+def node_fields(fields):
+    return [f for f in fields or [] if f.get("scope") != "person"]
+
+
+def person_fields(fields):
+    return [f for f in fields or [] if f.get("scope") == "person"]
+
+
+def _people_file():
+    return STATE / "packconfig-people.json"
+
+
+def _people():
+    try:
+        d = json.loads(_people_file().read_text())
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _seal_for(uid, s):
+    k = account_key(uid) if account_key else None
+    if not k or not seal:
+        return None
+    return SEALED + base64.b64encode(seal(s.encode(), key=k)).decode()
+
+
+def _open_for(uid, v):
+    v = str(v or "")
+    if not v.startswith(SEALED):
+        return v
+    k = account_key(uid) if account_key else None
+    if not k or not open_with:
+        return None
+    try:
+        return open_with(k, base64.b64decode(v[len(SEALED):])).decode()
+    except Exception:                                   # noqa: BLE001 (damaged, or another key: no value)
+        return ""
+
+
+def set_mine(nid, pack, fields, values, uid):
+    """Keep a person's own answers to a pack's person-scoped fields on a
+    node (R172 step 5): {ok, values} or {error}. A secret is sealed under
+    the account's own key, refused while that key is locked."""
+    fields = person_fields(fields)
+    if not fields:
+        return {"error": "this pack asks nothing of each person"}
+    if not isinstance(values, dict):
+        return {"error": "the configuration is an object of field values"}
+    with _lock:
+        d = _people()
+        rec = d.setdefault(str(nid), {}).setdefault(str(pack), {}).setdefault(str(uid), {})
+        new = {}
+        for f in fields:
+            if f["kind"] == "secret":
+                s = str(values.get(f["name"]) or "").strip()
+                if s == "clear":
+                    new[f["name"]] = ""
+                elif not s:
+                    new[f["name"]] = rec.get(f["name"], "")
+                elif "\n" in s or len(s) > 400:
+                    return {"error": f"{f['label']} is one line, 400 characters at most"}
+                else:
+                    kept = _seal_for(uid, s)
+                    if kept is None:
+                        return {"error": "your key is locked: unlock it on your Profile, then save"}
+                    new[f["name"]] = kept
+                continue
+            val, why = _row_value(dict(f, kind=f["kind"]), values.get(f["name"]), rec.get(f["name"]))
+            if why:
+                return {"error": why}
+            new[f["name"]] = val
+        for f in fields:
+            if f.get("required") and new.get(f["name"]) in ("", [], None):
+                return {"error": f"{f['label']} is required"}
+        d[str(nid)][str(pack)][str(uid)] = new
+        write_json(_people_file(), d)
+    return {"ok": True, "values": get_mine(nid, pack, fields, uid)}
+
+
+def get_mine(nid, pack, fields, uid):
+    """A person's own answers on a node for the page, a secret as set or not."""
+    rec = ((_people().get(str(nid)) or {}).get(str(pack)) or {}).get(str(uid)) or {}
+    return {f["name"]: _shown(f, rec.get(f["name"], False if f["kind"] == "switch" else [] if f["kind"] in ("list", "projects") else ""))
+            for f in person_fields(fields)}
+
+
+def _env_of(fields, opened):
+    env = {}
+    for f in fields:
+        if f.get("env") and f["name"] in opened:
+            v = opened[f["name"]]
+            env[f["env"]] = ("1" if v else "") if f["kind"] == "switch" else json.dumps(v) if f["kind"] in ("list", "projects") else str(v or "")
+    return env
+
+
+def for_people(nid, manifests):
+    """The hello's rows of each account's own values on a node:
+    [{uid, pack, env}], a secret opened under the account's key; an account
+    whose key is locked is left out until it is open, as its sign-ins are."""
+    out = []
+    for pack, people in ((_people().get(str(nid)) or {}).items()):
+        fields = person_fields(manifests.get(pack))
+        if not fields:
+            continue
+        for uid, vals in (people or {}).items():
+            opened, locked = {}, False
+            for f in fields:
+                if f["name"] not in vals:
+                    continue
+                if f["kind"] == "secret":
+                    o = _open_for(uid, vals[f["name"]])
+                    if o is None:
+                        locked = True
+                        break
+                    opened[f["name"]] = o
+                else:
+                    opened[f["name"]] = vals[f["name"]]
+            if not locked:
+                out.append({"uid": str(uid), "pack": pack, "env": _env_of(fields, opened)})
+    return out
 
 
 def _row_value(field, v, was):
@@ -122,7 +255,7 @@ def set_values(nid, pack, fields, values):
         d = _load()
         rec = d.setdefault(str(nid), {}).setdefault(str(pack), {})
         new = {}
-        for f in fields or []:
+        for f in node_fields(fields):
             val, why = _row_value(f, values.get(f["name"]), rec.get(f["name"]))
             if why:
                 return {"error": why}
@@ -147,7 +280,7 @@ def get(nid, pack, fields):
     """A pack's answers on a node for the page: {field: value}, a secret as
     True when one is kept, never its bytes."""
     rec = (_load().get(str(nid)) or {}).get(str(pack)) or {}
-    return {f["name"]: _shown(f, rec.get(f["name"], False if f["kind"] == "switch" else [] if f["kind"] in ("list", "projects") else "")) for f in fields or []}
+    return {f["name"]: _shown(f, rec.get(f["name"], False if f["kind"] == "switch" else [] if f["kind"] in ("list", "projects") else "")) for f in node_fields(fields)}
 
 
 def forget(nid, pack):
@@ -180,12 +313,9 @@ def for_node(nid, manifests):
         fields = manifests.get(pack)
         if not fields or not root:
             continue
+        fields = node_fields(fields)
         opened = {f["name"]: _opened(f, vals.get(f["name"])) for f in fields if f["name"] in vals}
-        env = {}
-        for f in fields:
-            if f.get("env") and f["name"] in opened:
-                v = opened[f["name"]]
-                env[f["env"]] = ("1" if v else "") if f["kind"] == "switch" else json.dumps(v) if f["kind"] in ("list", "projects") else str(v or "")
+        env = _env_of(fields, opened)
         out.append({"pack": pack, "store": root, "values": opened, "env": env})
     return out
 
