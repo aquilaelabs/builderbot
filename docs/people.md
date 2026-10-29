@@ -63,9 +63,14 @@ roles, made on the **Roles** page (R152, the operator, 7 Oct). A role is a
 that reaches the machinery, or **On a project**, given per project and
 holding there) and, per area, **Read** and **Write**: Projects, Project
 settings, Releases and versions, Git authentication, File access, Containers
-and Terminal on a project; Nodes, Toolchains, Jobs, CI runner, Accounts and
-roles, New projects, Controller and Storage beside them. On an Everywhere
-role the areas that reach a machine (Nodes, Toolchains, Jobs, New projects,
+and Terminal on a project; Nodes, Install, Configure, Curate, Jobs, CI
+runner, Accounts and roles, New projects, Controller and Storage beside them.
+**Install** is the Library's and the Installed page's install, update and
+remove on a node; **Configure** a service's and a pack's settings on a node,
+and deploying or removing a service there; **Curate** the catalog's own
+entries every node shares, a pack or an app of your own (R174; before 0.9
+the first two were one area, Toolchains). On an Everywhere role the areas
+that reach a machine (Nodes, Install, Configure, Jobs, New projects,
 Storage) open on the nodes, and CI runner on each runner, with Read and Write
 on each, every one ticked being every node, those added later included: a
 role with New projects to write on bb-sandbox alone lets an
@@ -94,7 +99,7 @@ and the rail does not draw its page), and the server holds the same line: the
 Users and Roles reads, an agent's console without Terminal Read (no terminal
 at all), the Jobs listing (a person's own projects' jobs alone) and the
 Docker listing (the projects whose Containers they may read). Without Nodes
-or Toolchains Read those reads answer only for the nodes of the person's own
+or Install Read those reads answer only for the nodes of the person's own
 projects, which a sign-in there needs, and never for another machine.
 
 The **Roles** page lists the roles beside the one picked (the projects'

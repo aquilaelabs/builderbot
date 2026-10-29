@@ -78,12 +78,12 @@ function railAllows(kind){
     case "machine": return !!a.controller && !!state?.own_node;
     case "users": case "roles": return !!a.accounts;
     // The Emulator's images are the toolchain store's, so the same area.
-    case "emulator": return !!a.toolchains;
+    case "emulator": return !!a.install;
     // The Library (R170): the toolchains and the coding agents as one, so
     // either area draws it; what each row offers is the server's to gate.
-    case "library": return !!a.toolchains || !!a.nodes;
+    case "library": return !!a.install || !!a.curate || !!a.nodes;
     // What is installed on a node (R172): the same areas as the Library.
-    case "installed": return !!a.toolchains || !!a.nodes;
+    case "installed": return !!a.install || !!a.configure || !!a.nodes;
     case "jobs": return !!a.jobs;
     // An administrator's own cron (R117), its own area.
     case "schedules": return !!a.schedules;

@@ -277,23 +277,24 @@ anywhere else.
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
 | `tizen` | manual | Samsung TVs, signage and appliances. No headless installer exists, so `bb toolchains install tizen` prints the steps and is not in the dashboard's list; everything there installs |
 
-**From the dashboard.** **Toolchains**, under Build on the rail, is a
-**page** the way the findings report is: a list of
-everything above with a checkbox each, the size it will take, and, once
-installed, the path it actually landed on. Tick several and install or remove
-them in one go. If one fails, its row says why: the sentence, not the
-several hundred lines of progress frames that came with it.
+**From the dashboard.** The **Library**, under Build on the rail, offers
+everything above as a card each for the node picked in the group's header:
+what it is, its terms, what it needs, and Install or Update. The
+**Installed** page, under Machines, lists what that node holds, the path each
+landed on and its system packages, with Remove. If an install fails, its
+card says why: the sentence, not the several hundred lines of progress
+frames that came with it.
 
-System images sit below in a section of their own, because they are not
+System images are the **Emulator** page's, under Build, because they are not
 toolchains: a picker for the API level and flavor with the download size on
 each option, and the ones already on disk listed under it with what they take
 and a bin each. Each one also says **which AVDs are built on it**, which is
 what "can this go?" actually means: an AVD names one image exactly and will
 not boot without it, and two flavors at the same API level are not
-interchangeable. An image no AVD names says so, and is the one that is spare. A page rather than a dialog because an install runs for
-minutes; it stays a page you can leave and come back to while you work, and the work itself is a background job on the container, so the
-list keeps reporting progress instead of hanging on a request that would take
-four minutes to answer. The page only ever posts names the server offered it,
+interchangeable. An image no AVD names says so, and is the one that is spare. An install runs for
+minutes as a background job on the node, so a page you leave and come back to keeps reporting
+its progress instead of hanging on a request that would take
+four minutes to answer. The pages only ever post names the server offered them,
 the same rule the command buttons follow.
 
 **Building for Windows, from here.** Three of those cross-compile without a

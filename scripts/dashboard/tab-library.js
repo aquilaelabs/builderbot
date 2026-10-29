@@ -166,9 +166,9 @@ function libActs(r, may){
   // its press sends it to the Containers page's New container with the app
   // picked, and each press makes another container under its own name.
   if (r.kind === "app") return `${may.apps ? a("install", "New container", "primary") : ""}${r.tier === "sideloaded" && may.packs ? a("edit", "Edit") : ""}`;
-  // A service deploys as a written container does (docker-write), once
+  // A service deploys as a written container does (Configure on the node, R174), once
   // something is behind it, set on the Installed page.
-  if (r.kind === "service") return !may.apps || r.installed ? "" : `<button type="button" class="primary" data-libact="install" data-libkind="service" data-libname="${esc(r.name)}"${r.ready ? " disabled" : ""}${r.ready ? ` title="${esc(r.ready)}: set on the Installed page"` : ""}>Install</button>`;
+  if (r.kind === "service") return !may.configure || r.installed ? "" : `<button type="button" class="primary" data-libact="install" data-libkind="service" data-libname="${esc(r.name)}"${r.ready ? " disabled" : ""}${r.ready ? ` title="${esc(r.ready)}: set on the Installed page"` : ""}>Install</button>`;
   if (!may.install || !n) return "";
   if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install", "", libHold);
   if (r.machine && !r.machine.managed) return "";

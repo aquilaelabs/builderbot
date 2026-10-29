@@ -11004,8 +11004,8 @@ class Handler(BaseHTTPRequestHandler):
         address, or at one made here from a pasted manifest or an uploaded
         archive (/api/upload-archive's id); add it as it was shown; read a
         pack made here's manifest back for Edit; or remove it (R77).
-        An administrator's, since a pack joins every node's catalog."""
-        if self._refused("admin"):
+        Curate's (R174), since a pack joins every node's catalog."""
+        if self._refused("curate"):
             return None
         action = req.get("action")
         shipped = {r["name"] for r in toolchains.load_toolchains()}
@@ -11395,14 +11395,15 @@ class Handler(BaseHTTPRequestHandler):
         # containers may deploy it, as the nginx page's. The added packs'
         # answers here, for Configure on their cards.
         services = []
-        if n and not users.may(who, "docker-write"):
+        if n and not users.may_node(who, "configure", nid):
             services.append({"manifest": toolpacks.validate(router.pack(), shipped=())[0], "status": router.status(nid),
                              "ready": router._ready(nid), "all_projects": sorted(prefs.all_projects(WORKSPACE))})
-        pack_values = {name: packconfig.get(nid, name, fields) for name, fields in toolpacks.configs().items()} if n and users.is_admin(who) else {}
+        pack_values = {name: packconfig.get(nid, name, fields) for name, fields in toolpacks.configs().items()} if n and not users.may_node(who, "configure", nid) else {}
         return self._json({"node": nid, "name": tc.get("name") or (n or {}).get("name") or "", "live": bool(tc.get("live", (n or {}).get("live"))),
                            "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view(), services, pack_values),
                            "job": tc.get("job") or {"running": False}, "catalog_error": cat.get("error", ""),
-                           "may": {"install": may_install, "apps": may_apps, "packs": users.is_admin(who)},
+                           "may": {"install": may_install, "apps": may_apps, "packs": not users.may(who, "curate"),
+                                   "configure": bool(n) and not users.may_node(who, "configure", nid)},
                            "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb"), "checked": tc.get("checked") or 0},
                            "sysdeps": tc.get("sysdeps") or {}, "cleanable": tc.get("cleanable") or [], "locked": bool(tc.get("locked")),
                            "sandbox": bool(tc.get("sandbox")), "managed": bool(tc.get("administers")) and not tc.get("locked"),
@@ -11423,8 +11424,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "which node?"}, 400)
         by = who.get("name") or ""
         if pack == "model-router":
-            if self._refused("docker-write"):
-                return None
+            # Configure on this node (R174): its settings, its deploy and
+            # removal; the router's containers are this node's.
+            if (why := users.may_node(who, "configure", nid)):
+                return self._json({"error": why}, 403)
             gpu = bool(((nodes.node(nid) or {}).get("reported") or {}).get("gpu_card"))
             if act == "configure":
                 v = req.get("values") if isinstance(req.get("values"), dict) else {}
@@ -11459,8 +11462,8 @@ class Handler(BaseHTTPRequestHandler):
             if not r.get("error"):
                 db.audit(f"user:{by}", f"router-{act}", nid, {})
             return self._result(r)
-        if not users.is_admin(who):
-            return self._json({"error": "configuring a pack is an administrator's"}, 403)
+        if (why := users.may_node(who, "configure", nid)):
+            return self._json({"error": why}, 403)
         fields = toolpacks.configs().get(pack)
         if not fields:
             return self._json({"error": f"{pack or 'nothing'} is not an added pack that asks for anything"}, 400)
@@ -11516,8 +11519,8 @@ class Handler(BaseHTTPRequestHandler):
         # container then offers it.
         action = field(req, "action")
         if action in ("preview", "add", "source", "remove"):
-            if not users.is_admin(who):
-                return self._json({"error": "adding an app to the catalog is an administrator's"}, 403)
+            if (why := users.may(who, "curate")):
+                return self._json({"error": why}, 403)
             if action == "preview":
                 r = nasapps.check(req.get("compose"))
             elif action == "add":

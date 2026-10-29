@@ -67,6 +67,7 @@
 
 ### Upgrading
 
+- The Toolchains role area is three (migration 0017): Install (what Toolchains Write did), Configure (a service's and a pack's settings on a node, which needed an administrator or writing containers) and Curate (adding a pack or an app of your own, an administrator's). A role that held Toolchains holds Install at the same level, and Configure where it also wrote containers everywhere; give Curate to a role of your own on the Roles page where someone besides an administrator adds to the catalog.
 - 0.9 upgrades from any 0.6.x, 0.7.x or 0.8.x release in one step. A 0.5.x or older `/config` is refused with the way through: start the newest 0.6.x on it first.
 - A bare-metal install moves forward only: `install-controller.sh --rollback` is gone. An update whose new release does not answer still goes back to the one before by itself, its state copy put back.
 - The scanners move onto the nodes: open the Scanners page under Containers and press Deploy on each node that holds projects (one press for all of them), and the schedule carried over from the Schedules page runs them there; a host scanner writing into SCANNER_REPORTS_PATH is still read this release and not the next, so take it out of your cron or User Scripts once the page's first run has landed on the Analysis page (e6d74b8)

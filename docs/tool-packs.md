@@ -16,8 +16,8 @@ whatever scripts it runs. It does not have to come from the tool's own
 authors: you can write one for any tool, as Wrapping someone else's tool,
 at the end, shows.
 
-1. On the **Toolchains** page, press **Add tool pack**. Only an
-   administrator can. Then pick where it comes from:
+1. On the **Library**, press **Add your own** and pick a tool pack. Only an
+   account whose roles give Curate can. Then pick where it comes from:
    - **A repository**: a git repository with the `bbtool.json` at its root
      (`https://`, ssh, or `http://` for a git host on your network).
    - **Paste bbtool.json**: the manifest alone, which is the whole pack
@@ -34,7 +34,7 @@ at the end, shows.
    A pasted or uploaded pack is kept on the controller as a repository of
    its own, its version a commit there; the nodes take it from the
    controller, so it needs no git host at all.
-4. Install it on a node from the same page, like any toolchain.
+4. Install it on a node from its card on the Library, like any toolchain.
 5. In each project that should use it, open **Settings**, then
    **Toolchains**, and tick it. A pack starts off in every project, so
    adding one hands it to nobody by itself.

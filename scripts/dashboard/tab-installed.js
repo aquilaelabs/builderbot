@@ -121,7 +121,7 @@ function instState(r){
 function instActs(r, may){
   const a = (act, words, cls = "") => `<button type="button"${cls ? ` class="${cls}"` : ""} data-instact="${act}" data-instkind="${esc(r.kind)}" data-instname="${esc(r.name)}">${esc(words)}</button>`;
   if (r.running) return "";
-  if (r.kind === "service") return !may.apps ? "" : r.installed ? a("remove", "Remove", "danger")
+  if (r.kind === "service") return !may.configure ? "" : r.installed ? a("remove", "Remove", "danger")
     : `<button type="button" class="primary" data-instact="install" data-instkind="service" data-instname="${esc(r.name)}"${r.ready ? " disabled" : ""}${r.ready ? ` title="${esc(r.ready)}"` : ""}>Install</button>`;
   if (r.machine) return r.machine.managed && r.installed && may.install ? a("remove", "Remove", "danger") : "";
   if (!may.install) return "";
@@ -170,7 +170,7 @@ function instDetail(r){
     if (r.reopen) lines.push(`<span class="sub warn">${r.reopen === 1 ? "1 session" : `${r.reopen} sessions`} open here started before this was installed: reopen ${r.reopen === 1 ? "it" : "them"} to use it.</span>`);
     if (r.pinned?.length) lines.push(`<span class="sub">Pinned by ${esc(r.pinned.map(projLabel).join(", "))}.</span>`);
     if (r.pack) lines.push(`<span class="sub">${r.pack.here ? "Made here" : `From <code>${esc(r.pack.url)}</code> at ${esc((r.pack.commit || "").slice(0, 12))}`}${r.pack.by ? `, added by ${esc(r.pack.by)}` : ""}.</span>`);
-    if (r.config?.length && r.values && inst?.may?.packs) lines.push(instConfigForm(r));
+    if (r.config?.length && r.values && inst?.may?.configure) lines.push(instConfigForm(r));
   }
   if (r.kind === "service"){
     lines.push(instServiceLines(r));
