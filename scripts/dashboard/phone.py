@@ -75,7 +75,7 @@ signer = None
 # server: keymaker(action, project, args) -> (payload, status), where
 # action is generate (args: key, route) or map (args: package, key).
 keymaker = None
-# releaser(project, comp, asker_name, principal) -> (payload, status): the
+# releaser(project, comp, asker_name, principal, dev=False) -> (payload, status): the
 # release a session asked for, run as Release on the Artifacts tab runs it
 # (R138). Set by the server.
 releaser = None
@@ -1022,7 +1022,7 @@ def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principa
                   extra={"file": str(file), "route": str(route), "principal": principal, "key": str(key or "")})
 
 
-def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", principal=""):
+def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", principal="", dev=False):
     """A session asking to tag and publish a release, on a project whose
     dial is `ask` (Agents may: Tag and publish a release, R138). It goes to
     the project's owner, who reads the tag and the commit it would mark;
@@ -1036,7 +1036,7 @@ def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", princi
     cmd = ["version", "release", f"{plan['tag']} on {plan['sha']}"] + (["--for", comp] if comp else [])
     return _queue("release", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
                   extra={"comp": str(comp or ""), "tag": plan["tag"], "sha": plan["sha"],
-                         "principal": principal, "asker_name": str(asker_name or "")})
+                         "principal": principal, "asker_name": str(asker_name or ""), "dev": bool(dev)})
 
 
 def ask_release_edit(why, project, plan, to_uid, to_name, asker_name="", principal=""):
@@ -1388,7 +1388,8 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
                      out=str(got.get("error") or got.get("job") or "started"))
         return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "release":
-        res = (releaser(r["project"], r.get("comp") or "", r.get("asker_name") or "", r.get("principal") or "")
+        res = (releaser(r["project"], r.get("comp") or "", r.get("asker_name") or "", r.get("principal") or "",
+                        dev=r.get("dev") is True)
                if releaser is not None else ({"error": "nothing here releases"}, 400))
         got = res[0] if isinstance(res, tuple) else res
         rel = got.get("released") or {}

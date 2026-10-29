@@ -4711,7 +4711,7 @@ signing.node_tools = toolchains.node_has
 phone.signer = signing.start
 
 
-def _releaser(project, comp, asker_name, principal):
+def _releaser(project, comp, asker_name, principal, dev=False):
     """A session's release, run as the Artifacts view's Release runs it
     (version.verb's release), under the asking account's commit identity
     and with the project's own credentials (R138)."""
@@ -4719,7 +4719,7 @@ def _releaser(project, comp, asker_name, principal):
     # carries a token minted for the project and no account.
     who = (users.get(asker_name) if asker_name else None) or users.get(membership.owner_name(project) or "") \
         or {"name": asker_name or "claude"}
-    return version.verb(project, "release", {"component": comp}, who, principal)
+    return version.verb(project, "release", {"component": comp, "dev": bool(dev)}, who, principal)
 
 
 phone.releaser = _releaser
@@ -9924,7 +9924,8 @@ class Handler(BaseHTTPRequestHandler):
                                             "Tag and publish a release); a person cuts it with Release on "
                                             "the Artifacts view"}, 403)
             comp = field(req, "component") or ""
-            plan = version.release_plan(name, comp)
+            dev = req.get("dev") is True
+            plan = version.release_plan(name, comp, dev=dev)
             if plan.get("error"):
                 return self._json(plan, 400)
             # Said before the tag, not after it (R134 step 4): 0.7.0 was
@@ -9938,10 +9939,10 @@ class Handler(BaseHTTPRequestHandler):
                                    "unsigned": rs["why"]}, 409)
             acct = users.account_of(who) or {}
             if mode == "auto":
-                return self._json(*_releaser(name, comp, str(acct.get("name") or ""), self._principal()))
+                return self._json(*_releaser(name, comp, str(acct.get("name") or ""), self._principal(), dev=dev))
             r = phone.ask_release(field(req, "why"), name, comp, plan, membership.owner_of(name),
                                   membership.owner_name(name) or "the project's owner",
-                                  asker_name=str(acct.get("name") or ""), principal=self._principal())
+                                  asker_name=str(acct.get("name") or ""), principal=self._principal(), dev=dev)
             return self._json(r, 400 if r.get("error") else 200)
         if act == "release-remove":
             # Files off a published release: its own ask, never part of an

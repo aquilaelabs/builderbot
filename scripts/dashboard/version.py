@@ -871,12 +871,14 @@ def current_tag(project, comp=""):
     return name, ""
 
 
-def release_plan(project, comp=""):
+def release_plan(project, comp="", dev=False):
     """What a release here would tag, without doing it: {tag, sha, target}
     or {error}, from the same refusals release() makes first. A session's
     ask is made from this (bb version release, R138), so the person asked
     reads which tag on which commit, and a release that could not happen is
-    refused before anybody is asked."""
+    refused before anybody is asked. With `dev` the tag is the dev build's
+    (R179), as release() names it; planned as the plain one, a dev release
+    was refused because the last release's tag already existed."""
     tgt, err = target(project, comp)
     if err:
         return {"error": err}
@@ -888,6 +890,14 @@ def release_plan(project, comp=""):
     sha = _git(project, "rev-parse", "--short=7", "HEAD")
     if sha is None:
         return {"error": no_history(project)}
+    if dev:
+        # The dev build's own number, as its stamp reads it: the branch's
+        # line where that is newer than VERSION (R112), so a 0.9.0 branch
+        # after 0.8.2 shipped tags v0.9.0-dev.N, never v0.8.2-dev.N.
+        pp = parts(project, comp) or {}
+        if not pp.get("ordinal"):
+            return {"error": "a dev release needs the commit's ordinal, which this tree has no history for"}
+        tgt = f"{pp.get('target') or tgt}-dev.{pp['ordinal']}"
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
         # Tagged here and pushed by hand after the release's push failed:
@@ -978,10 +988,13 @@ def release(project, comp="", env=None, may_push=True, push=True, dev=False):
     if sha is None:
         return {"error": no_history(project)}
     if dev:
-        ordinal = (parts(project, comp) or {}).get("ordinal")
-        if not ordinal:
+        # The dev build's own number, as its stamp reads it: the branch's
+        # line where that is newer than VERSION (R112), so a 0.9.0 branch
+        # after 0.8.2 shipped tags v0.9.0-dev.N, never v0.8.2-dev.N.
+        pp = parts(project, comp) or {}
+        if not pp.get("ordinal"):
             return {"error": "a dev release needs the commit's ordinal, which this tree has no history for"}
-        tgt = f"{tgt}-dev.{ordinal}"
+        tgt = f"{pp.get('target') or tgt}-dev.{pp['ordinal']}"
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
         # Which commit it is on, because "it already exists" and "it is on
