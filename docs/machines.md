@@ -447,17 +447,21 @@ storage module's next pieces.
 **Installed**, under Machines beside Nodes and Storage (R172), is what the
 Library put on one node, picked in the Machines header, and how each is set there: a
 section per kind with anything on the node (coding agents, toolchains,
-tool packs, services), each a row that opens on what the Library's card
-does not show, since the Library is the catalog. An agent's row holds your
-sign-in on that node and what you added to the agent there, and Remove. A
-toolchain's row says where it is on the store, which system packages it
+tool packs, services), each a row with **Open** beside its name, and
+**Configure** where it asks for anything, both opening that thing's own
+page: what the Library's card does not show, since the Library is the
+catalog. The page is one a press opens, with a small top header whose
+**Back** names the page you came from, and it has an address of its own
+(`#/machines/installed/NODE/KIND:NAME`), so a link lands on it. An agent's
+page holds your sign-in on that node and what you added to the agent there,
+and Remove. A toolchain's page says where it is on the store, which system packages it
 uses and which this machine lacks (Install them now where the agent
 administers the machine), what it needs that is not there, how its
 download was checked, and Remove; the machine's own NVIDIA driver and
 container toolkit are rows here too, with their state in the census's
 words. A pack that asks for anything per node (its manifest's `config`
 block, [tool-packs.md](tool-packs.md#writing-one)) has **Configure** on its
-row: the fields drawn from the block, a secret shown only as set (typed to
+page: the fields drawn from the block, a secret shown only as set (typed to
 replace, `clear` to take it out), Save keeping the answers sealed on the
 controller and handing them to the node for the pack's verbs. A service,
 the **Model router**, is configured the same way (the provider keys, other

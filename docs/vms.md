@@ -3,8 +3,8 @@
 A project's virtual machines, made, started, stopped, snapshotted and removed
 on the nodes whose VM host feature is installed, by a person on the VMs page
 or by a project's session with `bb vm`, under the project's own
-setting. The VMs page sits in the Containers group beside Containers and
-nginx, and is built from the Containers page's pieces.
+setting. The VMs page sits in the Containers group beside Containers, and
+is built from the Containers page's pieces.
 
 **The machine's own VMs** (R165): a VM may belong to the machine rather
 than a project: Belongs to on New VM offers "This machine's own" to an

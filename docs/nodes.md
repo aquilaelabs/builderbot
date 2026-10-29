@@ -1114,7 +1114,8 @@ the pieces stack:
    NAME` (R179).
 5. *Put nginx in front of them* (R171, the nginx page): one reverse proxy
    per node, BuilderBot's own, listed for every node on the nginx page,
-   under Containers on the rail. Its routes (a hostname or path to a port a container
+   which Configure on a node's nginx row opens (the Containers page's
+   System section). Its routes (a hostname or path to a port a container
    publishes on that node, with or without TLS) and its certificates (a
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
    the controller (`nginxproxy.py`, the key 0600 and never shown back). A

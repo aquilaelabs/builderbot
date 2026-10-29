@@ -317,16 +317,33 @@ await page.click('#bBell');
 // ...and the Docker row says so with Update, the word every row's update uses.
 await page.evaluate(() => openDocker());
 await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dm="nginx-update"]', { timeout: 20000 });
-// System's row keeps what a person needs and loses what the nginx tab owns
+// System's row keeps what a person needs and loses what the nginx page owns
 // (the operator, 13 Oct; R207): Down, Remove and the update (Up while it is
 // stopped: a running row wears none), no Edit, Rebuild or Copy or move, and
-// a line saying where its settings are.
+// Configure, which opens that page (R181, the operator, 29 Oct: its env is
+// the curated page's, never the row's).
 const sysBtns = await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => ({
   has: [...r.querySelectorAll('.dmacts [data-dm]')].map(b => b.dataset.dm), rel: !!r.querySelector('[data-dmrel]'),
-  line: r.querySelector('.dmmanaged')?.textContent || '' }));
+  conf: r.querySelector('.dmacts [data-dmconf="nginx"]')?.textContent.trim() || '' }));
 ok(['down', 'remove', 'nginx-update'].every(b => sysBtns.has.includes(b)) && !sysBtns.has.includes('edit') && !sysBtns.has.includes('rebuild') && !sysBtns.rel
-   && /nginx page/.test(sysBtns.line),
-   `BuilderBot's nginx row keeps Down, Remove and the update and loses Edit, Rebuild and Copy or move (${sysBtns.has.join(', ')}; ${sysBtns.rel ? 'copy or move' : 'no copy or move'})`);
+   && sysBtns.conf === 'Configure',
+   `BuilderBot's nginx row keeps Down, Remove and the update, loses Edit, Rebuild and Copy or move, and carries Configure (${sysBtns.has.join(', ')}; ${sysBtns.rel ? 'copy or move' : 'no copy or move'})`);
+// System's section is pinned above every project's (R181).
+ok(await page.$eval('.dmtab', t => t.querySelector('.dmcard .dmgroup b')?.textContent === 'System'),
+   'System\'s containers are the first section of the Containers page');
+// Configure opens the nginx page, off the group's sub-nav, with a small top
+// header whose Back names the page it came from and returns there.
+await page.click('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dmconf="nginx"]');
+await page.waitForFunction(() => tabOf(panes[0])?.kind === 'nginx' && location.hash.startsWith('#/containers/nginx'), null, { timeout: 10000 });
+ok(await page.evaluate(() => {
+  const bar = document.querySelector('.pane .bar.page');
+  return /Containers/.test(bar.querySelector('.backhead [data-shellback]')?.textContent || '')
+    && /nginx/.test(bar.querySelector('.backhead .backof')?.textContent || '')
+    && ![...bar.querySelectorAll('[data-subnav]')].some(b => b.dataset.subnav === 'nginx' || b.dataset.subnav === 'scanners');
+}), 'the nginx page wears a top header with Back to Containers, and nginx and Scanners are off the sub-nav');
+await page.click('.pane .bar.page [data-shellback]');
+await page.waitForFunction(() => tabOf(panes[0])?.kind === 'docker', null, { timeout: 10000 });
+ok(await page.evaluate(() => /^#\/containers(\/|$)/.test(location.hash) && !location.hash.includes('nginx')), '...and Back returns to the Containers page');
 ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)
      && r.querySelector('[data-dm="nginx-update"]').textContent.trim() === 'Update'),
    'the Containers page\'s row of a node\'s nginx says the line is out, with Update as on every row');

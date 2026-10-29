@@ -782,7 +782,20 @@ def manager_view(nid, seen):
                     "routes": [{"host": r.get("host") or "*", "path": r.get("path") or "/",
                                 "port": int(r.get("port") or 0), "tls": bool(r.get("tls"))}
                                for r in (nrec.get("routes") or [])]}
+    # Which of BuilderBot's own each System row is (R181): its Configure
+    # opens that one's page. The scanners are a compose job of their own on
+    # the node, never an instance, so their containers are put under
+    # System here by their compose project's name.
+    import router
+    import scanners
+    ours = {nginxproxy.container_name(got["node"]): "nginx", router.container_name(got["node"]): "router",
+            scanners.container_name(got["node"]): "scanners"} if got.get("node") else {}
+    for c in got.get("containers") or []:
+        if c.get("project") and ours.get(c["project"]) == "scanners":
+            c["owner"], c["system"] = devapp.SYSTEM, "scanners"
     for i in got.get("instances") or []:
+        if i.get("owner") == devapp.SYSTEM:
+            i["system"] = ours.get(i.get("project", ""), "")
         i["relocating"] = relocate.view(i.get("project", ""), i.get("instance", ""))
         # Why a row publishes on every address of a node whose ports stay
         # on it (R217): 0.0.0.0 in its compose file, by name or through a

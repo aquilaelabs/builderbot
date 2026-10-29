@@ -234,6 +234,12 @@ const TABKINDS = {
               icon: TOOL_ICONS.nodes,
               render: (i) => renderInstalledInto(i), live: () => `${instRev}/${nodesRev}/${signinRev()}`,
               open: () => loadInstalled() },
+  // An installed thing's own page (R181 step 2): Installed's read, one row
+  // of it, opened by a press and named for the thing.
+  thing:     { multi: false, label: () => thingLabel(),
+              icon: TOOL_ICONS.nodes,
+              render: (i) => renderThingInto(i), live: () => `${instRev}/${nodesRev}/${signinRev()}/${thingKey}`,
+              open: () => { if (!inst) loadInstalled(); } },
   // nodesRev and jobsRev as well as its own: a node's images arrive on its
   // census, and an image job moves the queue.
   emulator: { multi: false, label: () => "Emulator",

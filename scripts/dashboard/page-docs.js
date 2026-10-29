@@ -173,7 +173,7 @@ function bootPage(hash){
   const parts = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   const key = parts[0] || "home", g = RAIL.find(x => x.key === key) || RAIL[0];
   const tool = g.tools.some(([k]) => k === parts[1]) ? parts[1] : g.tools[0][0];
-  const seg = (tools, on) => `<span class="subnav pseg">${tools.map(([k, label]) =>
+  const seg = (tools, on) => `<span class="subnav pseg">${tools.filter(([k]) => !PRESSED.has(k)).map(([k, label]) =>
       `<button type="button" disabled class="${k === on ? "on" : ""}">${esc(label)}</button>`).join("")}</span>`;
   const doc = (barHtml, body) => `<div class="doc on flush"><div class="doctab">${barHtml
     ? `<div class="field docbarrow">${barHtml}</div>` : ""}<div class="doclist">${body}</div></div></div>`;

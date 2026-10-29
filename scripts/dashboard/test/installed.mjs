@@ -30,26 +30,36 @@ ok(await page.evaluate(() => inst.rows.filter(r => r.kind === 'agent' && !r.inst
 ok(await page.$$eval('.doc .installedtab [data-instact="install"]', bs => bs.every(b => b.dataset.instkind === 'service')) && await page.$('.doc .installedtab [data-libact]') === null,
    'nothing installs from here but a configured service: the Library installs');
 
-// ---- an agent's row: its sign-in --------------------------------------------
+// ---- an agent's page: its sign-in (R181 step 2) -------------------------
 {
   const CL = '.doc .installedtab .irow[data-irow="agent:claude-code"]';
-  await page.click(`${CL} [data-instmore]`);
-  await page.waitForSelector(`${CL}.open [data-signin][data-siagent="claude"]`, { timeout: 10000 });
-  ok(await page.$eval(`${CL}.open`, r => /session account/.test(r.querySelector('.idetail').textContent)),
-     "Claude Code's row opens on its facts and this person's sign-in on the node");
-  await page.click(`${CL} [data-instmore]`);
+  ok(await page.$eval(CL, r => !r.querySelector('.idetail') && r.querySelector('[data-instopen]')?.textContent.trim() === 'Open'),
+     'a row is a row: Open beside its name, nothing opened in place');
+  await page.click(`${CL} [data-instopen]`);
+  await page.waitForSelector('.doc .thingtab [data-signin][data-siagent="claude"]', { timeout: 10000 });
+  const pg = await page.evaluate(() => ({ facts: /session account/.test(document.querySelector('.doc .thingtab').textContent),
+    hash: location.hash, want: '#/machines/installed/' + encodeURIComponent(instNode) + '/' + encodeURIComponent('agent:claude-code'),
+    back: document.querySelector('.pane .bar .backhead [data-shellback]')?.textContent.trim() || '',
+    name: document.querySelector('.pane .bar .backhead .backof')?.textContent.trim() || '' }));
+  ok(pg.facts && pg.hash === pg.want && /Installed/.test(pg.back) && /Claude Code/.test(pg.name),
+     `Open is Claude Code's own page: its address, the top header's Back to Installed, its facts and this person's sign-in (${JSON.stringify(pg)})`);
+  await page.click('.pane .bar [data-shellback]');
+  await page.waitForFunction(() => tabOf(panes[0])?.kind === 'installed', null, { timeout: 10000 });
+  ok(true, '...and Back returns to the Installed page');
 }
 
-// ---- the model router's row: Configure, saved to its own record ------------
+// ---- the model router's page: Configure, saved to its own record ----------
 {
-  const RT = '.doc .installedtab .irow[data-irow="service:model-router"]';
-  ok(await page.$(RT) !== null && await page.$eval(RT, r => r.querySelector('[data-instact="install"]')?.disabled === true),
-     'the model router is a Services row, its Install dead while nothing is behind it');
-  await page.click(`${RT} [data-instmore]`);
-  await page.waitForSelector(`${RT}.open .icform`, { timeout: 10000 });
+  const RTROW = '.doc .installedtab .irow[data-irow="service:model-router"]';
+  const RT = '.doc .thingtab';
+  ok(await page.$(RTROW) !== null && await page.$eval(RTROW, r => r.querySelector('[data-instact="install"]')?.disabled === true
+       && !!r.querySelector('[data-instopen][data-instat="configure"]')),
+     'the model router is a Services row with Configure, its Install dead while nothing is behind it');
+  await page.click(`${RTROW} [data-instopen][data-instat="configure"]`);
+  await page.waitForSelector(`${RT} .icform`, { timeout: 10000 });
   const fields = await page.$$eval(`${RT} .icform [data-icf], ${RT} .icform [data-icadd], ${RT} .icform [data-icproj]`, es => es.map(e => e.dataset.icf || e.dataset.icadd || `proj:${e.value}`));
   ok(fields.includes('anthropic') && fields.includes('openai') && fields.includes('ollama') && fields.includes('custom') && fields.some(f => f.startsWith('proj:')),
-     `its Configure form is the pack's config block: the providers' keys, the endpoints, Ollama and the projects (${fields.join(', ')})`);
+     `its page's Configure form is the pack's config block: the providers' keys, the endpoints, Ollama and the projects (${fields.join(', ')})`);
   await page.fill(`${RT} .icform [data-icf="anthropic"]`, 'sk-ant-test-0000');
   await page.click(`${RT} .icform [data-icadd="custom"]`);
   await page.waitForSelector(`${RT} .icform .icrow[data-iclist="custom"]`, { timeout: 5000 });

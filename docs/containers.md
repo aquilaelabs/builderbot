@@ -2,7 +2,15 @@
 
 The Containers group on the rail: **Containers** is the Docker manager,
 where a project's containers are built, started, stopped and given their env
-on a node, and **nginx** is each node's reverse proxy. A project's own
+on a node, and **nginx** is each node's reverse proxy. The containers
+BuilderBot deploys itself (each node's nginx, its scanners and its model
+router) are the **System** section at the top of the Containers page: rows
+like any other container's, with **Configure**, which opens that
+container's own settings page (the nginx page, the Scanners page, the
+router's row on Installed). Their env and compose file are that page's to
+write and never the row's; a container you want otherwise is one you deploy
+yourself. A page opened that way carries a small top header with **Back**,
+naming the page it was opened from and returning there. A project's own
 containers are also its page's Docker view. This doc covers the manager, a
 container's row, a dev instance built from a project and its mounts, how an
 instance is reached, the containers' networks, nginx, and image updates.

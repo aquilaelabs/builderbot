@@ -444,7 +444,7 @@ ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown actio
      `the store says what each toolchain needs and what needs it (${ndk?.needs} | ${jdk?.needed_by})`);
   const said = await page.evaluate(([n, j]) => ({
     lib: libDetail({ ...n, kind: 'toolchain', tier: 'official' }).replace(/<[^>]+>/g, ''),
-    inst: instDetail({ ...j, kind: 'toolchain' }).replace(/<[^>]+>/g, ''),
+    inst: instAboutLines({ ...j, kind: 'toolchain' }).replace(/<[^>]+>/g, ''),
   }), [ndk, jdk]);
   ok(/Needs android-tools, installed with it/.test(said.lib),
      `a toolchain's card says what it needs, installed with it (${ndk?.label})`);
