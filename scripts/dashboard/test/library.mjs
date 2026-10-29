@@ -25,8 +25,21 @@ await page.waitForFunction(() => lib && !lib.nonode && Array.isArray(lib.rows), 
 ok(await page.waitForFunction(() => location.hash === '#/build/library/' + encodeURIComponent(libNode), null, { timeout: 10000 }).then(() => true, () => false),
    `the address names the page and its node (${await page.evaluate(() => location.hash)})`);
 const sects = await page.$$eval('.doc .librarytab .libgroup', ds => ds.map(d => d.dataset.libgroup));
-ok(['agent', 'toolchain', 'pack', 'app', 'companion'].every(k => sects.includes(k)),
-   `a group of cards per kind, always drawn, in the page's order (${sects.join(', ')})`);
+const hasPacks = await page.evaluate(() => lib.rows.some(r => libGroup(r) === 'pack'));
+ok(['agent', 'toolchain', 'app', 'companion'].every(k => sects.includes(k)) && sects.includes('pack') === hasPacks,
+   `a group of cards per kind, in the page's order, Tool packs only when there are any (${sects.join(', ')})`);
+// No pack at all is no Tool packs group, its hint and empty line with it
+// (the operator, 29 Oct); the Tool packs chip still opens it, empty.
+ok(await page.evaluate(async () => {
+  const keep = lib.rows;
+  lib = {...lib, rows: keep.filter(r => libGroup(r) !== 'pack'), catalog_error: 'no index'};
+  libRev++; drawPanes(); await new Promise(r => setTimeout(r, 300));
+  const gone = !document.querySelector('.doc .librarytab .libgroup[data-libgroup="pack"]');
+  libKind = 'pack'; libRev++; drawPanes(); await new Promise(r => setTimeout(r, 300));
+  const chip = !!document.querySelector('.doc .librarytab .libgroup[data-libgroup="pack"] .empty');
+  libKind = ''; lib = {...lib, rows: keep, catalog_error: ''}; libRev++; drawPanes(); await new Promise(r => setTimeout(r, 300));
+  return gone && chip;
+}), 'with no tool pack the Tool packs group is not drawn, and its chip still opens it empty');
 const shape = await page.evaluate(() => lib.rows.map(r => [r.kind, r.tier, typeof r.label, typeof r.about, typeof r.installed, typeof r.verb]));
 ok(shape.length > 0 && shape.every(([k, t, l, a, i, v]) => ['agent', 'toolchain', 'pack', 'service', 'app', 'companion'].includes(k)
    && ['official', 'vetted', 'sideloaded'].includes(t) && l === 'string' && a === 'string' && i === 'boolean' && v === 'string'),
@@ -65,7 +78,7 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
      'a kind chip shows that kind\'s group alone, the chip wearing .on');
   await page.click('.doc .librarytab [data-libkind=""]');
   await page.waitForFunction(() => libKind === '');
-  ok(await page.$$eval('.doc .librarytab .libgroup', ds => ds.length === 6), '...and All puts the six back');
+  ok(await page.$$eval('.doc .librarytab .libgroup', (ds, n) => ds.length === n, sects.length), '...and All puts every group back');
 } else ok(true, 'one kind only here, so no kind chips (chips need two groups)');
 
 // Updates, the chip after All (the operator, 29 Oct): the cards with an

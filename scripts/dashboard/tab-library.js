@@ -334,6 +334,9 @@ function libSections(rows, may){
     const here = rows.filter(r => libGroup(r) === k);
     if (libKind && libKind !== "update" && libKind !== k) return "";
     if (libKind === "update" && !here.length) return "";
+    // No packs at all is no group (the operator, 29 Oct): nothing to list, and
+    // Add your own is on the bar; the Tool packs chip still opens it empty.
+    if (k === "pack" && !all.length && libKind !== k) return "";
     const inst = all.filter(r => r.installed).length;
     const count = !all.length ? "" : k === "app" || k === "companion" ? `${all.length}` : `${inst} of ${all.length} installed`;
     // The catalog's trouble is the packs' alone, said over them, never in the node's head.
