@@ -73,6 +73,10 @@ class DevTag(unittest.TestCase):
         version.configure(workspace=str(ws), state=str(ws / "state"), write_json=lambda *a, **k: None)
         self.assertIn("already exists", version.release_plan("app").get("error", ""))
         self.assertEqual(version.release_plan("app", dev=True).get("tag"), "v1.2.3-dev.2")
+        # ...and needs no /config snapshot where the tree keeps them, as
+        # release() has it: a dev build is no release an install upgrades from.
+        (d / version.UPGRADE_SNAPSHOTS).mkdir(parents=True)
+        self.assertEqual(version.release_plan("app", dev=True).get("tag"), "v1.2.3-dev.2")
         with mock.patch.object(version, "line", lambda project: "1.3.0"):
             self.assertEqual(version.release_plan("app", dev=True).get("tag"), "v1.3.0-dev.2")
             self.assertEqual(version.release("app", push=False, dev=True).get("tag"), "v1.3.0-dev.2")

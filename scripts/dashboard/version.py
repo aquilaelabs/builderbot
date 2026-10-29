@@ -909,7 +909,9 @@ def release_plan(project, comp="", dev=False):
     if (_git(project, "status", "--porcelain") or "").strip():
         return {"error": "there are uncommitted changes in the project directory: commit or "
                          "discard them first, so the tag marks what is actually in the commit"}
-    if why := no_upgrade_snapshot(project, comp, tgt):
+    # A dev build is no release an install upgrades from, so it needs no
+    # snapshot, as release() has it; planned with one, it was refused.
+    if not dev and (why := no_upgrade_snapshot(project, comp, tgt)):
         return {"error": why}
     return {"tag": name, "sha": sha, "target": tgt}
 
