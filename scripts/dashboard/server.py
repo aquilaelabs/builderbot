@@ -455,15 +455,19 @@ LOGIN_HTML = """<!doctype html>
 <!--BANNER-->
 <form method="post" action="<!--ACTION-->">
   <div class="head">
-    <span class="mark"><svg viewBox="0 0 32 32" aria-hidden="true"><mask id="m">
-      <rect width="32" height="32" fill="#000"/>
-      <rect x="4" y="8.5" width="24" height="17" rx="5.5" fill="#fff"/>
-      <rect x="15" y="3.5" width="2" height="6" rx="1" fill="#fff"/>
-      <circle cx="16" cy="3" r="2.3" fill="#fff"/>
-      <circle cx="11.4" cy="15.4" r="2.1" fill="#000"/>
-      <circle cx="20.6" cy="15.4" r="2.1" fill="#000"/>
-      <rect x="10.6" y="19.6" width="10.8" height="2.6" rx="1.3" fill="#000"/>
-    </mask><rect width="32" height="32" fill="currentColor" mask="url(#m)"/></svg></span>
+    <span class="mark"><svg viewBox="0 0 32 32" aria-hidden="true">
+  
+  <g fill="currentColor">
+    <path d="M3.6,9.7 L3.6,8.8 L3.9,8.0 L4.3,7.4 L4.8,7.0 L11.0,3.4 L11.7,3.1 L12.4,3.1 L13.2,3.3 L14.1,3.7 L24.2,9.5 L25.0,10.1 L25.8,10.8 L26.5,11.7 L27.2,12.7 L27.7,13.7 L28.1,14.8 L28.4,15.9 L28.4,16.9 L28.4,22.3 L28.4,23.2 L28.1,24.0 L27.7,24.6 L27.2,25.0 L21.0,28.6 L20.3,28.9 L19.6,28.9 L18.8,28.7 L17.9,28.3 L7.8,22.5 L7.0,21.9 L6.2,21.2 L5.5,20.3 L4.8,19.3 L4.3,18.3 L3.9,17.2 L3.6,16.1 L3.6,15.1 Z" opacity=".5"/>
+    <path d="M21.0,28.6 L22.2,20.5 L22.1,19.5 L21.9,18.4 L21.5,17.3 L21.0,16.3 L20.3,15.3 L19.6,14.4 L18.8,13.7 L17.9,13.1 L7.8,7.2 L7.4,7.0 L7.0,6.9 L6.6,6.8 L6.2,6.7 L5.8,6.7 L5.5,6.7 L5.1,6.8 L4.8,7.0 L11.0,3.4 L11.3,3.2 L11.7,3.1 L12.0,3.1 L12.4,3.1 L12.8,3.2 L13.2,3.3 L13.6,3.5 L14.1,3.7 L24.2,9.5 L25.0,10.1 L25.8,10.8 L26.5,11.7 L27.2,12.7 L27.7,13.7 L28.1,14.8 L28.4,15.9 L28.4,16.9 L27.2,25.0 Z" opacity=".78"/>
+    <path d="M22.2,20.5 L22.1,19.5 L21.9,18.4 L21.5,17.3 L21.0,16.3 L20.3,15.3 L19.6,14.4 L18.8,13.7 L17.9,13.1 L7.8,7.2 L7.0,6.9 L6.2,6.7 L5.5,6.7 L4.8,7.0 L4.3,7.4 L3.9,8.0 L3.6,8.8 L3.6,9.7 L3.6,15.1 L3.6,16.1 L3.9,17.2 L4.3,18.3 L4.8,19.3 L5.5,20.3 L6.2,21.2 L7.0,21.9 L7.8,22.5 L17.9,28.3 L18.8,28.7 L19.6,28.9 L20.3,28.9 L21.0,28.6 L21.5,28.2 L21.9,27.6 L22.1,26.8 L22.2,25.9 Z"/>
+    <path d="M11.1,15.3 L11.0,14.6 L10.8,13.9 L10.4,13.2 L9.9,12.7 L9.3,12.2 L8.8,12.0 L8.3,12.0 L7.9,12.2 L7.6,12.7 L7.5,13.3 L7.6,13.9 L7.9,14.7 L8.3,15.4 L8.8,15.9 L9.3,16.4 L9.9,16.6 L10.4,16.6 L10.8,16.3 L11.0,15.9 Z" fill="#000" opacity=".58"/>
+    <path d="M18.2,19.4 L18.2,18.8 L17.9,18.0 L17.5,17.4 L17.0,16.8 L16.5,16.4 L15.9,16.1 L15.4,16.1 L15.0,16.4 L14.8,16.8 L14.7,17.4 L14.8,18.1 L15.0,18.8 L15.4,19.5 L15.9,20.1 L16.5,20.5 L17.0,20.7 L17.5,20.7 L17.9,20.5 L18.2,20.0 Z" fill="#000" opacity=".58"/>
+    <path d="M16.1,24.4 L16.5,24.5 L16.9,24.5 L17.1,24.2 L17.2,23.8 L17.1,23.2 L16.9,22.7 L16.5,22.2 L16.1,21.9 L9.7,18.2 L9.3,18.1 L8.9,18.1 L8.7,18.4 L8.6,18.8 L8.7,19.4 L8.9,19.9 L9.3,20.4 L9.7,20.7 Z" fill="#000" opacity=".58"/>
+    <line x1="16.0" y1="8.4" x2="16.0" y2="4.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".5"/>
+    <circle cx="16.0" cy="2.5" r="2.15"/>
+  </g>
+    </svg></span>
     <h1>BuilderBot</h1>
     <p class="said"><!--SAID--></p>
   </div>
@@ -2075,7 +2079,7 @@ def _attention(who):
             + [a for a in toolchains.attention(where) + toolchains.agent_attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
             # ...and a pack the vetted catalog withdrew that this install holds (R169 step 2).
-            + ([] if users.may(who, "toolchains-write") else catalogindex.attention(list(toolpacks.packs())))
+            + ([] if users.may(who, "toolchains-write") else catalogindex.attention(list(toolpacks.packs())) + toolpacks.unfit())
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
             # R192), for whoever may act on the Docker tab, which Update is.
             + ([] if users.may(who, "docker-write")
@@ -2117,7 +2121,7 @@ def gpu_container_why(project, node_id):
     """Why a container of `project` on that node cannot be given its NVIDIA
     card, or "" (R102): the project's setting and the node's switch, which
     speak for containers as they do for sessions, then what the node's
-    Toolchains page holds (the driver running the card, the container
+    Installed page holds (the driver running the card, the container
     toolkit, Docker's runtime)."""
     who = gpu_for(project, node_id)
     if who == "project":
@@ -3795,11 +3799,19 @@ toolchains.configure(run=run, write_json=write_json, state=STATE,
 # /config, and carried to the nodes in the bundle beside the shipped one.
 import toolpacks                                                   # noqa: E402
 import catalogindex                                              # noqa: E402
+import catalogmirror                                             # noqa: E402
 import library                                                   # noqa: E402
 
 catalogindex.configure(state=STATE, write_json=write_json)
 toolpacks.configure(state=STATE, write_json=write_json,
                     unpack=lambda aid, dest: projects.unpack_archive(aid, dest))
+# The catalog's mirror (R169 step 6): its index when the catalog does not
+# answer, and its bundles for the fetches of what it pins.
+catalogmirror.configure(state=STATE, unpack=lambda aid, dest: projects.unpack_archive(aid, dest))
+catalogindex.mirror_index = catalogmirror.index
+toolpacks.mirror_bundle = catalogmirror.bundle
+# This build's version, for a pack's works_with (R169 step 6).
+toolpacks.running_version = lambda: image_stamp().get("version") or ""
 toolchains.packs_rows = toolpacks.recipes
 toolchains.refresh_packs()
 # The Android system images on each node's store, behind the Emulator tab:
@@ -4193,6 +4205,12 @@ if not settings.debug_available():
             print("dashboard: DEBUG_MODE is not 1, so every debug and dev option was turned off", flush=True)
     except Exception as e:                                # noqa: BLE001 (a start must not fail on this)
         print(f"dashboard: debug options not reset: {e}", flush=True)
+else:
+    try:
+        if settings.boot_channel():
+            print("dashboard: the boot asked for the dev channel: the dev switch is on and updates follow the pre-releases", flush=True)
+    except Exception as e:                                # noqa: BLE001
+        print(f"dashboard: the boot's channel not taken: {e}", flush=True)
 # The briefing reads a project's own settings for its "While tests run"
 # section (what a change asked for during a run does); prefs is imported
 # after preamble is configured, so it is handed over here.
@@ -4305,9 +4323,12 @@ try:
     # handed in the hello with the node's store root.
     packconfig.configure(state=STATE, write_json=write_json, seal=signing.seal, unseal=signing.unseal,
                          sealing=lambda: signing.MASTER is not None,
+                         # A person's own answers (R172 step 5), under their own key.
+                         account_key=lambda uid: accountkeys.key_of(uid), open_with=signing.open_with,
                          store_root=lambda nid: (lambda st: (st.get("path") or "") + ("/" + st["scope"] if st.get("scope") else ""))(
                              (((nodes.node(nid) or {}).get("reported") or {}).get("stores") or {}).get("toolchains") or {}))
     nodes.pack_config = lambda nid: packconfig.for_node(nid, toolpacks.configs())
+    nodes.pack_people = lambda nid: packconfig.for_people(nid, toolpacks.configs())
     if (_sealed := extmounts.seal_all()):
         print(f"dashboard: sealed {_sealed} share password(s) under the install's key", flush=True)
     # ...and the digest of the bb bundle, so a node can tell from hello alone
@@ -4586,6 +4607,26 @@ nodes.on_done("vm", vms.vm_done)
 # ...run as an administrator's, since the asks go to the administrators
 # alone and Allow is theirs (R116): a device passed through lands.
 phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, dict(req, _admin=True), True)
+
+
+def _catalog_pin(url, commit, sha256, path=""):
+    """The kept index's pack entry pinning exactly this url, commit, sha256
+    and folder, withdrawn ones left out, or None (B440)."""
+    return next((e for e in (catalogindex.index(settings.get("catalog_url") or None).get("index") or {}).get("packs") or []
+                 if e.get("kind", "pack") == "pack" and not e.get("withdrawn") and e["url"] == url and e["commit"] == commit
+                 and e["sha256"] == sha256 and (e.get("path") or "") == (path or "")), None)
+
+
+def _pack_from_catalog(entry, by, may_root=False):
+    """A pack from the vetted catalog kept at the commit the signed index
+    pins, its sha256 checked (R169 step 5): what the Library's Install keeps,
+    for a session's ask allowed or its dial at auto."""
+    shipped = {r["name"] for r in toolchains.load_toolchains()}
+    return toolpacks.add(entry["url"], entry["commit"], by, shipped, sha256=entry["sha256"],
+                         tier="official" if entry.get("tier") == "official" else "vetted", path=entry.get("path", ""), may_root=may_root)
+
+
+phone.pack_runner = lambda project, entry, by: _pack_from_catalog(entry, f"session:{project} (allowed by {by})", may_root=True)
 
 
 def _with_vmnets(nid, own):
@@ -5157,6 +5198,18 @@ releasecheck.configure(version=lambda: image_stamp().get("version") or "", bare_
                        channel=lambda: str(settings.get("release_channel") or "normal"), dev_ok=settings.dev_channel_ok)
 
 
+# Update checks on one clock (R176, checks.py): each check's cadence a
+# setting, when it last ran read off its own module, and Check now.
+import checks                                                    # noqa: E402
+checks.configure(state=STATE, settings_mod=settings,
+                 last={"images": imagecheck.last_at, "nginx": lambda: int(nginxproxy.latest_image().get("at") or 0),
+                       "scanners": lambda: int(scanners._load()["latest"].get("at") or 0),
+                       "catalog": lambda: int(toolchains._tc_checked or 0)},
+                 run={**({"release": lambda: (releasecheck.check(), checks.stamp("release"))} if BARE_METAL else {}),
+                      "images": imagecheck.check, "nginx": nginxproxy.check_image, "scanners": scanners.check_versions,
+                      "catalog": lambda: toolchains.start_job("check", [p["name"] for p in toolchains.TOOLCHAINS], auto=True)})
+
+
 def _own_os():
     """What the controller's own machine says of BuilderBot OS (R160 step
     4), or {} where it runs on another system or in a container."""
@@ -5188,6 +5241,28 @@ def _update_in_window(version):
 # start, lifted by Start on This machine, armed for the next restart.
 import held                                                      # noqa: E402
 held.configure(state=STATE, bare_metal=lambda: BARE_METAL, write_json_fn=write_json)
+# A prepared configuration a stick's first boot handed over (R161 step 8,
+# firstboot.py): applied once, here, before anybody can sign in or claim.
+import firstboot                                                 # noqa: E402
+firstboot.configure(state=STATE, write_json_fn=write_json, users_mod=users, settings_mod=settings, hold_first_fn=held.arm_first)
+if BARE_METAL:
+    try:
+        _fb = firstboot.apply()
+        if _fb:
+            print(f"dashboard: a prepared configuration from the stick: {len(_fb['done'])} applied, "
+                  f"{len(_fb['waiting'])} waiting, {len(_fb['failed'])} not applied (This machine says which)", flush=True)
+    except Exception as e:                                # noqa: BLE001 (a start must not fail on this)
+        print(f"dashboard: the stick's prepared configuration was not applied: {e}", flush=True)
+    # The catalog's mirror the stick carries (R169 step 6), handed over by
+    # the boot: imported once per mirror, as Import under Controller settings.
+    _cm = os.path.join(os.environ.get("BB_OS_RUN", "/run/builderbot-os"), "firstboot", "catalog-mirror.tar.gz")
+    if os.path.isfile(_cm):
+        try:
+            _r = catalogmirror.take_file(_cm, time.time())
+            if not _r.get("same"):
+                print(f"dashboard: the stick's catalog mirror: {_r.get('error') or 'imported, ' + str(_r.get('packs')) + ' entries'}", flush=True)
+        except Exception as e:                            # noqa: BLE001 (a start must not fail on this)
+            print(f"dashboard: the stick's catalog mirror was not imported: {e}", flush=True)
 import backup                                                    # noqa: E402
 # Moving this controller to another home (R90 step 12, move.py): the bundle
 # and its token, the nodes told, the knock answered once restored here.
@@ -5540,6 +5615,13 @@ def _snapshot(who):
                                                       if BARE_METAL else {})),
         # ...and whether its start is held (R56 step 9), with why.
         "held": held.status(),
+        # ...and what a stick's prepared configuration did (R161 step 8), an
+        # administrator's to read on This machine.
+        "firstboot": firstboot.view() if BARE_METAL and users.is_admin(who) else None,
+        # ...and each update check's cadence and last run (R176), for
+        # Controller settings' Update checks.
+        "checks": _timed("status:checks", checks.view) if users.is_admin(who) else None,
+        "catalog_mirror": catalogmirror.held() if users.is_admin(who) else None,
         # ...and where this controller went, when it moved (R90 step 12):
         # the page is read-only then and says so.
         "moved_to": move.moved_to(),
@@ -5626,7 +5708,7 @@ def _snapshot(who):
         "emulator": {"ready": False, "why": "the node store did not open"} if NODES_OK
                     else emulator.ready(),
         "can": {name: not users.may(who, name) for name in
-                ("terminal", "docker-write", "vms-write", "toolchains-write", "git-auth", "admin",
+                ("terminal", "docker-write", "vms-write", "toolchains-write", "curate", "configure", "git-auth", "admin",
                  # The CI runner tab, a job run and a project's node, by
                  # grant (R137 step 3): the Tools card hides CI runner on it.
                  "runner", "jobs", "node",
@@ -5868,6 +5950,8 @@ POST_ROUTES = (
     ("prefix", "/api/snapshots", "_snapshots"),
     ("exact", "/api/transcripts", "_transcripts"),
     ("prefix", "/api/settings", "_settings_post"),
+    ("exact", "/api/checks", "_checks_post"),
+    ("exact", "/api/catalog-mirror", "_catalog_mirror_post"),
     ("prefix", "/api/rules", "_rules"),
     ("prefix", "/api/global-rules", "_global_rules"),
     ("prefix", "/api/pending", "_pending"),
@@ -7592,7 +7676,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_apps(self):
         """GET /api/apps: the apps this controller offers and holds
-        (apps.view), for the Apps page and the Settings section."""
+        (apps.view), for the Library's companion cards and the Settings section."""
         return self._json(apps.view())
 
     def _apps(self, req):
@@ -7758,7 +7842,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_agents(self):
         """GET /api/agents?node=ID: the coding agents on one node (R95, the
-        Agents page): each agent's row, the version against the latest and
+        Library's): each agent's row, the version against the latest and
         any job of its own, and the asking account's own plugins and MCP
         servers there. Answered for the nodes this account may look at."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
@@ -8637,6 +8721,30 @@ class Handler(BaseHTTPRequestHandler):
         threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
         return self._json(r)
 
+    def _checks_post(self, req):
+        """POST /api/checks {kind}: Check now, for one of the update checks
+        under Controller settings (R176, checks.py). An administrator's."""
+        if self._refused("controller"):
+            return
+        r = checks.run_now(str(req.get("kind") or ""))
+        return self._json(r, 400 if r.get("error") else 200)
+
+    def _catalog_mirror_post(self, req):
+        """POST /api/catalog-mirror {action: import, archive} or {action:
+        forget}: the vetted catalog's mirror under Controller settings (R169
+        step 6), its archive taken through /api/upload-archive. An
+        administrator's."""
+        if self._refused("controller"):
+            return
+        action = field(req, "action")
+        if action == "import":
+            r = catalogmirror.take(field(req, "archive"), time.time())
+        elif action == "forget":
+            r = catalogmirror.forget()
+        else:
+            return self._json({"error": "a mirror is imported or forgotten"}, 400)
+        return self._json(r | {"mirror": catalogmirror.held()}, 400 if r.get("error") else 200)
+
     def _settings_post(self, req):
         """POST /api/settings."""
         # The Settings tab's fields (R29): an administrator's, validated
@@ -8799,6 +8907,11 @@ class Handler(BaseHTTPRequestHandler):
                 and str(req.get("devbuild")) != prefs.get(name)["devbuild"] \
                 and self._refused("docker-write"):
             return
+        # ...and the tool pack dial (R169 step 5): adding to the catalog every
+        # node shares is Curate's to hand a session.
+        if req.get("installpacks") is not None and str(req.get("installpacks")) != prefs.get(name)["installpacks"] \
+                and self._refused("curate"):
+            return
         # ...and the same of the VM dial and the VMs' limits (R91): a VM is a
         # machine on a node, the VMs area's to hand a session or to raise.
         if ((req.get("makevms") is not None and str(req.get("makevms")) != prefs.get(name)["makevms"])
@@ -8864,6 +8977,10 @@ class Handler(BaseHTTPRequestHandler):
         # thread, so the card stops saying a daemon nobody can reach (B710).
         if req.get("action") in ("retire", "discard", "uninstall") and isinstance(got[0], dict) and got[0].get("ok"):
             threading.Thread(target=doctor.refresh, name="doctor-after-node", daemon=True).start()
+            # ...and its scanners' record and the reports it sent up go with
+            # it, or the Analysis findings kept reading a node nobody has.
+            if req.get("id"):
+                scanners.forget_node(req["id"])
         return self._json(*got)
 
     def _jobs(self, req):
@@ -9313,7 +9430,7 @@ class Handler(BaseHTTPRequestHandler):
         nid = field(req, "node")
         if not nid:
             return "", ({"error": "which node? A sign-in is made on one node, "
-                                  "from its Agents page"}, 400)
+                                  "from its row on the Installed page"}, 400)
         nid, why = self._node_asked(nid)
         if why:
             return "", ({"error": why}, 403)
@@ -10939,7 +11056,7 @@ class Handler(BaseHTTPRequestHandler):
             given = req.get("accept") if isinstance(req.get("accept"), list) else []
             if (missing := [t for t in need if t["label"] not in given]):
                 return self._json({"error": "installing this accepts " + " and ".join(t["label"] for t in missing)
-                                            + ": accept it on the Toolchains page first",
+                                            + ": accept it in the Library first",
                                    "accept": missing}, 409)
             if need:
                 db.audit(self._principal(), "terms-accepted", ",".join(map(str, req.get("names") or []))[:200],
@@ -10951,8 +11068,31 @@ class Handler(BaseHTTPRequestHandler):
         address, or at one made here from a pasted manifest or an uploaded
         archive (/api/upload-archive's id); add it as it was shown; read a
         pack made here's manifest back for Edit; or remove it (R77).
-        An administrator's, since a pack joins every node's catalog."""
-        if self._refused("admin"):
+        Curate's (R174), since a pack joins every node's catalog. A session
+        asks for one from the vetted catalog by name (bb tool install, R169
+        step 5), as its project's Install a tool pack dial says."""
+        me = self._who() or {}
+        if me.get("session"):
+            sess = me["session"]
+            if field(req, "action") != "install":
+                return self._json({"error": "a session asks for a pack from the catalog with bb tool install NAME, nothing else"}, 403)
+            name = field(req, "name")
+            entry = next((e for e in (catalogindex.index(settings.get("catalog_url") or None).get("index") or {}).get("packs") or []
+                          if e["name"] == name and e.get("kind", "pack") == "pack" and not e.get("withdrawn")), None)
+            if not entry:
+                return self._json({"error": f"no tool pack called {name or 'nothing'} in the vetted catalog: bb tool search WORDS lists them"}, 400)
+            if name in toolpacks.packs():
+                return self._json({"ok": True, "note": f"{name} is added already: install it on a node from the Library"})
+            mode = prefs.get(sess)["installpacks"]
+            if mode == "deny":
+                return self._json({"error": f"{sess}'s settings say an agent may not add a tool pack (Install a tool pack is deny): "
+                                            "a person adds one from the Library, or changes that in the project's settings"}, 403)
+            # At auto one that needs root is refused by the add itself (R169
+            # step 4), its words saying to ask: an administrator's alone.
+            if mode == "ask":
+                return self._result(phone.ask_pack(field(req, "why") or f"add the tool pack {name}", sess, entry, asker_name=me.get("name") or ""))
+            return self._result(_pack_from_catalog(entry, f"session:{sess}"))
+        if self._refused("curate"):
             return None
         action = req.get("action")
         shipped = {r["name"] for r in toolchains.load_toolchains()}
@@ -10965,10 +11105,16 @@ class Handler(BaseHTTPRequestHandler):
             # archive's sha256 checked too.
             r = toolpacks.fetch(field(req, "url"), field(req, "commit"), shipped=shipped, sha256=field(req, "sha256"), path=field(req, "path"))
         elif action == "add" and field(req, "staged"):
-            r = toolpacks.add_staged(field(req, "staged"), by, shipped)
+            r = toolpacks.add_staged(field(req, "staged"), by, shipped, may_root=users.is_admin(me))
+        elif action == "add" and field(req, "sha256"):
+            # The tier is the signed index's, never the request's (B440): a
+            # sha256 is taken only for the pin the index names.
+            pin = _catalog_pin(field(req, "url"), field(req, "commit"), field(req, "sha256"), field(req, "path"))
+            if not pin:
+                return self._json({"error": "that commit is not the one the vetted catalog pins: Refresh the catalog and Look again"}, 400)
+            r = _pack_from_catalog(pin, by, may_root=users.is_admin(me))
         elif action == "add":
-            r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped, sha256=field(req, "sha256"),
-                              tier="vetted" if field(req, "sha256") else "url", path=field(req, "path"))
+            r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped, path=field(req, "path"), may_root=users.is_admin(me))
         elif action == "source":
             r = toolpacks.source(field(req, "name"))
         elif action == "where":
@@ -11313,7 +11459,7 @@ class Handler(BaseHTTPRequestHandler):
         or runs as one list for one node (library.rows): the toolchains and
         packs with what the node's store holds, the coding agents, the apps
         a NAS runs, the vetted catalog's offers and the companions a person
-        downloads. Read as the Toolchains page is read: for the nodes of
+        downloads. Read as the toolchains' rows are read: for the nodes of
         the person's own projects; never a session's. Each part comes only
         to whoever its own page came to (Toolchains Read for the rows that
         install on a node, a container's grant for the apps, an
@@ -11331,10 +11477,10 @@ class Handler(BaseHTTPRequestHandler):
         n = nodes.node(nid) if on_node else None
         may_install = not users.may(who, "toolchains-write")
         may_apps = not users.may(who, "docker-write")
-        cat = catalogindex.index(settings.get("catalog_url") or None) if may_install else {}
+        cat = catalogindex.index(settings.get("catalog_url") or None) if may_install or may_apps else {}
         # An app's row opens on its compose file (step 2), so it rides along.
         napps = [{**a, "compose": nasapps._all().get(a["id"], {}).get("compose", "")} for a in nasapps.catalog()] if may_apps else []
-        # ...and an agent's on what this person added to it there (the Agents page's Yours).
+        # ...and an agent's on what this person added to it there (the Installed page's Yours).
         uid = users.uid_of(who)
         mine = next((x for x in plugins.of(uid) if x["node"] == nid), {}) if uid and n else {}
         # The services (R172): the model router on this node, its status as
@@ -11342,19 +11488,36 @@ class Handler(BaseHTTPRequestHandler):
         # containers may deploy it, as the nginx page's. The added packs'
         # answers here, for Configure on their cards.
         services = []
-        if n and not users.may(who, "docker-write"):
+        if n and not users.may_node(who, "configure", nid):
             services.append({"manifest": toolpacks.validate(router.pack(), shipped=())[0], "status": router.status(nid),
                              "ready": router._ready(nid), "all_projects": sorted(prefs.all_projects(WORKSPACE))})
-        pack_values = {name: packconfig.get(nid, name, fields) for name, fields in toolpacks.configs().items()} if n and users.is_admin(who) else {}
+        pack_values = {name: packconfig.get(nid, name, fields) for name, fields in toolpacks.configs().items()} if n and not users.may_node(who, "configure", nid) else {}
+        # ...and this person's own (R172 step 5), where they work on the node.
+        yours_ok = bool(n) and self._works_on_node(who, nid) and bool(users.uid_of(who))
+        pack_mine = {name: packconfig.get_mine(nid, name, fields, users.uid_of(who)) for name, fields in toolpacks.configs().items()
+                     if packconfig.person_fields(fields)} if yours_ok else {}
         return self._json({"node": nid, "name": tc.get("name") or (n or {}).get("name") or "", "live": bool(tc.get("live", (n or {}).get("live"))),
-                           "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view(), services, pack_values),
+                           "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view(), services, pack_values, pack_mine),
                            "job": tc.get("job") or {"running": False}, "catalog_error": cat.get("error", ""),
-                           "may": {"install": may_install, "apps": may_apps, "packs": users.is_admin(who)},
+                           # Whether this node runs Docker, for an app's card (R170 step 7).
+                           "docker": bool(((n or {}).get("reported") or {}).get("docker")),
+                           "may": {"install": may_install, "apps": may_apps, "packs": not users.may(who, "curate"),
+                                   "configure": bool(n) and not users.may_node(who, "configure", nid), "yours": yours_ok},
                            "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb"), "checked": tc.get("checked") or 0},
                            "sysdeps": tc.get("sysdeps") or {}, "cleanable": tc.get("cleanable") or [], "locked": bool(tc.get("locked")),
                            "sandbox": bool(tc.get("sandbox")), "managed": bool(tc.get("administers")) and not tc.get("locked"),
                            "catalog_repo": library.repo_of(settings.get("catalog_url") or ""),
                            "yours": {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}})
+
+    def _works_on_node(self, who, nid):
+        """Whether this account works on a project whose node is `nid`
+        (R172 step 5: a person-scoped setting asks nothing more)."""
+        if users.is_admin(who):
+            return True
+        for p in wssync.bound_projects(nid) or []:
+            if not users.may(who, "work", p):
+                return True
+        return False
 
     def _library(self, req):
         """POST /api/library (R172): a card's Configure, Install and Remove
@@ -11370,8 +11533,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "which node?"}, 400)
         by = who.get("name") or ""
         if pack == "model-router":
-            if self._refused("docker-write"):
-                return None
+            # Configure on this node (R174): its settings, its deploy and
+            # removal; the router's containers are this node's.
+            if (why := users.may_node(who, "configure", nid)):
+                return self._json({"error": why}, 403)
             gpu = bool(((nodes.node(nid) or {}).get("reported") or {}).get("gpu_card"))
             if act == "configure":
                 v = req.get("values") if isinstance(req.get("values"), dict) else {}
@@ -11406,9 +11571,18 @@ class Handler(BaseHTTPRequestHandler):
             if not r.get("error"):
                 db.audit(f"user:{by}", f"router-{act}", nid, {})
             return self._result(r)
-        if not users.is_admin(who):
-            return self._json({"error": "configuring a pack is an administrator's"}, 403)
         fields = toolpacks.configs().get(pack)
+        # A person's own answers (R172 step 5): theirs on a node whose
+        # projects they work on, no Configure grant asked.
+        if field(req, "scope") == "person":
+            if not fields or act != "configure":
+                return self._json({"error": f"{pack or 'nothing'} asks nothing of each person"}, 400)
+            if not self._works_on_node(who, nid):
+                return self._json({"error": "your own settings here are for whoever works on this node's projects"}, 403)
+            r = packconfig.set_mine(nid, pack, fields, req.get("values"), users.uid_of(who))
+            return self._json(r, 400 if r.get("error") else 200)
+        if (why := users.may_node(who, "configure", nid)):
+            return self._json({"error": why}, 403)
         if not fields:
             return self._json({"error": f"{pack or 'nothing'} is not an added pack that asks for anything"}, 400)
         if act != "configure":
@@ -11425,12 +11599,24 @@ class Handler(BaseHTTPRequestHandler):
         the newest could not be taken. For whoever may install toolchains;
         never a session's."""
         who = self._who() or {}
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        # A search of it (R169 step 5): what bb tool search answers a
+        # session with, and anyone signed in: names, what each is, tier and
+        # platforms, never an address or a commit; each word must be found.
+        if self.path.split("?")[0].rstrip("/") == "/api/catalog/search":
+            idx = catalogindex.index(settings.get("catalog_url") or None)
+            words = [w for w in str((q.get("q") or [""])[0]).lower().split() if w][:8]
+            have = set(toolpacks.packs())
+            rows = [{"name": e["name"], "kind": e.get("kind", "pack"), "tier": e.get("tier"), "about": e.get("about", ""),
+                     "platforms": e.get("platforms") or [], "added": e["name"] in have}
+                    for e in ((idx.get("index") or {}).get("packs") or [])
+                    if not e.get("withdrawn") and all(w in f"{e['name']} {e.get('about', '')}".lower() for w in words)]
+            return self._json({"packs": rows[:50], "more": max(0, len(rows) - 50), "error": idx.get("error", "")})
         if who.get("session"):
             return self._json({"error": "the catalog is a person's to read here; bb tool search is a session's way"}, 403)
         why = users.may(who, "toolchains-write")
         if why:
             return self._json({"error": why}, 403)
-        q = urllib.parse.parse_qs(self.path.partition("?")[2])
         r = catalogindex.index(settings.get("catalog_url") or None, fresh=(q.get("fresh") or [""])[0] == "1")
         return self._json({"index": r.get("index"), "error": r.get("error", ""), "url": settings.get("catalog_url")})
 
@@ -11462,9 +11648,17 @@ class Handler(BaseHTTPRequestHandler):
         # administrator's, as a tool pack is, since every person's New
         # container then offers it.
         action = field(req, "action")
+        # An app the vetted catalog offers (R170 step 7): kept from its pin
+        # in the signed index, never from what the page sends, so whoever
+        # may make containers takes it; New container then offers it.
+        if action == "add-catalog":
+            entry = next((e for e in (catalogindex.index(settings.get("catalog_url") or None).get("index") or {}).get("packs") or []
+                          if e.get("kind") == "app" and e["name"] == field(req, "app") and not e.get("withdrawn")), None)
+            r = nasapps.add_catalog(entry, by=who.get("name") or "", fetch=toolpacks.fetch_folder)
+            return self._json(r, 400 if r.get("error") else 200)
         if action in ("preview", "add", "source", "remove"):
-            if not users.is_admin(who):
-                return self._json({"error": "adding an app to the catalog is an administrator's"}, 403)
+            if (why := users.may(who, "curate")):
+                return self._json({"error": why}, 403)
             if action == "preview":
                 r = nasapps.check(req.get("compose"))
             elif action == "add":

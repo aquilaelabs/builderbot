@@ -18,8 +18,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Graceful shutdown
 #
-# `docker stop` gives us SIGTERM and then SIGKILL after a timeout. Unraid always
-# passes that timeout explicitly (DockerClient.php stops a container with
+# `docker stop` gives us SIGTERM and then SIGKILL after a timeout. A NAS's Docker
+# page always passes that timeout explicitly (its DockerClient.php stops a container with
 # `/containers/<id>/stop?t=` DOCKER_TIMEOUT, default **10**), so the container's
 # own --stop-timeout is ignored and ten seconds is all we get out of the box.
 #
@@ -104,8 +104,8 @@ shutdown() {
 trap shutdown TERM INT
 
 # The container NAME is what `docker exec` needs, and it is not the hostname:
-# Unraid names the container BuilderBot while the hostname is builderbot, and
-# docker matches names case-sensitively. Unraid exports HOST_CONTAINERNAME;
+# A NAS host may name the container BuilderBot while the hostname is builderbot,
+# and docker matches names case-sensitively. Such a host exports HOST_CONTAINERNAME;
 # fall back to the hostname elsewhere.
 CONTAINER_NAME="${HOST_CONTAINERNAME:-${HOSTNAME:-}}"
 # ...and on a controller installed bare metal (R90) there is no container to

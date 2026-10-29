@@ -182,16 +182,19 @@ def attention(own_node_id):
 
 
 def start():
-    """The daily check on a thread, a while after the start, and the window
-    looked at every ten minutes between checks."""
+    """The check on a thread, a while after the start, then on its cadence
+    (checks.py: weekly unless set), and the window looked at every ten
+    minutes between checks."""
     def loop():
         time.sleep(BOOT_DELAY)
-        last = 0
+        import checks
         while True:
             try:
-                if time.time() - last >= EVERY:
+                # On its cadence (R176, weekly unless set), from when it last
+                # ran, which outlives a restart.
+                if checks.due("release", checks.stamped("release")):
                     check()
-                    last = time.time()
+                    checks.stamp("release")
                 window_pass()
             except Exception as e:                                  # noqa: BLE001 (the loop outlives one bad pass)
                 print(f"[dashboard] release check: {type(e).__name__}: {e}", flush=True)

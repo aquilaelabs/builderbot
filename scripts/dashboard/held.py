@@ -5,14 +5,15 @@ installed OS adds are held by their own modules reading this) until a
 person presses Start on This machine. Not by default: held only after an
 unclean shutdown (a clean-shutdown marker written on the way down and
 missing on the way up), or when the next start was asked to hold (This
-machine's Hold the next start, that one boot). Safe mode at the boot menu
+hold the next start checkbox beside Restart and Shut down, that one boot). Safe mode at the boot menu
 and a disk the array names gone missing are the installed OS's reasons
 (R161, R162), added here as they land.
 
 The record is STATE/held.json; the markers beside it are the install's
 own: clean-shutdown (the last stop was clean), booted (this install has
 come up before, so a missing clean-shutdown means an unclean stop rather
-than a first boot), hold-next (the next start is to hold).
+than a first boot), hold-next (the next start is to hold), hold-first (a
+stick's prepared configuration asked its first start to hold).
 """
 import json
 import threading
@@ -78,6 +79,10 @@ def boot():
         why.append("asked at the last restart (Hold the next start)")
         with _lock:
             _marker("hold-next").unlink(missing_ok=True)
+    if _marker("hold-first").exists():
+        why.append("the first start of the stick's prepared configuration: its disks are shown here before anything mounts")
+        with _lock:
+            _marker("hold-first").unlink(missing_ok=True)
     if _marker("booted").exists() and not _marker("clean-shutdown").exists():
         why.append("the last shutdown was not clean")
     with _lock:
@@ -138,6 +143,18 @@ def start(principal=""):
         d.update(held=False, why=[], since=0, started_at=int(time.time()), started_by=str(principal)[:80])
         _save(d)
     return {"ok": True, "held": False}
+
+
+def arm_first():
+    """This start held, from a stick's prepared configuration that asks for
+    it (R161 step 11, firstboot.py), set before boot() reads the markers."""
+    if not _bare():
+        return
+    with _lock:
+        try:
+            _marker("hold-first").touch()
+        except OSError:
+            pass
 
 
 def arm_next(on=True):

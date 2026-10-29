@@ -19,7 +19,6 @@
 #   sudo bash nodes/install-controller.sh --check      can this machine take one
 #   sudo bash nodes/install-controller.sh --install    the controller, and its own node
 #   sudo bash /opt/builderbot/nodes/install-controller.sh --update     the newest release
-#   sudo bash /opt/builderbot/nodes/install-controller.sh --rollback   the one before
 #   sudo bash /opt/builderbot/nodes/install-controller.sh --remove     take it away
 #
 # What it lays down, and who owns it:
@@ -61,7 +60,7 @@ BB_BIN="$P/usr/local/bin/bb"
 SERVICE=builderbot-controller
 REPO=aquilaelabs/builderbot
 # How many releases are kept beside the one in use: the one before is what
-# --rollback goes back to.
+# an update that does not come up goes back to by itself.
 KEEP_RELEASES=3
 
 ACCOUNT=builderbot
@@ -103,10 +102,10 @@ Actions:
                  checkout or an unpacked release), put in place the way an
                  image update is: checked against the state first, so a
                  release that would refuse it changes nothing, then switched
-                 to and started; the one before is kept.
-  --rollback     back to the release before. When the newer one had already
-                 moved the state on, the copy it took first is put back
-                 (what it held then is kept under the state's backups/).
+                 to and started; the one before is kept, and a new
+                 release that does not answer goes back to it by itself,
+                 the state copy it took first put back. There is no going
+                 back by hand: a release moves forward only.
   --remove       stop the controller and take its release, service, bb and
                  wall away, and this machine's node with them. The state,
                  the env file, the secrets, the account and the projects
@@ -221,7 +220,7 @@ lay_out() {
     done < <(sed -n 's/^COPY \([^ ]*\) \([^ ]*\)$/\1 \2/p' "$t/Dockerfile")
     [ "$n" -gt 5 ] || die "the Dockerfile in $t names nothing to lay out ($n COPY lines)"
     # ...and what a machine of its own needs that the image does not: the
-    # installer itself (for --update, --rollback and --remove from here), its
+    # installer itself (for --update and --remove from here), its
     # env file's template and the Dockerfile's pins.
     install -m 0755 "$t/nodes/install-controller.sh" "$dir.partial/nodes/install-controller.sh"
     install -m 0644 "$t/config/controller.env" "$dir.partial/config/controller.env"
@@ -796,32 +795,33 @@ cmd_update() {
     fi
     service
     if wait_up; then
-        printf '   %s is up; %s --rollback goes back to %s\n' "$ver" "$OPT/nodes/install-controller.sh" "${cur:-the one before}"
+        printf '   %s is up\n' "$ver"
     else
         # Not answering: back by itself (R90 step 5), the state the newer
         # build may have moved on put back from the copy it took, so the
         # machine is never left on a build that does not come up.
         warn "${ver} did not answer on port ${PORT}: journalctl -u ${SERVICE} says why; going back to ${cur:-the one before} now"
-        if [ -L "$RELEASES/.previous" ] && cmd_rollback; then
+        if [ -L "$RELEASES/.previous" ] && back_to_previous; then
             warn "back on ${cur:-the one before}; ${ver} is kept beside it for a look"
         else
-            warn "the rollback did not go through either: ${OPT}/nodes/install-controller.sh --rollback by hand"
+            warn "going back did not go through either: journalctl -u ${SERVICE} says why"
         fi
         exit 1
     fi
 }
 
-cmd_rollback() {
+# back_to_previous: the release before, put back by an update whose new
+# release did not answer (R90 step 5). Boot safety, not a downgrade: it is
+# never a verb of its own (the operator, 28 Oct: no roll back).
+back_to_previous() {
     local prev newver oldver state
     [ -L "$RELEASES/.previous" ] || die "there is no release before this one to go back to"
-    load_core
-    [ "$(id -u)" -eq 0 ] || die "run this as root: sudo bash $0 --rollback"
     prev="$(readlink "$RELEASES/.previous")"
     [ -d "$prev" ] || die "the release before ($prev) is gone"
     newver="$(sed -n 's/^BB_VERSION=//p' "$OPT/build.env" 2>/dev/null || true)"
     oldver="$(sed -n 's/^BB_VERSION=//p' "$prev/build.env" 2>/dev/null || true)"
     state="$(env_get DASHBOARD_STATE)"
-    say "rollback: ${newver:-?} to ${oldver:-?}"
+    say "back: ${newver:-?} to ${oldver:-?}"
     svc_stop "$SERVICE"
     # The newer build may have moved the state on, which the older one
     # refuses; then the copy the newer one took before it migrated is put
@@ -1026,7 +1026,7 @@ main() {
     [ $# -gt 0 ] || { usage; exit 0; }
     while [ $# -gt 0 ]; do
         case "$1" in
-            --check|--install|--update|--rollback|--remove|--stage|--firstboot)
+            --check|--install|--update|--remove|--stage|--firstboot)
                 [ -z "$ACTION" ] || die "one action at a time: ${ACTION} and $1"
                 ACTION="$1"; shift ;;
             --workspace) WORKSPACE_DIR="${2:?--workspace needs a path}"; shift 2 ;;
@@ -1056,7 +1056,6 @@ main() {
         --check) cmd_check ;;
         --install) cmd_install ;;
         --update) cmd_update ;;
-        --rollback) cmd_rollback ;;
         --remove) cmd_remove ;;
         --stage) cmd_stage ;;
         --firstboot) cmd_firstboot ;;

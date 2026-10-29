@@ -116,7 +116,7 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
 // ---- the verbs are the pages' own ------------------------------------------
 // Install on a toolchain row that is not installed: the toolchain job on
 // the node, which the stub agent answers at once (it fails the install, as
-// the Toolchains page's node tests find), and the row then says what the
+// toolchains.mjs's node tests find), and the row then says what the
 // job said: installed, or what failed under the row, as that page does.
 {
   const name = await page.evaluate(() => lib.rows.find(r => r.kind === 'toolchain' && !r.installed && r.verb === 'install' && !r.wrong_platform)?.name || '');

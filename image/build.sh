@@ -10,7 +10,7 @@
 #   builderbot-os-VERSION.raw.xz         the whole disk, for an installed machine or a VM
 #   builderbot-os-VERSION.stick.raw.xz   the same disk with GRUB loading the slot into memory: the USB edition
 #   builderbot-os-VERSION.iso            the installer: boots the same root live, lays a disk out with lay-disk
-#   builderbot-os-VERSION.qcow2          the same disk for Proxmox, Unraid and libvirt
+#   builderbot-os-VERSION.qcow2          the same disk for Proxmox, libvirt and other QEMU hosts
 #   builderbot-os-VERSION.ova            the same disk for VMware and VirtualBox (a stream-optimized VMDK with its descriptor)
 #   builderbot-os-VERSION.root.squashfs  one root slot, what an update writes into the other slot (R160 step 4)
 #   builderbot-os-VERSION.vmlinuz        the slot's kernel and initrd, kept on the ESP beside it
@@ -157,7 +157,7 @@ grub-mkrescue -o "$OUT/$NAME.iso" "$ISO" -- -follow_links -volid BUILDERBOT_OS >
 rm -rf "$ISO"
 
 # ---- the same disk for a hypervisor (R160 step 3) ---------------------------
-# qcow2 for Proxmox, Unraid and libvirt; an OVA (a stream-optimized VMDK with
+# qcow2 for Proxmox, libvirt and other QEMU hosts; an OVA (a stream-optimized VMDK with
 # its descriptor and manifest) for VMware and VirtualBox. Converted from the
 # raw disk, never laid out again, so the three cannot drift.
 say "the VM disks"

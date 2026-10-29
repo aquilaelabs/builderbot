@@ -24,8 +24,8 @@ import toolchains
 nodes: Any = None     # the node store, once the server has opened it
 
 # What a node needs before the tab is worth opening: sdkmanager to install an
-# image, and the emulator to boot one. Catalog names, so the Toolchains tab's
-# rows are what the reason points at.
+# image, and the emulator to boot one. Catalog names, so the Library's
+# cards are what the reason points at.
 NEEDS = ("android-tools", "android:emulator")
 
 

@@ -72,11 +72,6 @@ function agentOfArg(arg){
     }
   return null;
 }
-// The session an agent's slot on a project runs in, before the account's
-// prefix (agents.session_name): `claude-alpha`, `claude-alpha~2`.
-function agentSessionName(id, project, slot = 1){
-  return `${(agentById(id) || AGENTS[0]).id}-${tmuxName(project)}${slot > 1 ? `~${slot}` : ""}`;
-}
 // A coding agent's session as a person says it: "ChatGPT on web", by the
 // agent its name carries and the project's own name, never the tmux one.
 function agentSessionWords(name){

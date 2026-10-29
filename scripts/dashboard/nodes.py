@@ -328,10 +328,10 @@ def store_id(path, make=True):
     """A stable id for the store at `path`, from a marker inside it.
 
     Two machines mounting one share have no way to recognize each other by
-    path: this container reaches the toolchain store through Unraid's FUSE layer
+    path: this container reaches the toolchain store through the host's user-share layer
     (fstype fuse.shfs, source "shfs") while a node reaches the same bytes
     over NFS (nas:/mnt/user/sdk). Neither string can be derived from the
-    other without knowing it is Unraid, so pairing on the mount cannot work.
+    other without knowing the host, so pairing on the mount cannot work.
 
     A file in the store answers exactly, whatever the transport, and it is
     store-specific rather than machine-specific, so it is the one kind of
@@ -649,6 +649,18 @@ def node_update(principal, node_id, fields):
         clean = {str(k)[:40]: str(v)[:120]
                  for k, v in list(fields["labels"].items())[:24]}
         sets.append("labels = ?"); args.append(json.dumps(clean))
+    if "check_versions" in fields:
+        # Its own version check's cadence (R176): the Library's answers for
+        # this node, asked daily, weekly (the default), monthly or never.
+        v = str(fields["check_versions"] or "")
+        if v not in ("daily", "weekly", "monthly", "off"):
+            return {"error": "a node's version check is daily, weekly, monthly or off"}
+        cfg = dict(n.get("config") or {})
+        if v == "weekly":
+            cfg.pop("check_versions", None)
+        else:
+            cfg["check_versions"] = v
+        sets.append("config = ?"); args.append(json.dumps(cfg))
     if "host_only" in fields:
         on = fields["host_only"] is True
         if on:
@@ -1360,14 +1372,14 @@ def _census(c):
                                  and str(v.get("algo") or "") in ("sha1", "sha256", "sha512", "gpg", "none")}
     # Kept only when the agent sent one: a listing that is there and empty
     # is a store with nothing in it (B671), a key that is absent is a node
-    # that has not said, and the Toolchains tab reads the two apart.
+    # that has not said, and the Installed page reads the two apart.
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else None
     if sd is not None:
         out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                              for k in ("top", "android", "incomplete", "roots")}
         # ...and the versions under android's families (B712), kept only
         # when the agent lists them (a node with a toolchain store): the
-        # Toolchains tab reads a version a project pins against this, and a
+        # Library reads a version a project pins against this, and a
         # node that cannot say must not read as a store that lacks it.
         if isinstance(sd.get("versions"), dict):
             out["store_dirs"]["versions"] = {
@@ -1551,6 +1563,15 @@ def _census(c):
                      # On trial, and a fallback said (R161 step 2).
                      "trial": o.get("trial") is True,
                      "fell_back": re.sub(r"[^\w .,:;()'-]", "", str(o.get("fell_back") or ""))[:200]}
+    # A stick boot (R161 step 10): its system pool, whether docker and the
+    # VMs may run yet, what still lives on the stick, what it has written.
+    if isinstance(c.get("os_stick"), dict) and c["os_stick"].get("stick") is True:
+        s = c["os_stick"]
+        kb = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None  # noqa: E731
+        out["os_stick"] = {"stick": True, "pool": str(s.get("pool") or "")[:200] if str(s.get("pool") or "").startswith("/") else "",
+                           "ready": s.get("ready") is True,
+                           "on_stick": [x for x in (s.get("on_stick") or []) if x in ("docker", "containerd", "libvirt", "toolchains", "projects")],
+                           "written_kb": kb(s.get("written_kb")), "boot_written_kb": kb(s.get("boot_written_kb"))}
     # The domains its libvirt has that BuilderBot did not make (R165 step 1):
     # a name, a state and a size, read-only on the VMs page.
     if isinstance(c.get("vms_other"), list):
@@ -1634,8 +1655,8 @@ def _census(c):
         if c.get(k):
             out[k] = str(c[k])[:200]
     # Where the NVIDIA driver stands (R102): installed for this kernel,
-    # loaded now, and which driver has the card, for the Toolchains tab's
-    # driver row.
+    # loaded now, and which driver has the card, for the driver's
+    # row in the Library and on the Installed page.
     # Kept without a card too when the agent says it was left for one that
     # has gone (nocard), so its row can remove it (B168).
     gd = c.get("gpu_driver")
@@ -2208,6 +2229,7 @@ token_pubs = None
 # 1): users.smb_users, and the resolver of a share's names (users.smb_resolve).
 smb_users = None
 pack_config = None         # nid -> [{pack, store, values, env}] (R172, packconfig.for_node)
+pack_people = None         # nid -> [{uid, pack, env}] (R172 step 5, packconfig.for_people)
 smb_resolve = None
 # The reporting's intake (history.add), on the controller's own machine's samples (R164 step 4).
 history_add = None
@@ -3731,6 +3753,39 @@ def node_os_update(principal, node_id, release="", from_dir=""):
     return r
 
 
+def node_system_pool(principal, node_id, path=""):
+    """A stick's system pool (R161 step 10): the pool, by its mount point,
+    where docker, containerd, libvirt, the toolchains and the projects write
+    instead of the stick; a system job on the own machine's node, whose root
+    agent moves them there and binds them at every boot. Refused anywhere
+    but a stick boot, and for a mount point no pool or array of its census has."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    rep = n.get("reported") or {}
+    if not own_machine(n) or not (rep.get("os_stick") or {}).get("stick"):
+        return {"error": "a system pool is a stick's: this machine does not run BuilderBot OS from a stick"}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot move a pool"}
+    path = str(path or "").strip()
+    mounts = {p.get("mount") for p in (rep.get("pools") or []) if isinstance(p, dict) and p.get("mount")}
+    if (rep.get("array") or {}).get("mount"):
+        mounts.add(rep["array"]["mount"])
+    if path not in mounts:
+        return {"error": "name a pool or the array this machine has mounted (the Storage page makes one)"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "system-pool", "config": {"path": path}, "timeout": 6 * 3600})
+    if r.get("ok"):
+        audit(principal, "system-pool", node_id, {"job": r["job"], "path": path})
+    return r
+
+
 def node_controller_update(principal, node_id, release=""):
     """Update a controller installed bare metal (R90 step 5): a system job
     on its own machine's node, whose root agent runs the installer's
@@ -3850,7 +3905,7 @@ def node_door(principal, node_id, on):
 def node_gpu_display(principal, node_id):
     """Set the GPU display up on a node from its row (R20): a system job
     the agent answers with bb-sandbox gpu, which starts a headless X server
-    on the card, on the driver the Toolchains page installed, and says
+    on the card, on the driver the Library installed, and says
     whether a reboot has to follow. The machine's own answer decides: a node with no card gets that
     said, not refused here."""
     n = node(node_id)
@@ -3862,11 +3917,11 @@ def node_gpu_display(principal, node_id):
         return {"error": "only a node provisioned as a BuilderBot sandbox is set up from here: "
                          "on the machine, sudo bb-sandbox gpu"}
     # The display runs on the driver and does not install it (R102): the
-    # Toolchains tab's driver row is the one place it is installed.
+    # driver's card in the Library is the one place it is installed.
     gd = (n.get("reported") or {}).get("gpu_driver")
     if isinstance(gd, dict) and not gd.get("installed"):
         return {"error": f"the NVIDIA driver is not installed on {n['name']}: install it on "
-                         "that node's Toolchains page first; the display runs on it"}
+                         "the Library with that node picked first; the display runs on it"}
     why = node_locked(n)
     if why:
         return {"error": why}
@@ -3957,7 +4012,7 @@ def node_power(principal, node_id, what):
         return {"error": "a system job is already in flight on this node; one at a time"}
     # ...nor under an install: a restart in the middle of apt, or of a
     # toolchain being unpacked, leaves it half on the machine (the operator,
-    # 30 Sep). The Toolchains tab's Abort stops one first.
+    # 30 Sep). The Library's Abort stops one first.
     busy = [j["type"] for j in jobs_for(node_id=node_id, active=True, n=20)
             if j.get("type") in POWER_WAITS]
     if busy:
@@ -4401,6 +4456,9 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             # ...and what each added pack is configured with on this node
             # (R172): its values, the secrets opened, for the pack's verbs.
             "pack_config": (pack_config(nid) if pack_config else []),
+            # ...and each account's own answers there (R172 step 5), written
+            # into that account's home on the node.
+            "pack_people": (pack_people(nid) if pack_people else []),
             # ...and the other disks and shares it mounts (R162 step 4).
             "ext_mounts": (ext_mounts() if ext_mounts and own_machine(n) else []),
             # ...and the backups it copies (R162 step 5).
@@ -6770,6 +6828,7 @@ def verb(principal, req):
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
              "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
              "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
+             "system-pool": lambda: node_system_pool(principal, nid, field(req, "path")),
              "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone"), req.get("spindown")),
              "storage-share": lambda: node_storage_share(principal, nid, req),
              "storage-pool": lambda: node_storage_pool(principal, nid, req),
@@ -6840,7 +6899,7 @@ def run_job(name, req, principal):
         when = (f", as of what it reported {age // 60}m ago; it has been "
                 "asked for a fresh answer, so a retry shortly may differ"
                 if age and age > 90 else "")
-        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Toolchains page "
+        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Library "
                          f"with {n['name']} picked, "
                          + ("or push and let CI build it."
                             if may_push(name)

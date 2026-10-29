@@ -58,10 +58,7 @@ function isToolKind(kind){ return kind !== "term" && kind !== "notebook"; }
 
 // The group a tab kind is a page of: the first group that lists it.
 function groupOf(kind){
-  // The pages the Library replaced (R170) are off the rail but keep their
-  // addresses under Build until step 5 retires them.
-  return RAIL.find(g => (g.tools || []).some(([k]) => k === kind))
-    || (["toolchains", "agents", "apps"].includes(kind) ? RAIL.find(g => g.key === "build") : null);
+  return RAIL.find(g => (g.tools || []).some(([k]) => k === kind));
 }
 
 // Which tool kinds this account may open, from the areas its grants read
@@ -81,15 +78,12 @@ function railAllows(kind){
     case "machine": return !!a.controller && !!state?.own_node;
     case "users": case "roles": return !!a.accounts;
     // The Emulator's images are the toolchain store's, so the same area.
-    case "toolchains": case "emulator": return !!a.toolchains;
-    // The coding agents on a node (R95): installed as a toolchain is, and
-    // signed in to by whoever works there, so either area draws it.
-    case "agents": return !!a.toolchains || !!a.nodes;
-    // The Library (R170): the Toolchains and Agents pages as one, so either
-    // area draws it; what each row offers is the server's to gate.
-    case "library": return !!a.toolchains || !!a.nodes;
+    case "emulator": return !!a.install;
+    // The Library (R170): the toolchains and the coding agents as one, so
+    // either area draws it; what each row offers is the server's to gate.
+    case "library": return !!a.install || !!a.curate || !!a.nodes;
     // What is installed on a node (R172): the same areas as the Library.
-    case "installed": return !!a.toolchains || !!a.nodes;
+    case "installed": return !!a.install || !!a.configure || !!a.nodes;
     case "jobs": return !!a.jobs;
     // An administrator's own cron (R117), its own area.
     case "schedules": return !!a.schedules;
@@ -133,12 +127,10 @@ const OPENERS = {
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), installed: () => openInstalledTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
   // The Toolchains, Agents and Apps pages are the Library since R170: every
-  // door a person presses lands there; their own addresses still open them
-  // until step 5 retires them with their suites.
-  library: () => openLibrary(), toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
+  // door a person presses lands there, and their addresses open the group.
+  library: () => openLibrary(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), debug: () => openDebugTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), keys: () => openKeysTab(), profile: () => openProfileTab(),
-  apps: () => openAppsTab(),
   sessions: () => openSessionsTab(), help: () => openHelp(),
   // The pages of 0.9.0 (B410: an address with no opener landed on its
   // group's first page): Scanners, Audit, This machine and Network.
@@ -173,16 +165,11 @@ function shellPush(to){
 // The Jobs page has no node; its second segment is the chip it is narrowed
 // to (#/jobs/failed-today, which Home's "failed today" opens, B74).
 const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
-  toolchains: () => tcNode === "local" ? "" : tcNode, agents: () => agNode, library: () => libNode, installed: () => instNode, emulator: () => emuNode, phone: () => phNode,
+  library: () => libNode, installed: () => instNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
-// Toolchains' "local" (the controller's own store, for a shell and the
-// suite) is no node, so an address naming it opens on the node tcPick picks.
 // A page that keeps what it read for one node forgets it when Back names
 // another, or the other node's list showed under this one until the read.
 const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
-  toolchains: v => { const n = v === "local" ? "" : v;
-                     if (n !== tcNode){ tcNode = n; toolchains = null; tcTicked.clear(); tcDriverPick = ""; } },
-  agents: v => { if (v !== agNode){ agNode = v; agRows = null; } },
   library: v => { if (v !== libNode){ libNode = v; lib = null; } },
   installed: v => { if (v !== instNode){ instNode = v; inst = null; } },
   emulator: v => { if (v !== emuNode){ emuNode = v; emu = null; emuTicked.clear(); } },
@@ -273,11 +260,8 @@ function openRoute(hash){
   const multi = (g.tools || []).length > 1;
   // A group of one tool names its node second (#/group/NODE), as routeOf
   // writes it.
-  // ...and a page the Library replaced (R170) keeps its address under Build
-  // until step 5 retires it, though the rail no longer lists it.
-  const retired = !!a && ["toolchains", "agents", "apps"].includes(a) && groupOf(a) === g && !!OPENERS[a] && railAllows(a);
-  const named = (g.tools || []).some(([k]) => k === a) || retired;
-  const kind = retired ? a : railTool(g, named ? a : "");
+  const named = (g.tools || []).some(([k]) => k === a);
+  const kind = railTool(g, named ? a : "");
   if (!kind) return false;
   railWant = g.key;
   // The node the address names, set before the page draws (R256 step 3).
@@ -441,7 +425,6 @@ function groupPick(g, nid){
   const on = tabOf(panes[0])?.kind;
   if (on && GROUP_LOAD[on]) GROUP_LOAD[on]();
 }
-function machinesPick(nid){ groupPick(groupOf("nodes"), nid); }
 // Why a page's feature is not on this node, or "" (nothing known counts as
 // there: a list not read yet marks nothing).
 function toolOff(kind, nid){
@@ -489,7 +472,6 @@ function groupHeader(t, g){
   const pick = live.length ? nodePick("ndPick", live.map(x => ({id: x.id, name: x.name, live: x.live})), cur) : `<span class="pname">No node yet</span>`;
   return `<span class="phead mchead">${pick}${facts ? `<span class="pfacts">${esc(facts)}</span>` : ""}<span class="sp"></span></span>`;
 }
-function machinesHeader(t){ return groupHeader(t, groupOf("nodes")); }
 // The Machines group's actions, on the sub-nav's line: dead with the enroll
 // feature off (the reason is on the Nodes page) and until the node list lands.
 function machinesActions(){
@@ -508,7 +490,6 @@ function wireGroupHeader(bar){
     if (en) en.onclick = d.openEnroll;
   }
 }
-function wireMachinesHeader(bar){ wireGroupHeader(bar); }
 
 // ---- maintenance mode's band ---------------------------------------------------
 // Drawn under the header for the owner while maintenance mode is on: the

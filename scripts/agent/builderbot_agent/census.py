@@ -45,7 +45,7 @@ from .runners import _runner_state, runner_dirs
 from . import storage
 from . import vmhw
 from .disks import disks_now
-from .osimage import os_release
+from .osimage import os_release, stick_status
 from .shares import shares_now
 from .pools import pools_now, snapshots_now
 from .array import array_now
@@ -320,7 +320,7 @@ def census(state):
         # say before a toolchain install finds out the long way.
         "internet": _internet(),
         # A toolchain store this node holds but cannot write (R85), so the
-        # Toolchains page holds Install with the reason before a job fails.
+        # Library holds Install with the reason before a job fails.
         "store_ro": _store_ro(state),
         # ...or mounted noexec, so the bb bundle and every terminal from it
         # cannot run: the page says why, which the closing terminals do not.
@@ -350,7 +350,7 @@ def census(state):
         "toolchains": tc,
         "store_dirs": store_dirs(state),
         # Which held recipes need system packages this machine lacks
-        # (roadmap R51): read here, so the Tools tab and the row can say so
+        # (roadmap R51): read here, so the Installed page and the row can say so
         # before a build fails on a missing library.
         "sysdeps": sysdeps_now(state),
         # The android system images the store holds, and the AVDs built on
@@ -368,6 +368,9 @@ def census(state):
         "administers": os.geteuid() == 0 and os.access(SANDBOX_BIN, os.X_OK),
         # BuilderBot OS on this machine (R160 step 4): the image, its slot and the next boot's; {} elsewhere.
         "os_image": os_release(),
+        # ...and a stick boot's (R161 step 10): its system pool, what still
+        # lives on the stick and what the stick has been written; {} elsewhere.
+        "os_stick": stick_status(),
         # The machine's disks (R162 step 1): what the Storage page lists
         # for the controller's own machine before anything is written.
         "disks": disks_now(),
@@ -578,7 +581,7 @@ def mounts_now():
                 if e.errno == errno.ESTALE:
                     m["stale"] = True
                     m["error"] = ("mounted, but the handle is stale: the export was re-created "
-                                  "under it on the host; re-export it there (Unraid: the share's "
+                                  "under it on the host; re-export it there (on a NAS host: the share's "
                                   "NFS setting off and on, or a pool the mover leaves alone), "
                                   "then Apply storage here")
     return got
@@ -621,7 +624,7 @@ def export_gaps(addr):
     that do not include addr, the address this node is about to move to.
     From `showmount -e` on each server; a server that does not answer, or
     a machine without showmount, contributes nothing rather than a refusal.
-    The Unraid rule the docs prescribe names exactly one address, so a
+    The export rule the docs prescribe names exactly one address, so a
     node that moves without the rule moving loses every share at once."""
     if not addr or not _have("showmount"):
         return []

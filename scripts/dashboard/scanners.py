@@ -327,10 +327,13 @@ def check_versions():
     return d["latest"]
 
 
+import checks  # noqa: E402 (the cadence, R176)
+
+
 def check_loop():
     time.sleep(CHECK_DELAY)
     while True:
-        if AUTOCHECK and time.time() >= int(_load()["latest"].get("at") or 0) + CHECK_EVERY:
+        if AUTOCHECK and checks.due("scanners", int(_load()["latest"].get("at") or 0)):
             with contextlib.suppress(Exception):            # noqa: BLE001 (the loop outlives one bad answer)
                 check_versions()
         time.sleep(600)

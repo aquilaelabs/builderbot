@@ -1,4 +1,4 @@
-"""B39: Delete for good on the projects share, which is FUSE on Unraid: a
+"""B39: Delete for good on the projects share, which is FUSE on a NAS host: a
 .fuse_hidden file that vanishes while the tree is taken apart is deleted as
 far as the purge is concerned, rather than a 500 that leaves the project in
 the trash for good."""

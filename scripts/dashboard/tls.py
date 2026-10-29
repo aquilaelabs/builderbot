@@ -20,7 +20,6 @@ relay keep their own signatures either way.
 import base64
 import contextlib
 import datetime
-import hashlib
 import json
 import os
 import socket
@@ -326,11 +325,3 @@ def wrap(sock, peek_timeout=5.0):
 
 def over_tls(connection):
     return isinstance(connection, ssl.SSLSocket)
-
-
-def key_digest():
-    """A short digest of the sealed key file, for the Keys page's row."""
-    try:
-        return hashlib.sha256((_dir() / "key.pem").read_bytes()).hexdigest()[:12]
-    except OSError:
-        return ""

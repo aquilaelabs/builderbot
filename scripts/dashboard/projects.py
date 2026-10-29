@@ -1057,7 +1057,7 @@ def trash_restore(req):
 
 
 def _rmtree_share(path, tries=5):
-    """rmtree on the projects share, which is FUSE on Unraid (B39): a file
+    """rmtree on the projects share, which is FUSE on a NAS host (B39): a file
     deleted while something holds it open becomes a .fuse_hidden one that
     vanishes, or turns up, while the tree is being taken apart. A file
     already gone is deleted as far as this is concerned, and a directory

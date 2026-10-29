@@ -120,7 +120,7 @@ what moved to a node is the agents and not the terminal. A node's sessions ride 
 heartbeat onto the Sessions page, with the node named, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: its Health section lists the toolchains its census found,
-and the Toolchains page's node picker is where more are added. (Underneath, the
+and the Library, with the node picked, is where more are added. (Underneath, the
 node still refuses a job asking for something it did not enroll with: the
 enforcement of docs/nodes.md §15 door 7, but every node enrolls with the
 full set, so it is a mechanism rather than a setting.)
@@ -133,7 +133,7 @@ the page says so; the verbs behind those controls are an administrator's on
 the server as well.
 
 **Create sandbox VM** is the step before all of this when there is no
-machine yet. **Pick what runs it**: Unraid, Proxmox VE, libvirt/KVM, QEMU on
+machine yet. **Pick what runs it**: the VM manager whose XML the form writes (nodes/unraid-vm.xml), Proxmox VE, libvirt/KVM, QEMU on
 its own, VMware, Hyper-V or VirtualBox, and it writes that machine: the same
 cores, memory, disk and installer everywhere, in whatever that manager reads
 (a domain XML, a `qm create`, a `virt-install`, a `.vmx`, a PowerShell
@@ -326,7 +326,7 @@ moment it stops being true, and keyed on what is wrong so a dismissal
 holds until that changes. Each links to the Storage page, where Replace
 and the rest are.
 
-**Array** (R162): an Unraid-style array beside the pools, for disks of
+**Array** (R162): an array of mixed disks beside the pools, for disks of
 mixed sizes: each data disk its own xfs or btrfs filesystem mounted at
 `/mnt/disks/dN`, pooled into one tree at `/mnt/array` by mergerfs (the
 policy picked says where a new file lands: the emptiest disk, the disk its
@@ -487,8 +487,11 @@ does not draw the page (R90 step 8, R56 step 8).
 
 **A held start** (R56 step 9). Not by default: after a shutdown that was
 not clean (the service writes a marker on a clean stop and the next start
-misses it), or when **Hold the next start** on this page was pressed
-before a restart (that one boot), the install comes up with the dashboard,
+misses it), when **hold the next start** was ticked before a restart (the
+checkbox beside Restart and Shut down, under Controller settings' Power and
+in this machine's Reboot or shut down row; that one boot), or on the first
+start of a stick's prepared configuration that asks for it, so its disks are
+seen before anything mounts, the install comes up with the dashboard,
 its agent and the network and nothing else: no agent session starts (a
 shell still opens), and the pools, shares, apps, VMs and containers the
 installed OS adds are held by their own modules until **Start** is pressed
@@ -558,8 +561,8 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   BuilderBot itself, each with its delete, **Download diagnostics** and
   **Clear reports**.
 - **Updates** (a controller installed bare metal, R90): the release this
-  install runs and the newest published, checked daily and on **Check
-  now**; **Update** runs the installer's update through this machine's
+  install runs and the newest published, checked on its cadence under
+  Update checks (weekly unless set) and on **Check now**; **Update** runs the installer's update through this machine's
   own node, the bundle verified and the state copied aside, and the install
   comes back by itself if the new release does not answer. On BuilderBot OS
   the same press writes the release's image into the slot not in use and
@@ -583,6 +586,13 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   install's first page restores one ([image.md](image.md)).
 - **Update window**: a newer release applied by itself at an hour, daily or
   one weekday, the way Update does it; off by default.
+- **Update checks** (R176): how often BuilderBot asks by itself for what is
+  newer, each check daily, weekly (the default), monthly or off, with when it
+  last ran and **Check now** beside it: a newer BuilderBot (a bare-metal
+  install's), the container images, nginx, the scanners and the Library (the
+  toolchains' and coding agents' newest versions and the vetted catalog's
+  index). Off leaves only Check now. A node's own check of what it holds is
+  its **Version check** on its row's Advanced section, weekly unless set.
 - **Idle sessions**: the idle rule, which ends any agent's session after N minutes
   with nothing typed or written, here and on every node, where the node
   itself enforces it so the rule holds while this container is down.
@@ -596,8 +606,8 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   container rebuild is refused under it, and the bell says so), the memory
   level past which the bell warns, and a memory limit for every container
   whose compose file sets none ([nodes.md](nodes.md#room-a-node-keeps-for-itself)).
-- **Apps**: which of the apps a person installs this controller offers on
-  the Apps page ([reference.md](reference.md#the-apps-a-person-installs)).
+- **Apps**: which of the apps a person installs this controller offers as
+  Library cards ([reference.md](reference.md#the-apps-a-person-installs)).
 - **Mail**: the SMTP server BuilderBot sends through (its port, security,
   sign-in and the From address, the password sealed under the install key),
   for a person who asked on their Profile for the bell by email (R149,
@@ -744,8 +754,8 @@ the queue's counts, and `/metrics` answers with one in Prometheus text.
 
 ## Schedules
 
-**Schedules**, beside Jobs in its group, is an administrator's own cron, as
-Unraid's User Scripts are: each schedule a name, when it runs (hourly, daily,
+**Schedules**, beside Jobs in its group, is an administrator's own cron:
+each schedule a name, when it runs (hourly, daily,
 weekly, monthly, or cron's five fields under Custom, said in words: `0 4 * * 0`
 is Sundays at 4:00), where it runs, and a script. It runs on the controller,
 as the controller's account with everything that account can read, or on a

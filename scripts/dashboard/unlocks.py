@@ -220,11 +220,6 @@ def lock(uid, why="locked"):
     return {"ok": True}
 
 
-def lock_all():
-    for uid in list(_open):
-        lock(uid, why="the controller restarted")
-
-
 def status(uid):
     """What Profile and the page show: {own, locked, until, for, how}."""
     own = own_of(uid) if own_of else None

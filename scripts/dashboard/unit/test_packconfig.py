@@ -67,3 +67,48 @@ class Keeper(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PersonScope(unittest.TestCase):
+    """R172 step 5: a field a manifest scopes to a person is kept per account
+    per node, a secret sealed under the account's own key, handed to the
+    node for that account alone, and left out while its key is locked."""
+    FIELDS = [{"name": "region", "kind": "text", "label": "Region", "env": "HEX_REGION"},
+              {"name": "token", "kind": "secret", "label": "Your token", "env": "HEX_TOKEN", "scope": "person"},
+              {"name": "verbose", "kind": "switch", "label": "Verbose", "env": "HEX_VERBOSE", "scope": "person"}]
+
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.keys = {"u_0000000a": b"A" * 32}
+        packconfig.configure(state=self.d.name, write_json=lambda p, o: open(p, "w").write(json.dumps(o)),
+                             seal=lambda b, key=None: b"S" + (key or b"I")[:1] + b, unseal=lambda b: b[2:], sealing=lambda: True,
+                             store_root=lambda nid: "/mnt/SDK/n_1", account_key=lambda uid: self.keys.get(uid),
+                             open_with=lambda k, b: b[2:] if b[1:2] == k[:1] else (_ for _ in ()).throw(ValueError("key")))
+
+    def tearDown(self):
+        packconfig.configure(state="/nonexistent", write_json=None, seal=None, unseal=None, sealing=None, store_root=None,
+                             account_key=None, open_with=None)
+        self.d.cleanup()
+
+    def test_a_persons_own_answers_are_theirs_and_sealed_under_their_key(self):
+        self.assertEqual(packconfig.set_values("n_1", "hexkit", self.FIELDS, {"region": "eu"})["values"], {"region": "eu"},
+                         "the node's form holds the node's fields alone")
+        r = packconfig.set_mine("n_1", "hexkit", self.FIELDS, {"token": "t1", "verbose": True}, "u_0000000a")
+        self.assertEqual(r["values"], {"token": True, "verbose": True})
+        kept = json.load(open(os.path.join(self.d.name, "packconfig-people.json")))
+        self.assertTrue(kept["n_1"]["hexkit"]["u_0000000a"]["token"].startswith("sealed:"))
+        self.assertIn("locked", packconfig.set_mine("n_1", "hexkit", self.FIELDS, {"token": "t2"}, "u_0000000b")["error"])
+        rows = packconfig.for_people("n_1", {"hexkit": self.FIELDS})
+        self.assertEqual(rows, [{"uid": "u_0000000a", "pack": "hexkit", "env": {"HEX_TOKEN": "t1", "HEX_VERBOSE": "1"}}])
+        node = packconfig.for_node("n_1", {"hexkit": self.FIELDS})
+        self.assertEqual(node[0]["env"], {"HEX_REGION": "eu"}, "the node's file carries nobody's own")
+        self.keys.pop("u_0000000a")
+        self.assertEqual(packconfig.for_people("n_1", {"hexkit": self.FIELDS}), [], "a locked key: left out, as its sign-ins are")
+
+    def test_the_manifest_says_whose_a_field_is(self):
+        import toolpacks
+        errors = []
+        got = toolpacks._config([{"name": "a", "kind": "text", "scope": "person"}, {"name": "b", "kind": "text"}], errors)
+        self.assertEqual((errors, got[0].get("scope"), "scope" in got[1]), ([], "person", False))
+        toolpacks._config([{"name": "c", "kind": "text", "scope": "team"}], errors)
+        self.assertIn("scope is node or person", errors[0])

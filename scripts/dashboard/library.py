@@ -56,7 +56,7 @@ def _tier(t):
     return "official" if t in ("official", "") else "vetted" if t == "vetted" else "sideloaded"
 
 
-def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(), pack_values=None):
+def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(), pack_values=None, pack_mine=None):
     """The one list, in the page's order: agents, toolchains, packs, the
     services (R172: a deployed thing of BuilderBot's, its configuration on
     the card), apps, the catalog's offers, the companions. `services` is
@@ -64,6 +64,9 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
     its answers on this node} for the packs with a config block."""
     out = []
     pack_values = pack_values or {}
+    # ...and this person's own answers, for the fields a pack scopes to a
+    # person (R172 step 5): None where it asks none of them, or they may not.
+    pack_mine = pack_mine or {}
     tc = node_payload or {}
     plat = str(tc.get("platform") or "")
     job = tc.get("job") or {}
@@ -93,6 +96,9 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
                     "size": "", "wrong_platform": "", "pinned": [], "pack": None, "machine": m,
                     "verb": "" if not m.get("managed") else "update" if m.get("newer") else ("" if here else "install")})
     packs_here = set()
+    # The index's pin of each pack it offers: one kept from it at another
+    # commit is offered the new pin on its row (R169 step 4).
+    pins = {e["name"]: e for e in (catalog_index or {}).get("packs") or [] if e.get("kind", "pack") == "pack" and not e.get("withdrawn")}
     for i in tc.get("items") or []:
         pack = i.get("pack")
         if pack:
@@ -110,6 +116,8 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
                     "pack": {k: pack.get(k) for k in ("url", "commit", "path", "by", "at", "tier", "verbs", "here")} if pack else None,
                     # What it asks for per node, and what it has been given here (R172).
                     "config": i.get("config") or [], "values": pack_values.get(i["name"]) if i.get("config") else None,
+                    "mine": pack_mine.get(i["name"]),
+                    "repin": _repin(pack, pins.get(i["name"])) if pack else None,
                     "verb": "update" if i.get("state") == "update" else ("" if i.get("installed") else "install")})
     for s in services or []:
         m, st = s.get("manifest") or {}, s.get("status") or {}
@@ -133,14 +141,23 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
     # colon as a hyphen, an agent by its id): an official entry naming one is
     # that row, listed once (R170 step 6).
     shipped = {i["name"].replace(":", "-") for i in tc.get("items") or []} | {r.get("agent", "") for r in agent_rows or []}
+    app_ids = {a["id"] for a in apps or []}
     for e in (catalog_index or {}).get("packs") or []:
         # One added already is among the items with its pack; one the catalog
         # withdrew is not offered (the bell says so to an install that holds it).
         if e["name"] in packs_here or e.get("withdrawn") or (e.get("tier") == "official" and e["name"] in shipped):
             continue
-        # A Docker app in the catalog is R170 step 7's card, and a service is
-        # its own row (R172); neither is a pack to offer.
-        if e.get("kind") in ("app", "service"):
+        # A Docker app in the catalog (R170 step 7): an Apps card until it is
+        # kept here, its Install keeping it and opening New container; a
+        # service is its own row (R172).
+        if e.get("kind") == "app":
+            if e["name"] not in app_ids:
+                out.append({"kind": "app", "tier": _tier(e.get("tier")), "name": e["name"], "label": e["name"], "about": e.get("about") or "",
+                            "platforms": e.get("platforms") or [], "installed": False, "version": "", "latest": e.get("commit", "")[:12],
+                            "update": False, "running": False, "compose": "", "blanks": [],
+                            "catalog": {"url": e["url"], "commit": e["commit"], "sha256": e["sha256"], "path": e.get("path", "")}, "verb": "install"})
+            continue
+        if e.get("kind") == "service":
             continue
         out.append({"kind": "pack", "tier": _tier(e.get("tier")), "name": e["name"], "label": e["name"], "about": e.get("about") or "",
                     "platforms": e.get("platforms") or [], "installed": False, "version": "", "latest": e.get("commit", "")[:12], "update": False,
@@ -161,6 +178,14 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
         if not r["wrong_platform"] and plat and r.get("platforms") and not _supports(r["platforms"], plat):
             r["wrong_platform"] = f"not for this node ({plat}): {', '.join(r['platforms'])}"
     return out
+
+
+def _repin(pack, e):
+    """The index's newer pin of a pack kept from it: the same address and
+    folder at another commit, or None."""
+    if not e or e["url"] != pack.get("url") or (e.get("path") or "") != (pack.get("path") or "") or e["commit"] == pack.get("commit"):
+        return None
+    return {"url": e["url"], "commit": e["commit"], "sha256": e["sha256"], "path": e.get("path", ""), "tier": _tier(e.get("tier"))}
 
 
 def _supports(platforms, plat):

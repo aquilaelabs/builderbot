@@ -1113,7 +1113,7 @@ function agentButton(p){
   // Oct: one word for every agent; 23 Oct: Manage agent, not Open Claude).
   const inst = agentInstall(p, ag);
   return inst ? `<button type="button" data-tcinst="${esc(inst)}" data-agent="${esc(ag.id)}" title="${
-        esc(`${ag.product} is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install ${esc(ag.name)}</button>`
+        esc(`${ag.product} is not installed on ${p.node_name || "its node"}: the Library installs it there`)}">Install ${esc(ag.name)}</button>`
     : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(at)}"${dead ? " disabled" : ""} title="${esc(say)}">${
         mine ? "Manage agent" : "Start agent"}</button>`;
 }

@@ -43,18 +43,19 @@ await page.waitForFunction(() => !document.querySelector('#devtag')?.hidden, nul
 ok(await page.$eval('#devtag', e => e.textContent.trim() === 'dev'),
    '...and says dev once it is on, so two dashboards are never confused');
 // ...and each dev feature it offers says so where it is offered (R102, the
-// operator, 22 Oct: the Apps page hid two rows with it off and nothing said
-// why): the two dev apps' rows and their switches, never the Android app.
-await page.evaluate(() => openAppsTab());
-await page.waitForSelector('.pane .doc.on [data-devapp="vscode"]', { timeout: 15000 });
-const marked = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.pane .doc.on [data-devapp]')]
-  .map(r => [r.dataset.devapp, !!r.querySelector('.name .pill.devmark')])));
+// operator, 22 Oct: a page hid two of them with it off and nothing said
+// why): the two dev apps' cards in the Library's For you and their
+// switches, never the Android app.
+await page.evaluate(() => { openLibrary(); loadLibrary(); });
+await page.waitForSelector('.pane .doc.on .librarytab .lcard[data-lrow="companion:vscode"]', { timeout: 15000 });
+const marked = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.pane .doc.on .librarytab .lcard[data-lrow^="companion:"]')]
+  .map(c => [c.dataset.lrow.slice('companion:'.length), !!c.querySelector('.lcmeta .pill.devmark')])));
 await page.evaluate(() => openSettingsTab());
 await page.waitForSelector('.settingstab [data-set="apps_vscode"]', { state: 'attached', timeout: 15000 });
 const switches = await page.evaluate(() => ['apps_android', 'apps_vscode', 'apps_companion']
   .map(k => !!document.querySelector(`.settingstab [data-set="${k}"]`)?.closest('label')?.querySelector('.pill.devmark')));
-ok(marked.vscode && marked.companion && marked.android === false && switches.join() === 'false,true,true',
-   `...and a dev feature says dev where it is offered: the VS Code and companion rows and switches, not Android's (${JSON.stringify({ marked, switches })})`);
+ok(marked.vscode && marked.companion && !marked.android && switches.join() === 'false,true,true',
+   `...and a dev feature says dev where it is offered: the VS Code and companion cards and switches, not Android's (${JSON.stringify({ marked, switches })})`);
 await post('/api/settings', { set: { offer_unvetted: false } });
 await page.waitForFunction(() => document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
 // Reset BuilderBot: a red verb at the foot of the tab behind a typed word,
@@ -97,8 +98,8 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Mail|Room on the nodes|Backup|Backup copies|Update window|Maintenance|Move|Reset',
-   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the mail server the bell goes out through (R149), the room a node keeps (R110), the terminal tabs open in (R133), maintenance mode (the owner's), and the reset (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Idle sessions|Storage|Update checks|Vetted catalog|Apps|Mail|Room on the nodes|Backup|Backup copies|Update window|Maintenance|Move|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), how often each update check runs (R176), the vetted catalog's address and its mirror (R169), the apps offered (R272), the mail server the bell goes out through (R149), the room a node keeps (R110), the terminal tabs open in (R133), maintenance mode (the owner's), and the reset (${groups.join(', ')})`);
 {
   // The room a node keeps (R110 steps 1 and 5): whole numbers held to their
   // range by the server, the browser's own min and max beside them.
@@ -112,6 +113,36 @@ ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Mail|Room on the nodes|
   ok(room === 'room_floor_gb=10:1-1000 room_mem_pct=92:50-99 container_mem_gb=0:0-1024' && good.ok
      && /whole number from 50 to 99/.test(bad.error || ''),
      `Room on the nodes is three numbers with their ranges, saved in range and refused out of it (${room}; ${JSON.stringify(bad)})`);
+}
+{
+  // The vetted catalog (R169 step 6, B444): its address, saved as an
+  // address where every text was held to a hostname (B445), and a mirror
+  // imported from the page only when its index is the maintainers'.
+  await splitPick(page, 'catalog');
+  const G = '.settingstab [data-group="Vetted catalog"]';
+  const drawn = await page.$eval(G, g => ({ url: g.querySelector('[data-set="catalog_url"]')?.value || '', said: g.textContent.replace(/\s+/g, ' ') }));
+  const set = async v => (await page.evaluate(async b => (await fetch('/api/settings', {method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({set: b})})).json(), v));
+  const good = await set({catalog_url: 'https://example.com/catalog/'});
+  const bad = await set({catalog_url: 'ftp://example.com/catalog/'});
+  const mail = await set({smtp_port: '587', smtp_from: 'BuilderBot <bb@example.com>', tls_email: 'me@example.com'});
+  await set({catalog_url: 'https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/', smtp_port: '', smtp_from: '', tls_email: ''});
+  ok(/builderbot-catalog/.test(drawn.url) && /No mirror imported/.test(drawn.said) && good.ok && /an address like/.test(bad.error || '') && mail.ok,
+     `Vetted catalog draws the catalog's address and says no mirror is held; an address saves, a port, a From line and an email too, and ftp is refused (${drawn.url}; ${bad.error}; ${mail.error || 'mail saved'})`);
+  const dir = `${DIR}/mirror-src/catalog-mirror`;
+  mkdirSync(`${dir}/repos`, { recursive: true });
+  writeFileSync(`${dir}/index.json`, JSON.stringify({ version: 1, generated: '2026-10-29T00:00:00Z', packs: [] }));
+  writeFileSync(`${dir}/index.sig`, 'builderbot-catalog-ed25519-signature ' + '00'.repeat(64) + '\n');
+  const arc = `${DIR}/mirror.tar.gz`;
+  execFileSync('tar', ['-czf', arc, '-C', `${DIR}/mirror-src`, 'catalog-mirror']);
+  await page.setInputFiles(`${G} #mirrorFile`, arc);
+  await page.waitForFunction(() => [...document.querySelectorAll('#toast .tst')].some(t => /not imported/.test(t.textContent)), null, { timeout: 15000 });
+  const toast = await page.$$eval('#toast .tst', ts => ts.map(t => t.textContent.trim()).find(t => /not imported/.test(t)) || '');
+  const after = await page.$eval(G, g => g.textContent.replace(/\s+/g, ' '));
+  ok(/does not match|no catalog key/.test(toast) && /No mirror imported/.test(after),
+     `a mirror whose index another key signed is refused on Import, said, and nothing is held (${toast})`);
+  rmSync(`${DIR}/mirror-src`, { recursive: true, force: true });
+  rmSync(arc, { force: true });
 }
 // Sections, and a page of settings (the operator, 16 Oct): a list of them
 // beside the one picked, each row saying what is in it, and Revert beside

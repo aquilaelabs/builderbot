@@ -142,6 +142,11 @@ class Scanners(unittest.TestCase):
         self.assertEqual([(f["project"], f["path"]) for f in got["reports"][0]["findings"]], [("web", "a.py")])
         self.assertGreater(findings.reports_mtime(), 0)
         self.assertEqual(findings.reports_ages()[0]["name"], "n1/semgrep.sarif")
+        # A node retired takes its record and its reports with it (B433):
+        # the findings no longer read a node nobody has.
+        scanners.forget_node("n1")
+        self.assertEqual(scanners.record("n1"), {})
+        self.assertIsNone(findings.report_files())
 
     def test_the_check_reads_newer_versions_and_the_bell_says_behind_and_failed(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:

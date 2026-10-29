@@ -226,7 +226,7 @@ NODE_PATH="$(bash "$DASH/../bb" capture shot --print-node-path 2>/dev/null \
             || printf '%s' "${NODE_PATH:-/usr/lib/node_modules}")"
 export NODE_PATH
 node -e "require.resolve('playwright')" 2>/dev/null \
-    || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH); on a node they are the playwright recipe in the toolchain store, installed from the Tools tab"
+    || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH); on a node they are the playwright recipe in the toolchain store, installed from the Library"
 CHROME="$(bash "$DASH/../bb" capture shot --print-chromium 2>/dev/null || true)"
 [ -x "${CHROME:-}" ] || die "no Playwright chromium: install it with: bb toolchains install playwright"
 command -v tmux >/dev/null || die "tmux is not installed"
@@ -876,7 +876,7 @@ cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
 # Stub: deterministic `bb doctor`, the emulator's image listings, and a
 # `bb toolchains` that makes and removes directories instead of downloading
-# gigabytes, which is enough for the Toolchains tab to watch a toolchain
+# gigabytes, which is enough for the Library to watch a toolchain
 # appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
 # The emulator's system images: the index of what could be added (with

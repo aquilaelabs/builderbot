@@ -1,4 +1,4 @@
-"""A node's system-packages job on the Toolchains page: whether it worked is
+"""A node's system-packages job on the Installed page: whether it worked is
 what the census still finds unmet, not whether the recipe is in the store
 (it is, before and after), and the reason on the row is the package
 manager's, read from the agent's own section of the log."""

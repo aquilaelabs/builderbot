@@ -66,7 +66,7 @@ What was pressed, in order:
 What this walk moved or confirmed:
 
 - Alpha, confirmed again: Gitea as a git host (link, push, runner
-  registration, CI), Unraid as the VM's hypervisor, the Debian family for
+  registration, CI), a KVM host as the VM's hypervisor, the Debian family for
   the provisioner, and the plain enroll command from the dialog.
 - Alpha, new evidence: the Storage section's Apply moving three stores and
   three mounts onto a squashed NFS share; Uninstall and Reset as the way to a
@@ -99,8 +99,8 @@ keeps, and a node that is on a job is not probed (a probe queued behind a
 build would wait the build out): the last answer stands until the job ends.
 
 **An Android app, built on the node.** JDK, the Android command-line tools
-and the platform tools were installed from the Toolchains page with the node
-picked (a job each; the tab shows the running one). A new empty project
+and the platform tools were installed from the Toolchains page (the Library's
+toolchains today) with the node picked (a job each; the tab shows the running one). A new empty project
 (`droid`) took a one-screen Java app with Gradle 8.14 and AGP 8.10, its
 settings took the node, `./gradlew assembleDebug` and the APK glob, and
 `bb build` was run on the node under the exact environment a session gets
@@ -113,8 +113,8 @@ that view wrote `VERSION` and the block read `0.1.0-dev.2+…` at once. No
 snag in the product. *Two snags beside it:* a console login shell on the
 node had no `bb` on PATH because the provisioner's profile line named the
 store the node was born with, not the one Storage had moved it to (B135,
-fixed: the agent rewrites the line after every apply); and the Toolchains page
-asked to install the emulator's libraries on a node that had never
+fixed: the agent rewrites the line after every apply); and the Toolchains page (the
+Library's today) asked to install the emulator's libraries on a node that had never
 installed the emulator, because every android recipe shares one directory
 (B139, fixed: a recipe is held when its own tool exists).
 
@@ -148,7 +148,7 @@ answers for the node the manager would open on.
 What this walk moved or confirmed:
 
 - Alpha, new evidence: the Docker manager against an agent node end to end
-  (Send, build, Up, the route); the Android toolchain from the Toolchains page and
+  (Send, build, Up, the route); the Android toolchain from the Toolchains page (now the Library) and
   a Gradle build on a node with the store's JDK and SDK; several accounts
   with sessions on one project at once, each in its own tree; the users
   editor and the API's per-account refusals.
@@ -390,7 +390,7 @@ controller's own request trace was read beside it.
    and the Debugging dialog.
 
 - Alpha, new evidence: every tab asks once on open, on an instance with a
-  real node heartbeating; the Toolchains page installs a script recipe onto a
+  real node heartbeating; the Toolchains page (now the Library) installs a script recipe onto a
   RedHat node and the row follows the job; Update agent is a one-press
   recovery and the tabs it unblocks say so; a dead arrow explains itself.
 - Still dev: a real Claude session on the dev pair (no Claude login there),

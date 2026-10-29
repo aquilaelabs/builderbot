@@ -80,6 +80,7 @@ scripts/
   lib/browser.mjs                `bb browser`: Chrome or Firefox with an unpacked extension loaded, on its own port and profile, driven and stopped by one verb
   lib/proc-verbs.py              `bb proc`: this account's processes by a word of their command line, listed, ended or waited for, never the call's own shell
   lib/container-verbs.py         `bb container`: status and new
+  lib/pack-verbs.py              `bb tool search` and `bb tool install`: the vetted catalog looked through, a pack asked for as the project's Install a tool pack setting says (R169 step 5)
   lib/vm-verbs.py                `bb vm`: a project's VMs listed, made, started, stopped, snapshotted and removed (R91)
   lib/phone-verbs.py             `bb phone`: status and run
   lib/root-verbs.py              `bb root`: status and run
@@ -164,11 +165,12 @@ scripts/
     statefile.py                 writing a state file, and holding it while you read-modify-write one
     stateversion.py              /config's state version: the start's refusal of a newer or too old one, the copy before a migration, the JSON stores' migrations run
     statemigrations/             numbered migrations for the JSON stores (NNNN_name.py, run(ctx)), each run once as the state moves, never edited once shipped
-    toolchains.py                everything behind the Toolchains page: catalog, sizes, the job worker
+    toolchains.py                everything behind the toolchains in the Library and the Installed page: catalog, sizes, the job worker
     toolpacks.py                 the tool packs a person adds (docs/tool-packs.md): a repository's bbtool.json, pinned to a commit, as catalog rows
     packconfig.py                what each added pack is configured with per node (R172): the answers to its config block, secrets sealed, handed in the hello
     library.py                   the Library's one list (R170): the toolchains and packs with what a node's store holds, the coding agents, the apps, the catalog's offers and the companions as rows of one shape
     catalogindex.py              the vetted catalog's index (R169 step 2): fetched from the catalog's address, its signature checked against config/catalog.pub before an entry is read, a withdrawn pack on the bell
+    catalogmirror.py             the vetted catalog's mirror (R169 step 6): an archive tools/catalog-mirror.py made, imported under Controller settings once its index is the maintainers', answering when the catalog does not and holding each pinned repository as a git bundle
     emulator.py                  everything behind the Emulator page: a node's Android system images
     enrollscript.py              Enroll node as one script: the answers, the token and a WireGuard tunnel inside the provisioner
     memory.py                    everything behind the memory book: what Claude remembers per project
@@ -232,6 +234,8 @@ scripts/
     router.py                    a model router on a node (R144): LiteLLM with the provider keys and Ollama as a written container, a key per allowed project, the models and the spend read at the router
     reach.py                     the bell's rows sent elsewhere per person (R149): email over SMTP, a webhook and its presets, each destination's kinds and quiet window, the minute loop holding a repeat while unchanged
     releasecheck.py              a newer BuilderBot release for a bare-metal install (R90 step 5): asked of GitHub daily, said on the bell and under Controller settings, applied through the own node
+    checks.py                    update checks on one clock (R176): each check's cadence a setting under Controller settings, when it last ran, Check now
+    firstboot.py                 a stick's prepared configuration at its first boot (R161 step 8): the owner and the people made, the setup page skipped where asked, the rest kept waiting, said on This machine
     held.py                      a held start on a bare-metal install (R56 step 9): held after an unclean stop or when armed for the next restart, lifted by Start on This machine
     move.py                      moving this controller to another home (R90 step 12): the sealed bundle and its token, the nodes' challenges, the restore under the version gate, the old home marked moved
     backup.py                    the configuration backed up (R161 step 4): the move's bundle under a password's key, written onto the pools after every change, found and restored at a first run
@@ -324,7 +328,7 @@ scripts/
     disks.py                     the machine's disks for the census (R162 step 1): lsblk's JSON and smartctl's, each whole disk with what its partitions hold
     shares.py                    the machine's SMB and NFS shares for the census and the storage-share job (R162 step 1): BuilderBot's own two files, read and written whole
     pools.py                     the machine's ZFS pools for the census and the storage-pool job (R162 step 1): made, grown, scrubbed, a member replaced, exported, destroyed, each disk held to the census
-    array.py                     the machine's Unraid-style array for the census and the storage-array job (R162 step 2): the record, snapraid.conf and the fstab lines rendered from it, made, a disk added or replaced, synced, scrubbed, checked, destroyed
+    array.py                     the machine's array of mixed disks for the census and the storage-array job (R162 step 2): the record, snapraid.conf and the fstab lines rendered from it, made, a disk added or replaced, synced, scrubbed, checked, destroyed
     power.py                     the machine's UPS through NUT and its own packages' updates for the census, and the host-update job (R164 step 3)
     extmounts.py                 the other disks and shares the hello names (R162 step 4): each mounted at /mnt/other/NAME or unmounted as the record says, an SMB share's credentials root's alone, the census's rows
     packconfig.py                what each added pack is configured with here (R172): the hello's rows written as one env file per pack under the store's .bb/config, the session account's alone, which bb tool reads into a verb's environment
@@ -334,11 +338,12 @@ scripts/
     coverage.py                  function coverage under bb tests coverage only
   agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
 packs/                           the official packs (R169 step 1): every shipped toolchain and every coding agent as a pack in bbtool.json's format, tagged official and bundled for an install with no network, written by tools/packs-export.py from the tables and held to them by bb lint
+tools/catalog-mirror.py          makes the vetted catalog's mirror on a machine with the network: the signed index and a git bundle per repository at every commit it pins, for a controller that cannot reach the catalog (R169 step 6)
     official/                    one folder per shipped toolchain (a colon in its name a hyphen), its bbtool.json carrying the recipe config/toolchains.json has under shipped
     agents/                      one folder per coding agent, its bbtool.json carrying the adapter agents.py's table has under agent
     services/                    one folder per deployed thing of BuilderBot's that is a pack (R172): the model router, its service block and its config block, what its Installed row asks for per node
 apps/                            the companions a person installs (R98 step 1): the phone app, the editor extension and the
-                                 Windows companion, each released by its own workflow and offered on the Apps page
+                                 Windows companion, each released by its own workflow and offered as a card in the Library
   android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
   vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
     package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
@@ -362,13 +367,13 @@ nodes/bb-session                    the root helper that runs a session in a vie
 nodes/provision-macos.sh            a provisioner for macOS, not offered by default takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 nodes/families/                           the provisioner's family files, one per package family (deb, rhel, arch, suse, alpine, void, gentoo): package names and verbs, where docker comes from; the enroll script carries the picked system's beside the core
-nodes/install-controller.sh               installs the controller bare metal on the provisioner's core, lays the release out by the Dockerfile's COPY lines, and makes the machine a node of itself; --check, --update, --rollback, --remove (R90)
+nodes/install-controller.sh               installs the controller bare metal on the provisioner's core, lays the release out by the Dockerfile's COPY lines, and makes the machine a node of itself; --check, --update, --remove (R90)
 nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes
 nodes/vm/                        the same machine for the other six hypervisors: Proxmox, libvirt, QEMU, VMware, Hyper-V, VirtualBox
 nodes/cloud-init/                the seed a cloud image boots from: meta-data and the user-data that runs the provisioner
 config/skel/                     home directory skeleton
 config/icon.png                  the icon the Unraid template shows
-config/toolchains.json           the toolchains the Toolchains page offers, and how to install each
+config/toolchains.json           the toolchains the Library offers, and how to install each
 config/catalog.pub               the catalog maintainers' Ed25519 public key (R169 step 2): what every install checks the catalog's index.sig against
 config/release-keys/README.md    where each publisher release key came from, and how one is refreshed (R137)
 config/release-keys/node.asc     the Node.js release team keys that sign each release SHASUMS256.txt
@@ -413,8 +418,8 @@ docs/projects.md                 the Projects page: making, linking, archiving a
 docs/notebook.md                 a project's page: its header and its views, from the roadmap and bugs to the wiki and design
 docs/sessions.md                 each agent's sessions: starting one, the Sessions page, a session's view and network, its briefing and rules
 docs/building.md                 builds, tests, CI runners and logs, the scanner's findings, dist/, signing and releases
-docs/toolchains.md               the toolchain store, the Toolchains and Emulator pages, the NVIDIA card, Android, the Phone page
-docs/agents.md                   the coding agents: the agent table, the Agents page, installing and signing in to each on a node (R95)
+docs/toolchains.md               the toolchain store, the Library, the Installed page's toolchains, the Emulator page, the NVIDIA card, Android, the Phone page
+docs/agents.md                   the coding agents: the agent table, the Library and the Installed page, installing and signing in to each on a node (R95)
 docs/tool-packs.md               tool packs: adding one, a project's Toolchains setting, and writing a bbtool.json
 docs/containers.md               the Containers page and nginx: dev instances, how one is reached, networks, image updates
 docs/scanners.md                 the Scanners page: BuilderBot's own scanners on each node, their schedule, and the reports

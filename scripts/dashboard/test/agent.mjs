@@ -1209,8 +1209,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and with no account named it signs nobody out');
       rmSync(`${base}/.local/bin/claude`);
       const none = run('u_0badf00d');
-      ok(none.code !== 0 && /on the node's Agents page/.test(none.out),
-         '...and with none anywhere the refusal names the Agents page as the way out');
+      ok(none.code !== 0 && /card in the Library/.test(none.out),
+         '...and with none anywhere the refusal names Claude Code\'s card in the Library as the way out');
     }
 
     // A token for the project alone (a relayed verb's) is nobody's account,
@@ -1778,7 +1778,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(first?.options.map(o => o.pkg).join(',') === 'nvidia-driver-610,nvidia-driver-595' && first.recommended === 'nvidia-driver-595',
          `...with the branches apt offers, newest first, the transitional one left out, and the recommended one (${first?.options.map(o => o.pkg + ' ' + o.version).join(', ')}; ${first?.recommended})`);
       const nodisp = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
-      ok(/install it on that node's Toolchains page first/.test(nodisp.error || ''),
+      ok(/install it on the Library with that node picked first/.test(nodisp.error || ''),
          `the display is not set up on a machine with no driver: it installs none itself (${nodisp.error})`);
       const q = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-610', node: minted.id });
       ok(q.ok && /^j_/.test(q.job || ''), `a branch picked on the row queues a toolchain job (${q.job || q.error})`);
@@ -2406,7 +2406,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         argv: ['sh', '-c', 'flutter build apk'] });
       // alpha can push in the fixtures, so the refusal names CI as the way
       // out; the no-push-rights branch says so instead.
-      ok(/has no flutter/.test(gap.error || '') && /Toolchains page/.test(gap.error || '')
+      ok(/has no flutter/.test(gap.error || '') && /Install it from the Library/.test(gap.error || '')
          && /let CI build it/.test(gap.error || ''),
          `a build needing a toolchain the node lacks is refused up front (${gap.error})`);
       const have = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
@@ -2599,7 +2599,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
       return v.items?.some(i => i.name === 'zig' && i.installed) ? v : null;
     }, 30000);
     ok(view && view.node === minted.id && view.root === PK,
-       'the Tools tab reads that node\'s own toolchain store');
+       'the node\'s toolchain read is that node\'s own toolchain store');
     ok(view && view.items.find(i => i.name === 'zig')?.installed === true
        && view.items.find(i => i.name === 'android:ndk')?.installed === true,
        'a toolchain present in the store reads as installed, whatever the census summarizes');
@@ -2694,7 +2694,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     // The fixture carries the sandbox stamp (bb-sandbox is stubbed) but the
     // agent is not root, so the controller queues the job and the agent is
     // the one to refuse: exit 77, naming the owner and the packages.
-    // ...and on the Tools tab's own payload, per row: what the row's repair
+    // ...and on the toolchain read's own payload, per row: what the row's repair
     // is drawn from. The packages the census says are missing sit on the
     // recipe's row with the node's sandbox flag beside them, and a row whose
     // needed toolchain is not on this node says which, so the link on the
@@ -3135,9 +3135,9 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     // loop now rather than before the next job is taken (B644), so for a few
     // seconds the row is behind the machine.
     await until(async () => (await nodeById(minted.id))?.reported?.session?.up ? true : null, 30000);
-    // From the node's Agents page, where Claude Code is a row (R145, R95).
+    // From the Library, where Claude Code is a card (R145, R95, R170).
     const cu = await api('/api/agents', { action: 'install', node: minted.id, agent: 'claude' });
-    ok(cu.ok && /^j_/.test(cu.job), `Install on the Agents page queues the claude-update job on this node (${cu.job || cu.error})`);
+    ok(cu.ok && /^j_/.test(cu.job), `Install on Claude Code's card in the Library queues the claude-update job on this node (${cu.job || cu.error})`);
     const cfin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${cu.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
@@ -3162,12 +3162,12 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
     const ag = await api(`/api/agents?node=${encodeURIComponent(minted.id)}`);
     const row = (ag.rows || []).find(m => m.name === 'codex-cli');
     ok(row && row.label === 'Codex CLI' && row.for === 'ChatGPT' && (ag.rows || [])[0]?.agent === 'claude',
-       `the node's Agents page has a Codex CLI row after Claude Code's (${row ? row.state : (ag.rows || []).map(m => m.name).join(', ')})`);
+       `the node's coding agents have a Codex CLI row after Claude Code's (${row ? row.state : (ag.rows || []).map(m => m.name).join(', ')})`);
     const tc = await api(`/api/toolchains?node=${encodeURIComponent(minted.id)}`);
     ok(!(tc.machine || []).some(m => ['claude-code', 'codex-cli', 'copilot-cli'].includes(m.name)),
-       `...and its Toolchains page draws no coding agent (${(tc.machine || []).map(m => m.name).join(', ')})`);
+       `...and its toolchain read carries no coding agent among the machine's rows (${(tc.machine || []).map(m => m.name).join(', ')})`);
     const refused = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['codex-cli'] });
-    ok(/Agents page/.test(refused.error || ''), `...nor installs one, naming the way there (${refused.error || 'queued'})`);
+    ok(/in the Library/.test(refused.error || ''), `...nor installs one, naming the way there (${refused.error || 'queued'})`);
     const cx = await api('/api/agents', { action: 'install', node: minted.id, agent: 'codex' });
     ok(cx.ok && /^j_/.test(cx.job), `Install queues the codex-update job on this node (${cx.job || cx.error})`);
     const xfin = await until(async () => {

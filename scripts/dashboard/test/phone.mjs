@@ -85,14 +85,16 @@ ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
 {
   const link = await page.evaluate(() => {
     const was = state.areas;
-    state.areas = { ...(was || {}), toolchains: '' };
-    const off = pageLink('toolchains', 'Toolchains page');
-    state.areas = { ...(was || {}), toolchains: 'write' };
-    const on = pageLink('toolchains', 'Toolchains page');
+    // The Library is open to Install, Curate or Nodes (railAllows): all
+    // three off, it is shut.
+    state.areas = { ...(was || {}), install: '', curate: '', nodes: '' };
+    const off = pageLink('library', 'Library');
+    state.areas = { ...(was || {}), install: 'write' };
+    const on = pageLink('library', 'Library');
     state.areas = was;
     return { off, on };
   });
-  ok(link.off === 'Toolchains page' && /href="#\/build\/toolchains"/.test(link.on),
+  ok(link.off === 'Library' && /href="#\/build\/library"/.test(link.on),
      `a page link is a link only where the account may open the page (${JSON.stringify(link)})`);
 }
 

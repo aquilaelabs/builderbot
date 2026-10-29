@@ -30,7 +30,7 @@ how it boots, and how it is built. The decisions behind it are in
 - **No apt.** `apt` and `apt-get` are diverted to a stub that says why: the
   root forgets at the next boot, and a package installed into it would be
   gone without a word. A tool a project needs is a toolchain, from the
-  Toolchains page; a package the node needs is added to
+  Library; a package the node needs is added to
   `image/mkosi.conf` and comes with the next image.
 
 ## The disk
@@ -58,12 +58,27 @@ The same disk written to a USB stick is the USB edition's base (R161): with
 `bb_toram=1` in GRUB's environment (`slot ram on`; the stick maker sets
 it) the initramfs copies the slot's squashfs into memory, exactly its
 bytes, and the root is that copy, so the stick is read once at boot and the
-system runs from memory as Unraid's does; `/var` and `/etc`'s changes stay
+system runs from memory; `/var` and `/etc`'s changes stay
 on the stick's data partition, apart from both slots, and an update writes
 the other slot as on a disk. `slot status` says when the root is in memory.
 A machine needs the slot's size in memory beside what it runs (about 2 GB).
-The stick's own first run, its backup and the public stick maker are the
-USB edition's later steps.
+
+**The stick is written rarely.** Flash wears with every write, and many
+small synced writes are what make a stick slow, so on a stick boot it keeps
+the configuration and little else. Its data partition is flushed once a
+minute rather than every five seconds. The system's logs (`/var/log`), the
+controller's own logs and the journal are kept in memory, so they start
+again at each boot; the controller's logs go to a pool when Controller
+settings' paths put them there. What writes all day, docker's images and
+containers, the VMs, the toolchains and the projects, lives on a **system
+pool**: picked under This machine's **The stick** from the pools and the
+array the machine has, it is where those folders are bound at every boot,
+and picking it moves what the stick held of them there. Until one is
+picked, docker and the VMs wait, as they wait for the array on other NAS
+systems, and sessions still run, their projects on the stick. **The stick**
+also says what still lives on the stick and how much has been written to it,
+in its life and since this boot. An installed disk has none of this: its
+data partition is the machine's disk.
 
 ## The configuration backed up, and a new stick
 
@@ -90,10 +105,53 @@ step's next piece.
 `tools/builderbot-stick.py` writes a release's stick image onto a USB
 stick on Windows, a Mac or Linux with nothing but Python's own library: `list`
 names the removable disks here (the system disk marked, and never written),
-`write DISK --latest` (or `--release vX.Y.Z`, or `--image FILE`) fetches
-`builderbot-os-VERSION.stick.raw.xz` with its sha256, checks it, says what
-is on the stick is lost, writes the disk whole and reads it back; `verify`
-reads a stick back against an image. It runs as root (sudo) on Linux and a
+`write DISK` fetches the newest release's `builderbot-os-VERSION.stick.raw.xz`
+(or `--release vX.Y.Z`'s, or writes `--image FILE`) with its sha256, checks
+it, says what is on the stick is lost, writes the disk whole and reads it
+back; `verify` reads a stick back against an image. `--set KEY=VALUE`, as
+often as needed, writes a line into the stick's `builderbot.env`, the file on
+the ESP each boot reads into the controller's environment: `TZ`
+(`Europe/Berlin`) and `BB_RELEASE_LINE` (the release line updates follow,
+`0.9`) are the ones it takes. The file is 4 KiB laid by the image itself, and
+the maker writes the lines into those same bytes as the image streams, so
+nothing writes a FAT partition by hand on any system; with the stick in
+another machine it is a plain file to edit, and `verify` takes the same
+`--set` to read such a stick back.
+
+`--mirror FILE` writes a mirror of the vetted catalog (the archive
+`tools/catalog-mirror.py` makes, up to 64 MiB) into the stick's
+`builderbot/catalog-mirror.bin`, laid and filled the same way. Each boot
+hands it to the controller, which imports it as it starts, once per mirror,
+so a machine with no network installs tool packs from the Library (Tool
+packs' Without the network says how the mirror is used). The stick keeps
+it; it holds nothing secret.
+
+`--config FILE` writes a prepared configuration into the stick's
+`builderbot/firstboot.json` (64 KiB, laid and filled the same way), which the
+first boot applies before anyone signs in. It is a JSON object:
+
+```json
+{"format": 1, "first_run": "skip",
+ "machine": {"hostname": "tower", "timezone": "Europe/Berlin"},
+ "owner": {"name": "ada", "password_hash": "pbkdf2_sha256$600000$SALT$HASH"},
+ "people": [{"name": "sam", "role": "user", "smb_nt": "NTHASH"}],
+ "shares": [], "pools": [], "array": {}, "apps": []}
+```
+
+Before the controller starts, the boot sets the hostname and the time zone,
+hands the rest to the controller and blanks the file on the stick, so the
+password hash is never left there. The controller makes the owner from the
+hash (the dashboard's own scheme, so a tool that writes the file hashes what
+was typed) and each person by name and role, with their SMB password where
+it came with them and no dashboard password until the owner sets one on the
+Users page. `"first_run": "skip"` marks the setup page done, and `"hold_first_start": true`
+holds that first start, so the disks are on This machine before anything
+mounts; without an
+owner's hash the first-run page makes the owner as on any stick. The shares,
+pools, array and apps wait until their disks are adopted. This machine's
+**From the stick** section says what was applied, what waits and what could
+not be, and nothing of a hash is kept on the controller beyond the accounts
+themselves. It runs as root (sudo) on Linux and a
 Mac and as an administrator on Windows, where it locks and dismounts the
 stick's volumes first. A stick made this way boots the appliance with the
 slot loaded into memory and keeps its configuration on the stick's data
@@ -119,7 +177,7 @@ installing, for a look or a rescue.
 ## The same disk for a hypervisor
 
 The raw disk is converted, never laid out again, into `builderbot-os-VERSION.qcow2`
-for Proxmox, Unraid and libvirt, and `builderbot-os-VERSION.ova` for VMware
+for Proxmox, libvirt and other QEMU hosts, and `builderbot-os-VERSION.ova` for VMware
 and VirtualBox (a stream-optimized VMDK with its OVF descriptor,
 `image/ovf.xml`, and a manifest): the easiest way to try BuilderBot, and to
 keep it apart on a hypervisor, its snapshots the hypervisor's. The VM boots

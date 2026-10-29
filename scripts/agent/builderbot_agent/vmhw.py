@@ -43,7 +43,7 @@ def _cpulist(text):
 
 def host_hw(sys_root="/sys"):
     """What a VM here could be given, for the census: the CPU threads in
-    their core pairs (as Unraid draws them), the USB devices, the PCI devices
+    their core pairs (as a hypervisor's form draws them), the USB devices, the PCI devices
     with their IOMMU group and the driver that has them, and whether the
     IOMMU is on (without it no PCI device is passed through)."""
     pairs, seen = [], set()
@@ -396,8 +396,8 @@ def apply(xml, hw, vcpus, mem_mb, lan="", network="", vbios_dir="", fsd=""):
                 h = ET.SubElement(dev, "hostdev", mode="subsystem", type="pci", managed="yes")
                 src = ET.SubElement(h, "source")
                 ET.SubElement(src, "address", **_pci_parts(d["addr"]))
-                # The card's dumped vBIOS when it has one, as Unraid's
-                # passthrough wants: named for it or as dumped here.
+                # The card's dumped vBIOS when it has one, as a passthrough
+                # setup wants: named for it or as dumped here.
                 rom = d.get("rom") or rom_name(d["addr"])
                 if vbios_dir and (d.get("rom") or os.path.isfile(os.path.join(vbios_dir, rom))):
                     ET.SubElement(h, "rom", file=os.path.join(vbios_dir, rom))
@@ -459,8 +459,8 @@ def vbios_keep(addr, b64, out_dir, say):
 
 
 def vbios_dump(addr, out_dir, say, sys_root="/sys"):
-    """A GPU's vBIOS read through sysfs, as SpaceinvaderOne's script for
-    Unraid does it: the VGA function only; a throwaway domain started and
+    """A GPU's vBIOS read through sysfs, the way the usual dump script
+    does it: the VGA function only; a throwaway domain started and
     destroyed with the card in it to wake its ROM when the first read comes
     back short; kept under the VM host's own folder by its PCI address.
     Root's. Returns the file's name, or "" with why said."""

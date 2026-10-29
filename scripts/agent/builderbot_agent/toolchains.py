@@ -331,7 +331,7 @@ def held_recipes(state, cat):
         # By the recipe's own tool where the layout names one: every
         # android:* recipe shares the directory `android`, so the directory
         # existing said the emulator was held on a node that had installed
-        # only the command-line tools, and the Tools tab asked for the
+        # only the command-line tools, and the page asked for the
         # emulator's libraries on every such node (B139).
         tool = e.get("tool")
         if tool:

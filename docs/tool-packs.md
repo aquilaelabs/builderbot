@@ -16,8 +16,8 @@ whatever scripts it runs. It does not have to come from the tool's own
 authors: you can write one for any tool, as Wrapping someone else's tool,
 at the end, shows.
 
-1. On the **Toolchains** page, press **Add tool pack**. Only an
-   administrator can. Then pick where it comes from:
+1. On the **Library**, press **Add your own** and pick a tool pack. Only an
+   account whose roles give Curate can. Then pick where it comes from:
    - **A repository**: a git repository with the `bbtool.json` at its root
      (`https://`, ssh, or `http://` for a git host on your network).
    - **Paste bbtool.json**: the manifest alone, which is the whole pack
@@ -34,7 +34,7 @@ at the end, shows.
    A pasted or uploaded pack is kept on the controller as a repository of
    its own, its version a commit there; the nodes take it from the
    controller, so it needs no git host at all.
-4. Install it on a node from the same page, like any toolchain.
+4. Install it on a node from its card on the Library, like any toolchain.
 5. In each project that should use it, open **Settings**, then
    **Toolchains**, and tick it. A pack starts off in every project, so
    adding one hands it to nobody by itself.
@@ -105,6 +105,63 @@ the catalog withdrew is not offered, one already added is its own card,
 and an official entry is the shipped row it names. The catalog's trouble,
 when it cannot be read, is said over the cards.
 
+A pack kept from the catalog stays at the commit it was kept at. When a
+later index pins a newer commit of it (the same repository and folder), its
+card says so and offers **Catalog update**, which opens the dialog on the
+new pin with what it changes marked verb by verb, as Edit does for a pack
+added by address; **Update** keeps it at that pin with the index's sha256
+checked, its tier kept. Edit on a pack kept from the catalog looks at the
+index's pin too, never at the repository's head. A pack is kept as vetted or
+official only at a commit and sha256 the signed index pins; anything else
+is a pack by address.
+
+### Without the network
+
+A controller that cannot reach the catalog installs from a mirror of it.
+`tools/catalog-mirror.py catalog-mirror.tar.gz`, run on a machine with the
+network (from a checkout of BuilderBot), reads the catalog's index, checks
+its signature, and fetches every repository the index pins at each commit it
+pins, into one archive: the index as signed and a git bundle per repository.
+`--from-dir` reads the index from a checkout of the catalog instead.
+
+Controller settings' **Vetted catalog** imports it with **Import a mirror**.
+The import is refused when the index is not the maintainers', when a pinned
+repository is missing, or when the mirror was made before the one held.
+Once imported, the Library reads the mirror's index whenever the catalog
+does not answer, and a pack or app the mirror holds is fetched from its
+bundle with nothing going to the network. A pack kept this way is kept as a
+pack made here, so the nodes take it from the controller too. **Forget**
+drops the mirror; what was kept from it stays. The same group holds the
+catalog's address. A USB stick can carry one from the start: the stick
+maker's `--mirror FILE` writes it onto the stick, and the controller imports
+it as it starts (docs/image.md).
+
+### Docker apps in the catalog
+
+An entry of `"kind": "app"` is a Docker app: its folder holds `bbapp.json`
+(`name`, `label`, `about`, `port`, `media`, `platforms`, `license`) and
+`compose.yml` beside it, the compose held to what an app of your own is held
+to (every image pinned to a tag that is not latest, never built or
+privileged, only the blanks New container fills). The Library lists it as
+an **Apps** card with its tier. **Install** fetches the folder at the commit
+the signed index pins, checks its archive's sha256, keeps the app and opens
+New container with it picked, on the Library's node when that node runs
+Docker (the card says when it does not); from then on New container offers
+it to everyone, and each Create makes another container of it.
+
+### A session asking for one
+
+A session looks through the catalog with `bb tool search WORDS`: each
+entry's name, kind, tier and what it is, and whether it is added here, never
+its address or commit. `bb tool install NAME --why "what it is for"` asks for
+a tool pack from it, and the project's **Install a tool pack** setting,
+under Agents may, says what happens: **deny** refuses, **ask** (the default)
+puts it on the bell for a person who may curate the catalog, whose Allow
+adds it at the commit the signed index pins, its sha256 checked, and
+**auto** adds it at once the same way. A session never installs a pack on a
+node itself: once it is added, a person installs it from the Library. The
+briefing names the two verbs and the setting's value.
+
 ## What a project's sessions can use
 
 Each project's **Settings → Toolchains** lists every toolchain installed on
@@ -134,7 +191,7 @@ the scripts it runs:
     "verify": ["{dir}/bin/hexkit", "--version"]
   },
   "layout": {"bin": ["bin"], "tool": "bin/hexkit"},
-  "system": {"apt": ["libmagic1"]},
+  "system": {"apt": ["libmagic1"], "dnf": ["file-libs"], "pacman": ["file"]},
   "verbs": {
     "dump": {"about": "A file's bytes as hex.", "usage": "FILE",
              "run": ["{dir}/bin/hexkit", "dump", "{args}"]},
@@ -148,15 +205,17 @@ the scripts it runs:
 | Field | What it is |
 |---|---|
 | `name` | The pack's name, 2 to 40 of `a-z`, `0-9` and `-`. It is the toolchain's name and the word after `bb tool`, and it cannot be a shipped toolchain's. |
-| `label`, `about` | What the Toolchains page shows. |
+| `label`, `about` | What the Library and the Installed page show. |
 | `platforms` | Where it works, as `linux/amd64`, `linux/arm64`, `darwin/arm64` and so on; `linux/*` or `darwin/*` for any architecture of that system. A bare `*` is refused. |
 | `terms` | The licenses or agreements it is under, each a label and a link, shown on its row. |
 | `install.steps` | What runs after the repository is fetched into the store, each a list of words; `{dir}` is the pack's directory. This is where a pack downloads its binaries. |
 | `install.verify` | One command that must succeed for the install to count. |
 | `layout` | `bin`: directories inside the pack to put on `PATH`. `env`: variables to set, each a path inside the pack or `=VALUE`. `tool`: a file whose presence means it is installed. |
-| `system.apt` | Debian packages the node needs; installed first where the node lets BuilderBot administer it. |
+| `system.apt`, `system.dnf`, `system.pacman`, `system.zypper`, `system.apk` | The system packages the node needs, in each package manager's own names, installed first where the node lets BuilderBot administer it. A node's family installs its own manager's list; a pack that names lists, but none for a node's manager, is not offered on that node, its card and an Install there saying which managers it names. A pack with no system packages fits every family. |
 | `verbs` | The commands a session calls as `bb tool NAME VERB`. |
-| `config` | What it asks for on each node (R172): a list of fields, each `{name, label, kind, help, required, env}`, the kind one of `secret`, `text`, `choice` (with `choices`), `list` (with `fields`, rows of them), `switch` or `projects`. The Library draws them as Configure under the pack's card for the node picked; the answers are kept on the controller, a secret sealed and never shown again, and handed to the node, where a field with `env` reaches the pack's verbs as that environment variable (a switch as `1` or empty, a list as JSON). |
+| `works_with` | The BuilderBot release lines it works with, e.g. `["0.9", "0.10"]`; none named is every one. A pack that does not name this install's line is not added, and one held that stops fitting after an upgrade is a line on the bell saying to update or remove it (R169 step 6). |
+| `touches` | What it touches: `hosts`, up to 16 host names its install fetches from, and `root`, true when it needs root on the node to install. Look shows both before it is added, and a pack that needs root is added by an administrator alone (R169 step 4). |
+| `config` | What it asks for on each node (R172): a list of fields, each `{name, label, kind, help, required, env, scope}`, the kind one of `secret`, `text`, `choice` (with `choices`), `list` (with `fields`, rows of them), `switch` or `projects`. The Installed page draws them as Configure on the pack's row for the node picked; the answers are kept on the controller, a secret sealed and never shown again, and handed to the node, where a field with `env` reaches the pack's verbs as that environment variable (a switch as `1` or empty, a list as JSON). `scope` is `node` (the default: one answer for everybody on that node, set by whoever may Configure there) or `person`: each person's own, set under **Yours** on the same row by anyone who works on that node's projects, a secret sealed under their own key, written into their home on the node and read by their sessions' verbs over the node's answer. |
 | `guidance` | A Markdown file in the repository telling a session, whichever coding agent runs it, when and how to use the pack. It reads it with `bb help tool-NAME`. |
 
 ### Verbs

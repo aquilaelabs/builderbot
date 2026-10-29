@@ -234,6 +234,32 @@ await firstRun(false);
   await bmApi('/api/v1/nodes', { action: 'hold-next', on: false });
   const started = await bmApi('/api/v1/nodes', { action: 'start-held' });
   ok(started.ok && /not held/.test(started.note || ''), `Start with nothing held says so (${JSON.stringify(started)})`);
+  // ...and holding the next start is a checkbox beside Reboot and Shut down
+  // (R161 step 11), ticked while armed, the head's button gone.
+  {
+    await bmApi('/api/v1/nodes', { action: 'hold-next', on: true });
+    await page.evaluate(async () => { await refresh(); drawPanes(); });
+    const box = await page.evaluate(() => ({
+      row: !!document.querySelector('.machinetab details[data-sect="nodes:advanced"] [data-holdnextbox]:checked'),
+      head: !!document.querySelector('.machinetab .pghead [data-holdnext]') }));
+    ok(box.row && !box.head, `hold the next start is a checkbox in the Reboot or shut down row, ticked while armed (${JSON.stringify(box)})`);
+    await bmApi('/api/v1/nodes', { action: 'hold-next', on: false });
+  }
+  // A stick boot (R161 step 10): The stick section says where docker and the
+  // VMs write and what the stick has written, with the system pool picker.
+  {
+    const st = await page.evaluate(() => {
+      const n = ownMachine();
+      n.reported = { ...n.reported, os_stick: { stick: true, pool: '', ready: false, on_stick: ['projects'], written_kb: 3145728, boot_written_kb: 20480 },
+                     pools: [{ name: 'fast', mount: '/mnt/pools/fast' }] };
+      nodesRev++; drawPanes();
+      const sect = document.querySelector('.machinetab details[data-sect="nodes:stick"]');
+      return { there: !!sect, text: sect?.textContent.replace(/\s+/g, ' ') || '', pick: [...(sect?.querySelectorAll('#stickPool option') || [])].map(o => o.value) };
+    });
+    ok(st.there && /waiting for a system pool/.test(st.text) && /the configuration, and the projects/.test(st.text) && /3\.0 GB in its life/.test(st.text)
+       && st.pick.includes('/mnt/pools/fast'),
+       `a stick boot's The stick says docker and the VMs wait for a system pool, what is still on the stick and what it has written, with the pools to pick (${st.text.slice(0, 160)})`);
+  }
   // Name and time (R161 step 3): the own machine's section, Apply asleep
   // until a field moves, and the press a system job on its node.
   const nt = await page.evaluate(() => {

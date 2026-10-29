@@ -45,6 +45,11 @@ _lock = threading.RLock()
 
 MANIFEST = "bbtool.json"
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
+# bb tool's own words (scripts/bb cmd_tool): a pack of somebody's named one
+# would never be reached, so none may be (R169 step 5 added search and
+# install); the official packs behind graphics, diagrams and office are the
+# toolchains those words run.
+BB_TOOL_WORDS = frozenset({"graphics", "diagrams", "docs", "office", "sound", "search", "install"})
 NAME_OFFICIAL = re.compile(r"^[a-z][a-z0-9:-]{1,39}$")
 # A shipped layout may name the pack's own root ("") or a place under the
 # store's root (root:android/...), which a person's pack may not.
@@ -182,6 +187,14 @@ def _config(c, errors, depth=0):
             continue
         field = {"name": name, "kind": kind, "label": str(f.get("label") or name)[:60], "help": str(f.get("help") or "")[:200],
                  "required": f.get("required") is True}
+        # Whose the value is (R172 step 5): the node's (one for everybody
+        # there), or each person's own on that node, kept under their key.
+        scope = str(f.get("scope") or "node")
+        if scope not in ("node", "person") or (depth and scope != "node"):
+            errors.append(f"config field {name}: scope is node or person" + (" (a list's rows are the list's)" if depth else ""))
+            continue
+        if scope == "person":
+            field["scope"] = "person"
         env = str(f.get("env") or "")
         if env and not ENV_NAME.fullmatch(env):
             errors.append(f"config field {name}: env is a NAME a verb reads it as")
@@ -223,6 +236,8 @@ def validate(m, shipped=()):
         errors.append("name is 2 to 40 of a-z, 0-9 and -, starting with a letter")
     elif name in shipped and not official:
         errors.append(f"{name} is a toolchain BuilderBot ships; a pack takes a name of its own")
+    elif name in BB_TOOL_WORDS and not official:
+        errors.append(f"{name} is one of bb tool's own words; a pack takes a name of its own")
     out: dict = {"name": name, "tier": tier,
            "label": str(m.get("label") or name)[:80],
            "about": str(m.get("about") or "")[:400]}
@@ -262,6 +277,28 @@ def validate(m, shipped=()):
         errors.append("terms lists what it is under, each {label, url}")
         terms = []
     out["terms"] = [{"label": str(t["label"])[:120], "url": str(t.get("url") or "")[:300]} for t in terms]
+    # What it touches (R169 step 4): the hosts its install fetches from and
+    # whether it needs root on the node, said on Look before it is added; a
+    # pack that needs root is an administrator's to add.
+    tch = m.get("touches") if m.get("touches") is not None else {}
+    if not isinstance(tch, dict):
+        errors.append("touches is an object: hosts (the names its install fetches from) and root (true or false)")
+        tch = {}
+    hosts = tch.get("hosts") or []
+    if not isinstance(hosts, list) or len(hosts) > 16 or not all(isinstance(h, str) and re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", h) for h in hosts):
+        errors.append("touches.hosts lists up to 16 host names an install fetches from, e.g. [\"github.com\"]")
+        hosts = []
+    if tch.get("root") not in (None, True, False):
+        errors.append("touches.root is true or false")
+    out["touches"] = {"hosts": hosts, "root": tch.get("root") is True}
+    # The BuilderBot versions it works with (R169 step 6), by release line
+    # ("0.9", "0.10"); none named, every one. Checked before it is added and
+    # said on the bell when this install moves to a line it does not name.
+    ww = m.get("works_with") if m.get("works_with") is not None else []
+    if not isinstance(ww, list) or len(ww) > 16 or not all(isinstance(x, str) and re.fullmatch(r"\d{1,3}\.\d{1,3}", x) for x in ww):
+        errors.append("works_with lists the BuilderBot release lines it works with, e.g. [\"0.9\", \"0.10\"]")
+        ww = []
+    out["works_with"] = ww
     inst = m.get("install") or {}
     if not isinstance(inst, dict):
         errors.append("install is an object: steps (each a list of words) and verify")
@@ -292,13 +329,25 @@ def validate(m, shipped=()):
         errors.append("layout.env maps NAME to a path inside the pack (\"\" for the pack itself) or =VALUE")
         env = {}
     out["layout"] = {"bin": bins, "env": env, "tool": tool or MANIFEST}
-    apt = (m.get("system") or {}).get("apt") if isinstance(m.get("system"), dict) else None
-    if apt is not None and not (isinstance(apt, list) and all(isinstance(a, str) and re.fullmatch(r"[a-z0-9.+|-]{1,80}", a)
-                                                              for a in apt)):
-        errors.append("system.apt lists Debian package names")
-        apt = None
-    if apt:
-        out["system"] = {"apt": apt}
+    # System packages per package manager (R171), as the shipped recipes
+    # carry them: the node's family script installs its own manager's list,
+    # and a node whose manager the pack names none for is not offered it.
+    sysd = m.get("system") if isinstance(m.get("system"), dict) else {}
+    keep = {}
+    for mgr, shape in SYSTEM_NAMES.items():
+        names = sysd.get(mgr)
+        if names is None:
+            continue
+        if not (isinstance(names, list) and len(names) <= 60 and all(isinstance(a, str) and shape.fullmatch(a) for a in names)):
+            errors.append(f"system.{mgr} lists {SYSTEM_WORDS[mgr]} package names")
+            continue
+        if names:
+            keep[mgr] = names
+    for mgr in sysd:
+        if mgr not in SYSTEM_NAMES:
+            errors.append(f"system.{mgr} is not a package manager a node runs: {', '.join(SYSTEM_NAMES)}")
+    if keep:
+        out["system"] = keep
     verbs = m.get("verbs") or {}
     if not isinstance(verbs, dict) or (not verbs and not stands_in):
         errors.append("verbs names at least one command a session calls, each {about, usage, run}")
@@ -343,6 +392,19 @@ def _git(args, cwd=None, timeout=FETCH_TIMEOUT):
 PATH_IN = re.compile(r"[a-z0-9][\w./-]{0,120}")
 
 
+mirror_bundle = None    # catalogmirror.bundle(url, commit): the imported mirror's bundle holding it, or None
+
+
+def _source(url, commit):
+    """Where a fetch reads `url` at `commit` (its head when none): the
+    imported catalog mirror's bundle when it holds that commit (R169 step 6),
+    nothing going to the network, else the repository itself, shallow."""
+    b = mirror_bundle(url, commit) if mirror_bundle and commit else None
+    if b:
+        return [b, f"refs/pins/{commit}"]
+    return ["--depth", "1", url, commit or "HEAD"]
+
+
 def fetch(url, commit="", shipped=(), sha256="", path=""):
     """The repository at `commit` (its default branch's head when none):
     {commit, manifest, guidance} with the manifest validated, or {error}.
@@ -366,7 +428,7 @@ def fetch(url, commit="", shipped=(), sha256="", path=""):
     at = f"{path}/" if path else ""
     tmp = tempfile.mkdtemp(prefix="toolpack-")
     try:
-        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", "--depth", "1", url, commit or "HEAD"]):
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", *_source(url, commit)]):
             try:
                 r = _git(args)
             except subprocess.TimeoutExpired:
@@ -395,6 +457,48 @@ def fetch(url, commit="", shipped=(), sha256="", path=""):
         if got_m.get("error"):
             return {**got_m, "commit": got} if got_m.get("errors") else got_m
         return {"commit": got, **got_m, "plain": url.startswith("http://"), "path": path}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def fetch_folder(url, commit, sha256, path, files, cap=256 << 10):
+    """A catalog entry's folder at the commit it pins (R170 step 7: an app's
+    bbapp.json and compose.yml), its archive's sha256 checked as a pack's
+    is: {files: {name: bytes}} or {error}. Only the files named are read."""
+    url = str(url or "").strip()
+    local = os.environ.get("BB_TOOLPACKS_FILE_URLS") == "1" and url.startswith("file:///")
+    if not (URL.fullmatch(url) or local):
+        return {"error": "a catalog entry is a git repository's address: https://host/owner/repo"}
+    if not re.fullmatch(r"[0-9a-f]{40}", str(commit or "")) or not re.fullmatch(r"[0-9a-f]{64}", str(sha256 or "")):
+        return {"error": "a catalog entry pins a full commit and its archive's sha256"}
+    path = str(path or "").strip("/")
+    if not path or not PATH_IN.fullmatch(path) or ".." in path.split("/"):
+        return {"error": "a catalog entry's folder is a plain relative path inside the repository"}
+    tmp = tempfile.mkdtemp(prefix="catalog-")
+    try:
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", *_source(url, commit)]):
+            try:
+                r = _git(args)
+            except subprocess.TimeoutExpired:
+                return {"error": f"{url} did not answer within {FETCH_TIMEOUT}s"}
+            if r.returncode != 0:
+                said = (r.stderr or r.stdout).strip().splitlines()
+                return {"error": f"could not fetch {url}: {said[-1] if said else 'git failed'}"}
+        if _git(["-C", tmp, "rev-parse", "FETCH_HEAD"]).stdout.strip() != commit:
+            return {"error": f"{url} did not answer with {commit[:12]}"}
+        import hashlib  # noqa: PLC0415
+        r = subprocess.run(["git", "-C", tmp, "archive", "--format=tar", "FETCH_HEAD", path], capture_output=True, timeout=120, check=False)
+        if r.returncode != 0 or hashlib.sha256(r.stdout).hexdigest() != sha256:
+            return {"error": f"{url} at {commit[:12]} is not what the catalog vetted: its archive's sha256 differs, so it is refused"}
+        out = {}
+        for name in files:
+            g = subprocess.run(["git", "-C", tmp, "show", f"FETCH_HEAD:{path}/{name}"], capture_output=True, timeout=30, check=False)
+            if g.returncode != 0:
+                return {"error": f"{url} has no {name} in {path}"}
+            if len(g.stdout) > cap:
+                return {"error": f"{path}/{name} is over {cap // 1024} KB"}
+            out[name] = g.stdout
+        return {"files": out}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -513,7 +617,7 @@ def _git_here(name, *args, work=None):
     return _git([*AUTHOR, *pre, *args])
 
 
-def add_staged(staged, by, shipped=()):
+def add_staged(staged, by, shipped=(), may_root=False):
     """Keep a pack made here, as the version that was looked at: committed
     to its repository on this controller, its bundle written for the nodes.
     A pack of the same name made here is updated; one from a repository is
@@ -527,6 +631,10 @@ def add_staged(staged, by, shipped=()):
             return got
         m = got["manifest"]
         name = m["name"]
+        if (m.get("touches") or {}).get("root") and not may_root:
+            return {"error": f"{name}: {ROOT_REFUSED}"}
+        if not fits(m):
+            return {"error": _unfit_why(m)}
         with _lock:
             data = _load()
             was = data["packs"].get(name)
@@ -586,7 +694,52 @@ def packs():
         return _load()["packs"]
 
 
-def add(url, commit, by, shipped=(), sha256="", tier="url", path=""):
+# The package managers a node's family runs (provision-linux.sh's families),
+# each with the shape of its package names.
+SYSTEM_NAMES = {"apt": re.compile(r"[a-z0-9.+|-]{1,80}"), "dnf": re.compile(r"[A-Za-z0-9._+|-]{1,80}"),
+                "pacman": re.compile(r"[a-z0-9@._+|-]{1,80}"), "zypper": re.compile(r"[A-Za-z0-9._+|-]{1,80}"),
+                "apk": re.compile(r"[a-z0-9._+|-]{1,80}")}
+SYSTEM_WORDS = {"apt": "Debian and Ubuntu", "dnf": "Fedora and Red Hat", "pacman": "Arch", "zypper": "openSUSE", "apk": "Alpine"}
+
+
+ROOT_REFUSED = "it needs root on the node (its touches say so): an administrator adds it"
+running_version = lambda: ""    # noqa: E731 (this build's version, set by the server)
+
+
+def line_of(version):
+    """A version's release line, "0.9" of "0.9.0-dev.4342+48b768b"; "" when it has none."""
+    m = re.match(r"^v?(\d+)\.(\d+)", str(version or ""))
+    return f"{m.group(1)}.{m.group(2)}" if m else ""
+
+
+def fits(manifest, version=None):
+    """Whether a pack's manifest names this build's release line (R169 step 6):
+    True for one that names none, or a build with no version."""
+    ww = (manifest or {}).get("works_with") or []
+    line = line_of(running_version() if version is None else version)
+    return not ww or not line or line in ww
+
+
+def unfit():
+    """The bell's rows (kind pack) for each pack this install holds whose
+    works_with does not name the running release line."""
+    line = line_of(running_version())
+    out = []
+    for n, r in packs().items():
+        m = (r or {}).get("manifest") or {}
+        if line and not fits(m):
+            out.append({"kind": "pack", "name": n, "key": f"pack:unfit:{n}:{line}",
+                        "said": f"the pack {n} says it works with BuilderBot {', '.join(m.get('works_with') or [])}, and this is {line}: "
+                                "update it from the Library, or remove it"})
+    return out
+
+
+def _unfit_why(m):
+    line = line_of(running_version())
+    return f"{m['name']} works with BuilderBot {', '.join(m.get('works_with') or [])}, and this is {line}: a newer commit of it may name {line}"
+
+
+def add(url, commit, by, shipped=(), sha256="", tier="url", path="", may_root=False):
     """Keep a pack pinned to `commit`, which the person approving it saw:
     the repository is fetched again at exactly that commit, so what is kept
     is what was shown. A pack of the same name is replaced (an update).
@@ -598,14 +751,22 @@ def add(url, commit, by, shipped=(), sha256="", tier="url", path=""):
     got = fetch(url, commit, shipped, sha256, path)
     if got.get("error"):
         return got
-    if path:
+    # One that needs root is an administrator's to add (R169 step 4).
+    if (got.get("manifest") or {}).get("touches", {}).get("root") and not may_root:
+        return {"error": f"{got['manifest']['name']}: {ROOT_REFUSED}"}
+    # ...and one that does not name this release line is not added (step 6).
+    if got.get("manifest") and not fits(got["manifest"]):
+        return {"error": _unfit_why(got["manifest"])}
+    # One from the mirror is kept hosted, its folder or its whole tree, so
+    # the nodes take it from the controller and need no network either.
+    if path or (mirror_bundle and mirror_bundle(url, got["commit"])):
         return _add_folder(url, got["commit"], path, by, shipped, sha256, tier)
     m = got["manifest"]
     with _lock:
         d = _load()
         rec = {"name": m["name"], "url": url, "commit": got["commit"], "manifest": m,
                "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time()),
-               "tier": "vetted" if tier == "vetted" and sha256 else "url", "sha256": sha256 or ""}
+               "tier": tier if tier in ("vetted", "official") and sha256 else "url", "sha256": sha256 or ""}
         was = d["packs"].get(m["name"])
         if was and was.get("url") != url:
             return {"error": f"a pack called {m['name']} is already here from {was.get('url')}; remove it first"}
@@ -623,7 +784,7 @@ def _add_folder(url, commit, path, by, shipped, sha256, tier):
     d.mkdir()
     tmp = tempfile.mkdtemp(prefix="toolpack-")
     try:
-        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", "--depth", "1", url, commit]):
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", *_source(url, commit)]):
             r = _git(args)
             if r.returncode != 0:
                 return {"error": f"could not fetch {url}: {(r.stderr or r.stdout).strip().splitlines()[-1:] or 'git failed'}"}
@@ -650,7 +811,7 @@ def _add_folder(url, commit, path, by, shipped, sha256, tier):
         rec = data["packs"].get(out["pack"]["name"])
         if rec:
             rec.update({"url": url, "commit": commit, "path": path, "sha256": sha256 or "",
-                        "tier": "vetted" if tier == "vetted" and sha256 else "url"})
+                        "tier": tier if tier in ("vetted", "official") and sha256 else "url"})
             write_json(FILE, data)
             out["pack"] = rec
     return out

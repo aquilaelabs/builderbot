@@ -23,8 +23,8 @@ a command string (R56 step 4).
 ## Two storage profiles
 
 Every NAS makes one choice its own, and the comparison behind these two is
-in R56's notes: Unraid (a filesystem per disk behind real-time parity, shfs,
-a mover), TrueNAS (ZFS checksums and self-heal, rigid growth, L2ARC and SLOG
+in R56's notes: the per-disk design (a filesystem per disk behind real-time
+parity, a union layer and a mover), TrueNAS (ZFS checksums and self-heal, rigid growth, L2ARC and SLOG
 that are not a tier), Synology SHR (md slices under btrfs, an SSD cache),
 OpenMediaVault (mergerfs with SnapRAID, periodic parity). BuilderBot offers
 two, said plainly for what each gives up.
@@ -37,7 +37,7 @@ build machine's data wants; the price is that a pool grows by whole vdevs,
 and disks in a vdev are alike. Never a special vdev or a SLOG on a single
 SSD: losing a special vdev loses the pool.
 
-**An Unraid-style array, as an option.** Disks of mixed sizes, each XFS or
+**An array of mixed disks, as an option.** Disks of mixed sizes, each XFS or
 btrfs on its own, pooled by mergerfs with its create policy chosen as the
 allocation method (fill-up, most-free, a high-water equivalent), and
 SnapRAID on one or two parity disks. Parity is periodic, computed by a
@@ -46,7 +46,7 @@ landed since the last one, and the page says so where the option is picked.
 A disk is added or replaced one at a time, and a single disk's files are
 readable on any machine, which is the reason to want it.
 
-**Pools by purpose, no cache tier.** Not out to copy Unraid's mover (the
+**Pools by purpose, no cache tier.** No mover between a cache and the array (the
 operator, 27 Oct): an SSD is a pool of its own holding BuilderBot's hot data
 (/config, the project workspaces, toolchains, build caches, apps' data and
 VM disks); the hard-disk array holds the shares, media and backups; each
@@ -80,8 +80,8 @@ the bell, and a dead SSD is restored from last night's.
   ZFS, mergerfs and SnapRAID are what they are, packaged by Debian and built
   with the image's kernel so the two never part (the installed edition is
   Debian stable, built with mkosi; R56's decision of 22 Oct).
-- **Real-time parity of its own.** Unraid's md driver is Unraid's; nothing
-  of it is copied, and the array option says periodic where it is periodic.
+- **Real-time parity of its own.** A real-time parity driver is its maker's;
+  nothing of it is copied, and the array option says periodic where it is periodic.
 - **Tiering on an experimental filesystem.** bcachefs is left out while its
   standing in the kernel is unsettled; the cache tier is not built at all
   (pools by purpose, above).

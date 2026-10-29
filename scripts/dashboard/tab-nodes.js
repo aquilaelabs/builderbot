@@ -62,7 +62,7 @@ function openNodesTab(nid, what){
 
 // Each read numbered, so an answer asked for before a later one (a poll's,
 // in flight when a save asked again) cannot land after it and stay drawn
-// until the nodes next move (B849), as the Toolchains page's tcLoadSeq does.
+// until the nodes next move (B849), as page-toolchains.js's tcLoadSeq does.
 // A caller awaiting one that was overtaken waits for the newest instead, so
 // what it reads after is the list.
 let nodesLoadSeq = 0, nodesLoading = null;
@@ -131,7 +131,7 @@ async function nodeAct(body){
 // What a node can do for a project is what is INSTALLED on it, not a set of
 // toggles: a project names one node and that node does all of its work (the
 // operator's decision, 2 Sep). So the row shows the toolchains the census
-// found, and the Tools tab is where they are added. The capability field
+// found, and the Library is where they are added. The capability field
 // still exists underneath; it is the vocabulary of the node-side refusal,
 // §15 door 7, and every node now carries the full set.
 const TOOL_LABELS = {java: "java", "android-sdk": "android sdk", emulator: "emulator",
@@ -153,8 +153,8 @@ function nodeGpu(n){
   const st = n.reported?.gpu_display || "";
   const up = /^up/.test(st), reboot = /^reboot/.test(st);
   // The display runs on NVIDIA's driver and does not install it (R102): the
-  // driver is a row on this node's Toolchains tab, and until it is on the
-  // machine this line says so and opens that tab. What the card is used
+  // driver is a card in the Library, and until it is on the
+  // machine this line says so and opens the Library on this node. What the card is used
   // for is the GPU section's two switches, below.
   const gd = n.reported?.gpu_driver;
   const nodriver = !!gd && !gd.installed;
@@ -167,7 +167,7 @@ function nodeGpu(n){
   return `<div class="actbar ndgpu">
     <span class="state ${cls}">gpu: ${esc(card)} · ${esc(word)}</span>
     ${nodriver ? `<button type="button" data-ndtc="${esc(n.id)}"
-      title="the driver is installed from this node's Toolchains page">Install the driver</button>` : ""}
+      title="the driver is installed from the Library">Install the driver</button>` : ""}
   </div>`;
 }
 // The sound this node has (R107), in a line: the card ALSA sees, or a
@@ -201,7 +201,7 @@ function nodeInternet(n){
 // the display needs; and sessions and jobs may compute on it or not, which
 // decides whether a session started here finds CUDA a device. Neither is a
 // way of moving work onto the card: a program uses it only if it was
-// written to. Both wait for the driver, which is the Toolchains tab's row.
+// written to. Both wait for the driver, which is a card in the Library.
 function nodeGpuSection(n){
   const card = n.reported?.gpu_card;
   if (!card || n.kind !== "agent") return "";
@@ -266,7 +266,7 @@ function nodeTools(n){
     return `<div class="sub ndtools dim">no toolchains yet: install them from the ${pageLink("library", "Library")}</div>`;
   // Held recipes whose system libraries this machine lacks (roadmap R51),
   // said here rather than left for a build to fail on: the store is shared,
-  // the libraries are each machine's own, and the Tools tab installs them.
+  // the libraries are each machine's own, and the Installed page installs them.
   const unmet = Object.entries(n.reported?.sysdeps?.unmet || {});
   const sys = unmet.length
     ? `<div class="sub ndsys warn">System packages missing for ${unmet.map(([r, ps]) =>
@@ -814,11 +814,11 @@ function nodeFeaturesSection(n){
     r.door?.installed ? `${esc(r.door.kind)}, opened and shut under Sessions.` : "A way in for ssh through a tunnel; its token is given in the enroll script.",
     `<button type="button" data-nd="reenroll" title="a new script for this machine, with the door's token in it">Enroll again…</button>`));
   if (r.gpu_card)
-    others.push(elsewhere("gpu", "GPU driver", !!r.gpu_driver?.installed, "NVIDIA's driver, installed and removed from its row on the Toolchains page, where its license is accepted.",
-      `<button type="button" data-ndtc="${esc(n.id)}">Toolchains</button>`));
+    others.push(elsewhere("gpu", "GPU driver", !!r.gpu_driver?.installed, "NVIDIA's driver, installed from its card in the Library, where its license is accepted, and removed on the Installed page.",
+      `<button type="button" data-ndtc="${esc(n.id)}">Library</button>`));
   const emu = (r.store_dirs?.android || []).includes("emulator");
-  others.push(elsewhere("emulator", "Android emulator", emu, "The emulator and its system images, from the Toolchains page, where Google's SDK license is accepted.",
-    `<button type="button" data-ndtc="${esc(n.id)}">Toolchains</button>`));
+  others.push(elsewhere("emulator", "Android emulator", emu, "The emulator and its system images, from the Library, where Google's SDK license is accepted.",
+    `<button type="button" data-ndtc="${esc(n.id)}">Library</button>`));
   // The model router (R144, R172): a card of the Library's on this node, configured there.
   others.push(elsewhere("router", "Model router", false, "LiteLLM with your provider keys, Ollama beside it, deployed and configured from its card on the Library with this node picked.",
     `<button type="button" data-ndtc="${esc(n.id)}">Library</button>`));
@@ -1054,8 +1054,8 @@ function nodeAgentsHere(n){
 }
 
 // ...and in the Sessions section, one line: which this account is signed in
-// to here, with the way to the Agents page, where each is installed, updated
-// and signed in to (the operator, 23 Oct: the Coding agents section rolled
+// to here; each is installed and updated from the Library and signed in to
+// on the Installed page (the operator, 23 Oct: the Coding agents section rolled
 // into Sessions).
 function nodeAgentsLine(n){
   const se = n.reported?.session;
@@ -1257,6 +1257,9 @@ function nodeAdvancedSection(n, stale, inflight){
     ${act(n.state === "draining" ? "Undrain" : "Drain",
         n.state === "draining" ? "Draining: it finishes what is running and takes nothing new. Undrain takes new work again." : "Finishes what is running and takes nothing new, so the machine can reboot.",
         `<button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}">${n.state === "draining" ? "Undrain" : "Drain"}</button>`)}
+    ${n.kind !== "agent" || !n.reported?.stores?.toolchains ? "" : act("Version check",
+        "How often the Library asks what is newer for what this node holds; Check for updates on the Library asks at once.",
+        `<select data-ndcheck aria-label="version check">${optionList([["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["off", "Off"]], n.config?.check_versions || "weekly")}</select>`)}
     ${act("Clear cache", stale ? esc(staleWhy(n)) : "Drops every project's build cache here; the next build fetches again.",
         `<button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}>${inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>`)}
     ${act(n.state === "disabled" ? "Enable" : "Disable",
@@ -1270,7 +1273,7 @@ function nodeAdvancedSection(n, stale, inflight){
         !n.live ? `<span class="bad">They need the agent dialing in, and it is away: power the machine from its console or its hypervisor.</span>`
         : installing ? `<span class="bad">They wait: ${esc(installing)} is running here. Stop it first, or wait for it to finish.</span>`
         : "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on.",
-        ["reboot", "poweroff"].map(w =>
+        (n.id === state?.own_node && typeof holdNextBox === "function" ? holdNextBox() : "") + ["reboot", "poweroff"].map(w =>
           `<button type="button" class="danger" data-nd="${w}" ${!n.live || inflight(w) || installing ? "disabled" : ""}>${
             inflight(w) ? (w === "reboot" ? "Rebooting…" : "Shutting down…")
                         : (w === "reboot" ? "Reboot" : "Shut down")}</button>`).join(""))}
@@ -1779,7 +1782,7 @@ function ndNotHereHtml(){
 }
 // The bar: nothing of its own since R177, the node switcher, Create sandbox
 // VM and Enroll node being the Machines group's header (page-shell.js
-// machinesHeader); kept as the page's bar builder so its callers stand.
+// groupHeader); kept as the page's bar builder so its callers stand.
 function ndBar(live){
   return "";
 }
@@ -1968,7 +1971,7 @@ function renderNodesInto(i){
   // moved the problem: the settings you came for were two taps down and the
   // ones you did not care about were still in the way. So the tab is a
   // picker and one machine, in sections, like the Docker manager and the
-  // Tools tab already are (docs/nodes.md §13: one tab, re-rendered per pick).
+  // Installed page already are (docs/nodes.md §13: one tab, re-rendered per pick).
   // Enrolled machines only. The controller has a node record of its own;
   // that is how a share it mounts is recognized as the same store a node
   // mounts, and how install arbitration works across the pair, but it is
@@ -2387,16 +2390,16 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     body.querySelector("#ndTokDone").onclick = shut;
   };
   // ---- a machine to enroll, before there is one -------------------------
-  // The XML Unraid needs for a sandbox VM, rendered per VM rather than
+  // The XML the hypervisor needs for a sandbox VM (nodes/unraid-vm.xml), rendered per VM rather than
   // copied: the uuid, the nvram file named after it and the MAC belong to
   // one machine, and a second VM wearing them answers to the first one's
   // address and writes over its firmware variables. The generator is
   // vmtemplate.py, over the same nodes/unraid-vm.xml the repository keeps.
   //
-  // The two identities are fields rather than surprises. Unraid mints its own
+  // The two identities are fields rather than surprises. The hypervisor mints its own
   // pair when the VM is made in Form view: the nvram file on disk is named
   // after its uuid, and any DHCP reservation was made against its MAC, so a
-  // minted pair is right for a machine that does not exist yet and Unraid's
+  // minted pair is right for a machine that does not exist yet and the hypervisor's
   // is right the moment it does. Blank mints one.
   const vmDraft = {hv: "unraid", name: "bb-sandbox", cores: 6, memory_gb: 16,
                    disk_gb: 200, iso: "ubuntu-26.04-live-server-amd64.iso",
@@ -2426,7 +2429,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           ${f("cores", "Cores", "", ' type="number" min="1" max="64"')}
           ${f("memory_gb", "Memory GiB", "", ' type="number" min="1" max="512"')}
           ${f("disk_gb", "Disk GiB", kind.id === "unraid"
-              ? "set in Unraid's own form: the XML only names the file" : "",
+              ? "set in the hypervisor's own form: the XML only names the file" : "",
               ' type="number" min="8" max="8192"')}
           ${takes("vmid") ? f("vmid", "VM id", "Proxmox numbers its machines, 100 and up",
               ' type="number" min="100"') : ""}
@@ -2517,6 +2520,14 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
 }
 
 function wireNodesTab(root){
+  // A node's own version check's cadence (R176), saved on its pick.
+  root.querySelectorAll("[data-ndcheck]").forEach(s => s.onchange = async () => {
+    const id = s.closest("[data-node]")?.dataset.node || "";
+    const j = await nodeAct({action: "update", id, fields: {check_versions: s.value}});
+    if (j?.error) notify(j.error, true); else notify(`its versions are checked ${s.value === "off" ? "only when asked" : s.value}`);
+  });
+  // The own machine's hold-next checkbox beside Reboot (R161 step 11).
+  if (typeof wireHoldNext === "function") wireHoldNext(root);
   wireSignin(root);
   wireCharts(root);
   root.querySelectorAll("[data-ndopen]").forEach(b => b.onclick = () => openNotebook(b.dataset.ndopen));
@@ -2530,12 +2541,12 @@ function wireNodesTab(root){
   root.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   // Create sandbox VM and Enroll node are the group's header's (R177, wired
-  // by page-shell.js wireMachinesHeader); the dialogs stay the page's.
+  // by page-shell.js wireGroupHeader); the dialogs stay the page's.
   const {modal, body, shut, mintForm, vmForm} = ndDialogs();
   wireSections(root);
   root.querySelectorAll(".ndrow").forEach(box => {
     const id = box.dataset.node;
-    // The driver is the Toolchains tab's row (R102): this opens it on the node.
+    // The driver is a card in the Library (R102): this opens the Library on the node.
     box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openLibraryOn(b.dataset.ndtc));
     // The agent's journal in the dock (R133 step 12).
     box.querySelectorAll("[data-ndlog]").forEach(b => b.onclick = () =>

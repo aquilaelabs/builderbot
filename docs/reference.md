@@ -16,7 +16,7 @@ runner's token is typed on the CI runner page.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
+| `PUID` / `PGID` | `99` / `100` | File ownership (a NAS host's `nobody:users`) |
 | `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked under the gear in the header |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (websockets at `/termws`) |
 | `FEATURES_OFF` | *(empty)* | Features switched off for the whole install, comma-separated: `tunnel`, `ftp`, `phone`, `devices`, `apps`, `image-updates`, `runner`, `enroll`, `shell` (a terminal on the controller itself; a node's stay), `vms` (virtual machines on nodes: the VMs page, `bb vm` and installing VM host), `internet` (an install meant to run offline: apps, image updates, the tunnel and runners with it, and the Doctor skips asking the outside). Each one's controls are drawn dead with the sentence below under them, its requests are refused, and Settings lists them |
@@ -76,7 +76,7 @@ mounted read-write, and beside the state in `/config/.install-key` when
 there is none. Kept beside the state, a copy of `/config` carries the key,
 so the Keys page and `bb doctor` say so; mount a secrets folder the
 controller may write to and the next start moves the key into it. On
-Unraid that is the container's **Edit**, **Secrets directory** set to a
+a NAS host that is the container's **Edit**, **Secrets directory** set to a
 folder such as `/mnt/user/appdata/BuilderBot/secrets` with access
 **Read/Write**, then **Apply**: an install from a template before 0.8.0
 keeps the read-only mount it was made with until it is changed there.
@@ -798,6 +798,12 @@ bb capture prune [--days N] [NAME...]
                    controller sweeps them when the Artifacts view draws: name
                    yours here to let them go sooner
 bb tool            the tools toolchains add to a session, each under its own name
+bb tool search [WORDS...]  the vetted catalog's tool packs and apps, each with
+                   its tier and what it is, and whether it is added here
+bb tool install NAME --why "..."  ask for a pack from the vetted catalog, as the
+                   project's Install a tool pack setting says: refused, asked
+                   of a person on the bell, or added now; a person installs
+                   it on a node from the Library
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,
                    annotate, diff, svg2png and optimize, into dist/img/, and

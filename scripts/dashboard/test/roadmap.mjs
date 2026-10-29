@@ -1558,15 +1558,15 @@ const spread = await ultra.evaluate(() => {
 });
 ok(spread.pane > 1500 && spread.nb <= 1100,
    `the notebook keeps a reading width in a ${spread.pane}px pane (${spread.nb}px)`);
-await ultra.evaluate(() => openToolchains());
-await ultra.waitForSelector('.doc .tc', { timeout: 20000 });
+await ultra.evaluate(() => openLibrary());
+await ultra.waitForSelector('.doc .librarytab .lcard', { timeout: 20000 });
 ok(await ultra.evaluate(() => {
-     const p = document.querySelector('.doc.on .tc');
-     return p && p.getBoundingClientRect().width <= 1100; }),
-   '...and so does the Toolchains page, where the bin was furthest from its row');
+     const g = document.querySelector('.doc.on .librarytab .libgroups');
+     return g && g.getBoundingClientRect().width <= 1100; }),
+   '...and so does the Library, its cards held to a reading width');
 await closePage(ultra);
 // The two pages are one account, and an account's tabs are one layout: the
-// Toolchains tab the wide page opened could become the active tab here too,
+// Library tab the wide page opened could become the active tab here too,
 // and under a whole run's load that landed before the Save below was
 // pressed, with the notebook's footer behind it (B396). The notebook first.
 // Opening it straight away was not enough (B414): this page adopts the

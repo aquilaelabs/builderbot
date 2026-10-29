@@ -58,8 +58,8 @@ Only when something is used, and only from your own machines:
 An administrator removes an account on the Users page, and a project, with
 its notebook and files, by deleting it and purging it from the trash.
 Notifications and problem reports are cleared from the dashboard. A
-person's sign-in to an agent is removed by signing out on the node's
-Agents page. The
+person's sign-in to an agent is removed by signing out on the
+Installed page. The
 whole install is removed by deleting the controller's `/config`, the
 projects share and each node's store.
 

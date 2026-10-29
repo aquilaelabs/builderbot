@@ -13,11 +13,27 @@
 
 "use strict";
 
+// What the controller offers and holds of its companions (apps.view), for
+// the Apps section here and the Library's Companions cards (the Apps page's
+// read until R170).
+let devApps = null, devAppsRev = 0;
+async function loadApps(){
+  // Switched off on this install (R81): the route refuses, so it is not asked.
+  if (featureOff("apps")){ devAppsRev++; return; }
+  try{
+    const r = await bootFetch("/api/apps");
+    const j = await r.json();
+    if (!j.error) devApps = j;
+  }catch(e){ /* the section says it could not read them */ }
+  devAppsRev++;
+  if (tabs.some(t => t.kind === "settings")) drawPanes();
+}
+
 // Revert on a section puts its fields back to what is saved: the draft for
 // them dropped and the tab repainted, which the live key has to notice.
 let settingsRev = 0;
 function settingsLive(){
-  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.logs, state?.paths, settingsRev, devAppsRev]);
+  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.logs, state?.paths, settingsRev, devAppsRev, state?.checks]);
 }
 
 // Typed and not yet applied, by control id, across the tab's redraws: one
@@ -145,6 +161,8 @@ function renderSettingsInto(i){
   wireIdleSection(d.el);
   wirePathsSection(d.el);
   wireSettingsSections(d.el);
+  wireChecks(d.el);
+  wireCatalogMirror(d.el);
   settingsKeep(d.el);
   if (reportsList === null) loadReports();
   const ac = d.el.querySelector("#setAppsCheck");
@@ -203,7 +221,7 @@ function updatesSection(){
   const runs = os ? `BuilderBot OS ${esc(os.version)} from slot ${esc(os.slot || "?")}${os.next && os.next !== os.slot ? `, and slot ${esc(os.next)} boots next: restart to finish the update` : os.trial ? ", on trial until the health check marks it good" : ""}${os.fell_back ? `; ${esc(os.fell_back)}` : ""}`
     : esc(r.running || "an unstamped build");
   const how = os ? `Update fetches the release's image (its root, kernel and initrd), checks each against its sha256 and the root against its build attestation, writes the slot not in use and names it for the next boot; the restart is yours, from This machine, and the slot running now stays to fall back to. An offline machine takes the same files from a folder here (a stick, a share).`
-    : `Update fetches the release's bundle, checks its sha256 and its build attestation, holds the state to its version gate, switches to it and comes back by itself if the new build does not answer; the one before is kept, and Rollback on This machine's Updates takes it back.`;
+    : `Update fetches the release's bundle, checks its sha256 and its build attestation, holds the state to its version gate, switches to it and comes back by itself if the new build does not answer.`;
   // The machine's own packages (R164 step 3), on a bare-metal install
   // that is not BuilderBot OS: how many wait, the security ones among
   // them, and Apply updates, with a restart after when ticked.
@@ -359,12 +377,13 @@ function powerSection(){
   return `<div class="row stack2" data-group="Power"><div class="grow">
       <div class="sub">Restart ends every session on this machine, everybody's, each closed first, and the machine comes back on its own with the dashboard. Shut down does the same and the machine stays off until somebody switches it on.</div>
       ${why ? `<div class="sub warn">${esc(why)}</div>` : ""}
-      <div class="actbar"><span class="sp"></span>
+      <div class="actbar">${typeof holdNextBox === "function" ? holdNextBox() : ""}<span class="sp"></span>
         <button type="button" class="danger" data-power="reboot"${why || inflight("reboot") ? " disabled" : ""}>${inflight("reboot") ? "Restarting…" : "Restart"}</button>
         <button type="button" class="danger" data-power="poweroff"${why || inflight("poweroff") ? " disabled" : ""}>${inflight("poweroff") ? "Shutting down…" : "Shut down"}</button></div>
     </div></div>`;
 }
 function wirePower(root){
+  if (typeof wireHoldNext === "function") wireHoldNext(root);
   root.querySelectorAll("[data-power]").forEach(b => b.onclick = () => pressing(b, async () => {
     const act = b.dataset.power, id = state?.own_node || "";
     const here = (state?.sessions || []).filter(x => x.node_id === id);
@@ -480,11 +499,32 @@ async function clearReports(btn){
 // group is one section with one Apply, a field that has never been saved
 // says so beside it, and the bar says whether a change applies at once or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
+// The checks, in the order Controller settings lists them, with what each asks.
+const CHECK_KINDS = [
+  ["release", "A newer BuilderBot", "Asks the releases for a newer version than this install runs, on a bare-metal install; the Update window applies it."],
+  ["images", "Container images", "Asks each project container's registry for a newer image."],
+  ["nginx", "nginx", "Asks the registry for a newer nginx image for the nodes that serve hostnames."],
+  ["scanners", "Scanners", "Asks for newer versions of the scanners the nodes run over projects."],
+  ["catalog", "Library", "Asks upstream for the toolchains' and coding agents' newest versions, and the vetted catalog for its index. A node's own check of what it holds is on its page."]];
 const SETTING_GROUPS = [
   // The apps this controller offers its people (R272 step 3, apps.py): each
   // one on is fetched from the release matching this controller, checked
-  // against its sha256 and offered on the Apps page (under Build); Look now asks the
+  // against its sha256 and offered on its card in the Library (under Build); Look now asks the
   // release again rather than waiting for the daily look.
+  // Update checks on one clock (R176, checks.py): each check BuilderBot
+  // makes by itself, how often, when it last ran, and Check now. A node's
+  // own version check is its page's.
+  {key: "checks", title: "Update checks", intro: checksIntro, status: checksStatus,
+   heading: () => { const c = state?.checks || {}; const off = Object.values(c).filter(x => x.cadence === "off").length;
+     return off ? `${off} off` : Object.keys(c).length ? "on" : ""; },
+   fields: CHECK_KINDS.map(([k, label, hint]) => ({key: `check_${k}`, label, type: "select", hint,
+     options: [["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["off", "Off: only Check now"]]}))},
+  // The vetted catalog (R169): where its signed index is read, and a mirror
+  // of it imported for a controller that cannot reach it (step 6).
+  {key: "catalog", title: "Vetted catalog", intro: catalogIntro, status: catalogStatus,
+   heading: s => `${/aquilaelabs\/builderbot-catalog\//.test(s?.settings?.catalog_url?.value || "") ? "the public catalog" : "another catalog"}${s?.catalog_mirror ? ", a mirror held" : ""}`,
+   fields: [{key: "catalog_url", label: "Address", type: "text", placeholder: "https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/",
+     hint: "where the Library reads the catalog's index.json and index.sig, checked against the maintainers' key this install ships"}]},
   {key: "apps", title: "Apps", off: "apps", intro: appsIntro, status: appsStatus,
    heading: s => `${["apps_android", ...(s?.settings?.offer_unvetted?.value ? ["apps_vscode", "apps_companion"] : [])]
      .filter(k => s?.settings?.[k]?.value).length} offered`,
@@ -626,6 +666,68 @@ function connectionStatus(s){
 }
 
 // What the Apps section holds, over its switches, and Look now.
+function checksIntro(){
+  const c = state?.checks || {};
+  return `<div class="field">${CHECK_KINDS.filter(([k]) => c[k]).map(([k, label]) =>
+    `<div class="row stack2 ckrow"><div class="grow"><span class="name">${esc(label)}</span> <span class="sub dim">${c[k].at ? `checked ${esc(ago(c[k].at))}` : "not checked yet"}</span></div>
+      <button type="button" data-checknow="${esc(k)}">Check now</button></div>`).join("")}</div>`;
+}
+function checksStatus(){
+  const c = state?.checks || {};
+  const due = Object.values(c).filter(x => x.cadence !== "off").length;
+  return `${due} of ${Object.keys(c).length} on their own clock · applies at once`;
+}
+function wireChecks(root){
+  root.querySelectorAll("[data-checknow]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Checking");
+    const j = await (await postJSON("/api/checks", {kind: b.dataset.checknow})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "checking: the answer is here in a moment", !!j.error);
+    setTimeout(() => refresh(), 4000);
+  }));
+}
+
+// The mirror's line and its two presses: Import takes an archive that
+// tools/catalog-mirror.py made on a machine with the network.
+function catalogIntro(s){
+  const m = s?.catalog_mirror;
+  return `<div class="sub">The Library lists the packs and apps BuilderBot's maintainers reviewed, from the index at this address. A controller that cannot reach it imports a mirror instead: <code>tools/catalog-mirror.py</code> makes one on a machine with the network, and the Library then installs from it with nothing fetched.</div>
+    <div class="field">${m
+      ? `<div class="row stack2"><div class="grow"><span class="name">Mirror</span> <span class="sub">${m.packs} entr${m.packs === 1 ? "y" : "ies"} from ${m.repos} repositor${m.repos === 1 ? "y" : "ies"}, made ${esc(m.generated || "at an unknown time")}, imported ${esc(ago(m.imported_at))}</span></div>
+          <button type="button" data-mirrorforget>Forget</button></div>`
+      : `<div class="sub dim">No mirror imported.</div>`}</div>
+    <div class="addbar ctlrow"><input id="mirrorFile" type="file" hidden accept=".tar,.tgz,.tar.gz,application/gzip,application/x-tar">
+      <button type="button" data-mirrorimport>${m ? "Import a newer mirror" : "Import a mirror"}</button></div>`;
+}
+function catalogStatus(s){
+  return s?.catalog_mirror ? `a mirror made ${s.catalog_mirror.generated || "earlier"} answers when the catalog does not · applies at once` : "applies at once";
+}
+function wireCatalogMirror(root){
+  const file = root.querySelector("#mirrorFile");
+  root.querySelector("[data-mirrorimport]")?.addEventListener("click", () => file?.click());
+  if (file) file.onchange = async () => {
+    const f = file.files[0];
+    if (!f) return;
+    const b = root.querySelector("[data-mirrorimport]");
+    if (b) busy(b, "Importing");
+    const u = await fetch("/api/upload-archive?name=" + encodeURIComponent(f.name), {method: "POST", body: f});
+    const uj = await u.json().catch(() => ({}));
+    const j = !u.ok || uj.error ? {error: uj.error || `the upload failed (HTTP ${u.status})`}
+      : await (await postJSON("/api/catalog-mirror", {action: "import", archive: uj.id})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `the mirror is imported: ${j.packs} entries, made ${j.generated}`, !!j.error);
+    if (state && !j.error) state.catalog_mirror = j.mirror;
+    settingsRev++; drawPanes(); refresh();
+  };
+  root.querySelector("[data-mirrorforget]")?.addEventListener("click", async e => {
+    const b = e.currentTarget;
+    if (!await askYes("Forget the catalog's mirror? The Library reads the catalog's address alone again; packs kept from the mirror stay.")) return;
+    busy(b, "Forgetting");
+    const j = await (await postJSON("/api/catalog-mirror", {action: "forget"})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "the mirror is forgotten", !!j.error);
+    if (state && !j.error) state.catalog_mirror = null;
+    settingsRev++; drawPanes();
+  });
+}
+
 function appsIntro(){
   return `<div class="sub">Each one on is fetched from the release that matches this controller, checked, and offered on the ${
     pageLink("library", "Library")}, under For you, for your people to download and keep current.</div>

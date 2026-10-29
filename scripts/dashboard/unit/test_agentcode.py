@@ -1,5 +1,5 @@
-"""Codex CLI and Copilot CLI as rows of a node's Toolchains page (R95 step
-2): the census's version against the registry's latest, each install its
+"""Codex CLI and Copilot CLI as a node's rows in the Library and on the
+Installed page (R95 step 2): the census's version against the registry's latest, each install its
 own job, and the node agent's half run against a stub installer, never a
 vendor's."""
 import json

@@ -113,7 +113,7 @@ function homeHref(key){
   const failed = homeData?.jobs?.failed_today;
   return {nodes: "#/machines/nodes", containers: "#/containers", jobs: failed ? "#/jobs/failed-today" : "#/jobs",
           // The updates due are toolchains, images, nginx and agents on every
-          // node, which one node's Toolchains page never held: they are listed
+          // node, which no one node's page holds: they are listed
           // on Home's own Attention card, so the tile brings that into view (B73).
           updates: "#/home", backups: "#/machines/storage",
           ci: c ? `#/projects/${encodeURIComponent(c.project)}/git` : "#/projects", sessions: "#"}[key] || "#";

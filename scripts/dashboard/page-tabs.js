@@ -234,16 +234,6 @@ const TABKINDS = {
               icon: TOOL_ICONS.nodes,
               render: (i) => renderInstalledInto(i), live: () => `${instRev}/${nodesRev}/${signinRev()}`,
               open: () => loadInstalled() },
-  toolchains: { multi: false, label: () => "Toolchains",
-              icon: TOOL_ICONS.toolchains,
-              render: (i) => renderToolchainsInto(i), live: () => tcRev,
-              open: () => loadToolchains() },
-  // The coding agents on a node (R95 step 15): its own read, the node
-  // list, and the sign-in, which rides the status poll.
-  agents:   { multi: false, label: () => "Agents",
-              icon: TOOL_ICONS.agents,
-              render: (i) => renderAgentsInto(i), live: () => agentsLiveKey(),
-              open: () => loadAgents() },
   // nodesRev and jobsRev as well as its own: a node's images arrive on its
   // census, and an image job moves the queue.
   emulator: { multi: false, label: () => "Emulator",
@@ -358,7 +348,9 @@ const TABKINDS = {
               open: () => loadNodes() },
   machine:  { multi: false, label: () => "This machine",
               icon: TOOL_ICONS.machine,
-              render: (i) => renderMachineInto(i), live: () => nodesRev,
+              // ...and on the held start and the stick's report, which ride the
+              // status poll: Start and the hold-next box show what they did.
+              render: (i) => renderMachineInto(i), live: () => `${nodesRev}/${JSON.stringify(state?.held || {})}/${state?.firstboot?.at || 0}`,
               open: () => loadNodes() },
   settings: { multi: false, label: () => "Controller settings",
               render: (i) => renderSettingsInto(i), live: settingsLive,
@@ -372,9 +364,6 @@ const TABKINDS = {
   profile:  { multi: false, label: () => "Profile",
               render: (i) => renderProfileInto(i), live: () => `${profileRev}/${keyMineRev}`,
               open: () => loadProfile() },
-  apps:     { multi: false, label: () => "Apps",
-              render: (i) => renderAppsInto(i), live: () => devAppsRev,
-              open: () => loadApps() },
   findings: { multi: false, label: () => "Analysis",
               icon: TOOL_ICONS.findings,
               render: (i) => renderFindingsInto(i),

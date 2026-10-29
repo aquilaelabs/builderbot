@@ -1,4 +1,4 @@
-# BuilderBot: Claude Code workstation + GitHub Actions runner for Unraid.
+# BuilderBot: Claude Code workstation + GitHub Actions runner for a NAS.
 #
 #   docker compose up -d
 #   docker exec -it builderbot claude
@@ -130,9 +130,9 @@ services:
       # stay in config/logs.
       # - /mnt/user/logs/builderbot:/logs
 
-      # Cosmetic, Unraid only: Unraid's container-icon cache. With this
+      # Cosmetic, a NAS host's container-icon cache. With this
       # mounted rw the container drops <name>-icon.png in on every start, and
-      # Unraid stops trying to download an icon it cannot reach: it only
+      # the host stops trying to download an icon it cannot reach: it only
       # fetches the Icon URL when its cache is empty.
       # - /var/lib/docker/unraid/images:/unraid-icons
 
@@ -156,7 +156,7 @@ services:
     ports:
       - "${DASHBOARD_PORT:-7680}:${DASHBOARD_PORT:-7680}"
 
-    # Tells the Unraid Compose Manager plugin to adopt this container.
+    # Tells the host's Compose Manager plugin to adopt this container.
     labels:
       net.unraid.docker.managed: composeman
 

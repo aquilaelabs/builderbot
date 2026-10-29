@@ -1,5 +1,5 @@
 """toolchains.driver_row: the census turned into the NVIDIA driver row's
-state on the Toolchains page (R102). The page draws each state's sentence;
+state in the Library and on the Installed page (R102). The page draws each state's sentence;
 this holds which state each census is."""
 import os
 import sys

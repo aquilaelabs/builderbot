@@ -1,13 +1,13 @@
 # Toolchains, the emulator and the phone
 
 The Build group on the rail is where a node gets what a build needs:
-**Toolchains** installs into a node's toolchain store, **Emulator** keeps
+the **Library** installs into a node's toolchain store, **Emulator** keeps
 that node's Android system images, and **Phone** pairs a real handset with
-it. **CI runner** is in [building.md](building.md#ci-runners), and **Apps**,
-the apps to install on your own machines, in
-[reference.md](reference.md#the-apps-a-person-installs). This doc covers the
-store and the Toolchains page, the NVIDIA card, Android versions and the
-emulator, and a phone lent to a project.
+it. **CI runner** is in [building.md](building.md#ci-runners), and the
+companions to install on your own machines are Library cards
+([reference.md](reference.md#the-apps-a-person-installs)). This doc covers the
+store, the Library and the Installed page, the NVIDIA card, Android
+versions and the emulator, and a phone lent to a project.
 
 ## The toolchain store lives outside the image
 
@@ -16,7 +16,7 @@ module. Everything a build needs: the JDK, the Android SDK, the emulator,
 Flutter, .NET: is a recipe installed into a **node's toolchain store**, from
 the Library with that node picked; the page lists nodes and nothing else,
 and with none enrolled it says so. The controller's own store: the SDK
-share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`): holds
+share, mapped at `/sdk` (on a NAS host `/mnt/user/sdk`): holds
 only what its boot keeps for `bb capture shot`, the Playwright browsers; nothing is
 installed on the controller from the dashboard. A node enrolled with the same
 share is recognized as sharing it, and each keeps its own directory there.
@@ -277,23 +277,24 @@ anywhere else.
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
 | `tizen` | manual | Samsung TVs, signage and appliances. No headless installer exists, so `bb toolchains install tizen` prints the steps and is not in the dashboard's list; everything there installs |
 
-**From the dashboard.** **Toolchains**, under Build on the rail, is a
-**page** the way the findings report is: a list of
-everything above with a checkbox each, the size it will take, and, once
-installed, the path it actually landed on. Tick several and install or remove
-them in one go. If one fails, its row says why: the sentence, not the
-several hundred lines of progress frames that came with it.
+**From the dashboard.** The **Library**, under Build on the rail, offers
+everything above as a card each for the node picked in the group's header:
+what it is, its terms, what it needs, and Install or Update. The
+**Installed** page, under Machines, lists what that node holds, the path each
+landed on and its system packages, with Remove. If an install fails, its
+card says why: the sentence, not the several hundred lines of progress
+frames that came with it.
 
-System images sit below in a section of their own, because they are not
+System images are the **Emulator** page's, under Build, because they are not
 toolchains: a picker for the API level and flavor with the download size on
 each option, and the ones already on disk listed under it with what they take
 and a bin each. Each one also says **which AVDs are built on it**, which is
 what "can this go?" actually means: an AVD names one image exactly and will
 not boot without it, and two flavors at the same API level are not
-interchangeable. An image no AVD names says so, and is the one that is spare. A page rather than a dialog because an install runs for
-minutes; it stays a page you can leave and come back to while you work, and the work itself is a background job on the container, so the
-list keeps reporting progress instead of hanging on a request that would take
-four minutes to answer. The page only ever posts names the server offered it,
+interchangeable. An image no AVD names says so, and is the one that is spare. An install runs for
+minutes as a background job on the node, so a page you leave and come back to keeps reporting
+its progress instead of hanging on a request that would take
+four minutes to answer. The pages only ever post names the server offered them,
 the same rule the command buttons follow.
 
 **Building for Windows, from here.** Three of those cross-compile without a
@@ -415,24 +416,25 @@ sideloaded, offered on an Apps card and in New container like the shipped
 ones, with Edit on its card to change or remove it. Both are an
 administrator's, since every person's New container then offers them. Over
 the Tool packs, **Submit it to the vetted catalog** links to the catalog's
-repository for a pull request, the way a pack becomes vetted. The
-Toolchains and Agents pages below are what the Library reads.
+repository for a pull request, the way a pack becomes vetted. What it
+puts on a node is the Installed page's, below.
 
-## The Toolchains page
+## A toolchain on the Installed page
 
-**Build**: **Toolchains**, the installer as a page:
-every toolchain on the [toolchain store](#the-toolchain-store-lives-outside-the-image) with its
-size, its installed version, its path, and an amber line when a check finds
-a newer one. Ticks are for things there is something to do to; uninstalling
-is a bin on the row. A recipe that gives a session commands says under
-which name: they live under `bb tool NAME` (`bb tool graphics`, `bb tool
-diagrams`), one name per recipe, so the row says what installing it adds,
-two toolchains may both have a `render`, and none can shadow a verb of
-bb's own; the suite holds the catalog to the script. The page holds build
-toolchains alone: the coding agents a session runs (Claude Code, Codex CLI,
-Copilot CLI) are installed, updated and removed on the **Agents** page beside
-it (`POST /api/agents`), and on a node this page says so in one line with the
-way there. Each row also names the system packages its tool puts
+**Machines**, then **Installed**, with a node picked, has a row per
+toolchain the [toolchain store](#the-toolchain-store-lives-outside-the-image)
+holds there, as the Library has a card per toolchain the catalog offers:
+each with its size, its installed version, its path, and an amber line
+when a check finds a newer one. Install and Update are on the Library's
+card; Remove is on the Installed page's row. A recipe that gives a session
+commands says under which name: they live under `bb tool NAME` (`bb tool
+graphics`, `bb tool diagrams`), one name per recipe, so the card says what
+installing it adds, two toolchains may both have a `render`, and none can
+shadow a verb of bb's own; the suite holds the catalog to the script. A
+coding agent (Claude Code, Codex CLI, Copilot CLI, Grok Build) is a kind of
+its own on both pages, installed, updated and removed through its own verb
+(`POST /api/agents`), never as a toolchain. Each toolchain's row also
+names the system packages its tool puts
 on the picked machine, in that machine's package manager's names, and for
 one already installed which of them are missing there. They install with
 the tool and only then; uninstalling a tool leaves them, since another may
@@ -446,20 +448,20 @@ already holds (a package removed since, or a machine rebuilt under its
 store), a node BuilderBot manages installs them by itself the next time it
 reports in, once per missing set, and never while its system changes are
 locked to its console. Anywhere it cannot (a guest node, a locked one, an
-install that failed) the page says which and **Install system packages**
-puts them on that node without reinstalling the toolchain, and the row
-that lacks them carries **Install them now**, which does it for that row
-alone; the node's page says the same, before a build fails on it. A
-toolchain another one needs (the JDK that PlantUML runs on, the Node that
-Playwright's module needs) is installed with it, and a row whose needed
-toolchain is not on the picked node says which and offers that row's own
-install. A toolchain that puts something on
+install that failed) the Installed page says which over its rows and
+**Install system packages** puts them on that node without reinstalling
+the toolchain, and the row that lacks them carries **Install them now**,
+which does it for that row alone; the node's page says the same, before a
+build fails on it. A toolchain another one needs (the JDK that PlantUML
+runs on, the Node that Playwright's module needs) is installed with it,
+and a row whose needed toolchain is not on the picked node says which and
+offers that toolchain's own install. A toolchain that puts something on
 PATH reaches a session when the session starts, so its row says how many
 sessions open on that node started before it was installed, and to reopen
-them. Beside it under Build, **Emulator** (a node's Android system images:
-which it has, which AVDs are built on each, and ticking the ones to add as
-on Toolchains; a node without the command-line tools and the emulator says
-so in amber, with a link to install them from Toolchains), **Phone** and
+them. Beside the Library under Build, **Emulator** (a node's Android
+system images: which it has, which AVDs are built on each, and ticking the
+ones to add; a node without the command-line tools and the emulator says
+so in amber, with a link to install them from the Library), **Phone** and
 **CI runner**, each a page of its own.
 
 **A toolchain that needs another says so, and the missing one is installed
@@ -483,7 +485,7 @@ container toolkit and system packages, which write no store, wait for
 nothing there. One machine still runs one toolchain job at a
 time. What identifies the pair is a marker file
 inside the store itself, not the mount: this container reaches the toolchain store
-through Unraid's FUSE layer while a node reaches the same bytes over NFS,
+through the host's user-share layer while a node reaches the same bytes over NFS,
 and neither mount string can be derived from the other. Nothing
 machine-specific is written into a shared store: the generated
 `sdk-env.sh`, whose every line is an absolute path, lives on the home volume
@@ -498,13 +500,13 @@ these tools: an install downloads each from its own vendor onto your node.
 
 A few install under an agreement rather than a license alone: Google's
 Android SDK terms (every Android row) and NVIDIA's CUDA license (PyTorch).
-Their rows say "Installing it asks you to accept", and Install selected
+Their cards say "Installing it asks you to accept", and Install
 names each agreement with its link and asks **Accept and install** before
 anything is fetched. The server refuses an install under an agreement that
 was not accepted, and keeps who accepted it, when, and for which toolchains
 in the audit log. A session is never the one to accept: `bb
 toolchains install android:...` from a session, on a store nobody has
-accepted Google's terms for, is refused and sent to this page.
+accepted Google's terms for, is refused and sent to the Library.
 
 ## Multiple Android versions
 
@@ -565,8 +567,8 @@ machine, because a session runs unprivileged with no capabilities and cannot
 become DRM master. *Render the Android emulator on the card*, in the GPU
 section of the node's page under Nodes, is that: `bb-sandbox gpu` starts a
 headless Xorg on the card as a unit of the machine's own, on the driver the
-Toolchains page's row installed (it installs none itself, and the section's
-line opens that page until the driver is there), which writes
+Library's card installed (it installs none itself, and the section's
+line opens the Library until the driver is there), which writes
 what it found to `/run/builderbot-gpu-display` and restarts a dead server
 three times before saying so. The driver takes the card only after a reboot,
 which the section says and Reboot under Advanced does; bb-session binds the
@@ -592,11 +594,11 @@ names packages another project left there, removed on its first boot.
 
 ## Playwright, Android, plugins, publishing
 
-- **Playwright**: the browsers are a toolchain on the store (the Toolchains
-  page's playwright), so `npx playwright test` runs headless in a session on any
+- **Playwright**: the browsers are a toolchain on the store (the Library's
+  playwright card), so `npx playwright test` runs headless in a session on any
   node that has it installed.
 - **Android**: `./gradlew assembleRelease` runs on the project's node once
-  the Toolchains page has installed the JDK and the Android tools there; the
+  the Library has installed the JDK and the Android tools there; the
   emulator is that node's too, `bb emu start`. See
   [Multiple Android versions](#multiple-android-versions) to emulate more
   than one API level.
@@ -604,11 +606,11 @@ names packages another project left there, removed on its first boot.
   person alone, in their own `~/.claude` on the node; a project's committed
   `.claude/settings.json` can name plugins everybody on it is offered. Each
   person's, and the MCP servers they added to each coding agent, are listed
-  under that agent on the node's **Agents** page, and every account's in
+  on that agent's row of the **Installed** page with the node picked, and every account's in
   `bb diag plugins`, since a plugin adds its own hooks and instructions beside
   BuilderBot's and a session that behaves oddly may be carrying one. The
   language-server plugins run a server a session cannot `npm install -g`
-  into the store, so the Toolchains page carries them: **language-servers** (pyright
+  into the store, so the Library carries them: **language-servers** (pyright
   and typescript-language-server, for pyright-lsp and typescript-lsp) and
   **kotlin-lsp** (JetBrains' server, for kotlin-lsp). rust-analyzer and clangd
   already come with the rust and swift toolchains.

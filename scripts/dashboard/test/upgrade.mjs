@@ -13,8 +13,8 @@
 // every account, project, role on a project, notebook entry (roadmap, bugs,
 // house rules, wiki), tool pack and device the manifest lists is still there.
 //
-// What it holds: stateversion.py, statemigrations/ (0001_before_the_stamp.py
-// on), statefile.py, users.py, and whatever a release's /config is read by.
+// What it holds: stateversion.py, statemigrations/ (from 0003, the floor being
+// 0.6.0's state), statefile.py, users.py, and whatever a release's /config is read by.
 // Its own controller per case, on its own port and scratch directories,
 // beside the harness's world and never in it.
 import { launch, ok, done, DIR, sleep, patience } from './lib.mjs';

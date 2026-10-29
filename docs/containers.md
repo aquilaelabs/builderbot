@@ -137,7 +137,7 @@ exits, so a `compose build` spending four minutes pulling layers is not four
 minutes of a spinner. The phase word above it still says *building* or
 *starting*; the tail below says what the phase is spending its time on. It is
 raw and deliberately not parsed into a bar: docker rewrites a line per layer
-per tick, and turning that into a percentage is the thing the Toolchains page
+per tick, and turning that into a percentage is the thing the toolchain rows
 already gave up on.
 
 **Abort** sits beside it while a job runs, and asks nothing first. Stopping a
@@ -149,8 +149,8 @@ whatever state it was in.
 
 **From the catalog** (R164): New container opens on a pick of ready apps
 (Jellyfin, Plex, the arr stack, qBittorrent, Immich, Nextcloud, Home
-Assistant, Syncthing, and any an administrator added from the Library's Add
-your own, R170), each a compose file pinned to a tag with its blanks
+Assistant, Syncthing, any an administrator added from the Library's Add
+your own, and any kept from the vetted catalog's apps, R170), each a compose file pinned to a tag with its blanks
 in the environment: where its data goes and which share's folder it serves
 or syncs (folders under a pool, the array or a share), the user it runs as
 (the one that owns those folders), the time zone and its port, with a
@@ -212,7 +212,7 @@ set `container_name` to anything it likes and may declare several, and this is
 the one name that is always true of all of them.
 
 Under it, and not behind a fold, are **what it publishes and what it mounts,
-written the way Unraid's own Containers page writes them**: container side
+written the way a NAS's own Containers page writes them**: container side
 on the left, host side on the right, and the arrow saying which way it goes:
 `/library ← /mnt/user/plex-media` for a read-only mount, `↔` for a writable
 one, `7474:TCP ← 192.0.2.10:7475` for a published port. That is deliberately
@@ -224,9 +224,9 @@ a mount without knowing anything about the variables that built it.
 
 A running service gets **Open** beside its buttons. One published TCP port
 links straight there, pointed at this page's own host; several open a chooser
-listing every `host:port` for you to pick from. Unraid does not discover this
-either: its tab reads a `WebUI` line somebody wrote into a template, or the
-`net.unraid.docker.webui` label, so one port is the only case where it can be
+listing every `host:port` for you to pick from. A NAS's app page does not
+discover this either: it reads a `WebUI` line somebody wrote into a template,
+or a label the template sets, so one port is the only case where it can be
 known rather than asked, and asking beats guessing for the rest.
 
 The mounts are not repeated in the warnings below. They are all on the row
@@ -288,7 +288,7 @@ about a remote daemon easy to forget and impossible to see: a bind mount's
 *source* is resolved by whoever runs the container, which is the host.
 `/workspace/alpha` and `/devdata/alpha` mean something here and nothing
 over there, and docker answers a missing bind source by creating an empty
-directory and mounting that, so on Unraid, whose root filesystem is RAM, the
+directory and mounting that, so on a host whose root filesystem is RAM, the
 result is an app that starts with no data and loses it again at reboot. It
 reads as a bug in the app. The node's path mapping states it once: the
 same one you made when you mounted the volumes, and BuilderBot both hands
@@ -305,7 +305,7 @@ itself (as root, then chowning it) which on a share that squashes root fails
 and takes the whole run down with *operation not permitted*, leaving the
 directory behind so the second press works: an intermittent-looking failure
 with a fixed cause. So they are made first, owned by whoever BuilderBot runs
-as, which is the ownership Unraid expects.
+as, which is the ownership the host's shares expect.
 
 Made on whichever side can reach them, which is not something to think about:
 a share this container mounts is a local `mkdir`, and anything else is a

@@ -1,6 +1,6 @@
 // The Claude sign-in (signin.py, claudegrant.py, page-signin.js): one
 // account's, on one node. A person signs in on each node they work on, from
-// that node's Agents page (R95 step 15), and signs out there; a project's Claude
+// that node's Installed page (R95 step 15, R172), and signs out there; a project's Claude
 // button goes to its node's sign-in when that node has none; and an account
 // that does not administer sees a node's settings and changes nothing on it
 // but its own sign-in.
@@ -103,7 +103,7 @@ const secs = await page.evaluate(id => [...document.querySelectorAll(`.installed
 ok(secs.map(s => s[0]).join() === 'claude,codex'
    && /\b1\.0\.0\b/.test(secs[0][1]) && /not signed in/.test(await block()) && /\b0\.163\.0\b/.test(secs[1][1])
    && /installed/.test(secs[0][2]) && /installed/.test(secs[1][2]),
-   `the Agents page has a section per coding agent, Claude first, each with where it stands here (${JSON.stringify(secs)})`);
+   `the Installed page has a row per coding agent installed, Claude first, each with where it stands here (${JSON.stringify(secs)})`);
 await page.evaluate(() => startClaude('beta', null, ''));
 ok(/sign in to Claude on signbox first/.test(await page.$eval('#toast', e => e.textContent)) && await terms() === before,
    'anything else that would start a session there is sent to the same sign-in, with a line saying why');

@@ -119,6 +119,9 @@ class ConfigPlaneMixin:
             return self._apply_storage_backup(job, cfg)
         if what == "machine":
             return self._apply_machine(job, cfg)
+        if what == "system-pool":
+            # A stick's system pool (R161 step 10, osimage.py).
+            return self._apply_system_pool(job, cfg)
         if what == "os-update":
             # BuilderBot OS: the next image into the other slot (osimage.py).
             return self._apply_os_update(job, cfg)
@@ -690,7 +693,7 @@ class ConfigPlaneMixin:
         Streamed, the way Job.exec and _apply_root are: its output pumped
         as it comes and the log posted on a clock. It used to run the command
         to the end and post nothing meanwhile, so the NVIDIA rows on the
-        Toolchains page never said installing (the step rides a log post) and
+        Toolchains page (the Installed page's since R172) never said installing (the step rides a log post) and
         the job sat at assigned for as long as apt took (30 Sep).
         """
         # A job that cannot post or be canceled (a check's own stand-in, a
@@ -1210,7 +1213,7 @@ class ConfigPlaneMixin:
         if gaps:
             job.say("refused: the host's NFS exports admit this node's current address and not "
                     "the new one, so the shares would not mount after the move. Change the rule "
-                    "on the host first (Unraid: Shares -> the share -> NFS Security Settings), "
+                    "on the host first (on a NAS host: Shares -> the share -> NFS Security Settings), "
                     "then apply again:\n  " + "\n  ".join(gaps) + "\n")
             return "failed", 77
         desired = backend.render(iface, mode, addr, gw, dns, routes)

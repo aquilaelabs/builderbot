@@ -60,7 +60,7 @@ function libPick(){
   }
   if (!live.some(n => n.id === want)) want = live[0]?.id || "";
   libNode = want;
-  if (want && want !== tcNode){ tcNode = want; toolchains = null; tcTicked.clear(); }
+  if (want && want !== tcNode){ tcNode = want; toolchains = null; tcDriverPick = ""; }
   return live.find(n => n.id === want) || null;
 }
 
@@ -129,13 +129,16 @@ function libPills(r){
 function libState(r){
   const w = (t, cls = "") => `<span class="state${cls ? " " + cls : ""}">${t}</span>`;
   if (r.running) return w(`${esc(r.doing === "remove" ? "removing" : r.doing === "check" ? "checking" : r.kind === "agent" && r.installed ? "updating" : "installing")}<span class="dots"></span>`);
-  if (r.kind === "app") return w("");
+  // An app runs where Docker does (R170 step 7): said when this node has none.
+  if (r.kind === "app") return lib && !lib.docker ? w("this node runs no Docker: New container picks another", "warn") : w("");
   if (r.kind === "service") return r.installed ? w("deployed", "ok") : r.ready ? w(esc(r.ready), "warn") : w("");
   if (r.kind === "companion") return r.download ? w(esc(r.version ? `held, ${r.version}` : "held")) : w(esc(r.absent ? `not in ${r.absent}` : "not fetched yet"), "warn");
   if (r.wrong_platform) return w(esc(r.wrong_platform), "warn");
   if (r.machine){
     const m = r.machine, st = m.state;
     if (!m.managed) return w("installed by hand on this machine", "");
+    // A newer version of what is here is the news, whatever runs the card now.
+    if (m.here && m.newer && st !== "nocard" && st !== "leaving") return w("update available", "warn");
     if (r.name === "nvidia-driver") return st === "absent" ? w("") : st === "loaded" ? w("running the card", "ok")
       : w(st === "nocard" ? "installed, no card now" : st === "leaving" ? "removed, until a restart" : m.newer ? "update available" : "installed, takes the card at a restart", "warn");
     return st === "absent" ? w("") : st === "ready" ? w(m.driver_loaded ? "ready" : "installed, needs the driver running", m.driver_loaded ? "ok" : "warn")
@@ -148,9 +151,14 @@ function libState(r){
 
 // The one verb a row takes, and Remove where it is installed (the
 // Toolchains page's Remove and the Agents page's, moved here).
+// Why the store's verbs are held on every card, or "": a job running on
+// the node (one at a time), a node not reporting, a store it cannot write.
+// Set by the draw; the notice over the cards says the last two in full.
+let libHold = "";
 function libActs(r, may){
-  const n = libNode, a = (act, words, cls = "") =>
-    `<button type="button"${cls ? ` class="${cls}"` : ""} data-libact="${act}" data-libkind="${esc(r.kind)}" data-libname="${esc(r.name)}">${esc(words)}</button>`;
+  const n = libNode, a = (act, words, cls = "", held = "") =>
+    `<button type="button"${cls ? ` class="${cls}"` : ""} data-libact="${act}" data-libkind="${esc(r.kind)}" data-libname="${esc(r.name)}"${
+      held ? ` disabled title="${esc(held)}"` : ""}>${esc(words)}</button>`;
   if (r.running) return "";
   if (r.kind === "companion") return r.download
     ? `<a class="btn primary" href="${esc(r.download.url)}" download title="${esc(r.download.file)} · sha256 ${esc((r.download.sha256 || "").slice(0, 12))}…">Download</a>`
@@ -159,20 +167,39 @@ function libActs(r, may){
   // its press sends it to the Containers page's New container with the app
   // picked, and each press makes another container under its own name.
   if (r.kind === "app") return `${may.apps ? a("install", "New container", "primary") : ""}${r.tier === "sideloaded" && may.packs ? a("edit", "Edit") : ""}`;
-  // A service deploys as a written container does (docker-write), once
+  // A service deploys as a written container does (Configure on the node, R174), once
   // something is behind it, set on the Installed page.
-  if (r.kind === "service") return !may.apps || r.installed ? "" : `<button type="button" class="primary" data-libact="install" data-libkind="service" data-libname="${esc(r.name)}"${r.ready ? " disabled" : ""}${r.ready ? ` title="${esc(r.ready)}: set on the Installed page"` : ""}>Install</button>`;
+  if (r.kind === "service") return !may.configure || r.installed ? "" : `<button type="button" class="primary" data-libact="install" data-libkind="service" data-libname="${esc(r.name)}"${r.ready ? " disabled" : ""}${r.ready ? ` title="${esc(r.ready)}: set on the Installed page"` : ""}>Install</button>`;
   if (!may.install || !n) return "";
-  if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install");
+  if (r.kind === "pack" && !r.installed && r.catalog) return a("add", "Install", "", libHold);
   if (r.machine && !r.machine.managed) return "";
-  const verb = r.update ? a("install", "Update", "primary") : r.installed ? "" : a("install", "Install", r.kind === "agent" && r.agent === "claude" ? "primary" : "");
+  // The container toolkit installed but unknown to Docker is put right by
+  // installing it again, which its line on the Installed page says.
+  const again = r.machine?.state === "unconfigured";
+  const verb = r.update ? a("install", "Update", "primary", libHold) : again ? a("install", "Install again", "", libHold)
+    : r.installed ? "" : a("install", "Install", r.kind === "agent" && r.agent === "claude" ? "primary" : "", libHold);
   const edit = r.kind === "pack" && r.pack ? a("edit", "Edit") : "";
-  return `${verb}${edit}`;
+  // The catalog pins a newer commit of a pack kept from it (R169 step 4):
+  // the dialog on that pin, its changes marked, before anything is kept.
+  const repin = r.repin && may.packs ? a("repin", "Catalog update") : "";
+  return `${verb}${repin}${edit}`;
 }
 
 // The whole description, on the open row (rows-you-open): what it fetches
 // and runs, its terms, its platforms, the verbs it gives a session, an
 // agent's sign-in on this node, a pack's source, a companion's other files.
+// How a companion is connected once it is installed (the Apps page's words
+// until R170): the controller's address is the one thing each asks for,
+// written where it is typed.
+function devHow(name){
+  const at = `<code>${esc(location.origin)}</code>`;
+  return {
+    android: `Install it, open it and sign in at ${at} with your name and password.`,
+    vscode: `In VS Code: Extensions, the ⋯ menu, Install from VSIX; then BuilderBot: Connect, at ${at}.`,
+    companion: `Run it, sign in at ${at} with your name and password, and pick a project and a folder.`,
+  }[name] || "";
+}
+
 function libDetail(r){
   // The entry's metadata alone (the operator, 28 Oct: the Library is the
   // catalog; what is installed is managed on the Installed page under
@@ -189,6 +216,7 @@ function libDetail(r){
     if (r.machine) lines.push(`<span class="sub">${r.name === TC_DRIVER ? "Built for the machine's kernel, installed as root, taking the card at the next restart." : "From NVIDIA's own package source, which installing adds and removing takes away."} Its state and Remove are on the Installed page.</span>`);
     if (r.pack) lines.push(`<span class="sub">${r.pack.here ? "Made here" : `From <code>${esc(r.pack.url)}</code>${r.pack.path ? ` (${esc(r.pack.path)})` : ""} at ${esc((r.pack.commit || "").slice(0, 12))}`}${r.pack.by ? `, added by ${esc(r.pack.by)}` : ""}. A session has <code>bb tool ${esc(r.name)}</code>.</span>`);
     if (r.catalog) lines.push(`<span class="sub">From <code>${esc(r.catalog.url)}</code>${r.catalog.path ? ` (${esc(r.catalog.path)})` : ""} at ${esc((r.catalog.commit || "").slice(0, 12))}, its archive's sha256 checked on the way in. Install opens the Add tool pack dialog on that commit, and Add keeps exactly that.</span>`);
+    if (r.repin) lines.push(`<span class="sub warn">The vetted catalog pins a newer commit, ${esc(r.repin.commit.slice(0, 12))}: Catalog update shows what it changes before it is kept.</span>`);
     if (r.config?.length) lines.push(`<span class="sub">Asks for ${esc(r.config.map(f => f.label).join(", "))} on each node, set on the Installed page once it is there.</span>`);
     if (r.wrong_platform) lines.push(`<span class="sub warn">${esc(r.wrong_platform)}</span>`);
     if (r.pack && !r.pack.here || r.catalog){
@@ -201,6 +229,7 @@ function libDetail(r){
   }
   if (r.kind === "service"){
     lines.push(`<span class="sub">Deployed on the node as a written container; configured, read and removed on the Installed page under Machines.</span>`);
+    if (r.repin) lines.push(`<span class="sub warn">The vetted catalog pins a newer commit, ${esc(r.repin.commit.slice(0, 12))}: Catalog update shows what it changes before it is kept.</span>`);
     if (r.config?.length) lines.push(`<span class="sub">Asks for ${esc(r.config.map(f => f.label).join(", "))}.</span>`);
   }
   if (r.kind === "agent"){
@@ -215,7 +244,7 @@ function libDetail(r){
     if (r.compose) lines.push(`<pre class="libcompose mono">${esc(r.compose.trim())}</pre>`);
   }
   if (r.kind === "companion"){
-    lines.push(`<span class="sub">${typeof devHow === "function" ? devHow(r.name) : ""}</span>`);
+    lines.push(`<span class="sub">${devHow(r.name)}</span>`);
     if ((r.files || []).length > 1) lines.push(`<span class="sub">Also: ${r.files.slice(1).map(f => `<a href="${esc(f.url)}" download>${esc(f.file)}</a>`).join(", ")}</span>`);
   }
   return lines.filter(Boolean).join("");
@@ -327,7 +356,6 @@ function renderLibraryInto(i){
     if (!libSeq) loadLibrary();
     return;
   }
-  const pnodes = (nodesList || []).filter(x => x.kind === "agent" && x.state !== "retired").map(x => ({id: x.id, name: x.name, live: x.live}));
   if (lib.nonode){
     d.setBar("");
     d.list.innerHTML = noNodeYet("toolchains and coding agents install on a node", "libnone");
@@ -335,7 +363,9 @@ function renderLibraryInto(i){
   }
   const may = lib.may || {};
   const job = lib.job || {}, busy = !!job.running;
-  const node = pnodes.find(x => x.id === libNode) || {};
+  // The node's whole record: whether its agent is behind and its store
+  // read-only are read off it.
+  const node = (nodesList || []).find(x => x.id === libNode) || {};
   const stale = nodeStale(node), pro = node.reported?.store_ro === true;
   const clean = may.install && !pro ? (lib.cleanable || []) : [];
   // The node is the Build group's header's (R178).
@@ -374,7 +404,11 @@ function renderLibraryInto(i){
       unmet.map(([r, ps]) => `${esc(r)}: ${esc(ps.join(" "))}`).join("; ")}. ${lib.sandbox && may.install
         ? `<button type="button" data-libsysdeps${busy || stale ? " disabled" : ""} title="install these on ${esc(lib.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
         : "This node's owner installs them: the agent does not administer the machine."}</div></div>` : ""}`;
+  libHold = busy ? "another toolchain job is running on this node" : stale ? "this node is not reporting" : pro ? "this node's store is read-only to it" : "";
   paint(d.list, `<div data-libnode="${esc(libNode)}">${notes}${head}${libFilterBand(all)}<div class="field libgroups">${libSections(rows, may)}</div></div>`);
+  // The ellipsis on a card whose job runs is ticked by the one timer every
+  // page shares (tcTickDots), so a redraw does not restart it.
+  if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);
   wireLibrary(d.el);
 }
 
@@ -436,7 +470,18 @@ async function libAct(b, act, kind, name){
   if (!r) return;
   const n = (nodesList || []).find(x => x.id === libNode), where = n?.name || "this node";
   if (kind === "app"){
-    if (act === "edit") tpOpenApp(name); else openNewContainerApp(name);
+    if (act === "edit"){ tpOpenApp(name); return; }
+    // One the vetted catalog offers is kept first, from its pin in the
+    // signed index (R170 step 7); then New container, on this node when it
+    // runs Docker.
+    if (r.catalog){
+      busy(b, "Taking");
+      const j = await (await postJSON("/api/nasapps", {action: "add-catalog", app: name})).json().catch(() => ({error: "no answer"}));
+      if (j.error){ notify(j.error, true); await loadLibrary(); return; }
+      if (typeof cApps !== "undefined") cApps = null;
+      await loadLibrary();
+    }
+    openNewContainerApp(name, lib?.docker ? libNode : "");
     return;
   }
   if (kind === "service"){
@@ -457,6 +502,7 @@ async function libAct(b, act, kind, name){
   }
   if (act === "add"){ libWithToolchains(() => tpOpenCatalog({...r.catalog, name: r.name, tier: r.tier, about: r.about, platforms: r.platforms})); return; }
   if (act === "edit"){ libWithToolchains(() => tpOpen(r.name)); return; }
+  if (act === "repin"){ libWithToolchains(() => tpOpen(r.name, r.repin)); return; }
   // Install or update a toolchain or an added pack: the Toolchains job,
   // with its agreements asked the way that page asks them.
   busy(b, r.installed ? "Updating" : "Installing");

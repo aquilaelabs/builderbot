@@ -257,12 +257,15 @@ def attention(node_name, allowed=None):
     return out
 
 
+import checks  # noqa: E402 (the cadence, R176)
+
+
 def check_loop():
     """The weekly check, from when the last one ran rather than from the
     start, beside the toolchains' and nginx's."""
     time.sleep(CHECK_DELAY)
     while True:
-        if time.time() >= last_at() + CHECK_EVERY:
+        if checks.due("images", last_at()):
             with contextlib.suppress(Exception):   # noqa: BLE001 (the loop outlives one bad pass)
                 check()
         time.sleep(600)

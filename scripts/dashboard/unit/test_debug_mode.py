@@ -62,6 +62,23 @@ class DebugMode(unittest.TestCase):
 
 
 
+    def test_a_boot_that_asks_for_the_dev_channel_gets_it_in_debug_mode_alone(self):
+        # R161 step 12: a stick's builderbot.env says BB_RELEASE_CHANNEL=dev.
+        was = os.environ.get("BB_RELEASE_CHANNEL")
+        self.addCleanup(lambda: os.environ.pop("BB_RELEASE_CHANNEL", None) if was is None else os.environ.__setitem__("BB_RELEASE_CHANNEL", was))
+        os.environ["BB_RELEASE_CHANNEL"] = "dev"
+        os.environ.pop("DEBUG_MODE", None)
+        self.assertFalse(settings.boot_channel(), "nothing without DEBUG_MODE=1")
+        os.environ["DEBUG_MODE"] = "1"
+        self.assertTrue(settings.boot_channel())
+        self.assertTrue(settings.dev_channel_ok())
+        self.assertEqual(settings.get("release_channel"), "dev")
+        self.assertFalse(settings.boot_channel(), "the next start finds it so and writes nothing")
+        os.environ["BB_RELEASE_CHANNEL"] = "nightly"
+        settings.set_many({"release_channel": "normal"})
+        self.assertFalse(settings.boot_channel(), "no other word")
+        self.assertEqual(settings.get("release_channel"), "normal")
+
     def test_the_dev_channel_is_offered_only_with_debug_and_the_dev_switch(self):
         # R179: refused without debug mode, refused with it until the dev
         # switch is on, back to normal at a start without debug mode.

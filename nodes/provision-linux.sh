@@ -148,7 +148,7 @@ it, which is a paste rather than a questionnaire.
                        data on.
   --nfs HOST:EXPORT:PATH[:ro]   the same thing over NFS, when a share
                        cannot be passed directly. Repeatable, same `:ro`. EXPORT is the exported
-                       share path (on Unraid /mnt/user/<share>/...) and not
+                       share path (on a NAS host /mnt/user/<share>/...) and not
                        a pool path like /mnt/cache/...: that spelling is for
                        bind mounts and is not what the server offers, so the
                        mount fails, quietly, because of nofail.
@@ -931,14 +931,14 @@ pkg_refresh
 # shellcheck disable=SC2046  # the names are meant to split
 pkg $(pkg_names base)
 command -v curl >/dev/null 2>&1 || pkg curl >/dev/null 2>&1 || warn "curl did not install, so every download below will fail"
-# ...and the guest agent only where there is a host to talk to, so Unraid can
+# ...and the guest agent only where there is a host to talk to, so the host can
 # shut the machine down cleanly rather than pulling the plug. Nothing here is
 # otherwise particular to a VM: this runs on bare metal just as well, and an
 # emulator is happier there, with /dev/kvm native instead of nested.
 if is_vm; then
     # shellcheck disable=SC2046
     pkg $(pkg_names guest) 2>/dev/null && svc_enable "$(pkg_names guestsvc)" >/dev/null 2>&1 \
-        || warn "the qemu guest agent did not install, so Unraid will pull the plug instead of shutting this VM down"
+        || warn "the qemu guest agent did not install, so the host will pull the plug instead of shutting this VM down"
 fi
 
 # --- the tunnel to the controller (R161) ------------------------------------
@@ -1390,7 +1390,7 @@ else
     # shellcheck disable=SC2046
     pkg $(pkg_names reel) >/dev/null 2>&1 \
         || warn "Xvfb, xdotool or xdpyinfo did not install; bb capture reel --display needs them"
-    # Claude Code is not installed here: the node's Toolchains tab does it on
+    # Claude Code is not installed here: the Library does it on
     # purpose, so whoever enrolls a node sees what is put on it (R145), and a
     # session refuses to start until it is there.
     # A login shell as this account gets what a dashboard session gets: the
@@ -1642,7 +1642,7 @@ mount_one() {
     held="$(stores_under "$path")"
     [ -n "$held" ] && printf '   %s sits inside it, so that store is on the root disk until it mounts.\n' \
         "$(printf '%s' "$held" | tr '\n' ' ')"
-    printf '   On Unraid an export is a SHARE (/mnt/user/<share>), never a\n'
+    printf '   On a NAS host an export is a SHARE (/mnt/user/<share>), never a\n'
     printf '   pool path like /mnt/cache/<share>, which is right for a bind\n'
     printf '   mount and is not exported. Check it allows this host:\n'
     printf '     showmount -e <server>\n'
@@ -1784,7 +1784,7 @@ cmd_sdk() {
         *) die "bb-sandbox sdk reads; it does not install. '$verb' changes the store, and
    doing it from here would go around the one-install-at-a-time rule the
    controller keeps across every machine sharing it. Use the dashboard's
-   Tools tab, with this node picked. Readable: $BB_READONLY_VERBS" ;;
+   Library, with this node picked. Readable: $BB_READONLY_VERBS" ;;
     esac
     [ -r "$NODE_JSON" ] || die "this machine is not enrolled ($NODE_JSON is not readable): there is no store to read"
     store="$(python3 -c 'import json,sys
@@ -1797,7 +1797,7 @@ print(json.load(open(sys.argv[1])).get("user") or "")' "$NODE_JSON" 2>/dev/null)
     newest="$(ls -1dt "$store"/.bb/*/scripts/bb 2>/dev/null | head -1 || true)"
     [ -n "$newest" ] || die "no bb on this machine yet: the controller unpacks one into
    ${store}/.bb the first time a toolchain job runs on this node. Install
-   something from the dashboard's Tools tab and it will be here."
+   something from the dashboard's Library and it will be here."
     bb="$newest"
     local -a env=(env
         "SDK_ROOT=$store" "BUILDER_HOME=$store" "BB_NODE_TOOLCHAINS=1"
@@ -2265,8 +2265,8 @@ apt_idle() {
     return 0
 }
 apt_get() { apt_idle; apt-get -o DPkg::Lock::Timeout=300 "$@"; }
-# The distribution's NVIDIA driver, from apt: the Toolchains tab's driver
-# row (R102), and nothing else installs it.
+# The distribution's NVIDIA driver, from apt: its card in the Library
+# (R102), and nothing else installs it.
 gpu_install_driver() {
     # GPU_DRIVER_PKG, where the caller set one, is the metapackage of the
     # branch to install (nvidia-driver-610-open) rather than the one the
@@ -2311,11 +2311,11 @@ cmd_gpu() {
     fi
     say "card: $card"
     # The display runs on NVIDIA's driver and does not install it (the
-    # operator, 30 Sep): the driver is the Toolchains tab's row, the one
+    # operator, 30 Sep): the driver is the Library's card, the one
     # place it is installed, so a machine has it because somebody chose to.
     if [ -z "$(gpu_driver_version)" ]; then
-        gpu_state "needs the driver: install the NVIDIA driver on this node's Toolchains page first"
-        die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains page, then set the display up"
+        gpu_state "needs the driver: install the NVIDIA driver from the Library with this node picked first"
+        die "the NVIDIA driver is not installed on this machine: install it from the Library with this node picked, then set the display up"
     fi
     if ! command -v Xorg >/dev/null 2>&1; then
         have apt-get || die "no Xorg on this machine, and it is not installed from here on this family: install an X server, then set the display up again"
@@ -2372,7 +2372,7 @@ cmd_gpu_display() {
     # Asked before nvidia-smi, which tries to load the driver for a card that
     # is not there (B168).
     if [ -z "$(gpu_card)" ]; then
-        gpu_state "down: no NVIDIA card on this machine; the driver is installed for one that is gone (remove it on the Toolchains page)"
+        gpu_state "down: no NVIDIA card on this machine; the driver is installed for one that is gone (remove it on the Installed page)"
         return 1
     fi
     if ! nvidia-smi -L >/dev/null 2>&1; then
@@ -2445,9 +2445,9 @@ EOF
     return 1
 }
 
-# --- the NVIDIA driver as a row of the Toolchains tab (R102) -------------------
-# The driver alone, installed and removed from the tab, apart from the
-# emulator's display. It is the machine's and not the toolchain store's: its
+# --- the NVIDIA driver as a card in the Library (R102) ------------------------
+# The driver alone, installed from the Library and removed on the
+# Installed page, apart from the emulator's display. It is the machine's and not the toolchain store's: its
 # kernel module is built for this machine's kernel and its libraries must
 # match that module exactly, so there is one per machine, installed as root,
 # and it takes the card only at the next boot, since nouveau holds it until
@@ -2649,7 +2649,7 @@ cmd_gpu_driver() {
     esac
 }
 
-# --- the NVIDIA container toolkit as a row of the Toolchains tab (R102) --------
+# --- the NVIDIA container toolkit as a card in the Library (R102) -------------
 # What lets a container on this machine use the card: NVIDIA's runtime hook,
 # which hands the driver's libraries and the device nodes to a container
 # that asks for a GPU. Ubuntu and Debian do not carry it, so it comes from
@@ -2706,7 +2706,7 @@ cmd_gpu_container() {
         install)
             have apt-get || die "the container toolkit is installed from here on Debian and Ubuntu only: on this family, from NVIDIA's repository for it"
             have docker || die "no docker on this machine, so there is no container to hand the card to"
-            [ -n "$(gpu_driver_version)" ] || die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains page first; the toolkit hands its libraries to a container"
+            [ -n "$(gpu_driver_version)" ] || die "the NVIDIA driver is not installed on this machine: install it from the Library with this node picked first; the toolkit hands its libraries to a container"
             have curl || die "curl is not on this machine, and the package source is fetched with it"
             say "adding NVIDIA's package source for the container toolkit"
             curl -fsSL "$NVCT_URL/gpgkey" > "$NVCT_KEY" \
@@ -2888,7 +2888,7 @@ feature_vmhost() {
             # No /dev/kvm is a machine that cannot run a VM at speed: a VM
             # whose host does not pass virtualization through, or a box with
             # it off in the firmware. Said, not emulated (tens of times slower).
-            [ -e /dev/kvm ] || die "no /dev/kvm here, so VMs would run in software, tens of times slower. On a VM, its host must pass virtualization through: CPU mode host-passthrough (Unraid: CPU Mode Host Passthrough; Proxmox: CPU type host) and nested KVM on in the host's kvm_intel or kvm_amd. On a machine of its own, turn VT-x or AMD-V on in its firmware"
+            [ -e /dev/kvm ] || die "no /dev/kvm here, so VMs would run in software, tens of times slower. On a VM, its host must pass virtualization through: CPU mode host-passthrough (a NAS host: CPU Mode Host Passthrough; Proxmox: CPU type host) and nested KVM on in the host's kvm_intel or kvm_amd. On a machine of its own, turn VT-x or AMD-V on in its firmware"
             [ -n "$fam" ] || die "VM host is installed on the Debian, RHEL, Arch, openSUSE and Alpine families; this machine is none of them"
             pkgs="$(vmhost_pkgs "$fam")"
             [ -n "$pkgs" ] || die "no VM host packages for $(uname -m) on this family"
@@ -3670,7 +3670,7 @@ shell as the docker account), running bb-tty from the bb the controller ships, s
 a project bound to this node lives on this machine, in its synced copy of
 the project at /workspace, which the agent makes and keeps in step with the
 controller's. Each person signs in to each agent on this node from its
-Agents page on the dashboard (Build, Agents), once per account.
+row on the dashboard's Installed page (Machines, Installed), once per account.
 
 bb itself is not on this account's PATH: it is the controller's, fetched
 into the toolchain store by the agent (<store>/<scope>/.bb/current/scripts/bb)

@@ -74,7 +74,7 @@ def as_pdf(f, work):
     so = os.environ.get("BB_DOCS_SOFFICE") or ""
     if not (so and os.access(so, os.X_OK)):
         die(f"{f} is not a PDF, and its pages are drawn from one: LibreOffice makes it, which is the office "
-            "toolchain; install it on the Toolchains page with this node picked (bb tool docs read gives its text now)")
+            "toolchain; install it from the Library with this node picked (bb tool docs read gives its text now)")
     prof = os.path.join(work, "profile")
     r = subprocess.run([so, f"-env:UserInstallation=file://{prof}", "--headless", "--norestore",
                         "--convert-to", "pdf", "--outdir", work, f],

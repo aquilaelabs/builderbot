@@ -117,6 +117,7 @@ function rnPrefsOf(p){
                reply: p?.yours?.reply || "", asks: p?.yours?.asks || "", term_scheme: p?.yours?.term_scheme || "",
                devbuild: devClaudeMode(p?.name || rnFor),
                makevms: p?.prefs?.makevms || "deny",
+               installpacks: p?.prefs?.installpacks || "ask",
                vm_caps: rnVmCapsOf(p),
                report: p?.prefs?.report || "auto",
                sign: p?.prefs?.sign || "ask",
@@ -356,7 +357,7 @@ function rnFillNodesMore(){
 // sees, a listbox row each, ticked from the settings. Read-only there by
 // construction (users.with_reads), so the hint under it can say so plainly.
 // ---- the Toolchains group (R77) -------------------------------------------
-// The toolchains installed on the project's node, as its Toolchains page
+// The toolchains installed on the project's node, as the Installed page
 // lists them, and every tool pack: a row each, ticked when its sessions may
 // use it. Fetched when the settings open; null until it has arrived.
 let rnToolsList = null;
@@ -520,6 +521,7 @@ function rnFillPrefsRest(p){
   pick("rnGateDocker", GATE_MODES, devClaudeMode(rnFor)).closest("label").hidden = state?.can?.["docker-write"] === false;
   // ...and its VMs' (R91), the VMs area's to change, deny unless set.
   pick("rnGateVms", GATE_MODES, p?.prefs?.makevms || "deny").closest("label").hidden = state?.can?.["vms-write"] === false;
+  pick("rnGatePacks", GATE_MODES, p?.prefs?.installpacks || "ask").closest("label").hidden = state?.can?.curate === false;
   rnVmCapsSet(rnVmCapsOf(p));
   $("rnVmCapsRow").hidden = state?.can?.["vms-write"] === false;
   rnDrawPrefs();
@@ -1429,7 +1431,8 @@ function rnEnc(){
           tests_in: $("rnDevTest").value || "node", test_node: $("rnTestNode")?.value || "", test_change: $("rnTestChange").value || "wait",
           gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
           term_scheme: $("rnTermScheme").value || "",
-          devbuild: $("rnGateDocker").value || "deny", makevms: $("rnGateVms").value || "deny", vm_caps: rnVmCapsNow(), report: $("rnGateReport").value || "auto",
+          devbuild: $("rnGateDocker").value || "deny", makevms: $("rnGateVms").value || "deny", vm_caps: rnVmCapsNow(),
+          installpacks: $("rnGatePacks").value || "ask", report: $("rnGateReport").value || "auto",
           sign: $("rnGateSign").value || "ask", release: $("rnGateRelease").value || "ask",
           keys: $("rnGateKeys").value || "ask", pc: $("rnGatePc").value || "deny", version: $("rnGateVersion").value || "locked"};
 }
@@ -1535,6 +1538,7 @@ function rnRevertSect(sect){
     const g = String(w.gate).split(",");
     Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
     $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild; $("rnGateVms").value = w.makevms; rnVmCapsSet(w.vm_caps);
+    $("rnGatePacks").value = w.installpacks;
     rnFillAgents(w.agents_off, w.agent_default);
     $("rnAgentSlots").value = w.agent_slots;
     $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;

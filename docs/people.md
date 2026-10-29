@@ -63,9 +63,14 @@ roles, made on the **Roles** page (R152, the operator, 7 Oct). A role is a
 that reaches the machinery, or **On a project**, given per project and
 holding there) and, per area, **Read** and **Write**: Projects, Project
 settings, Releases and versions, Git authentication, File access, Containers
-and Terminal on a project; Nodes, Toolchains, Jobs, CI runner, Accounts and
-roles, New projects, Controller and Storage beside them. On an Everywhere
-role the areas that reach a machine (Nodes, Toolchains, Jobs, New projects,
+and Terminal on a project; Nodes, Install, Configure, Curate, Jobs, CI
+runner, Accounts and roles, New projects, Controller and Storage beside them.
+**Install** is the Library's and the Installed page's install, update and
+remove on a node; **Configure** a service's and a pack's settings on a node,
+and deploying or removing a service there; **Curate** the catalog's own
+entries every node shares, a pack or an app of your own (R174; before 0.9
+the first two were one area, Toolchains). On an Everywhere role the areas
+that reach a machine (Nodes, Install, Configure, Jobs, New projects,
 Storage) open on the nodes, and CI runner on each runner, with Read and Write
 on each, every one ticked being every node, those added later included: a
 role with New projects to write on bb-sandbox alone lets an
@@ -94,7 +99,7 @@ and the rail does not draw its page), and the server holds the same line: the
 Users and Roles reads, an agent's console without Terminal Read (no terminal
 at all), the Jobs listing (a person's own projects' jobs alone) and the
 Docker listing (the projects whose Containers they may read). Without Nodes
-or Toolchains Read those reads answer only for the nodes of the person's own
+or Install Read those reads answer only for the nodes of the person's own
 projects, which a sign-in there needs, and never for another machine.
 
 The **Roles** page lists the roles beside the one picked (the projects'
@@ -193,8 +198,8 @@ own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
 
 Each account signs in to the agents it uses for itself, on each node it
-works on, from that node's Agents page (Build, then Agents, with that node
-picked), and People and Profile name the account each agent is signed in as.
+works on, from that node's Installed page (Machines, then Installed, with that
+node picked in the header), and People and Profile name the account each agent is signed in as.
 Which account that is is the person's own choice: the Users page says when
 two BuilderBot accounts are on one Anthropic account, since Anthropic's
 terms allow one person per Claude account, and nothing is refused for it.
@@ -211,7 +216,7 @@ gets no shell, and their agent's session opens as a **console** instead:
 the real interface, rendered by a read-only terminal that takes no keys, with
 a box to type a message and a button to end the conversation. The controller
 refuses anything else they ask a terminal for, so a read-only window cannot be
-pointed at somebody else's session. They see the Containers and Toolchains pages
+pointed at somebody else's session. They see the Containers page and the Library
 for their own projects' nodes: the scoping is on the answer, not just the
 picker, so a node none of their projects builds on is refused rather than
 listed, and change neither, with one exception: **Rebuild**, and Abort with

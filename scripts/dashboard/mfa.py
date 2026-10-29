@@ -559,10 +559,3 @@ def cleared(*keys):
     with _lock:
         for k in keys:
             _misses.pop(k, None)
-
-
-def misses_of(key):
-    now = time.time()
-    with _lock:
-        return len([t for t in _misses.get(key, []) if now - t < WINDOW])
-

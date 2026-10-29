@@ -73,6 +73,29 @@ install -d "$MNT/builderbot/a" "$MNT/builderbot/b"
 install -m 0644 "$KERNEL" "$MNT/builderbot/a/vmlinuz"
 install -m 0644 "$INITRD" "$MNT/builderbot/a/initrd"
 install -m 0644 "$RELEASE" "$MNT/builderbot/a/release"
+# builderbot.env (R161 step 12): the lines a boot hands the controller
+# (usr/lib/builderbot-os/env), laid at a fixed 4 KiB behind a marker line so
+# the stick maker writes a person's --set lines into these same bytes while
+# the image streams, and nothing writes a FAT by hand on any system. A line
+# without "=" is nothing to the reader, so the padding is blank.
+{ { printf '%s\n' "# builderbot.env BB-STICK-ENV-1: KEY=VALUE lines the boot reads (TZ, BB_RELEASE_LINE)"
+    head -c 4096 /dev/zero | tr '\0' ' '; } | head -c 4095; printf '\n'
+} > "$MNT/builderbot.env"
+[ "$(stat -c %s "$MNT/builderbot.env")" = 4096 ] || die "builderbot.env is not its 4 KiB"
+# builderbot/firstboot.json (R161 step 8): a prepared configuration the
+# first boot applies, 64 KiB behind its marker line, blank here: a stick
+# maker's --config writes the JSON into these bytes, and the first boot
+# blanks them again once it has taken it.
+{ { printf 'BB-FIRSTBOOT-1\n'; head -c 65536 /dev/zero | tr '\0' ' '; } | head -c 65535; printf '\n'
+} > "$MNT/builderbot/firstboot.json"
+[ "$(stat -c %s "$MNT/builderbot/firstboot.json")" = 65536 ] || die "firstboot.json is not its 64 KiB"
+# builderbot/catalog-mirror.bin (R169 step 6): a mirror of the vetted
+# catalog for a machine with no network, 64 MiB behind its marker line and
+# a length line of zeros here: a stick maker's --mirror writes the archive
+# into these bytes, and each boot hands a filled one to the controller.
+{ { printf 'BB-MIRROR-1\n000000000000\n'; head -c 67108864 /dev/zero | tr '\0' ' '; } | head -c 67108863; printf '\n'
+} > "$MNT/builderbot/catalog-mirror.bin"
+[ "$(stat -c %s "$MNT/builderbot/catalog-mirror.bin")" = 67108864 ] || die "catalog-mirror.bin is not its 64 MiB"
 umount "$MNT"
 
 # ---- slot A, and the data partition ----------------------------------------

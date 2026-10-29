@@ -20,7 +20,7 @@ refresh written into it is sealed again within a pass. A login writes into
 the home as ever; the pass finds the plain file, seals it, and puts the
 link in its place. Copilot CLI keeps its token inside its config.json with
 its settings, so that file is sealed whole (R126 step 3): the settings in
-it are the CLI's own, read where it reads them, and the Agents page names
+it are the CLI's own, read where it reads them, and the Installed page names
 who is signed in from the seal's header as for the others.
 """
 import base64
@@ -71,7 +71,7 @@ def _jwt_email(d, depth=0):
 
 def about(agent, data, home):
     """What a sign-in says of itself, kept readable in its seal's header so
-    the Agents page can name who is signed in without opening it."""
+    the Installed page can name who is signed in without opening it."""
     out = {"agent": agent}
     with contextlib.suppress(ValueError, TypeError, AttributeError):
         if agent == "codex":

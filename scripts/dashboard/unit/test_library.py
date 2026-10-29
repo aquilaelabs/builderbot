@@ -70,7 +70,7 @@ class Rows(unittest.TestCase):
         self.assertEqual((r["tier"], r["verb"], r["catalog"]["sha256"], r["latest"]), ("vetted", "add", "e" * 64, "d" * 12))
 
     def test_the_open_rows_lines_ride_along(self):
-        # Step 2: what the Toolchains page's open row says comes with the row.
+        # Step 2: what a toolchain's open row says comes with the row.
         node = self.by[("toolchain", "node")]
         self.assertEqual((node["tool"], node["path"], node["needed_by"], node["pinned"], node["reopen"]), ("node", "/mnt/SDK/node", ["pnpm"], ["web"], 1))
         self.assertEqual(node["system"]["manager"], "apt")

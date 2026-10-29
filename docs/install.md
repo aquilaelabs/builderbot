@@ -71,7 +71,7 @@ just see them.
 **Docker template (recommended)**: get
 [`platforms/unraid/builderbot.xml`](../platforms/unraid/builderbot.xml) into
 `/boot/config/plugins/dockerMan/templates-user/`, then **Docker → Add
-Container →** pick *builderbot*. From the Unraid terminal that is one
+Container →** pick *builderbot*. From the host's terminal that is one
 `curl` of the raw file, in [docs/unraid.md](unraid.md#install).
 
 **Compose Manager**: copy `docker-compose.yml` + `.env.example`→`.env` into
@@ -98,7 +98,7 @@ Everything else has sane defaults: full reference in [reference.md](reference.md
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir: read-only; see [Static analysis reports](building.md#static-analysis-reports) |
 | Docker builds (CI jobs, a project's containers) | On a node, never in this container: a node's own Docker, or the Docker sandbox VM ([sandbox-vm.md](sandbox-vm.md)). The template has no Docker socket field |
-| Extra tools | the Toolchains page, per node; the controller carries what it needs in the image |
+| Extra tools | the Library, per node; the controller carries what it needs in the image |
 | Virtual machines | **VM host** in a node's Features section on the Nodes page (or ticked on Enroll node), on a machine with `/dev/kvm`; then the VMs page, see [vms.md](vms.md) |
 | A box on the internet that only serves | Enroll it hosting-only and tick the hosting firewall: it takes in 80 and 443 alone, and its page's **Lock down** stops and revokes it in one press |
 
@@ -132,8 +132,8 @@ only CUDA), each stored **runner token** is still accepted by its host, and
 on a node, where sessions run.
 
 Each person signs in to the agent they use (Claude, ChatGPT or Copilot) on
-each node they work on, from that agent's section of the node's Agents page
-(under Build): **Sign in**, which a project's **Start agent** offers the
+each node they work on, from that agent's row of the Installed page
+(under Machines): **Sign in**, which a project's **Start agent** offers the
 first time. The flow runs on that node, the machine the agent is installed
 on: Claude's code is pasted back in the section, and ChatGPT's and
 Copilot's device codes are entered at OpenAI or GitHub. Each node keeps the
@@ -186,7 +186,7 @@ the Controller settings page, or `/config/seed.json` before the first start
 
 **Updating**: CI publishes `:latest` for any push to `main` that touches the
 image's inputs (Dockerfile, `scripts/`, `config/`) + a weekly freshness
-rebuild. Unraid's *Check for Updates* flips the container to **update ready**,
+rebuild. The host's app page's *Check for Updates* flips the container to **update ready**,
 so click it. Builds seed their layer cache from the previous `:latest`, so a
 scripts-only change is a small pull; the Monday rebuild is uncached on purpose
 and is always the big one. *Run workflow* takes a **Rebuild every layer** box
@@ -207,6 +207,8 @@ compose file or template, and move it on when you choose to upgrade.
   0.5.3, say), in one step.
 - To a **new line** (0.6.0) **from the last release of the line before**
   (the newest 0.5.x). An older install goes there first, then on.
+- **0.9 upgrades from any 0.6.x, 0.7.x or 0.8.x** in one step. A 0.5.x or
+  older install goes through the newest 0.6.x first.
 - **No downgrades.** Going back is restoring the backup the upgrade made,
   below, with the older image.
 
@@ -291,7 +293,6 @@ controller). The reasons and the threat model are in
 ```bash
 sudo bash /opt/builderbot/nodes/install-controller.sh --update                 # the newest release
 sudo bash /opt/builderbot/nodes/install-controller.sh --update --release v0.7.0
-sudo bash /opt/builderbot/nodes/install-controller.sh --rollback               # the release before
 ```
 
 An update fetches the release's controller bundle
@@ -303,11 +304,10 @@ as unverified), asks its own state check whether it would start on this
 install's state (and changes nothing when it would not), lays it out beside
 the one in use, switches to it and restarts; the release before is kept.
 A new release that does not answer on its port within two minutes is
-rolled back by itself, the state copy put back, so the machine is never
+gone back from by itself, the state copy put back, so the machine is never
 left on a build that does not come up. The controller moves the state
-forward as it does in the container, with the same copy first, and
-`--rollback` puts that copy back when the newer release had moved the
-state on (what the state held then is kept under its `backups/`). The
+forward as it does in the container, with the same copy first. There is
+no going back by hand: a release moves forward only, and the
 [Upgrading](#upgrading) policy is the same.
 
 The page does the same without a shell: a newer release is a line on the

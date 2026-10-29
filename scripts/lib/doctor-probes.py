@@ -142,7 +142,7 @@ def login():
 
 def signed():
     """Codex's, Copilot's or Grok's account here, read as `bb login --list` reads
-    it (login-list.py), so doctor and the Agents page cannot disagree."""
+    it (login-list.py), so doctor and the Installed page cannot disagree."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "login_list", os.path.join(os.path.dirname(os.path.abspath(__file__)), "login-list.py"))

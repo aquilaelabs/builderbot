@@ -1,8 +1,13 @@
-// The Tools card and its package manager. Toolchains opens as a
-// document TAB: installing an SDK runs for minutes, so it belongs on the
-// strip rather than in a dialog to dismiss. The harness's bb stub makes and
-// removes directories rather than downloading gigabytes, so the whole round
-// trip runs in a second.
+// The toolchain store, its installer and the Library's cards for them. The
+// catalog is config/toolchains.json and bb's dispatch; the installer is the
+// controller's own (/api/toolchains with no node, "local"), driven here
+// through the API because it is the path that writes real files: the
+// harness's bb stub makes and removes directories rather than downloading
+// gigabytes, so a whole round trip runs in a second. What a person reads is
+// the Library's cards on the harness's sandbox node (a stub agent that
+// answers a toolchain job at once, failing it), the Installed page's rows,
+// and the tool pack dialog the Library's Add your own and a card's Edit
+// open. Then the shell libraries a session on a node reads its store with.
 import { launch, newPage, ok, done, ready, sectSave, URL, DIR } from './lib.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 
@@ -11,97 +16,60 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
 await page.goto(URL);
 await ready(page);
 
-// ---- on the rail -------------------------------------------------------
-// Since R170 the Build group opens on the Library, which reads this page's
-// rows; the page itself still opens by its address and from the bell.
-ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools.some(([k]) => k === 'library')) && railAllows('toolchains')), 'the Library is a page under Build on the rail, and Toolchains is allowed to whoever it allows');
-ok(await page.evaluate(() => railGroups().some(g => g.key === 'projects' && g.tools.some(([k]) => k === 'findings')) && railAllows('findings')), '...and the scanner report, Analysis, one under Projects');
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'projects' && g.tools.some(([k]) => k === 'findings')) && railAllows('findings')),
+   'the scanner report, Analysis, is a page under Projects on the rail');
 
-// ---- the tab -----------------------------------------------------------
-// Through the notebook first: a document that parks in the pane's stack used
-// to keep the pane's doc id, and the toolchains view then rendered into that
-// hidden node, a blank tab. The id has one owner now: whatever is shown.
-await page.evaluate(n => openNotebook(n), 'alpha');
-await page.waitForFunction(
-  // Loaded, whatever it holds, not merely started. This used to match the
-  // "loading…" placeholder, so it was satisfied the instant the panel opened
-  // and said nothing about the list arriving; that only came to light when
-  // the placeholder stopped sharing a class with the empty state.
-  () => { const l = document.querySelector('#roadmapList');
-          return !!l && !l.querySelector('.loading'); },
-                           { timeout: 20000 });
-await page.evaluate(() => openToolchains());
-// Toolchains are installed on nodes (roadmap #26): the tab opens on one (the
-// harness's stub agent here) and never offers "this container". With no
-// node at all it says to enroll one and offers nothing; shown by emptying
-// the page's node list, since the fixture always has the stub. The installer
-// the rest of this file exercises is still there for `bb toolchains install` from a
-// shell and for the suite, addressed as "local"; nothing on the page sets it.
-await page.waitForSelector('.doc .tctab #tcNodeSel', { timeout: 20000 });
-ok(await page.$$eval('.doc #tcNodeSel option', os => !os.some(o => o.value === 'local')),
-   'the Tools tab opens on a node and never offers this container');
-// ...nor does an address that names it: #/build/toolchains/local opens on a
-// node, its store under its own name (B25).
-{
-  // The page keeps its address under Build until R170 step 5 retires it.
-  await page.evaluate(() => { openRoute('#/build/toolchains/local'); });
-  await page.waitForFunction(() => tcNode && tcNode !== 'local' && toolchains?.name
-    && document.querySelector('.doc.on #tcNodeSel')?.value === tcNode, null, { timeout: 20000 });
-  ok(await page.waitForFunction(() => location.hash === '#/build/toolchains/' + encodeURIComponent(tcNode),
-       null, { timeout: 10000 }).then(() => true, () => false),
-     `an address naming "local" shows the picked node's store, and the address names that node (${
-       await page.evaluate(() => location.hash)})`);
-}
-await page.evaluate(() => { nodesList = []; tcNode = ''; toolchains = null; loadToolchains(); });
-await page.waitForSelector('.doc .tctab .tcnone', { timeout: 20000 });
-ok(await page.evaluate(() => !document.querySelector('.doc .tc') && !document.querySelector('#tcNodeSel')),
-   '...and with no node enrolled it says to enroll one, and offers nothing to install here');
-await page.evaluate(() => { nodesList = null; tcNode = 'local'; toolchains = null; loadToolchains(); });
-await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
-// Structural, not painted: under a loaded box checkVisibility can sample a
-// frame mid-layout. The claim is that the rows are in the document being
-// shown, not in a parked one.
-ok(!!await page.$('.pane .doc.on .tc'),
-   'toolchains render where they can be seen, even after another document parked in the pane');
-ok(await page.evaluate(() => tabs.some(t => t.kind === 'toolchains')
-     && tabOf(panes[active])?.kind === 'toolchains'),
-   'Toolchains opens a tab, and lands on it');
-// No Refresh (R256 step 1): the page follows the toolchains and nodes
-// revisions, so its bar is the node picker at the left and nothing to press
-// for a re-read; the pane's title bar carries no button of its own either.
-ok(await page.$('.pane .bar [data-reload]') === null && await page.$('.doc .tctab #tcRefresh') === null,
-   'neither the pane bar nor the tab\'s bar carries a Refresh');
-ok(await page.$eval('.doc .tctab .docbarrow', el => [...el.children].indexOf(el.querySelector('#tcNodeSel').closest('.pick')) === 0),
-   '...and the node picker sits at the bar\'s left');
-const rows = () => page.$$eval('.doc .tc', ls => ls.map(l => ({
-  name: l.querySelector('input').value,
-  installed: !!l.querySelector('.where.on'),
-  // Null while a job is on this row: it shows what it is doing in place of
-  // where it lives, so anything reading paths has to tolerate their absence.
-  // The table's Installed cell, and the path under the name (R218 step 8).
-  where: l.querySelector('.where') ? [l.querySelector('.where').textContent.trim(),
-    l.querySelector('.tcpath')?.textContent.trim()].filter(Boolean).join(' ') : null,
-})));
-let list = await rows();
-ok(list.length >= 6 && list.some(r => r.name === 'flutter') && list.some(r => r.name === 'android:emulator'),
-   'the tab lists the toolchains and the android packages');
-ok(list.every(r => !r.installed) && list.every(r => r.where === 'not installed'),
-   'a scratch root starts with nothing installed');
-ok(await page.$$eval('.doc .tcs .tc .pill', ps => ps.length === 0),
-   '...so no row carries a size or a version: nothing has been weighed yet');
-ok((await page.$$eval('.doc .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('installed'),
-   'the Toolchains page opens on tiles: what is installed of what is offered');
-// ...on the page's status line under the tiles (the operator, 17 Oct: one
-// order for every page's top).
-ok((await page.$eval('.doc .tcact', el => el.textContent)).includes(`${DIR}/sdk`),
-   'it says which root things are installed into, as a fact of the page\'s head');
+// ---- the API, as the page asks it ---------------------------------------
+// {status, ...the answer}: a refusal's status is part of what is checked.
+const api = (path, body) => page.evaluate(async ([p, b]) => {
+  const r = await fetch(p, b ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) } : {});
+  const j = await r.json().catch(() => ({}));
+  return { ...j, status: r.status };
+}, [path, body]);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// The controller's own store, which no page draws: read until `until` holds
+// of it, the last read handed back either way so a check can say what it saw.
+const local = () => api('/api/toolchains');
+const waitLocal = async (until, timeout = 30000) => {
+  let t = {};
+  for (const end = Date.now() + timeout; Date.now() < end; await sleep(300)){
+    t = await local();
+    if (until(t)) return t;
+  }
+  return t;
+};
+const item = (t, n) => (t.items || []).find(i => i.name === n);
+// Install as tcAct does: an agreement the server names (Google's Android SDK
+// terms) is accepted by name on a second ask, the person's press standing
+// for that acceptance on the page.
+const tcInstall = async (names, node) => {
+  const body = { action: 'install', names, ...(node ? { node } : {}) };
+  let j = await api('/api/toolchains', body);
+  if (j.status === 409 && Array.isArray(j.accept) && j.accept.length)
+    j = await api('/api/toolchains', { ...body, accept: j.accept.map(a => a.label) });
+  return j;
+};
+
+const sb = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
+const toLibrary = async () => {
+  await page.evaluate(id => openLibraryOn(id), sb.id);
+  await page.waitForFunction(id => libNode === id && lib && Array.isArray(lib.rows)
+    && !!document.querySelector(`.pane .doc.on .librarytab [data-libnode="${id}"]`), sb.id, { timeout: 20000 });
+};
+await toLibrary();
+
+// ---- the catalog ---------------------------------------------------------
 // The catalog is a file in the repository, not a list in the server: adding a
 // toolchain should be an edit somebody can make without reading python.
-const catalog = JSON.parse(                     // URL here is the dashboard's
+const catalog = JSON.parse(
   readFileSync(`${import.meta.dirname}/../../../config/toolchains.json`, 'utf8'));
-ok(catalog.toolchains.length === list.length
-   && catalog.toolchains.every(c => list.some(r => r.name === c.name)),
-   `the tab renders the catalog from config/toolchains.json (${catalog.toolchains.length} entries)`);
+let tc = await local();
+ok(catalog.toolchains.length === (tc.items || []).length
+   && catalog.toolchains.every(c => item(tc, c.name)),
+   `the store offers the catalog from config/toolchains.json (${catalog.toolchains.length} entries)`);
+ok(tc.items.every(i => !i.installed && !i.size && !i.version),
+   'a scratch root starts with nothing installed, and nothing weighed or versioned yet');
+ok(String(tc.root || '').includes(`${DIR}/sdk`), `the store says which root things are installed into (${tc.root})`);
 // What a session on a node needs from the store rather than from the image
 // (roadmap #24, step 4): the playwright module beside its browsers, with
 // NODE_PATH pointing at it, and the tools bb lint runs.
@@ -141,244 +109,225 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
     claimed.set(t.tool, t.name);
   }
   ok(missing.length === 0, `every tool a recipe declares is in bb's tool case, and one recipe's only (${missing.join('; ') || 'all agree'})`);
-  ok(await page.$$eval('.doc .tc .sub', ss => ss.some(s => /Adds .*bb tool graphics/.test(s.textContent))),
-     'a row says which tool installing it adds');
 }
 
-// Pressing Install accepts Google's SDK terms, and each Android row says so
-// with them linked: the acceptance is the operator's, not a script's. Every
-// other row names what it is licensed under (the operator, 7 Oct).
+// ---- the Library's toolchain cards, on the sandbox node --------------------
+// A card's Details says which tool installing it adds to a session, and
+// what installing it is under: an agreement Install accepts (Google's
+// Android SDK terms, linked: the acceptance is the operator's, not a
+// script's), else the licenses (the operator, 7 Oct).
 {
-  const terms = await page.$$eval('.doc .tc', rows => rows.map(r => ({
-    name: r.querySelector('input')?.value, text: r.querySelector('.tcterms')?.textContent || '',
-    google: !!r.querySelector('.tcterms a[href*="developer.android.com/studio/terms"]') })));
-  const android = terms.filter(t => /^android/.test(t.name));
-  ok(android.length && android.every(t => t.google && /Installing it asks you to accept Google's Android SDK terms/.test(t.text)),
-     `each Android row says Install accepts Google's Android SDK terms, linked (${android.length} rows)`);
-  const bare = terms.filter(t => !t.text);
-  ok(!bare.length, `...and every other row names its terms (${bare.map(t => t.name).join(', ') || 'none without'})`);
-  // ...on the open row: closed, a row is its name and one line of what it is
-  // for, its terms and the rest behind Details (R218 step 22).
-  const row = '.doc .tc:has(input[value="flutter"])';
-  ok(!(await page.$eval(`${row} .tcterms`, e => e.checkVisibility())) && await page.$eval(`${row} .tcabout`, e => e.getClientRects().length === 1),
-     'a closed toolchain row shows one line of what it is for, its terms put away');
-  await page.click(`${row} [data-tcmore]`);
-  await page.waitForFunction(r => document.querySelector(`${r} .tcterms`)?.checkVisibility(), row, { timeout: 5000 });
-  ok(!(await page.$eval(`${row} input`, i => i.checked)), '...Details opens it, and the press is not a tick');
-  await page.click(`${row} [data-tcmore]`);
+  const said = await page.evaluate(() => {
+    const keys = lib.rows.filter(r => r.kind === 'toolchain' && !r.machine && !r.wrong_platform).map(r => `toolchain:${r.name}`);
+    keys.forEach(k => libOpen.add(k)); libRev++; drawPanes();
+    const out = keys.map(k => {
+      const c = document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`);
+      const r = lib.rows.find(x => `toolchain:${x.name}` === k);
+      return { name: r.name, tool: r.tool || '', detail: c?.querySelector('.ldetail')?.textContent.replace(/\s+/g, ' ') || '',
+               terms: c?.querySelector('.ldetail .tcterms')?.textContent || '',
+               google: !!c?.querySelector('.ldetail .tcterms a[href*="developer.android.com/studio/terms"]') };
+    });
+    keys.forEach(k => libOpen.delete(k)); libRev++; drawPanes();
+    return out;
+  });
+  const withTool = said.find(s => s.name === 'graphics' && s.tool) || said.find(s => s.tool);
+  ok(!!withTool && withTool.detail.includes(`Adds bb tool ${withTool.tool} to a session`),
+     `a card's Details says which tool installing it adds (${withTool?.name}: ${withTool?.tool})`);
+  const android = said.filter(s => /^android/.test(s.name));
+  ok(android.length && android.every(s => s.google && /Installing it asks you to accept Google's Android SDK terms/.test(s.terms)),
+     `each Android card's Details says Install accepts Google's Android SDK terms, linked (${android.length} cards)`);
+  const bare = said.filter(s => !s.terms);
+  ok(said.length > android.length && !bare.length,
+     `...and every other toolchain card names its terms (${bare.map(s => s.name).join(', ') || 'none without'})`);
 }
 
-// ---- install two, watch them land --------------------------------------
-await page.check('.doc .tc input[value="flutter"]');
-await page.check('.doc .tc input[value="android:emulator"]');
-// The ticks live outside the DOM, so a redraw (one arrives every two
-// seconds while a job runs) must not quietly clear the selection.
-await page.evaluate(() => loadToolchains());
-await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
-ok(await page.$$eval('.doc .tc input:checked', is => is.length === 2),
-   'a redraw keeps what was ticked');
-await page.click('.doc [data-tc="install"]');
+// What a card says of where it stands, planted on a row and put back in the
+// same evaluate: the page re-reads on the toolchains and nodes revisions,
+// and a fake left across two round trips is one a real load lands on.
+const card = (name, patch) => page.evaluate(([n, p]) => {
+  const r = lib.rows.find(x => x.kind === 'toolchain' && x.name === n);
+  const was = { ...r };
+  Object.assign(r, p); libRev++; drawPanes();
+  const c = document.querySelector(`.doc .librarytab .lcard[data-lrow="toolchain:${n}"]`);
+  const st = c?.querySelector('.pcacts .state');
+  const out = { state: st?.textContent.trim() || '', cls: st?.className || '', dots: !!st?.querySelector('.dots'),
+                bar: !!c?.querySelector('.bar'),
+                acts: [...(c?.querySelectorAll('[data-libact]') || [])].map(b => b.textContent.trim()),
+                pills: [...(c?.querySelectorAll('.lcmeta .pill') || [])].map(x => x.textContent.trim()) };
+  for (const k of Object.keys(p)) delete r[k];
+  Object.assign(r, was); libRev++; drawPanes();
+  return out;
+}, [name, patch]);
+{
+  // One word and an ellipsis for the whole of a job: no percentage read out
+  // of the output (every recipe meters differently, several mislead), no bar,
+  // and no verb on the card while it is being written.
+  let d = await card('flutter', { running: true, doing: 'install' });
+  ok(d.state === 'installing' && d.dots && !d.bar && !d.acts.length,
+     `a card being installed says installing with an ellipsis, no bar and no verb (${d.state}; ${d.acts.join(', ')})`);
+  d = await card('flutter', { running: true, doing: 'remove', installed: true });
+  ok(d.state === 'removing' && d.dots && !d.bar, `...and one being removed says removing (${d.state})`);
+  d = await card('flutter', { installed: true, unknown: false, version: '3.0', update: false, latest: '' });
+  ok(d.state === 'installed' && /\bok\b/.test(d.cls) && !d.acts.includes('Install') && !d.pills.some(p => /is out/.test(p)),
+     `installed and current: it says installed, offers no Install, and claims no update (${d.state}; ${d.acts.join(', ') || 'no verb'})`);
+  d = await card('flutter', { installed: true, unknown: false, version: '3.0', update: true, latest: '3.1' });
+  ok(d.state === 'update available' && /\bwarn\b/.test(d.cls) && d.acts.includes('Update') && d.pills.includes('3.1 is out'),
+     `an update out says update available in amber, with Update and what is out (${d.state}; ${d.pills.join(', ')})`);
+  d = await card('flutter', { installed: false, unknown: false, update: false, latest: '' });
+  ok(d.state === '' && d.acts.includes('Install') && !d.pills.some(p => /warn/.test(p)),
+     '...and one not installed offers Install and says nothing amber');
+  // B31: a tool the census calls "present" has no version to show.
+  d = await card('flutter', { installed: true, unknown: false, version: 'present', update: false });
+  ok(d.state === 'installed' && !d.pills.includes('present'),
+     `a toolchain the census calls "present" reads installed, with no "present" pill (B31) (${d.pills.join(', ')})`);
+  // The dots are ticked by a timer, so a redraw must not reset them.
+  const dots = await page.evaluate(async () => {
+    const r = lib.rows.find(x => x.kind === 'toolchain' && x.name === 'flutter');
+    const was = { running: r.running, doing: r.doing };
+    Object.assign(r, { running: true, doing: 'install' }); libRev++; drawPanes();
+    const read = () => document.querySelector('.doc .librarytab .lcard[data-lrow="toolchain:flutter"] .dots')?.textContent ?? null;
+    const first = read();
+    await new Promise(res => setTimeout(res, 900));
+    const later = read();
+    libRev++; drawPanes();                      // a redraw, mid-animation
+    const after = read();
+    Object.assign(r, was); libRev++; drawPanes();
+    return { first, later, after };
+  });
+  ok(dots.later !== null && dots.later !== dots.first && dots.after === dots.later,
+     `...and the card's ellipsis animates, and a redraw does not reset it (${JSON.stringify(dots)})`);
+}
+// What a job said failed, under the card it failed on and no other.
+{
+  const bad = await page.evaluate(() => {
+    const was = lib.job;
+    lib.job = { ...(was || {}), running: false, errors: { flutter: 'could not download file · install failed (exit 1)' } };
+    libRev++; drawPanes();
+    const out = { text: document.querySelector('.doc .librarytab .lcard[data-lrow="toolchain:flutter"] .sub.bad')?.textContent || '',
+                  n: document.querySelectorAll('.doc .librarytab .lcard .sub.bad').length };
+    lib.job = was; libRev++; drawPanes();
+    return out;
+  });
+  ok(/could not download file/.test(bad.text) && bad.n === 1,
+     `a failure is said under the card that failed, and no other card wears it (${bad.text})`);
+}
+// One operation at a time (the server answers a second with a 409), so the
+// verbs go dead while one runs rather than letting a press earn an error.
+// Abort is the one control that has to work while a job runs.
+{
+  const g = await page.evaluate(() => {
+    const was = lib.job;
+    lib.job = { ...(was || {}), running: true, action: 'install', current: 'swift' };
+    libRev++; drawPanes();
+    const all = sel => [...document.querySelectorAll(sel)];
+    const installs = all('.doc .librarytab [data-libact="install"][data-libkind="toolchain"]');
+    const out = {
+      check: !!document.querySelector('.doc .librarytab [data-libcheck]')?.disabled,
+      abort: all('.doc .librarytab [data-libabort]').length === 1 && !document.querySelector('.doc .librarytab [data-libabort]').disabled,
+      install: installs.length > 0 && installs.every(b => b.disabled),
+    };
+    lib.job = was; libRev++; drawPanes();
+    return out;
+  });
+  ok(g.check && g.abort && g.install,
+     `while a job runs, Check for updates and every card's Install are dead and Abort is live (${
+       Object.entries(g).filter(([, v]) => !v).map(([k]) => k).join(', ') || 'all'})`);
+  // A check the operator did not start still has to reach the page, and the
+  // button says which job is in the way; the head keeps to the store (B31).
+  const c = await page.evaluate(() => {
+    const was = lib.job;
+    lib.job = { ...(was || {}), running: true, action: 'check' };
+    libRev++; drawPanes();
+    const b = document.querySelector('.doc .librarytab [data-libcheck]');
+    const out = { t: b?.textContent || '', dots: !!b?.querySelector('.dots'),
+                  head: document.querySelector('.doc .librarytab .pghead')?.textContent || '' };
+    lib.job = was; libRev++; drawPanes();
+    return out;
+  });
+  ok(/^Checking for updates/.test(c.t) && c.dots && !/Checking/.test(c.head),
+     `...and Check for updates says it is checking, once: the head keeps to the store (B31) (${c.t.trim()})`);
+  ok(await page.$eval('.doc .librarytab [data-libcheck]', b => !b.disabled),
+     '...and the bar is live again when it finishes');
+  // The answers are dated, because a number with no date on it goes stale.
+  const when = await page.evaluate(() => {
+    const was = lib.store;
+    const read = () => /Versions checked/.test(document.querySelector('.doc .librarytab .pghead')?.textContent || '');
+    lib.store = { ...(was || {}), checked: 0 }; libRev++; drawPanes();
+    const none = read();
+    lib.store = { ...(was || {}), checked: Math.floor(Date.now() / 1000) - 3600 }; libRev++; drawPanes();
+    const some = read();
+    lib.store = was; libRev++; drawPanes();
+    return { none, some };
+  });
+  ok(!when.none && when.some, 'the head says when versions were last checked, and nothing while they never were');
+}
+// A retired node's directory on the store is offered with Remove (R196).
+{
+  const seen = await page.evaluate(() => {
+    const was = lib.cleanable;
+    lib.cleanable = [{ dir: 'n_0ldd0ne1', what: "gone's, a node since retired" }]; libRev++; drawPanes();
+    const out = { head: (document.querySelector('.doc .librarytab .pghead')?.textContent || '').replace(/\s+/g, ' '),
+                  rm: !!document.querySelector('.pane [data-libclean].danger') };
+    lib.cleanable = was; libRev++; drawPanes();
+    return out;
+  });
+  ok(/Remove takes\W*n_0ldd0ne1 \(gone's, a node since retired\)/.test(seen.head) && seen.rm,
+     `a retired node's directory on the store is in the head's Remove takes, with Remove in the bar (R196) (${seen.head.slice(-70)})`);
+}
+
+// ---- install two on the controller's store, watch them land ----------------
 // More than two land: android:emulator is installed BY sdkmanager, which
 // android-tools provides, which needs a JDK, and the emulator is useless
 // without adb, so platform-tools comes too. That is the point of `requires`;
 // before it, this pair installed and then failed inside sdkmanager with a
-// message naming neither.
-//
-// Asserted as a SET rather than a count. A count has to be edited every time
-// the catalog declares another dependency, which it has done twice, and each
-// edit is a chance to write down a number instead of a fact.
-// The job finishing is not the rows showing it: wait for the payload to
-// carry the whole chain, which is what the draw then reflects.
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
-  && ['flutter', 'android:emulator', 'android-tools', 'android:platform-tools', 'jdk']
-       .every(n => (toolchains.items || []).find(i => i.name === n)?.installed),
-  { timeout: 30000 });
-const landed = await page.$$eval('.doc .tc', rs =>
-  rs.filter(r => r.querySelector('.where')?.classList.contains('on'))
-    .map(r => r.querySelector('input')?.value));
-ok(['flutter', 'android:emulator', 'android-tools', 'android:platform-tools', 'jdk']
-     .every(n => landed.includes(n)),
-   `ticking a toolchain installs what it needs alongside it, transitively (${landed.join(', ')})`);
-list = await rows();
-const flutter = list.find(r => r.name === 'flutter');
-const emu = list.find(r => r.name === 'android:emulator');
-ok(flutter.installed && flutter.where.includes(`${DIR}/sdk/flutter`),
-   'flutter installs to the toolchain store root, and the row says where');
-ok(emu.installed && emu.where.includes(`${DIR}/androidsdk/emulator`),
-   'an android package resolves to its place in the SDK tree');
-ok(existsSync(`${DIR}/sdk/flutter`) && existsSync(`${DIR}/androidsdk/emulator`),
-   '...and both really exist on disk');
-ok(await page.$('.pkglog') === null,
-   'no scrolling log at the foot of the tab; a job says what it is doing on its row');
-// The ticks are the operator's, and a poll every two seconds must not
-// quietly clear them mid-install.
-
-// A finished install lets go of its ticks, so the next click cannot act on
-// what was just dealt with, Remove especially.
-// Enabled boxes only: an installed-and-current row is ticked on purpose now,
-// and that tick is a statement about the toolchain rather than a selection.
-ok(await page.$$eval('.doc .tc input:not(:disabled)', is => is.every(i => !i.checked)),
-   'a finished job clears the selection it consumed');
-// ...but only when it is finished. Through the job the tick stays put, which
-// is what says which toolchains the job is for.
-const held = await page.evaluate(() => {
-  const saved = toolchains.job;
-  tcTicked.add('swift');
-  toolchains.job = {running: true, action: 'install', current: 'swift',
-                  queue: [], log: [], done: [], failed: []};
-  tcRev++; drawPanes();
-  const box = document.querySelector('.doc .tc input[value="swift"]');
-  const out = { checked: box.checked, ghosted: box.disabled };
-  tcTicked.delete('swift');
-  toolchains.job = saved; tcRev++; drawPanes(); clearTimeout(tcPoll);
-  return out;
-});
-ok(held.checked && held.ghosted,
-   '...while a toolchain being installed stays ticked, and ghosted with it');
-ok(await page.$$eval('.doc .tc input:disabled', is => is.length > 0 && is.every(i => i.checked)),
-   '...and what is installed and current shows a ticked box that cannot be changed');
-
-// ---- what a row says while the job is on it -----------------------------
-// One word and an ellipsis, for the whole of a job. No percentage is read out
-// of the output any more: every recipe meters differently and several mislead
-// by accident, and a row relaying any of it faithfully still read as broken.
-// "installed at /sdk/flutter" also used to appear the moment the download
-// created that directory, which is the first second of a four-minute job.
-const during = (job) => page.evaluate(j => {
-  const saved = toolchains.job;
-  toolchains.job = {running: true, queue: [], log: [], done: [], failed: [], ...j};
-  tcRev++; drawPanes();
-  const row = [...document.querySelectorAll('.doc .tc')]
-    .find(l => l.querySelector('input').value === 'flutter');
-  const out = { text: row.querySelector('.prog')?.textContent.trim(),
-                bar: !!row.querySelector('.prog .bar'),
-                ticked: !!row.querySelector('input:checked'),
-                bin: !!row.querySelector('[data-rm]'),
-                where: row.querySelector('.where')?.textContent.trim() || null };
-  toolchains.job = saved; tcRev++; drawPanes();
-  clearTimeout(tcPoll);   // the fake state must not outlive this check
-  return out;
-}, job);
-
-let d = await during({ action: 'install', current: 'flutter' });
-ok(d.text.startsWith('installing') && !d.bar && d.where === null,
-   'the row being installed says installing, with no bar and no path');
-// Mid-install the directory exists, so every probe calls it installed. The row
-// must not wear any of the furniture that means "this is here": a half-written
-// NDK showed a ticked box, an uninstall bin and the version "installed".
-ok(!d.ticked && !d.bin,
-   '...and carries no ticked box or uninstall control while it is being written');
-d = await during({ action: 'remove', current: 'flutter' });
-ok(d.text.startsWith('removing') && !d.bar,
-   'a removal says removing, and gets no bar either');
-// A check writes nothing, so the row it is on keeps its path and its controls;
-// stripping each in turn made the tab churn through a check that, once a
-// day, nobody asked for.
-d = await during({ action: 'check', current: 'flutter' });
-ok(d.text === undefined && d.where !== null,
-   'a check leaves the row it is reading exactly as it was');
-ok((await page.$$eval('.doc .tc .where', ws => ws.length)) > 0,
-   'and the paths come back when the job is over');
-// The dots are ticked by a timer, so a redraw must not reset them.
-const dots = await page.evaluate(async () => {
-  const saved = toolchains.job;
-  toolchains.job = {running: true, queue: [], log: [], done: [], failed: [],
-                  action: 'install', current: 'flutter'};
-  tcRev++; drawPanes();
-  const read = () => document.querySelector('.tc .prog .dots')?.textContent ?? null;
-  const first = read();
-  await new Promise(r => setTimeout(r, 900));
-  const later = read();
-  tcRev++; drawPanes();                      // a redraw, mid-animation
-  const after = read();
-  toolchains.job = saved; tcRev++; drawPanes();
-  clearTimeout(tcPoll); clearInterval(tcDotsTimer); tcDotsTimer = null;
-  return { first, later, after };
-});
-ok(dots.later !== dots.first && dots.after === dots.later,
-   '...and the ellipsis animates, and a redraw does not reset it');
+// message naming neither. Asserted as a SET rather than a count: a count has
+// to be edited every time the catalog declares another dependency.
+const CHAIN = ['flutter', 'android:emulator', 'android-tools', 'android:platform-tools', 'jdk'];
+const started = await tcInstall(['flutter', 'android:emulator']);
+ok(started.ok !== false && started.status === 200, `Install starts a job on the controller's store (${started.error || 'started'})`);
+tc = await waitLocal(t => t.job && !t.job.running && CHAIN.every(n => item(t, n)?.installed));
+ok(CHAIN.every(n => item(tc, n)?.installed),
+   `installing a toolchain installs what it needs alongside it, transitively (${(tc.items || []).filter(i => i.installed).map(i => i.name).join(', ')})`);
+ok(item(tc, 'flutter').path === `${DIR}/sdk/flutter`, `flutter installs to the toolchain store root (${item(tc, 'flutter').path})`);
+ok(item(tc, 'android:emulator').path === `${DIR}/androidsdk/emulator`,
+   `an android package resolves to its place in the SDK tree (${item(tc, 'android:emulator').path})`);
+ok(existsSync(`${DIR}/sdk/flutter`) && existsSync(`${DIR}/androidsdk/emulator`), '...and both really exist on disk');
 
 // ---- versions and updates ----------------------------------------------
 // The installed version is local knowledge and shows without being asked;
-// whether something newer exists is a network question, and until it is asked
-// no row claims anything.
-ok((await page.$$eval('.doc .tcs .tc .where .pill', ps => ps.map(p => p.textContent)))
-     .some(t => t === '1.0'), 'installed versions show without a check');
-ok(await page.$$eval('.doc .tc .upd', us => us.length === 0),
-   'no update claims before a check');
+// whether something newer exists is a network question, and until it is
+// asked nothing claims anything.
+ok(tc.items.some(i => i.installed && i.version === '1.0'), 'installed versions are known without a check');
+ok(tc.items.every(i => i.state !== 'update'), 'no update claims before a check');
 // No size is typed into the catalog (a typed one is wrong the next time
-// upstream ships), so a row carries one only once this box has weighed it,
-// measured by a worker and arriving a moment after the row does.
-// A row's pill in one column of the table (R218 step 8): Installed, Latest
-// or Size.
-const pill = (name, col = 'Size') => page.$$eval('.doc .tc', (ls, [v, c]) => {
-  const l = ls.find(x => x.querySelector('input').value === v);
-  const p = l?.querySelector(`.td[data-th="${c}"] .pill`);
-  return p ? { text: p.textContent, title: saidOf(p) } : null;
-}, [name, col]);
-await page.waitForFunction(() => {
-  const l = [...document.querySelectorAll('.doc .tc')]
-    .find(x => x.querySelector('input').value === 'flutter');
-  return l && /measured/.test(saidOf(l.querySelector('.td[data-th="Size"] .pill')));
-}, { timeout: 30000 });
-ok(/measured on disk/.test((await pill('flutter')).title),
-   'an installed toolchain shows what it takes on disk, and says so');
-ok((await pill('swift')) === null,
-   '...and one this box has never had shows no size at all rather than a guess');
-// A check spends no selection (it asks about every row regardless), so
-// whatever was ticked before it must survive it.
-await page.check('.doc .tc input[value="swift"]');
-await page.click('.doc [data-tc="check"]');
+// upstream ships), so a toolchain carries one only once this box has
+// weighed it, measured by a worker and arriving a moment after the read.
+tc = await waitLocal(t => /measured on disk/.test(item(t, 'flutter')?.size_from || ''));
+ok(/measured on disk/.test(item(tc, 'flutter').size_from) && !!item(tc, 'flutter').size,
+   `an installed toolchain says what it takes on disk, and says so (${item(tc, 'flutter').size})`);
+ok(!item(tc, 'swift').size, '...and one this box has never had says no size at all rather than a guess');
 // The whole catalog, not just what is installed, so wait for the job to end
-// rather than for the first row to answer: asserting on a toolchain further
-// down the list while its check was still queued passed only by luck.
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
-                             && document.querySelector('.doc .tc .upd') !== null,
-                           { timeout: 30000 });
-ok(await page.$eval('.doc .tc input[value="swift"]', i => i.checked),
-   'a check leaves the selection alone; it consumed nothing');
-await page.uncheck('.doc .tc input[value="swift"]');
-const upd = await page.$$eval('.doc .tc', ls => ls
-  .filter(l => l.querySelector('.upd'))
-  .map(l => l.querySelector('input').value));
-ok(upd.length === 1 && upd[0] === 'flutter',
-   'the check marks exactly the toolchain whose upstream moved');
-ok(await page.$eval('.doc .tc input[value="android:emulator"]', i => i.disabled),
-   'installed and current: the tick is dead, there is nothing to do');
-ok(!(await page.$eval('.doc .tc input[value="flutter"]', i => i.disabled)),
-   '...but an update brings its tick back');
-ok(!(await page.$eval('.doc .tc input[value="swift"]', i => i.disabled)),
-   'and something not installed at all is always tickable');
-ok((await pill('flutter', 'Latest')) === null,
-   '...and an installed row carries no second version: the words below say it');
-// Its Latest column: a row this box has never installed says what it would fetch.
-ok((await pill('swift', 'Latest')).text === '9.9'
-   && /would fetch/.test((await pill('swift', 'Latest')).title),
-   'a toolchain that has never been installed says what Install would fetch');
-// Its Size column is the download: the only size a toolchain this box has
-// never had can honestly show, and upstream is the one that knows it.
-ok(/download/.test((await pill('swift', 'Size')).text)
-   && /from upstream/.test((await pill('swift', 'Size')).title),
-   '...and what the download weighs, asked of upstream rather than guessed');
+// rather than for the first answer.
+await api('/api/toolchains', { action: 'check', names: [] });
+tc = await waitLocal(t => t.job?.action === 'check' && !t.job.running && t.checked > 0);
+const upd = tc.items.filter(i => i.state === 'update').map(i => i.name);
+ok(upd.length === 1 && upd[0] === 'flutter', `the check marks exactly the toolchain whose upstream moved (${upd.join(', ')})`);
+ok(item(tc, 'swift').latest === '9.9', 'a toolchain that has never been installed says what Install would fetch');
+// ...and its size is the download: the only size a toolchain this box has
+// never had can honestly say, and upstream is the one that knows it.
+ok(/download/.test(item(tc, 'swift').size) && /from upstream/.test(item(tc, 'swift').size_from),
+   `...and what the download weighs, asked of upstream rather than guessed (${item(tc, 'swift').size})`);
+ok(item(tc, 'swift').state !== 'update', '...and says it plainly: only an actual update is one');
 // The answers cost a network round trip each, so they are kept on the state
-// volume (a dashboard restart used to wipe every version the tab had been
-// told) and dated, because a number with no date on it goes quietly stale.
-ok(/versions checked/i.test(await page.$eval('.doc.on .tcact', el => el.textContent)),
-   '...and the tab says how old the answers are');
-// Its actions in the page's bar with every header button (the operator, 16
-// and 17 Oct): Check, then Install selected at its right.
-ok(await page.$eval('.doc.on .tctab .docbarrow', b => {
-     const btns = [...b.querySelectorAll('.actbar button')].map(x => x.dataset.tc || x.textContent.trim());
-     return btns.at(-1) === 'install' && btns.includes('check') && !document.querySelector('.doc.on .tcact button'); }),
-   '...Check for updates and Install selected in the bar, Install last, and nothing pressed on the status line');
+// volume and dated.
 const stored = JSON.parse(readFileSync(`${DIR}/state/toolchain-versions.json`, 'utf8'));
 ok(stored.at > 0 && stored.items.flutter.status === 'update',
    '...and they are on disk, to outlive the process that asked');
-// So is the LOCAL read, which is the one that made this tab slow to open
-// after every container restart: `bb toolchains versions` is a couple of seconds
-// across every toolchain, and the answer had not changed. Keyed by what it is
-// an answer about (the set of installed paths, and the catalog's own digest),
-// so installing something, or editing a recipe, is not answered from it.
+// So is the local version read: `bb toolchains versions` is a couple of
+// seconds across every toolchain, and the answer has not changed. Keyed by
+// what it is an answer about (the set of installed paths, and the catalog's
+// own digest), so installing something, or editing a recipe, is not answered
+// from it.
 ok(stored.local && typeof stored.local.key === 'string' && stored.local.key,
    '...as is the local version read, with the key it is an answer for');
 ok(stored.catalog && stored.local.key.startsWith(stored.catalog),
@@ -408,275 +357,70 @@ print(json.dumps({"at": m._tc_checked, "local": bool(m._tc_local.get("versions")
   ok(moved.at === 0,
      '...and an edited catalog resets it, because the answers describe recipes');
 }
-ok(await page.$$eval('.doc .tc', ls => ls
-     .filter(l => l.querySelector('input').value === 'swift')
-     .every(l => l.querySelectorAll('.pill.warn').length === 0)),
-   '...and says it plainly: only an actual update is amber');
-// Update runs like the others: a job, and the ticks it consumed.
-await page.check('.doc .tc input[value="flutter"]');
-await page.click('.doc [data-tc="install"]');
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
-  && (toolchains.job.done || []).includes('flutter'), { timeout: 30000 });
-ok(await page.evaluate(() => (toolchains.job.failed || []).length === 0),
-   'Install selected updates a toolchain that is already installed');
-ok(await page.$$eval('.doc [data-tc]', bs => bs.every(b => b.textContent.indexOf('Remove') < 0)),
-   'there is no bulk remove button to mis-click');
-
-// ---- a long job, through the real path ---------------------------------
-// The stub's `go` install draws a carriage-return progress bar over several
-// seconds. None of it should reach the row: the point of this tab is that a
-// job says what it is doing and nothing else, however much the tool underneath
-// is counting.
-await page.check('.doc .tc input[value="go"]');
-await page.click('.doc [data-tc="install"]');
-const seen = new Set(), bars = [];
-for (let i = 0; i < 20; i++){
-  const s = await page.evaluate(() => {
-    const row = [...document.querySelectorAll('.doc .tc')]
-      .find(l => l.querySelector('input').value === 'go');
-    return { t: row?.querySelector('.prog')?.textContent.trim() || null,
-             bar: !!row?.querySelector('.prog .bar'),
-             running: !!toolchains?.job?.running };
-  });
-  if (s.running && s.t) { seen.add(s.t.replace(/\.+$/, '')); bars.push(s.bar); }
-  await new Promise(r => setTimeout(r, 250));
-}
-ok(seen.size === 1 && seen.has('installing'),
-   `a running install only ever says installing (${[...seen].join(' | ')})`);
-ok(bars.length > 1 && bars.every(b => !b),
-   `...and never draws a bar (${bars.length} samples)`);
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running, { timeout: 30000 });
-// Put it back the way it was found: what follows counts installed toolchains,
-// and a third one left lying around here is how this file first went red.
-await page.evaluate(() => tcAct('remove', ['go']));
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
-  && !(toolchains.items || []).find(i => i.name === 'go')?.installed, { timeout: 30000 });
-
-// ---- uninstall is per row, and asks ------------------------------------
-// One control per installed row, whatever that number happens to be.
-ok(await page.$$eval('.doc .tc', ls => {
-     const on = ls.filter(l => l.querySelector('.where')?.classList.contains('on'));
-     return on.length > 0 && on.every(l => l.querySelector('[data-rm]'))
-            && ls.filter(l => l.querySelector('[data-rm]')).length === on.length;
-   }),
-   'every installed toolchain carries its own uninstall control, and only those');
-ok(await page.$('.doc .tc:not(:has([data-rm])) [data-rm]') === null,
-   '...and toolchains that are not installed do not');
-// One operation at a time (the server answers a second with a 409), so the
-// controls go dead while one runs rather than letting a click earn an error.
-// The bin icons were the gap: only the two big buttons were being disabled.
-// Set, read and put back in ONE evaluate. The tab re-reads itself whenever
-// the toolchains token moves, and the uninstall just above moves it, so a
-// fake planted in one round trip and read in the next four is a fake a real
-// load can land on top of, which is what it started doing.
-const ghosted = await page.evaluate(() => {
-  const was = toolchains.job.running;
-  toolchains.job.running = true; tcRev++; drawPanes();
-  const all = sel => [...document.querySelectorAll(sel)];
-  const r = {
-    bins: all('.doc [data-rm]').length > 0
-          && all('.doc [data-rm]').every(b => b.disabled),
-    // Abort excluded: it is the one control that has to work while a job runs.
-    buttons: all('.doc [data-tc]:not([data-tc="abort"])').every(b => b.disabled),
-    abort: all('.doc [data-tc="abort"]').length === 1
-           && !all('.doc [data-tc="abort"]')[0].disabled,
-    boxes: all('.doc .tc input').length > 0
-           && all('.doc .tc input').every(i => i.disabled),
-  };
-  toolchains.job.running = was; tcRev++; drawPanes(); clearTimeout(tcPoll);
-  return r;
-});
-ok(ghosted.bins && ghosted.buttons && ghosted.abort && ghosted.boxes,
-   `while a job runs, every button and every checkbox is ghosted (${
-     Object.entries(ghosted).filter(([, v]) => !v).map(([k]) => k).join(', ') || 'all'})`);
-// A check the operator did not start still has to reach the page, or the
-// buttons stay live and a click earns "a version check is running" for an
-// operation nobody could see. The button says which job is in the way.
-const checking = await page.evaluate(() => {
-  // Both halves planted here rather than relying on the block above leaving
-  // one behind: each of these is its own scenario, and a state carried
-  // between them is a state the next real load quietly takes away.
-  const was = [toolchains.job.action, toolchains.job.running];
-  toolchains.job.action = 'check'; toolchains.job.running = true;
-  tcRev++; drawPanes();
-  const t = document.querySelector('.doc [data-tc="check"]').textContent;
-  const line = document.querySelector('.doc .tcact .tcworking')?.textContent || document.querySelector('.doc .tcact')?.textContent || '';
-  [toolchains.job.action, toolchains.job.running] = was;
-  tcRev++; drawPanes(); clearTimeout(tcPoll);
-  return { t, line };
-});
-ok(/^Checking for updates/.test(checking.t) && !/Checking/.test(checking.line),
-   `...and the check button says what it is doing, once: the status line keeps to the store (B31) (${
-     checking.t.trim()} | ${checking.line.trim().slice(0, 60)})`);
-await page.evaluate(() => { toolchains.job.running = false; tcRev++; drawPanes(); });
-ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled))
-   && await page.$$eval('.doc .tc input:not(:disabled)', is => is.length > 0),
-   '...and live again when it finishes');
-// The tab at rest first. Every job ends with the server measuring the sizes
-// again (du over every tree, slow on a loaded box), and the tab asks every
-// second and a half until that lands and repaints its rows when it does, so
-// the click below met a list being rewritten under it: a bin replaced
-// between the press and the release takes no click at all, nothing asked,
-// nothing removed, and the wait after it ran out (B463). So the sizes are
-// waited for, and the click is made again while no confirmation has come.
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
-  && !toolchains.sizing && !tcSizeTimer, { timeout: 30000 });
-const emuLabel = await page.$eval('.doc .tc:has([data-rm="android:emulator"]) .nm', e => e.textContent.trim()).catch(() => '');
-const nd = page.dialogs.length;
-let presses = 0;
-while (page.dialogs.length === nd && presses < 3){
-  presses++;
-  await page.click('.doc [data-rm="android:emulator"]');
-}
-// ...by the name its row shows, not its id (B65: a pack's read as its id).
-ok(page.dialogs.length === nd + 1 && !!emuLabel && page.dialogs[nd].includes(`Uninstall ${emuLabel}?`),
-   `uninstalling asks first, naming it as its row does (${presses} press(es): ${page.dialogs.slice(nd).join(' | ') || 'nothing asked'}; ${emuLabel})`);
-// The job, not just the count: a row being removed has no path line at all,
-// so "one installed path" is briefly true mid-removal, and everything after
-// this reads paths. On this runner that race is the difference between green
-// and a null dereference.
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
-  && !(toolchains.items || []).find(i => i.name === 'android:emulator')?.installed,
-  { timeout: 30000 });
-list = await rows();
-ok(!list.find(r => r.name === 'android:emulator').installed
-   && list.find(r => r.name === 'flutter').installed,
-   'removing the ticked one leaves the other alone');
-ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
-
-// The tab is laid out like the notebook and the other document tabs. It was
-// the odd one out: an inset on the darker ground rather than filling its pane,
-// a 12px gutter applied to a wrapper instead of 14px on the rows, and a hover
-// highlight no other list here has, in a hardcoded color no scheme reached.
-ok(await page.$eval('.doc:has(.tc)', e => e.classList.contains('flush')),
-   'the Toolchains page fills its pane, like every other document tab');
-// The row on show, and the two read in one frame and waited for until they
-// agree (B792, B444). This failed twice under a whole run's load and passed
-// alone, and no rule, token or script found here moves either side, so the
-// cause is not known; it read the first .tc anywhere and said nothing of
-// what it saw, which is why it stayed unknown. It reads the shown tab's row
-// now, not a copy a redraw fades out, and says both values when they differ.
-const band = () => page.evaluate(() => {
-  const e = document.querySelector('.pane .doc.on .tc:not(.fghost .tc)');
-  const c = getComputedStyle(document.documentElement);
-  const want = `${c.getPropertyValue('--row-y').trim()} ${c.getPropertyValue('--row-x').trim()}`;
-  return { got: e ? getComputedStyle(e).padding : 'no row', want };
-});
-await page.waitForFunction(() => {
-  const e = document.querySelector('.pane .doc.on .tc:not(.fghost .tc)');
-  const c = getComputedStyle(document.documentElement);
-  return !!e && getComputedStyle(e).padding
-    === `${c.getPropertyValue('--row-y').trim()} ${c.getPropertyValue('--row-x').trim()}`;
-}, { timeout: 5000 }).catch(() => {});
-const bandRead = await band();
-ok(bandRead.got === bandRead.want,
-   `...on the same band the notebook uses (the band tokens), so the two do not disagree by two pixels (${bandRead.got}; tokens ${bandRead.want})`);
-ok(await page.evaluate(() => {
-     const host = document.querySelector('.doc:has(.tc)');
-     const bin = document.querySelector('.tc .rm');
-     return bin && Math.round(host.getBoundingClientRect().right
-                              - bin.getBoundingClientRect().right) >= 12;
-   }), '...and the bin has a margin to sit in rather than the edge of the pane');
-
-// ---- what it is doing, beside what started it ---------------------------
-// The status used to be the Install button's label, which made a toolchain id
-// into a green banner across the tab. It is green text beside the button now,
-// and beside *whichever* button started it, because on a phone the picker
-// is a screenful above the Install row.
-await page.check('.doc .tc input[value="go"]');
-await page.click('.doc [data-tc="install"]');
-await page.waitForFunction(() => toolchains?.job?.running);
-ok(await page.$eval('.doc [data-tc="install"]',
-     b => b.textContent.trim() === 'Install selected' && b.disabled),
-   'the Install button keeps its own name and goes dead, rather than becoming a banner');
-// ...said in the bar's state slot, by the name on the toolchain's row rather
-// than its recipe id (the operator, 6 Oct: "Installing ndk...").
-const label = await page.$eval('.doc .tc input[value="go"]', i => i.closest('.tc').querySelector('.nm').firstChild.textContent.trim());
-ok(await page.$eval('.doc .tcact .state.tcworking', (e, l) => e.textContent.startsWith(`Installing ${l}`), label)
-   && await page.$('.doc .tcact .tcworking .dots') !== null,
-   `...with what it is doing as the bar's state, by the row's name, and an ellipsis (${
-     await page.$eval('.doc .tcact .tcworking', e => e.textContent).catch(() => 'none')})`);
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
-                           { timeout: 60000 });
-
-
-// ---- a failure, where the failure happened ------------------------------
-// There used to be a scrolling log at the foot of the tab holding every line
-// every command printed. What anybody ever wanted out of it was which toolchain
-// failed and why, so that is what is kept now, on that toolchain's own row.
-await page.check('.doc .tc input[value="rust"]');
-await page.click('.doc [data-tc="install"]');
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
-  && (toolchains.job.failed || []).includes('rust'), { timeout: 30000 });
-const rustErr = await page.$eval('.doc .tc:has(input[value="rust"]) .sub.bad',
-                                 e => e.textContent).catch(() => "");
-ok(/could not download file/.test(rustErr),
-   `the failing row says what went wrong (${rustErr.slice(0, 52)})`);
-ok(!/\[====\]/.test(rustErr), '...without the progress frames that filled the old log');
-ok(/exit 1/.test(rustErr),
-   '...and the exit code, since a killed tool prints nothing at all');
-ok(await page.$$eval('.doc .tc .sub.bad', e => e.length === 1),
-   'and no other row is wearing it');
-// Trying again is what clears it: by then it describes a state that is over.
-await page.check('.doc .tc input[value="rust"]');
-await page.click('.doc [data-tc="install"]');
-await page.waitForFunction(() => toolchains?.job?.running
-  && toolchains.job.current === 'rust', { timeout: 30000 });
-ok(await page.$$eval('.doc .tc .sub.bad', e => e.length === 0),
-   '...and asking again clears it, because it is no longer the answer');
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
-                           { timeout: 30000 });
-
-// ---- a recipe that cannot update in place (bug #43) ---------------------
-// The check asks UPSTREAM, not the recipe, so it can report a newer version
-// for a toolchain `bb toolchains update` has no case for. Ticking that used to route
-// to update and die on its usage line, naming five toolchains nobody asked
-// about. The row says so instead, before the press.
+// Update runs like an install: a job, on what is already installed.
+await tcInstall(['flutter']);
+tc = await waitLocal(t => t.job?.action === 'install' && !t.job.running && (t.job.done || []).includes('flutter'));
+ok((tc.job.done || []).includes('flutter') && !(tc.job.failed || []).length,
+   'Install on a toolchain that is already installed updates it');
+// The catalog says which recipes update in place (bug #43), not a list in
+// the server: a tarball recipe is removed and installed again instead.
 {
-  const rows = await page.$$eval('.doc .tc', ls => ls.map(l => ({
-    name: l.querySelector('input')?.value,
-    disabled: !!l.querySelector('input')?.disabled,
-    title: saidOf(l.querySelector('input')),
-  })));
-  const go = rows.find(r => r.name === 'go');
-  ok(go && go.disabled && /no update in place/.test(go.title),
-     `an installed tarball recipe cannot be ticked, and says why (${
-       (go?.title || 'no row').slice(0, 60)})`);
-  const fl = rows.find(r => r.name === 'flutter');
-  ok(fl && !/no update in place/.test(fl.title),
-     'while one that CAN update in place is not marked that way');
-  // ...and when a newer version is out, its box is live and the row says
-  // the install removes the old one first (R193, the operator, 11 Oct; before
-  // that the locked box told them to uninstall it by hand, 6 Oct, JDK 21).
-  const out = await page.evaluate(() => {
-    const d = document.createElement('div');
-    d.innerHTML = tcRow({ name: 'go', label: 'Go', installed: true, updatable: false, state: 'update', about: '' },
-                        false, null, true);
-    return { line: d.querySelector('.sub.upd')?.textContent || '', dead: !!d.querySelector('input')?.disabled };
-  });
-  ok(!out.dead && /tick it and press Install selected; it is removed and installed again/.test(out.line),
-     `a tarball recipe with an update out can be ticked, and the row says the install removes the old one first (${out.line})`);
-  // ...and the catalog is where that is decided, not a list in the server.
-  const seen = await page.evaluate(() => (toolchains.items || [])
-    .filter(i => i.updatable).map(i => i.name).sort());
-  ok(seen.includes('flutter') && seen.includes('playwright')
-     && !seen.includes('go') && !seen.includes('jdk'),
+  const seen = tc.items.filter(i => i.updatable).map(i => i.name).sort();
+  ok(seen.includes('flutter') && seen.includes('playwright') && !seen.includes('go') && !seen.includes('jdk'),
      `the catalog says which recipes update in place (${seen.join(', ')})`);
 }
 
+// ---- a long job, through the real path ---------------------------------
+// The stub's `go` install draws a carriage-return progress bar over several
+// seconds; the job record says which toolchain it is on and what it is
+// doing, and nothing of the meter.
+await tcInstall(['go']);
+const samples = [];
+for (let i = 0; i < 20; i++){
+  const t = await local();
+  if (t.job?.running) samples.push({ current: t.job.current, action: t.job.action });
+  await sleep(250);
+}
+ok(samples.length > 1 && samples.every(s => s.current === 'go' && s.action === 'install'),
+   `a running install says which toolchain it is on and that it is installing, all through (${samples.length} samples)`);
+tc = await waitLocal(t => t.job?.action === 'install' && !t.job.running && (t.job.done || []).includes('go'), 60000);
+ok(item(tc, 'go')?.installed, '...and it lands');
+// Put it back the way it was found: what follows counts installed toolchains.
+await api('/api/toolchains', { action: 'remove', names: ['go'] });
+tc = await waitLocal(t => t.job?.action === 'remove' && !t.job.running && !item(t, 'go')?.installed);
+ok(!item(tc, 'go')?.installed, 'Remove takes it off the store');
+
+// ---- remove one, the other stays ------------------------------------------
+await api('/api/toolchains', { action: 'remove', names: ['android:emulator'] });
+tc = await waitLocal(t => t.job?.action === 'remove' && !t.job.running && !item(t, 'android:emulator')?.installed);
+ok(!item(tc, 'android:emulator')?.installed && item(tc, 'flutter')?.installed,
+   'removing one leaves the other alone');
+ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
+
+// ---- a failure, where the failure happened ------------------------------
+// What anybody wants out of a job's output is which toolchain failed and
+// why, so that is what the job keeps, by name, for the card it failed on.
+await tcInstall(['rust']);
+tc = await waitLocal(t => t.job && !t.job.running && (t.job.failed || []).includes('rust'));
+const rustErr = tc.job?.errors?.rust || '';
+ok(/could not download file/.test(rustErr), `the failing toolchain's own line says what went wrong (${rustErr.slice(0, 52)})`);
+ok(!/\[====\]/.test(rustErr), '...without the progress frames');
+ok(/exit 1/.test(rustErr), '...and the exit code, since a killed tool prints nothing at all');
+ok(Object.keys(tc.job.errors || {}).length === 1, 'and no other toolchain is wearing one');
+// Trying again is what clears it: by then it describes a state that is over.
+await tcInstall(['rust']);
+const again = await waitLocal(t => t.job?.running && t.job.current === 'rust', 30000);
+ok(again.job?.running && !(again.job.errors || {}).rust, '...and asking again clears it, because it is no longer the answer');
+await waitLocal(t => t.job && !t.job.running);
+
 // ---- what the endpoint refuses ----------------------------------------
-const post = body => page.evaluate(async b => {
-  const r = await fetch('/api/toolchains', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
-  return r.status;
-}, body);
+const post = async body => (await api('/api/toolchains', body)).status;
 ok(await post({ action: 'install', names: ['flutter; rm -rf /'] }) === 400,
    'a name that is not in the catalog is refused');
 ok(await post({ action: 'install', names: [] }) === 400, 'an empty selection is refused');
 // A second job is refused while one runs. The message names which one: the
 // version check that runs by itself once a day says so, rather than claiming
-// an install nobody started, though only the daily one is "auto"; a check
-// somebody pressed is as much theirs as an install.
+// an install nobody started.
 const clash = await page.evaluate(async () => {
   const go = b => fetch('/api/toolchains', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
@@ -687,91 +431,60 @@ const clash = await page.evaluate(async () => {
 });
 ok(clash.status === 409 && /already running/.test(clash.error),
    `...and a second job while one runs is refused (${clash.error})`);
-await page.waitForFunction(() => toolchains?.job && !toolchains.job.running, { timeout: 30000 });
+await waitLocal(t => t.job && !t.job.running);
 ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown action is refused');
 
-// It is a tab like any other: closing it puts it away, and the saved
-// layout brings it back with its own data rather than an empty pane.
-await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'toolchains').id));
-ok(await page.evaluate(() => !tabs.some(t => t.kind === 'toolchains')), 'the tab minimizes away');
-await page.evaluate(() => openToolchains());
-await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
-ok(true, 'and reopens');
-// The strip lives on the server and is handed to every browser, so a tab kind
-// the store does not recognize is dropped on every read, which is why this
-// one came back from a reload, or a container restart, missing.
-await page.reload();
-await ready(page);
-await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0,
-                           { timeout: 30000 });
-ok(await page.evaluate(() => tabs.some(t => t.kind === 'toolchains')),
-   '...and survives a reload, the way the findings tab does');
-// A fresh page opens the tab on a node, as it should (roadmap #26); the rows
-// the rest of this file reads are the local installer's, so ask for them.
-await page.evaluate(() => { tcNode = 'local'; toolchains = null; loadToolchains(); });
-await page.waitForFunction(() => tcNode === 'local' && toolchains && !toolchains.name
-                                 && document.querySelectorAll('.doc .tc').length > 0,
-                           { timeout: 30000 });
-
-// ---- a recipe this node's platform cannot have ---------------------------
-// The catalog says which platforms each recipe serves and the server marks
-// the rest, but the tab drew them all: on a Linux node that is one dead row
-// (xcodes), and on a Mac it is eleven of sixteen: a tab of controls that can
-// never be pressed. They go behind a fold, which is not the same as hidden:
-// somebody looking for xcodes should be able to find out that it exists and
-// what it wants.
-//
-// Rendered from a payload rather than against a real Mac: a recipe this
-// node's platform cannot have is not on its tab at all (the operator,
-// 12 Oct: no "Not for this node" fold of rows that can never be pressed).
+// ---- what needs what --------------------------------------------------------
+// A toolchain that needs another says so, and so does the one that is
+// needed: the Library's card says what comes with it, the Installed page's
+// row what needs it.
 {
-  const shape = await page.evaluate(() => {
-    toolchains = { name: 'a-mac', root: '/Volumes/SDK/darwin-arm64', free_mb: 90000,
-      items: [
-        { name: 'jdk', label: 'JDK', about: 'a', installed: false, wrong_platform: '' },
-        { name: 'xcodes', label: 'xcodes (Xcode installer)', about: 'b',
-          installed: false, wrong_platform: '' },
-        { name: 'swift', label: 'Swift', about: 'c', installed: false,
-          wrong_platform: 'linux/amd64' },
-        { name: 'rust', label: 'Rust', about: 'd', installed: false,
-          wrong_platform: 'linux/amd64' }] };
-    tcRev++; drawPanes();
-    const doc = document.querySelector('.doc.on');
-    return { names: [...doc.querySelectorAll('.tcs .tc .nm')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
-             fold: !!doc.querySelector('details.tcno') };
-  });
-  ok(shape.names.join('|') === 'JDK|xcodes (Xcode installer)' && !shape.fold,
-     `the tab is what this node can have, and nothing else (${shape.names.join(', ')})`);
-  await page.evaluate(() => { toolchains = null; loadToolchains(); });
-  await page.waitForFunction(() => toolchains && !toolchains.error, { timeout: 20000 });
+  const ndk = item(tc, 'android:ndk'), jdk = item(tc, 'jdk');
+  ok(ndk?.needs?.includes('android-tools') && jdk?.needed_by?.includes('android-tools'),
+     `the store says what each toolchain needs and what needs it (${ndk?.needs} | ${jdk?.needed_by})`);
+  const said = await page.evaluate(([n, j]) => ({
+    lib: libDetail({ ...n, kind: 'toolchain', tier: 'official' }).replace(/<[^>]+>/g, ''),
+    inst: instDetail({ ...j, kind: 'toolchain' }).replace(/<[^>]+>/g, ''),
+  }), [ndk, jdk]);
+  ok(/Needs android-tools, installed with it/.test(said.lib),
+     `a toolchain's card says what it needs, installed with it (${ndk?.label})`);
+  ok(/Needed by android-tools/.test(said.inst), `...and the one it needs says on its Installed row what needs it (${jdk?.label})`);
 }
 
-// 400s and 409s are asked for on purpose above; the browser logs a failed
-// fetch either way.
-const errs = page.errors.filter(e => !/status of (400|409)/.test(e));
-ok(errs.length === 0, `zero console errors${errs.length ? ': ' + errs.join(' | ') : ''}`);
-// The Toolchains tab reads nodesList, which tab-nodes.js declares with `let`.
-// Loaded after this file's script, a renderer drawing before it evaluated hit
-// the temporal dead zone and the tab came up "this tab's renderer failed:
-// nodesList is not defined". `typeof` throws on a TDZ binding too, so the fix
-// is load order, and this is the check that keeps it: every binding a
-// renderer here reads must exist by the time the first draw can happen.
-ok(await page.evaluate(() => {
-     try { return nodesList !== undefined || nodesList === null || true; }
-     catch (e) { return false; }
-   }),
-   'the tab scripts are evaluated before the renderers that read their state');
-
-// A toolchain that needs another says so on its row, and so does the one that
-// is needed. The operator asked whether a toolchain existing only to serve
-// another should be an entry at all, and the honest answer is that the ones
-// which do nothing alone are leaves that nothing depends on. What was
-// missing was the relationship being visible where it does exist.
-const rel = await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
-ok(rel.some(t => /Android NDK/.test(t) && /Needs android-tools, installed with it/.test(t)),
-   'a toolchain that needs another says so on its row');
-ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
-   '...and the one it needs says what needs it');
+// ---- Remove on the Installed page --------------------------------------------
+// The sandbox's store is what its census says it holds; a toolchain there is
+// an Installed row with Remove, which asks first by the name its row shows
+// (B65), runs the job on the node, and says under the row what the job said
+// failed (the stub fails every toolchain job).
+{
+  const { writeFileSync, rmSync } = await import('node:fs');
+  writeFileSync(`${DIR}/sandboxdata/census-extra.json`, JSON.stringify({ store_dirs: { top: ['flutter'], android: [] } }));
+  let held = false;
+  for (let i = 0; i < 60 && !held; i++){
+    held = !!item(await api(`/api/toolchains?node=${sb.id}`), 'flutter')?.installed;
+    if (!held) await sleep(500);
+  }
+  ok(held, 'the sandbox node reports flutter in its store');
+  const ROW = `.installedtab [data-instnode="${sb.id}"] .irow[data-irow="toolchain:flutter"]`;
+  await page.evaluate(id => { instNode = ''; inst = null; openInstalledOn(id); }, sb.id);
+  await page.waitForSelector(`${ROW} [data-instact="remove"]`, { timeout: 20000 });
+  const label = await page.evaluate(() => inst.rows.find(r => r.kind === 'toolchain' && r.name === 'flutter')?.label || '');
+  const nd = page.dialogs.length;
+  await page.click(`${ROW} [data-instact="remove"]`);
+  let ran = false;
+  for (let i = 0; i < 60 && !ran; i++){
+    await sleep(500);
+    ran = await page.evaluate(() => { const ok = inst?.job?.action === 'remove' && !inst.job.running && (inst.job.failed || []).includes('flutter');
+      if (!ok) loadInstalled(); return ok; });
+  }
+  ok(page.dialogs.length === nd + 1 && !!label && page.dialogs[nd].startsWith(`Uninstall ${label} from sandbox?`),
+     `Remove on an Installed row asks first, naming it as its row does (${page.dialogs.slice(nd).join(' | ') || 'nothing asked'})`);
+  await page.waitForSelector(`${ROW} .sub.bad`, { timeout: 15000 }).catch(() => {});
+  const why = await page.$eval(`${ROW} .sub.bad`, e => e.textContent).catch(() => '');
+  ok(ran && /remove failed on the node/.test(why),
+     `...runs the remove job on the node, and says under the row what failed (${why || 'nothing said'})`);
+  rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
+}
 
 // ---- the two meanings of SDK_ROOT (B89) ----------------------------------
 // On the controller SDK_ROOT is the STORE and bb appends this machine's
@@ -819,7 +532,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   const builds = execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_builds_with ${JSON.stringify(sdk)}`],
                               { encoding: 'utf8', env: { ...process.env, GRADLE_USER_HOME: gh } });
   ok(/== builds with ==/.test(builds) && /platforms\s+35 36\n/.test(builds)
-     && /compileSdk\s+up to 36: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains page/.test(builds)
+     && /compileSdk\s+up to 36: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one from the Library/.test(builds)
      && /build-tools\s+36\.0\.0/.test(builds),
      `bb toolchains says the platforms, the compileSdk ceiling and the build-tools as a build reads them (${builds.split('\n')[2]?.trim()})`);
   ok(/gradle\s+9\.7\.1 \(wrapper distributions, no download\)/.test(builds) && /AGP\s+9\.4\.1\n/.test(builds)
@@ -827,7 +540,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
      '...and what the Gradle cache holds, naming only what is there');
   const bare = execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_builds_with ${JSON.stringify(`${odd}/none`)}`],
                             { encoding: 'utf8', env: { ...process.env, GRADLE_USER_HOME: `${odd}/nogradle` } });
-  ok(/platforms\s+none: nothing compiles here until the operator adds one on the Toolchains page/.test(bare)
+  ok(/platforms\s+none: nothing compiles here until the operator adds one from the Library/.test(bare)
      && /modules\s+none cached yet: the first build fetches them/.test(bare),
      '...and an empty store and an empty cache are said as such rather than as a blank');
   // The NVIDIA driver's line (R102), read from this machine's sysfs and
@@ -871,75 +584,13 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   ok(nv('', '', '') === '' && kit() === '', '...and nothing at all on a machine with no NVIDIA card');
 }
 
-// A node sharing this store is installing into it (the operator, 12 Oct):
-// the tab says who and what at the top and ghosts Install selected, before
-// the press rather than refusing after it; nothing is said otherwise.
-{
-  await page.evaluate(() => {
-    if (!tabs.some(t => t.kind === 'toolchains')) openToolchains();
-    focusTab(tabs.find(t => t.kind === 'toolchains').id);
-  });
-  // Its own load landed first: planting the payload before that let the
-  // load wipe it, and the pane read "loading".
-  await page.waitForFunction(() => toolchains && tabOf(panes[active])?.kind === 'toolchains' && !!document.querySelector('.pane .doc.on .tctab'), null, { timeout: 15000 });
-  const seen = await page.evaluate(() => {
-    const was = { tcNode, toolchains };
-    const fake = { node: 'n_shared', name: 'sandbox', live: true, root: '/mnt/store/x', items: [], machine: [],
-                   job: { running: false },
-                   cleanable: [{ dir: 'n_0ldd0ne1', what: "gone's, a node since retired" }] };
-    tcNode = 'n_shared'; toolchains = fake; tcRev++; drawPanes();
-    const cl = document.querySelector('.tcclean');
-    const clean = `${cl?.previousElementSibling?.textContent || ''}: ${cl?.textContent || ''}`.replace(/\s+/g, ' ');
-    const rm = !!document.querySelector('.tctab .docbarrow .actbar [data-tcclean].danger:last-child');
-    tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
-    return { clean, rm };
-  });
-  ok(/Remove takes: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
-     `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
-  // The updates-due tile counts This machine's rows as Home and the bell do
-  // (B24). No coding agent is a row here: they are the Agents page's, which
-  // the page names in one line (R95, the operator 22 Oct).
-  const due = await page.evaluate(() => {
-    const was = { tcNode, toolchains };
-    toolchains = { node: 'n_shared', name: 'sandbox', live: true, root: '/mnt/store/x', checked: 1,
-                   items: [{ name: 'jdk', label: 'JDK', installed: '17', latest: '21', state: 'update', terms: [] },
-                           { name: 'android:emulator', label: 'Android Emulator', installed: true, version: 'present',
-                             latest: '', state: 'current', terms: [] },
-                           { name: 'gradle', label: 'Gradle', installed: '9', latest: '9', state: 'current', terms: [] }],
-                   machine: [{ name: 'nvidia-driver', label: 'NVIDIA driver', here: true, managed: true, installed: '550.1',
-                               newer: '560.2', card: 'NVIDIA [GeForce RTX 3060]', state: 'current', options: [] }],
-                   job: { running: false } };
-    tcNode = 'n_shared'; tcRev++; drawPanes();
-    const tile = [...document.querySelectorAll('.tctab .tiles .tile')]
-      .find(t => t.querySelector('.tl')?.textContent.trim() === 'updates due');
-    const v = tile?.querySelector('.tv')?.textContent.trim();
-    const emu = [...document.querySelectorAll('.tctab label.tc')].find(r => /Android Emulator/.test(r.textContent));
-    const emuSaid = emu?.querySelector('.where')?.textContent.trim() || '';
-    const hint = document.querySelector('.tctab .tcdrv .upd')?.innerHTML || '';
-    const agents = document.querySelector('.tctab .tcagents')?.textContent.replace(/\s+/g, ' ').trim() || '';
-    const agLink = !!document.querySelector('.tctab .tcagents a.pagelink');
-    const agRows = [...document.querySelectorAll('.tctab .tcmachine > *')].filter(r => /Claude Code|Codex|Copilot/.test(r.textContent)).length;
-    tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
-    return { v, emuSaid, hint, agents, agLink, agRows };
-  });
-  ok(due.v === '2', `the updates-due tile counts This machine's driver beside the store's rows (${due.v})`);
-  ok(/^The coding agents \(Claude Code, Codex CLI, Copilot CLI, Grok Build, OpenCode\) are installed and updated on the Agents page\.$/.test(due.agents) && due.agLink && !due.agRows,
-     `a node's Toolchains page keeps no coding agent, and one line with the way to the Agents page (${due.agents})`);
-  ok(due.emuSaid === 'installed', `a tool the census calls "present" reads installed (B31) (${due.emuSaid})`);
-  ok(/press Install<span class="lng"> selected<\/span>/.test(due.hint),
-     `a row's hint names Install as the bar's button says it at each width (B31) (${due.hint.slice(-80)})`);
-}
-
-// ---- the versions a project pins are rows on its node's tab (B712) --------
+// ---- the versions a project pins are cards on its node's Library (B712) ------
 // A store remade at the newest versions only stranded a project pinning
-// NDK 29 and build-tools 36: nothing on the tab to tick. The pins are read
-// off the project's Gradle files, each a row named for the project, the
-// store's own listing saying whether it is held.
+// NDK 29 and build-tools 36: nothing to install. The pins are read off the
+// project's Gradle files, each a row named for the project, the store's own
+// listing saying whether it is held.
 {
   const { writeFileSync, mkdirSync, rmSync } = await import('node:fs');
-  const api = (path, body) => page.evaluate(async ([p, b]) => (await (await fetch(p, b ? { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) } : {})).json()), [path, body]);
-  const sb = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
   await api('/api/prefs', { project: 'alpha', node: sb.id });
   mkdirSync(`${DIR}/ws/alpha/app`, { recursive: true });
   writeFileSync(`${DIR}/ws/alpha/app/build.gradle.kts`,
@@ -951,7 +602,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   for (let i = 0; i < 60; i++){
     got = await api(`/api/toolchains?node=${sb.id}`);
     if ((got.items || []).some(r => r.name === 'android:ndk;29.0.14206865')) break;
-    await new Promise(r => setTimeout(r, 500));
+    await sleep(500);
   }
   const by = Object.fromEntries((got.items || []).map(r => [r.name, r]));
   const ndk = by['android:ndk;29.0.14206865'], bt = by['android:build-tools;36.0.0'], plat = by['android:platforms;android-37'];
@@ -964,14 +615,17 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
      `...while a compileSdk the store holds (android-37.0) reads installed (${plat?.about?.slice(-30)})`);
   ok(!Object.keys(by).some(k => /system-images/.test(k)),
      'no image row: the level a project compiles against is the Emulator page\'s question (B720)');
-  const drawn = await page.evaluate(async id => { tcNode = id; toolchains = null; tcRev++; drawPanes(); await loadToolchains();
-    return [...document.querySelectorAll('.doc .tc')].map(e => e.querySelector('input')?.value).filter(v => /;/.test(v || '')); }, sb.id);
-  ok(drawn.includes('android:ndk;29.0.14206865') && drawn.includes('android:build-tools;36.0.0'),
-     `...and the tab draws them as rows with a tick, like any toolchain (${drawn.join(', ')})`);
-  // Ticked and installed like any row: the versioned id is a name the node's
-  // tab drew, so the handler takes it, where a name off any tab is refused.
-  // Google's terms are a person's to accept, named, before anything installs
-  // under them; a pinned version is its row's, and the server keeps who did.
+  await toLibrary();
+  await page.evaluate(() => loadLibrary());
+  const PIN = '.doc .librarytab .lcard[data-lrow="toolchain:android:ndk;29.0.14206865"]';
+  const drawn = await page.waitForSelector(`${PIN} [data-libact="install"]`, { timeout: 20000 }).then(() => true, () => false);
+  ok(drawn && await page.$('.doc .librarytab .lcard[data-lrow="toolchain:android:build-tools;36.0.0"] [data-libact="install"]') !== null,
+     '...and the node\'s Library draws them as cards with Install, like any toolchain');
+  // Installed like any row: the versioned id is a name the node's catalog
+  // offered, so the handler takes it, where a name off any catalog is
+  // refused. Google's terms are a person's to accept, named, before anything
+  // installs under them; a pinned version is its row's, and the server keeps
+  // who did.
   const unasked = await api('/api/toolchains', { action: 'install', names: ['android:ndk;29.0.14206865'], node: sb.id });
   ok(/accepts Google's Android SDK terms/.test(unasked.error || '') && unasked.accept?.[0]?.url,
      `an install under an agreement is refused until it is accepted, naming it with its link (${unasked.error})`);
@@ -987,14 +641,13 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
 
 // ---- tool packs (R77) ------------------------------------------------------
 // An administrator looks at a pack by its repository, reads what it would
-// download and run, adds it at that commit, finds it among the catalog's
-// rows marked as added, and removes it. The repository is on disk, which
-// the harness lets the server fetch (BB_TOOLPACKS_FILE_URLS).
+// download and run, adds it at that commit, finds it among the Library's
+// cards as sideloaded, and removes it. The repository is on disk, which the
+// harness lets the server fetch (BB_TOOLPACKS_FILE_URLS). The dialog opens
+// from the Library's Add your own and from a pack card's Edit.
 {
   const { execFileSync } = await import('node:child_process');
-  const { mkdirSync, writeFileSync, rmSync } = await import('node:fs');
-  const api = (path, body) => page.evaluate(async ([p, b]) => (await (await fetch(p, b ? { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) } : {})).json()), [path, body]);
+  const { mkdirSync, writeFileSync } = await import('node:fs');
   const repo = `${DIR}/packrepo`;
   mkdirSync(`${repo}/bin`, { recursive: true });
   writeFileSync(`${repo}/bin/hexkit`, '#!/bin/sh\necho hexkit\n', { mode: 0o755 });
@@ -1006,28 +659,46 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
     env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim();
   g('init', '-q'); g('add', '-A'); g('commit', '-qm', 'pack');
   const commit = g('rev-parse', 'HEAD');
-  await page.evaluate(() => { tcRev++; drawPanes(); });
-  await page.waitForSelector('.doc.on [data-tpnew]', { timeout: 15000 });
-  await page.click('.doc.on [data-tpnew]');
+  const ADD = '.pane .doc.on .librarytab [data-libadd], .pane .bar [data-libadd]';
+  const EDIT = n => `.doc.on .librarytab .lcard[data-lrow="pack:${n}"] [data-libact="edit"][data-libname="${n}"]`;
+  // A pack's card, drawn from a fresh read of the Library.
+  const packCard = async n => {
+    await page.evaluate(() => loadLibrary());
+    await page.waitForSelector(EDIT(n), { timeout: 20000 });
+  };
+  const addYourOwn = async () => {
+    await page.click(ADD);
+    await page.waitForSelector('#tpmodal:not([hidden]) [data-tpwhat="pack"]', { timeout: 15000 });
+    await page.click('#tpmodal [data-tpwhat="pack"]');
+  };
+  await toLibrary();
+  await addYourOwn();
   await page.fill('#tpmodal #tpUrl', `file://${repo}`);
   await page.click('#tpmodal [data-tplook]');
   await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
   const seen = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
   ok(/Hex kit hexkit at [0-9a-f]{12}/.test(seen) && /bb tool hexkit dump FILE runs \{dir\}\/bin\/hexkit dump \{args\}/.test(seen)
      && /bb help tool-hexkit/.test(seen),
-     `Look shows the pack at its commit, each verb's words and its guidance before Add (${seen.slice(0, 160)})`);
+     `Add your own's Look shows the pack at its commit, each verb's words and its guidance before Add (${seen.slice(0, 160)})`);
   await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(() => (toolchains?.items || []).some(i => i.name === 'hexkit' && i.pack), null, { timeout: 20000 });
   const row = await page.evaluate(() => (toolchains.items || []).find(i => i.name === 'hexkit'));
   ok(row.pack.commit === commit && row.pack.verbs.join() === 'dump' && row.pack.by,
-     `Add keeps the pack at the commit looked at, as a catalog row marked added (${row.pack.commit.slice(0, 12)} by ${row.pack.by})`);
-  await page.waitForSelector('.doc.on .tprecords [data-tpedit="hexkit"]', { timeout: 15000 });
-  const said = await page.$$eval('.doc.on .tcabout', es => es.map(e => e.textContent).find(t => /tool pack/.test(t)) || '');
-  ok(/A tool pack .* added, not shipped with BuilderBot: bb tool hexkit/.test(said),
-     `its catalog row says it was added, not shipped (${said.trim().slice(0, 120)})`);
-  // A project's Toolchains group (R77 step 5): the pack is offered unticked,
-  // since adding a pack hands it to no project, and ticking it and saving
-  // keeps it among the packs the project's sessions use.
+     `Add keeps the pack at the commit looked at (${row.pack.commit.slice(0, 12)} by ${row.pack.by})`);
+  await packCard('hexkit');
+  const hcard = await page.evaluate(() => {
+    libOpen.add('pack:hexkit'); libRev++; drawPanes();
+    const c = document.querySelector('.doc .librarytab .lcard[data-lrow="pack:hexkit"]');
+    const out = { pills: [...c.querySelectorAll('.lcmeta .pill')].map(p => p.textContent.trim()),
+                  detail: c.querySelector('.ldetail')?.textContent.replace(/\s+/g, ' ') || '' };
+    libOpen.delete('pack:hexkit'); libRev++; drawPanes();
+    return out;
+  });
+  ok(hcard.pills.includes('sideloaded') && /From .*packrepo at [0-9a-f]{12}, added by .*A session has bb tool hexkit/.test(hcard.detail),
+     `its card wears sideloaded with Edit, its Details saying where it came from and what a session gets (${hcard.detail.slice(0, 120)})`);
+  // A project's Toolchains group (R77 step 5): the pack is offered switched
+  // off, since adding a pack hands it to no project, and switched on and
+  // saved it is among the packs the project's sessions use.
   await page.evaluate(() => renameProject('alpha', 'all'));
   await page.waitForSelector('#rnTools input[data-pack][value="hexkit"]', { timeout: 20000 });
   ok(!await page.$eval('#rnTools input[data-pack][value="hexkit"]', i => i.checked),
@@ -1035,45 +706,92 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   await page.$eval('#rnTools input[data-pack][value="hexkit"]', i => { i.checked = true; i.dispatchEvent(new Event('change')); });
   const saveErr = await sectSave(page, 'tools');
   const packsOn = ((await api('/api/status')).projects || []).find(p => p.name === 'alpha')?.prefs?.packs_on || [];
-  ok(!saveErr && packsOn.join() === 'hexkit', `...and ticked and saved, the project's sessions may use it (${saveErr || packsOn.join() || 'none kept'})`);
+  ok(!saveErr && packsOn.join() === 'hexkit', `...and switched on and saved, the project's sessions may use it (${saveErr || packsOn.join() || 'none kept'})`);
   await page.evaluate(() => closeRename());
   await api('/api/prefs', { project: 'alpha', packs_on: '' });
-  // An update (R77 step 6): the repository moves on, and Look for a newer
-  // commit shows what it changes, verb by verb, before Update keeps it.
+  // An update (R77 step 6): the repository moves on, and Edit looks for a
+  // newer commit as it opens and shows what it changes, verb by verb,
+  // before Update keeps it.
   writeFileSync(`${repo}/bbtool.json`, JSON.stringify({ name: 'hexkit', label: 'Hex kit', about: 'Looks inside binaries.',
     platforms: ['linux/amd64', 'linux/arm64'], layout: { bin: ['bin'], tool: 'bin/hexkit' }, guidance: 'GUIDE.md',
     verbs: { dump: { about: 'A file as hex.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'dump', '--wide', '{args}'] },
              strings: { about: 'Its strings.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'strings', '{args}'] } } }));
   g('commit', '-qam', 'later');
   const newer = g('rev-parse', 'HEAD');
-  // Edit looks for a newer commit as it opens: no press of Look.
-  await page.click('.doc.on [data-tpedit="hexkit"]');
-  await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
+  await toLibrary();
+  await packCard('hexkit');
+  await page.click(EDIT('hexkit'));
+  await page.waitForSelector('#tpmodal:not([hidden]) .tpseen', { timeout: 20000 });
   const diff = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
   ok(/dump --wide \{args\} changed was \{dir\}\/bin\/hexkit dump \{args\}/.test(diff) && /strings FILE runs .* new/.test(diff),
-     `Edit says what a newer commit changes: a changed verb with what it was, a new one marked (${diff.slice(0, 200)})`);
+     `the card's Edit says what a newer commit changes: a changed verb with what it was, a new one marked (${diff.slice(0, 200)})`);
   await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(c => (toolchains?.items || []).find(i => i.name === 'hexkit')?.pack?.commit === c, newer, { timeout: 20000 });
   ok(true, '...and Update keeps the pack at the newer commit');
+  // From the vetted catalog (R169 step 4): a pack kept at the index's pin
+  // wears vetted, a sha256 the index does not pin is refused (B440), and
+  // when the index pins a newer commit the card offers Catalog update: the
+  // dialog on that pin with what it changes marked, Update keeping it there
+  // with its tier (B442). The catalog's address is a dead one here, so each
+  // read falls back to the index kept in the state.
+  {
+    const { createHash } = await import('node:crypto');
+    const { rmSync } = await import('node:fs');
+    const sha = c => createHash('sha256').update(execFileSync('git', ['-C', repo, 'archive', '--format=tar', c])).digest('hex');
+    const pin = c => writeFileSync(`${DIR}/state/catalog-index.json`, JSON.stringify({ fetched_at: 0, packs: [{ name: 'hexkit',
+      url: `file://${repo}`, commit: c, sha256: sha(c), tier: 'vetted', path: '', about: 'Looks inside binaries.', platforms: ['linux/amd64'] }] }));
+    await api('/api/settings', { set: { catalog_url: 'http://127.0.0.1:9/' } });
+    pin(newer);
+    const forged = await api('/api/toolpacks', { action: 'add', url: `file://${repo}`, commit: newer, sha256: '0'.repeat(64) });
+    ok(/not the one the vetted catalog pins/.test(forged.error || ''), `a sha256 the index does not pin keeps nothing as vetted (${forged.error})`);
+    const kept = await api('/api/toolpacks', { action: 'add', url: `file://${repo}`, commit: newer, sha256: sha(newer) });
+    ok(kept.pack?.tier === 'vetted', `the index's own pin is kept as vetted (${kept.pack?.tier || kept.error})`);
+    writeFileSync(`${repo}/bbtool.json`, JSON.stringify({ name: 'hexkit', label: 'Hex kit', about: 'Looks inside binaries.',
+      platforms: ['linux/amd64', 'linux/arm64'], layout: { bin: ['bin'], tool: 'bin/hexkit' }, guidance: 'GUIDE.md',
+      verbs: { dump: { about: 'A file as hex.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'dump', '--wide', '{args}'] },
+               strings: { about: 'Its strings.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'strings', '-a', '{args}'] } } }));
+    g('commit', '-qam', 'vetted again');
+    const next = g('rev-parse', 'HEAD');
+    pin(next);
+    const REPIN = `.doc.on .librarytab .lcard[data-lrow="pack:hexkit"] [data-libact="repin"]`;
+    await page.evaluate(() => { loadToolchains(); loadLibrary(); });
+    await page.waitForSelector(REPIN, { timeout: 20000 });
+    const vcard = await page.evaluate(() => [...document.querySelectorAll('.doc .librarytab .lcard[data-lrow="pack:hexkit"] .lcmeta .pill')].map(p => p.textContent.trim()));
+    ok(vcard.includes('vetted'), `the kept pack's card wears vetted (${vcard.join(', ')})`);
+    await page.click(REPIN);
+    await page.waitForSelector('#tpmodal:not([hidden]) .tpseen', { timeout: 20000 });
+    const upd = await page.$eval('#tpmodal', e => e.textContent.replace(/\s+/g, ' '));
+    ok(/strings -a \{args\} changed was \{dir\}\/bin\/hexkit strings \{args\}/.test(upd) && /the vetted catalog's newer pin/.test(upd)
+       && upd.includes(next.slice(0, 12)),
+       `Catalog update opens the dialog on the index's newer pin, what it changes marked (${upd.slice(0, 240)})`);
+    await page.click('#tpmodal [data-tpadd]');
+    await page.waitForFunction(c => (toolchains?.items || []).find(i => i.name === 'hexkit')?.pack?.commit === c, next, { timeout: 20000 });
+    const after = await page.evaluate(() => (toolchains.items || []).find(i => i.name === 'hexkit').pack.tier);
+    ok(after === 'vetted', `...and Update keeps it at that pin, still vetted (${after})`);
+    await api('/api/settings', { set: { catalog_url: 'https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/' } });
+    rmSync(`${DIR}/state/catalog-index.json`, { force: true });
+  }
   const bad = await api('/api/toolpacks', { action: 'preview', url: `file://${DIR}/nowhere` });
   ok(/could not fetch/.test(bad.error || ''), `a repository that is not there is said so (${bad.error})`);
   // B84: installed on a node, Remove is refused on the form, saying where,
-  // before anything is asked: its files would stay in that store with no row
-  // left to uninstall them from, and the pack added back would read installed.
-  const sb = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
+  // before anything is asked: its files would stay in that store with no
+  // row left to uninstall them from, and the pack added back would read
+  // installed.
   await api('/api/prefs', { project: 'alpha', packs_on: 'hexkit' });
   writeFileSync(`${DIR}/sandboxdata/census-extra.json`, JSON.stringify({ store_dirs: { top: ['hexkit'], android: [] } }));
   const heldBy = async want => {
     for (let i = 0; i < 60; i++){
       const t = await api(`/api/toolchains?node=${sb.id}`);
-      if (!!(t.items || []).find(r => r.name === 'hexkit')?.installed === want) return true;
-      await new Promise(r => setTimeout(r, 500));
+      if (!!item(t, 'hexkit')?.installed === want) return true;
+      await sleep(500);
     }
     return false;
   };
   ok(await heldBy(true), 'the sandbox node reports the pack in its store');
   page.dialogs = [];
-  await page.click('.doc.on [data-tpedit="hexkit"]');
+  await packCard('hexkit');
+  await page.click(EDIT('hexkit'));
+  await page.waitForSelector('#tpmodal:not([hidden]) [data-tprm="hexkit"]', { timeout: 15000 });
   // Edit looks for a newer commit as it opens; its answer redraws the form.
   await page.waitForFunction(() => !tpForm.busy, null, { timeout: 20000 });
   await page.click('#tpmodal [data-tprm="hexkit"]');
@@ -1084,13 +802,17 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   ok(/hexkit is installed on sandbox: uninstall it there first/.test(refused) && !page.dialogs.length
      && still && /installed on sandbox/.test(kept.error || ''),
      `Remove is refused while a node holds the pack, saying where, with nothing asked, and the route refuses it too (${refused})`);
+  const { rmSync } = await import('node:fs');
   rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
   ok(await heldBy(false), '...and once that store no longer holds it...');
   await page.click('#tpmodal [data-tprm="hexkit"]');
   await page.waitForFunction(() => !(toolchains?.items || []).some(i => i.name === 'hexkit'), null, { timeout: 20000 });
-  ok(true, '...Remove takes it out of the catalog');
-  // B85: a project that had ticked it opens its Toolchains group unchanged:
-  // the saved list still names the pack, which the form cannot draw.
+  await page.evaluate(() => loadLibrary());
+  await page.waitForFunction(() => lib && !lib.rows.some(r => r.kind === 'pack' && r.name === 'hexkit'), null, { timeout: 20000 });
+  ok(!await page.$('.doc .librarytab .lcard[data-lrow="pack:hexkit"]'), '...Remove takes it out of the catalog, and its card goes');
+  // B85: a project that had switched it on opens its Toolchains group
+  // unchanged: the saved list still names the pack, which the form cannot
+  // draw.
   await page.evaluate(() => renameProject('alpha', 'all'));
   await page.waitForFunction(() => rnToolsList !== null, null, { timeout: 20000 });
   const group = await page.evaluate(() => ({ dirty: !document.querySelector('.rnbar[data-rnbar="tools"] [data-rnsave]')?.disabled,
@@ -1106,7 +828,8 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   const pasted = { name: 'wordy', label: 'Wordy', about: 'Counts words.', platforms: ['linux/amd64', 'linux/arm64'],
     install: { steps: [['sh', '-c', 'mkdir -p "$1/bin"', 'x', '{dir}']] },
     verbs: { count: { about: 'Words in a file.', usage: 'FILE', run: ['{dir}/bin/wordy', '{args}'] } } };
-  await page.click('.doc.on [data-tpnew]');
+  await toLibrary();
+  await addYourOwn();
   const tpH = () => page.$eval('#tpmodal .box', b => Math.round(b.getBoundingClientRect().height));
   await page.waitForTimeout(500);              // the dialog's own opening scale
   const repoH = await tpH();
@@ -1121,17 +844,26 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
      `a pasted bbtool.json is looked at like a repository's: what it installs and what each verb runs (${pseen.slice(0, 160)})`);
   await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(() => (toolchains?.items || []).find(i => i.name === 'wordy')?.pack?.here, null, { timeout: 20000 });
-  const prow = await page.$eval('.doc.on .tprecords', e => e.textContent.replace(/\s+/g, ' '));
-  ok(/Wordy\s*wordy\s*made here/.test(prow), `...Add keeps it, its row saying it was made here (${prow.slice(0, 160)})`);
+  await packCard('wordy');
+  const wcard = await page.evaluate(() => {
+    libOpen.add('pack:wordy'); libRev++; drawPanes();
+    const c = document.querySelector('.doc .librarytab .lcard[data-lrow="pack:wordy"]');
+    const out = { pills: [...c.querySelectorAll('.lcmeta .pill')].map(p => p.textContent.trim()),
+                  detail: c.querySelector('.ldetail')?.textContent.replace(/\s+/g, ' ') || '' };
+    libOpen.delete('pack:wordy'); libRev++; drawPanes();
+    return out;
+  });
+  ok(wcard.pills.includes('sideloaded') && /Made here/.test(wcard.detail),
+     `...Add keeps it, its card wearing sideloaded and saying it was made here (${wcard.detail.slice(0, 100)})`);
   const first = await page.evaluate(() => toolchains.items.find(i => i.name === 'wordy').pack.commit);
   // Edit opens on its bbtool.json as kept; a change is a new version.
-  await page.click('.doc.on [data-tpedit="wordy"]');
+  await page.click(EDIT('wordy'));
   await page.waitForFunction(() => /"Wordy"/.test(document.getElementById('tpText')?.value || ''), null, { timeout: 20000 });
   await page.fill('#tpText', JSON.stringify({ ...pasted, label: 'Wordy two' }));
   await page.click('#tpmodal [data-tplook]');
   await page.waitForSelector('#tpmodal [data-tpadd]', { timeout: 20000 });
   ok(await page.$eval('#tpmodal [data-tpadd]', e => e.textContent) === 'Update',
-     '...Edit opens on its bbtool.json, and a changed one is offered as an Update');
+     '...the card\'s Edit opens on its bbtool.json, and a changed one is offered as an Update');
   await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(c => { const p = (toolchains?.items || []).find(i => i.name === 'wordy');
     return p && p.label === 'Wordy two' && p.pack.commit !== c; }, first, { timeout: 20000 });
@@ -1144,7 +876,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   writeFileSync(`${up}/bbtool.json`, JSON.stringify({ name: 'stamp', platforms: ['linux/amd64', 'linux/arm64'],
     layout: { bin: ['bin'], tool: 'bin/stamp' }, verbs: { now: { run: ['{dir}/bin/stamp'] } }, guidance: 'GUIDE.md' }));
   execFileSync('tar', ['-czf', `${DIR}/uppack.tgz`, '-C', `${DIR}/uppack`, 'stamp']);
-  await page.click('.doc.on [data-tpnew]');
+  await addYourOwn();
   await page.click('#tpmodal [data-tpfrom="upload"]');
   await page.setInputFiles('#tpFile', `${DIR}/uppack.tgz`);
   await page.click('#tpmodal [data-tplook]');
@@ -1157,11 +889,18 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   ok(true, '...and Add keeps it made here');
   for (const n of ['wordy', 'stamp']){
     page.dialogs = [];
-    await page.click(`.doc.on [data-tpedit="${n}"]`);
+    await packCard(n);
+    await page.click(EDIT(n));
+    await page.waitForSelector(`#tpmodal:not([hidden]) [data-tprm="${n}"]`, { timeout: 15000 });
     await page.click(`#tpmodal [data-tprm="${n}"]`);
     await page.waitForFunction(x => !(toolchains?.items || []).some(i => i.name === x), n, { timeout: 20000 });
   }
-  ok(true, 'a pack made here is removed like any other');
+  ok(true, 'a pack made here is removed from its card\'s Edit like any other');
 }
+
+// 400s and 409s are asked for on purpose above; the browser logs a failed
+// fetch either way.
+const errs = page.errors.filter(e => !/status of (400|409)/.test(e));
+ok(errs.length === 0, `zero console errors${errs.length ? ': ' + errs.join(' | ') : ''}`);
 
 await done(browser);

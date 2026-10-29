@@ -1,7 +1,7 @@
 // The Claude sign-in, which is one account's on one node: who this account
 // is signed in as there, the flow that signs that node in, the code a
 // person pastes back into it, and signing that node out. Drawn inside the
-// Claude section of the Agents page on that node (R95 step 15), and reached
+// agent's row of the Installed page on that node (R95 step 15, R172), and reached
 // from a project's Claude button when its node has no sign-in yet.
 //
 // One classic script beside index.html (docs/design-language.md, Files):

@@ -1,7 +1,7 @@
 {
   "_comment": [
     "Everything the container needs in order to offer, fetch and install a toolchain.",
-    "The dashboard's Tools tab renders it and `bb toolchains` acts on it; adding a toolchain",
+    "The dashboard's Library renders it and `bb toolchains` acts on it; adding a toolchain",
     "here is the whole job, as long as it fits one of the five kinds below.",
     "",
     "  name     what `bb toolchains install|remove` is called with.",

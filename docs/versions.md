@@ -49,6 +49,26 @@ fallback is what brings the machine back. `bb version release --dev` cuts
 such a tag on this commit (no bump, no changelog section) and pushes it;
 the stick maker's `--latest` and `--release` take only the normal channel.
 
+## What a release upgrades from
+
+Each release says how far back it reaches, in two numbers.
+
+- **The state floor** is the oldest `/config` it moves forward
+  (`SUPPORTED_FROM` in `scripts/dashboard/stateversion.py`). 0.9 reads state 2,
+  what 0.6.0 shipped, so any 0.6.x, 0.7.x or 0.8.x install upgrades in one
+  step. An older `/config` is refused at start with the release to go through
+  first (`THROUGH`), and the migrations under the floor are gone from the tree.
+- **The agent's window** is the minor of `AGENT_VERSION`. A node whose agent is
+  from another window takes nothing but its own update, and its projects'
+  sessions wait until it has it. The controller keeps what the previous
+  window's agents need to be updated and to hand over what they left on the
+  node, and nothing older.
+
+There is no downgrade. A container goes back by restoring the copy the
+upgrade took (`backups/before-VERSION`) under the older image. A bare-metal
+install goes back by itself only when a new release does not answer after an
+update.
+
 ## Moving work between the lines
 
 - **Forward.** Once a patch line is released, `bb version forward

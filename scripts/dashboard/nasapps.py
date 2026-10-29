@@ -250,10 +250,11 @@ def _save(apps):
 
 
 def _all():
-    """Every app, the shipped ones first with their tier, then the added."""
+    """Every app, the shipped ones first with their tier, then the added: a
+    person's own as sideloaded, one taken from the catalog at its tier."""
     out = {k: {**v, "tier": "official"} for k, v in APPS.items()}
     for k, v in _load().items():
-        out[k] = {**v, "tier": "sideloaded"}
+        out[k] = {**v, "tier": v["tier"] if v.get("pin") and v.get("tier") in ("official", "vetted") else "sideloaded"}
     return out
 
 
@@ -344,6 +345,41 @@ def add(app, name, what, port, compose, by="", replace=False):
                  "by": str(by or ""), "at": int(time.time())}
     _save(apps)
     return {"app": app, "replaced": app in apps and replace, **{k: v for k, v in seen.items()}}
+
+
+def add_catalog(entry, by="", fetch=None):
+    """Keep an app the vetted catalog offers (R170 step 7): its folder at the
+    commit the signed index pins, bbapp.json and compose.yml read from it and
+    the compose held to what a person's own is held to, kept with the
+    entry's tier and pin so New container offers it. `entry` is the index's,
+    never the page's. {app} or {error}."""
+    if not entry or entry.get("kind") != "app":
+        return {"error": "no app by that name in the catalog"}
+    got = fetch(entry["url"], entry["commit"], entry["sha256"], entry.get("path", ""), ("bbapp.json", "compose.yml"))
+    if got.get("error"):
+        return got
+    try:
+        meta = json.loads(got["files"]["bbapp.json"].decode("utf-8"))
+        compose = got["files"]["compose.yml"].decode("utf-8")
+    except (ValueError, UnicodeDecodeError, KeyError):
+        return {"error": f"{entry['name']}'s bbapp.json is not JSON"}
+    app = entry["name"]
+    if app in APPS:
+        return {"error": f"{app} is a shipped app already"}
+    seen = check(compose)
+    if seen.get("error"):
+        return {"error": f"{app}: {seen['error']}"}
+    try:
+        port = int(meta.get("port"))
+    except (TypeError, ValueError):
+        return {"error": f"{app}'s bbapp.json names no port"}
+    apps = _load()
+    apps[app] = {"name": str(meta.get("label") or app)[:60], "what": str(meta.get("about") or entry.get("about") or "")[:200], "port": port,
+                 "media": seen["media"], "compose": compose, "secrets": [], "by": str(by or ""), "at": int(time.time()),
+                 "tier": "official" if entry.get("tier") == "official" else "vetted",
+                 "pin": {k: entry[k] for k in ("url", "commit", "sha256")} | {"path": entry.get("path", "")}}
+    _save(apps)
+    return {"app": app, **seen}
 
 
 def remove(app):

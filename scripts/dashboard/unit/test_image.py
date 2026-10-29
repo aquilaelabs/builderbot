@@ -47,6 +47,13 @@ class Partitions(unittest.TestCase):
         script = read(EXTRA, "etc", "initramfs-tools", "scripts", "init-bottom", "builderbot-os")
         self.assertIn(f"by-partuuid/{self.p['BB_PART_DATA']}", script)
 
+    def test_the_projects_under_srv_are_kept_on_the_data_partition(self):
+        # B437: the staged WORKSPACE is /srv/builderbot/projects, and the
+        # root is a tmpfs overlay, so /srv is bound from /var.
+        script = read(EXTRA, "etc", "initramfs-tools", "scripts", "init-bottom", "builderbot-os")
+        self.assertIn('mount --bind "${rootmnt}/var/lib/builderbot-os/srv" "${rootmnt}/srv"', script)
+        self.assertIn("WORKSPACE_DIR=/srv/builderbot/projects", read(ROOT, "nodes", "install-controller.sh"))
+
     def test_fstab_names_the_esp_here(self):
         self.assertIn(f"PARTUUID={self.p['BB_PART_ESP']}  /boot/efi", read(EXTRA, "etc", "fstab"))
 
@@ -327,12 +334,12 @@ class Workflow(unittest.TestCase):
         tool = os.path.join(EXTRA, "usr", "lib", "builderbot-os", "env")
         with tempfile.TemporaryDirectory() as d:
             esp = os.path.join(d, "esp"); os.makedirs(esp)
-            open(os.path.join(esp, "builderbot.env"), "w").write("# the stick's own\r\nDEBUG_MODE=1\r\nTZ=Europe/Paris\nPATH=/evil\nBB_RELEASE_LINE=0.9\n")
+            open(os.path.join(esp, "builderbot.env"), "w").write("# the stick's own\r\nDEBUG_MODE=1\r\nTZ=Europe/Paris\nPATH=/evil\nBB_RELEASE_LINE=0.9\nBB_RELEASE_CHANNEL=dev\n" + " " * 3000 + "\n")
             c = os.path.join(d, "cmdline"); open(c, "w").write("bbslot=a quiet\n")
             run = os.path.join(d, "run")
             r = sh(f"bash {tool}", {"BB_ESP": esp, "BB_OS_RUN": run, "BB_CMDLINE": c})
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(open(os.path.join(run, "env")).read().splitlines(), ["DEBUG_MODE=1", "TZ=Europe/Paris", "BB_RELEASE_LINE=0.9"])
+            self.assertEqual(open(os.path.join(run, "env")).read().splitlines(), ["DEBUG_MODE=1", "TZ=Europe/Paris", "BB_RELEASE_LINE=0.9", "BB_RELEASE_CHANNEL=dev"])
             os.unlink(os.path.join(esp, "builderbot.env"))
             open(c, "w").write("bbslot=a builderbot.debug=1\n")
             sh(f"bash {tool}", {"BB_ESP": esp, "BB_OS_RUN": run, "BB_CMDLINE": c})
@@ -340,6 +347,21 @@ class Workflow(unittest.TestCase):
             open(c, "w").write("bbslot=a\n")
             sh(f"bash {tool}", {"BB_ESP": esp, "BB_OS_RUN": run, "BB_CMDLINE": c})
             self.assertEqual(open(os.path.join(run, "env")).read(), "", "off at a start that did not ask")
+        # ...and the stick is laid with the file at its fixed 4 KiB behind
+        # the marker the stick maker writes --set into (R161 step 12).
+        lay = read(IMG, "lay-disk")
+        self.assertIn('"$MNT/builderbot.env"', lay)
+        self.assertIn("# builderbot.env BB-STICK-ENV-1", lay)
+        # ...and the prepared configuration's 64 KiB (R161 step 8), taken off
+        # the stick by a root step before the controller starts.
+        self.assertIn('"$MNT/builderbot/firstboot.json"', lay)
+        self.assertIn("BB-FIRSTBOOT-1", lay)
+        # ...and the catalog's mirror's 64 MiB (R169 step 6).
+        self.assertIn('"$MNT/builderbot/catalog-mirror.bin"', lay)
+        self.assertIn("BB-MIRROR-1", lay)
+        self.assertIn("ExecStart=-/usr/lib/builderbot-os/firstboot-take",
+                      read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service"))
+        self.assertTrue(os.access(os.path.join(EXTRA, "usr", "lib", "builderbot-os", "firstboot-take"), os.X_OK))
         unit = read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service")
         self.assertIn("Before=builderbot-controller.service", unit)
         self.assertIn("builderbot-os-env.service", read(IMG, "mkosi.postinst"))

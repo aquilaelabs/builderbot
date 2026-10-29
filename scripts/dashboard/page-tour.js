@@ -58,15 +58,6 @@ const TOUR_STEPS = {
     {at: TOUR_MHEAD, say: "Pick the node here; it holds across the Library, the Emulator, the Phone and the CI runner. Check for updates reads what is newer; Add your own brings in a tool pack or an app of yours, looked at before it is kept."},
     {at: `${TOUR_PANE} .lcard`, say: "Each card says its tier, what is installed and whether a newer one is out, with Install, Update or Remove on it; Details opens the whole description."},
   ],
-  toolchains: [
-    {say: "Toolchains are the SDKs and tools a node has for builds, tests and sessions: Android, Flutter, Node and the rest."},
-    {at: TOUR_BAR, say: "Pick the node here. Install and Remove act on what you tick; Check for updates reads what is newer."},
-    {at: TOUR_FIRST, say: "Each toolchain says what is installed and whether a newer one is out. Some ask you to accept a license first, and that is always yours to accept."},
-  ],
-  agents: [
-    {say: "The coding agents a session on a node can run: Claude Code, Codex CLI, Copilot CLI and Grok Build, each installed once on the node for every account there."},
-    {at: TOUR_BAR, say: "Pick the node here. Each agent's section says its version and updates it, and holds your sign-in on that node: a sign-in is one node's, never carried to another."},
-  ],
   emulator: [
     {say: "The Android emulator on a node: the system images it holds and the virtual devices made from them."},
     {at: TOUR_MHEAD, say: "The node picked above is the one the images install on. A device starts from its row, and a session drives it with bb emu."},
@@ -77,9 +68,6 @@ const TOUR_STEPS = {
   runner: [
     {say: "CI runners: a node registered with GitHub or Gitea so your project's workflows run on it."},
     {at: TOUR_MHEAD, say: "The node picked above is where the runner goes; add one with a token from the forge."},
-  ],
-  apps: [
-    {say: "Apps are BuilderBot's own companions you install: the phone app, the editor extension and the Windows companion, each its newest release."},
   ],
   docker: [
     {say: "Containers: every project's containers on a node, grouped by project, with Up, Down, Rebuild and a Shell in the dock."},

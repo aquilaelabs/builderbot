@@ -10,7 +10,7 @@ set -euo pipefail
 # commands with the installed image's older helpers.
 # shellcheck source=lib/common.sh
 . "$(dirname "$(readlink -f "$0")")/lib/common.sh"
-# The toolchain manager (`bb toolchains` and everything the Tools tab drives) is a
+# The toolchain manager (`bb toolchains` and everything the Library and the Installed page drive) is a
 # third of this script's length and none of its subject, so it lives next door.
 # shellcheck source=lib/sdk.sh
 . "$(dirname "$(readlink -f "$0")")/lib/sdk.sh"
@@ -693,6 +693,12 @@ bb capture prune [--days N] [NAME...]
                    controller sweeps them when the Artifacts view draws: name
                    yours here to let them go sooner
 bb tool            the tools toolchains add to a session, each under its own name
+bb tool search [WORDS...]  the vetted catalog's tool packs and apps, each with
+                   its tier and what it is, and whether it is added here
+bb tool install NAME --why "..."  ask for a pack from the vetted catalog, as the
+                   project's Install a tool pack setting says: refused, asked
+                   of a person on the bell, or added now; a person installs
+                   it on a node from the Library
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,
                    annotate, diff, svg2png and optimize, into dist/img/, and
@@ -920,7 +926,7 @@ cmd_login() {
         HOME="$(user_home "$uid")" && export HOME
         PATH="$pinned/$ag:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
         command -v "$ag" >/dev/null 2>&1 \
-            || die "$ag is not installed on this machine: Install under its section on the node's Agents page puts one down"
+            || die "$ag is not installed on this machine: Install on its card in the Library, with this node picked, puts one down"
         case "$1:$ag" in
             --flow:codex)   codex login --device-auth || die "the sign-in did not complete" ;;
             --flow:copilot) COPILOT_AUTO_UPDATE=false copilot login --device-code || die "the sign-in did not complete" ;;
@@ -978,7 +984,7 @@ cmd_login() {
         # installed on a machine whose sessions ran it fine (24 Sep).
         PATH="$pinned:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
         command -v claude >/dev/null 2>&1 \
-            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Install under Claude on the node's Agents page puts down one copy every account runs"
+            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Install on Claude Code's card in the Library, with this node picked, puts down one copy every account runs"
         claude auth login || die "the sign-in did not complete"
         claude_login_check --loud || true
         return 0
@@ -997,7 +1003,7 @@ cmd_login() {
     # where sessions are, which is a node (R47). Sign in on a node's row
     # starts the flow there and takes the code back; this says the same.
     command -v claude >/dev/null 2>&1 \
-        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in under Claude on that node's Agents page, or by running this on the node itself"
+        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in on Claude Code's row of the Installed page with that node picked, or by running this on the node itself"
     # `claude auth login` is the flow built for this and does not leave a
     # session behind afterwards. The older path (start a session and use its
     # slash command) is the fallback for an image whose claude predates the
@@ -1303,7 +1309,7 @@ cmd_emu() {
                 -h|--help|"") echo "usage: bb emu create <api>: an AVD for that API level (36, 37.0), its system image and platform installed first if missing"; [ -n "$api" ]; return ;;
                 *[!0-9.]*) die "bb emu create <api>: an API level is a number like 36 or 37.0, not '${api}'" ;;
             esac
-            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this node's toolchain store: say so in your reply; the operator adds android-tools on the Toolchains page with this node picked"
+            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this node's toolchain store: say so in your reply; the operator adds android-tools from the Library with this node picked"
             # Google names a level "37.0" or "36.1" in its index some years,
             # and a person says 37: the level given is looked up against what
             # the index offers, so `bb emu create 37` installs android-37.0
@@ -1329,7 +1335,7 @@ cmd_emu() {
                 if [ -w "$plat" ] || { [ ! -e "$plat" ] && [ -w "${ANDROID_HOME:-/opt/android-sdk}" ]; }; then
                     sdkmgr --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
                 else
-                    log "platforms;android-${api} is not on this node's store, which a session cannot write: a build that compiles against ${api} needs it from the Toolchains page; the phone does not"
+                    log "platforms;android-${api} is not on this node's store, which a session cannot write: a build that compiles against ${api} needs it from the Library; the phone does not"
                 fi
             fi
             if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
@@ -1423,7 +1429,7 @@ cmd_emu() {
             ;;
         start)
             command -v emulator >/dev/null 2>&1 \
-                || die "no emulator in this node's toolchain store: tick android:emulator on the Toolchains page with this node picked"
+                || die "no emulator in this node's toolchain store: install android:emulator from the Library with this node picked"
             if adb devices 2>/dev/null | grep -q '^emulator-'; then
                 log "an emulator is already running"; adb devices; return 0
             fi
@@ -4337,7 +4343,7 @@ cmd_lint() {
     need() { # need TOOL: false (and say so) when it is not installed
         command -v "$1" >/dev/null 2>&1 && return 0
         if on_node; then
-            printf '  [skip] %s is not in this node'"'"'s store; the Toolchains page installs lint-tools, with this node picked\n' "$1"
+            printf '  [skip] %s is not in this node'"'"'s store; the Library installs lint-tools, with this node picked\n' "$1"
             return 1
         fi
         printf '  [skip] %s is not in this image (predates it? update the container)\n' "$1"
@@ -4683,6 +4689,11 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
 
     # The official packs under packs/ against the tables they are written
     # from (R169 step 1): tools/packs-export.py --write rewrites them.
+    # The word Unraid only where its XML files are the subject (the operator, 28 Oct).
+    if grep -qF '"unraid": unraid' "$BB_LIB/lint-checks.py"; then
+        echo "== unraid: the word only where its XML files are the subject"
+        python3 "$BB_LIB/lint-checks.py" unraid || rc=1
+    fi
     if [ -f tools/packs-export.py ] && grep -qF '"packs": packs' "$BB_LIB/lint-checks.py"; then
         section "packs (packs/ vs config/toolchains.json and agents.py)"
         python3 "$BB_LIB/lint-checks.py" packs || rc=1
@@ -5329,7 +5340,7 @@ EOF
 # `bb tool TOOL COMMAND...`: a toolchain's commands live under the toolchain's
 # name, so two toolchains may both have a `render` or a `shot` and none can
 # shadow one of bb's own verbs. The catalog names each recipe's tool
-# (`tool` in config/toolchains.json), the Toolchains tab says so on the row,
+# (`tool` in config/toolchains.json), the Library says so on its card,
 # and the suite holds the catalog to the case below.
 cmd_tool() {
     local tool="${1:-}"; [ $# -gt 0 ] && shift
@@ -5342,13 +5353,18 @@ cmd_tool() {
         # install; the ffmpeg toolchain turns its WAV into OGG and draws the
         # pictures a session checks it by.
         sound)     tool_sound "$@" ;;
+        # The vetted catalog's packs (R169 step 5): looked through, and one
+        # asked for, as the project's Install a tool pack setting says.
+        search|install)
+            local auth; auth="$(bb_auth_or_die)"
+            BB_PACK_AUTH="$auth" exec python3 "$BB_LIB/pack-verbs.py" "$tool" "$@" ;;
         "")
             local t d
             for t in graphics diagrams documents office; do
                 if d="$(sdk_find "$t" 2>/dev/null)" && [ -n "$d" ]; then
                     printf '  %-10s installed here\n' "$t"
                 else
-                    printf '  %-10s not on this node: the Toolchains page installs it\n' "$t"
+                    printf '  %-10s not on this node: the Library installs it\n' "$t"
                 fi
             done
             printf '\n  bb tool graphics info|resize|crop|compose|annotate|diff|svg2png|optimize|favicon ...\n'
@@ -5383,7 +5399,7 @@ gfx_tool() {
     if [ -n "$d" ] && [ -x "$d/bin/$name" ]; then printf '%s' "$d/bin/$name"; return 0; fi
     if command -v "$name" >/dev/null 2>&1; then command -v "$name"; return 0; fi
     ! sdk_off "$recipe" || die "${recipe} is switched off for this project: its settings' Toolchains group turns it on"
-    die "no ${name} here: install the ${recipe} toolchain on the Toolchains page with this node picked"
+    die "no ${name} here: install the ${recipe} toolchain from the Library with this node picked"
 }
 
 # img_out IN VERB [OUT] [EXT]: where a result goes. Named, or dist/img/ by
@@ -5588,7 +5604,7 @@ tool_docs() {
     d="$(sdk_find documents 2>/dev/null)" || d=""
     py="${d:+$d/venv/bin/python}"
     [ -n "$py" ] && [ -x "$py" ] \
-        || die "the documents toolchain is not on this node: install it on the Toolchains page with this node picked"
+        || die "the documents toolchain is not on this node: install it from the Library with this node picked"
     so="$(sdk_find office 2>/dev/null)/bin/soffice" || so=""
     [ -x "$so" ] || so=""
     BB_DOCS_SOFFICE="$so" "$py" "$BB_LIB/docs.py" "$cmd" "$@"
@@ -5778,7 +5794,7 @@ PY
         local ag
         for ag in codex copilot grok; do
             if command -v "$ag" >/dev/null 2>&1; then printf '  [ok]   %s on PATH\n' "$ag"
-            else printf '  [skip] %s is not installed here: the Agents page installs it\n' "$ag"; fi
+            else printf '  [skip] %s is not installed here: the Library installs it\n' "$ag"; fi
         done
     fi
     # A session on a node asks about its own project's tree (B168): inside
@@ -6039,7 +6055,7 @@ PY
         printf '  [ok]   signed in to Claude on this machine%s\n' \
             "$(python3 "$BB_LIB/doctor-probes.py" login 2>/dev/null)"
     else
-        printf '  [warn] not signed in to Claude on this machine: Sign in on the Agents page\n'
+        printf '  [warn] not signed in to Claude on this machine: Sign in on the Installed page\n'
         printf '         runs the flow here, or `bb login` in this shell\n'
     fi
     # ...and each other agent installed here, said as Claude's is but never a
@@ -6052,7 +6068,7 @@ PY
             if who="$(python3 "$BB_LIB/doctor-probes.py" signed "$ag" 2>/dev/null)"; then
                 printf '  [ok]   signed in to %s on this machine%s\n' "$nm" "$who"
             else
-                printf '  [skip] not signed in to %s on this machine: Sign in on the Agents page\n' "$nm"
+                printf '  [skip] not signed in to %s on this machine: Sign in on the Installed page\n' "$nm"
             fi
         done
     fi

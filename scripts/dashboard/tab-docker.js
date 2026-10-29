@@ -1186,7 +1186,7 @@ async function dmAction(project, instance, act, btn){
 // runs on the sandbox VM: a different machine, which is the entire point of
 // the arrangement, and a container publishing 8989 publishes it there. Using
 // the page's own host pointed every port label and every Open link at the
-// Unraid box, where either nothing answers or, worse, something else does.
+// NAS box, where either nothing answers or, worse, something else does.
 //
 // Taken from the address the manager is already told about, with the scheme,
 // the account and any port stripped: ssh://bb@10.0.0.9 is the machine 10.0.0.9.
@@ -1447,8 +1447,10 @@ let cApps = null;
 let cAppWant = "";       // the app the Library asked New container to open on (R170)
 // The Library's Install on an app (R170): New container with that app
 // picked and its blanks shown, as if the person had chosen it in the list.
-function openNewContainerApp(id){
+function openNewContainerApp(id, node = ""){
   cAppWant = id;
+  // ...on the Library's node when it runs Docker (R170 step 7).
+  if (node) dockerNode = node;
   openNewContainer();
 }
 async function loadNasApps(){

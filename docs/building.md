@@ -32,8 +32,8 @@ source** hands over the code base itself as a zip through the browser: what
 git tracks and would track, under one directory named for the project, never
 `.git`, `dist/` or what `.gitignore` hides. A failed build keeps its
 workspace on the node for a look, and says where. The census reports each
-node's cache size beside **Clear cache**, and the Toolchains page gains a node
-picker: installing a toolchain there is a job that carries `bb` and the
+node's cache size beside **Clear cache**, and the Library takes a node in the
+Build group's header: installing a toolchain there is a job that carries `bb` and the
 catalog to the node's own toolchain store.
 
 ## The test registry
@@ -340,11 +340,11 @@ whatever happens, and hands back only the result (the alias, type and
 fingerprint, the new or wrapped keystore, the proof, the signed APK); its
 spec names the work and never holds a key. The node the project's settings
 choose therefore needs the **jdk** and **Android SDK Build-Tools** (with
-android-tools, which installs them) on its Toolchains. When it cannot do the
+android-tools, which installs them) from its Library. When it cannot do the
 work, because there is no node, it is offline or its agent is behind, or a
 toolchain is missing, the Signing view and the answer say which node and
-what, for instance "alpha's node bb-sandbox has no jdk: install it on its
-Toolchains". A session never
+what, for instance "alpha's node bb-sandbox has no jdk: install it from its
+Library". A session never
 receives the key or a password, and is refused even the list of which keys
 exist: it signs with `bb sign`, which runs on the project's node as a job the
 session cannot look inside. Renaming the project leaves its keys where they are, with it.
