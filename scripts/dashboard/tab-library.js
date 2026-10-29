@@ -26,6 +26,10 @@ let libWantAgent = "";         // the agent whose card a door asked to open, unt
 // it builds with, then what a person adds, then what the box hosts, then
 // what the person takes to their own machines.
 const LIB_KINDS = [["agent", "Coding agents"], ["toolchain", "Toolchains"], ["pack", "Tool packs"], ["service", "Services"], ["app", "Apps"], ["companion", "For you"]];
+// The chips after All that pick cards by where they stand rather than by
+// kind, each across every kind's section (the operator, 29 Oct: Installed,
+// then Updates).
+const LIB_STANDS = {installed: r => r.installed, update: r => r.update};
 // The section a card sits in: its kind, or the group it names (R169 step 9: a
 // pack that brings a coding agent is a pack's card under Coding agents).
 function libGroup(r){ return r.group || r.kind; }
@@ -315,9 +319,11 @@ function libRow(r, may){
 // more than one way).
 function libFilterBand(rows){
   const count = (key, f) => rows.filter(f).length;
-  // Updates first after All (the operator, 29 Oct): every card with an
-  // update due, in its own section; drawn only while one is.
-  const kinds = [{key: "update", label: "Updates", count: count("update", r => r.update)},
+  // Installed, then Updates, first after All (the operator, 29 Oct): every
+  // card installed, or with an update due, each in its own kind's section;
+  // drawn only while one is.
+  const kinds = [{key: "installed", label: "Installed", count: count("installed", LIB_STANDS.installed)},
+                 {key: "update", label: "Updates", count: count("update", LIB_STANDS.update)},
                  ...LIB_KINDS.map(([k, l]) => ({key: k, label: l, count: count(k, r => libGroup(r) === k)}))];
   const tiers = LIB_TIERS.map(([k, l]) => ({key: k, label: l, count: count(k, r => r.tier === k)}));
   return `<div class="field lfilter libfilter">
@@ -332,8 +338,8 @@ function libSections(rows, may){
   return LIB_KINDS.map(([k, title]) => {
     const all = (lib.rows || []).filter(r => libGroup(r) === k);
     const here = rows.filter(r => libGroup(r) === k);
-    if (libKind && libKind !== "update" && libKind !== k) return "";
-    if (libKind === "update" && !here.length) return "";
+    if (libKind && !LIB_STANDS[libKind] && libKind !== k) return "";
+    if (LIB_STANDS[libKind] && !here.length) return "";
     // No packs at all is no group (the operator, 29 Oct): nothing to list, and
     // Add your own is on the bar; the Tool packs chip still opens it empty.
     if (k === "pack" && !all.length && libKind !== k) return "";
@@ -393,9 +399,10 @@ function renderLibraryInto(i){
   // A card not for this node is not drawn (R170 step 9): counted in the head.
   const all = (lib.rows || []).filter(r => !r.wrong_platform);
   const notHere = (lib.rows || []).length - all.length;
-  // The last update installed takes the Updates chip with it: back to All.
-  if (libKind === "update" && !all.some(r => r.update)) libKind = "";
-  const rows = all.filter(r => libMatch(r, libQ) && (!libKind || (libKind === "update" ? r.update : libGroup(r) === libKind)) && (!libTier || r.tier === libTier));
+  // The last update installed takes the Updates chip with it, the last
+  // thing removed the Installed chip: back to All.
+  if (LIB_STANDS[libKind] && !all.some(LIB_STANDS[libKind])) libKind = "";
+  const rows = all.filter(r => libMatch(r, libQ) && (!libKind || (LIB_STANDS[libKind] ? LIB_STANDS[libKind](r) : libGroup(r) === libKind)) && (!libTier || r.tier === libTier));
   const inst = all.filter(r => r.installed).length, due = all.filter(r => r.update).length;
   const free = lib.store?.free_mb ? `${(lib.store.free_mb / 1024).toFixed(1)} GB free` : "";
   const head = pageHead({title: lib.name || "", facts: [
