@@ -672,7 +672,7 @@ def _agents_off(rec):
     """The coding agents switched off for a project, as stored: ids of the
     agent table's other than Claude's, which a project always runs."""
     got = rec.get("agents_off") if isinstance(rec.get("agents_off"), list) else []
-    ids = [a.id for a in agents.TABLE if a.id != "claude"]
+    ids = [a.id for a in agents.rows() if a.id != "claude"]
     return [i for i in ids if i in {str(x) for x in got}]
 
 
@@ -909,7 +909,7 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 cur["nodes"] = [cur["node"]] + cur["nodes"]
         if agents_off is not None:
             got = agents_off if isinstance(agents_off, list) else [x for x in str(agents_off).split(",") if x]
-            bad = [x for x in got if x not in {a.id for a in agents.TABLE if a.id != "claude"}]
+            bad = [x for x in got if x not in {a.id for a in agents.rows() if a.id != "claude"}]
             if bad:
                 return {"error": f"agents_off names coding agents other than Claude's, not {', '.join(map(str, bad))}"}
             cur["agents_off"] = _agents_off({"agents_off": got})

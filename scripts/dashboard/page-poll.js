@@ -116,6 +116,7 @@ async function refresh(){
     // (B294). Dropped, and a fresh one asked for.
     if (adoptSeq !== adoptedBefore){ refreshAgain = true; return; }
     state = got;
+    agentsAdopt(state.pack_agents);
     // A new run of the container under this page, noticed here or by the
     // revs poll, whichever answers first: its code is what that run serves,
     // so the page starts again rather than carrying on with the old code.

@@ -27,6 +27,9 @@ let libWantAgent = "";         // the agent whose card a door asked to open, unt
 // it builds with, then what a person adds, then what the box hosts, then
 // what the person takes to their own machines.
 const LIB_KINDS = [["agent", "Coding agents"], ["toolchain", "Toolchains"], ["pack", "Tool packs"], ["service", "Services"], ["app", "Apps"], ["companion", "For you"]];
+// The section a card sits in: its kind, or the group it names (R169 step 9: a
+// pack that brings a coding agent is a pack's card under Coding agents).
+function libGroup(r){ return r.group || r.kind; }
 const LIB_TIERS = [["official", "Official"], ["vetted", "Vetted"], ["sideloaded", "Sideloaded"]];
 
 function openLibrary(){
@@ -298,7 +301,7 @@ function libRow(r, may){
   const key = `${r.kind}:${r.name}`, open = libOpen.has(key);
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : "";
   return `<div class="lcard${open ? " open" : ""}${r.running ? " busy" : ""}" data-lrow="${esc(key)}">
-    <div class="lchead"><span class="lcicon">${(LIB_ICONS[r.kind] || LIB_ICONS.toolchain)()}</span>
+    <div class="lchead"><span class="lcicon">${(LIB_ICONS[libGroup(r)] || LIB_ICONS.toolchain)()}</span>
       <div class="lctitle"><div class="name">${esc(r.label)} <button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button></div><div class="lcmeta">${libPills(r)}</div></div></div>
     <div class="lcabout">${esc(r.about)}</div>
     ${r.machine && r.name === TC_DRIVER ? libDriverPick(r.machine) : ""}
@@ -312,7 +315,7 @@ function libRow(r, may){
 // more than one way).
 function libFilterBand(rows){
   const count = (key, f) => rows.filter(f).length;
-  const kinds = LIB_KINDS.map(([k, l]) => ({key: k, label: l, count: count(k, r => r.kind === k)}));
+  const kinds = LIB_KINDS.map(([k, l]) => ({key: k, label: l, count: count(k, r => libGroup(r) === k)}));
   const tiers = LIB_TIERS.map(([k, l]) => ({key: k, label: l, count: count(k, r => r.tier === k)}));
   return `<div class="field lfilter libfilter">
     <input id="libFind" type="search" maxlength="80" autocomplete="off" spellcheck="false" aria-label="search the library"
@@ -324,8 +327,8 @@ function libFilterBand(rows){
 
 function libSections(rows, may){
   return LIB_KINDS.map(([k, title]) => {
-    const all = (lib.rows || []).filter(r => r.kind === k);
-    const here = rows.filter(r => r.kind === k);
+    const all = (lib.rows || []).filter(r => libGroup(r) === k);
+    const here = rows.filter(r => libGroup(r) === k);
     if (libKind && libKind !== k) return "";
     const inst = all.filter(r => r.installed).length;
     const count = !all.length ? "" : k === "app" || k === "companion" ? `${all.length}` : `${inst} of ${all.length} installed`;
@@ -383,7 +386,7 @@ function renderLibraryInto(i){
   // A card not for this node is not drawn (R170 step 9): counted in the head.
   const all = (lib.rows || []).filter(r => !r.wrong_platform);
   const notHere = (lib.rows || []).length - all.length;
-  const rows = all.filter(r => libMatch(r, libQ) && (!libKind || r.kind === libKind) && (!libTier || r.tier === libTier));
+  const rows = all.filter(r => libMatch(r, libQ) && (!libKind || libGroup(r) === libKind) && (!libTier || r.tier === libTier));
   const inst = all.filter(r => r.installed).length, due = all.filter(r => r.update).length;
   const free = lib.store?.free_mb ? `${(lib.store.free_mb / 1024).toFixed(1)} GB free` : "";
   const head = pageHead({title: lib.name || "", facts: [

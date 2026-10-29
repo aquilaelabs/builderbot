@@ -3,11 +3,17 @@ the manifest, held to the shapes BuilderBot already writes for the shipped
 agents, and refused when it cannot take the guards or reaches past what a
 session may set."""
 import copy
+import json
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import agents  # noqa: E402
+import library  # noqa: E402
 import toolpacks  # noqa: E402
 
 KITE = {"name": "kite", "label": "Kite", "about": "A coding agent.", "platforms": ["linux/amd64"],
@@ -77,6 +83,57 @@ class PackAgent(unittest.TestCase):
         del a["model_flag"]
         _, errors = toolpacks.validate(dict(KITE, agent=a))
         self.assertTrue(any("agent.model_flag" in e for e in errors), errors)
+
+
+
+class Listed(unittest.TestCase):
+    """R169 step 9: the controller lists a pack's agent beside the shipped
+    five, only from a pack the vetted catalog pinned."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        toolpacks.configure(state=self.d, write_json=lambda p, v: Path(p).write_text(json.dumps(v)))
+        p = mock.patch.object(agents, "pack_source", toolpacks.offered_agents)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def keep(self, tier):
+        m, errors = toolpacks.validate(KITE)
+        self.assertEqual(errors, [])
+        rec = {"name": "kite", "url": "https://example.com/kite", "commit": "a" * 40, "manifest": m, "tier": tier, "by": "boss", "at": 1}
+        Path(self.d, "toolpacks.json").write_text(json.dumps({"packs": {"kite": rec}}))
+        return rec
+
+    def test_a_vetted_packs_agent_is_an_agent_everywhere_names_are_read(self):
+        rec = self.keep("vetted")
+        a = agents.get("kite")
+        self.assertIsNotNone(a)
+        self.assertEqual((a.name, a.command, a.live), ("Kite", "kite", True))
+        self.assertIn(a, agents.live())
+        self.assertEqual(agents.of_session("kite-alpha~2"), (a, "alpha"))
+        self.assertEqual(agents.of_arg("kite:alpha"), (a, "alpha"))
+        self.assertEqual(agents.session_name("kite", "alpha", 2), "kite-alpha~2")
+        self.assertNotIn(a, agents.installable(), "installed and updated as its pack, never by a job of its own")
+        page = agents.page_rows()
+        self.assertEqual([r["id"] for r in page], ["kite"])
+        self.assertEqual(page[0]["models"], ["kite-1", "kite-1-mini"])
+        self.assertIn("but for the asking mark", page[0]["guards"])
+        self.assertEqual(toolpacks.recipe(rec)["agent"]["command"], "kite", "the node's bundle carries the adapter")
+        self.assertTrue(toolpacks.recipe(rec)["pack"]["agent"])
+
+    def test_a_pack_added_by_its_address_offers_no_agent(self):
+        rec = self.keep("url")
+        self.assertIsNone(agents.get("kite"))
+        self.assertEqual(agents.page_rows(), [])
+        self.assertNotIn("agent", toolpacks.recipe(rec))
+
+    def test_the_library_files_it_under_coding_agents(self):
+        node = {"items": [{"name": "kite", "label": "Kite", "installed": "1.0", "pack": {"tier": "vetted", "agent": True}}]}
+        rows = library.rows(node, [], [], {"packs": [{"name": "otter", "url": "https://example.com/o", "commit": "b" * 40, "sha256": "c" * 64,
+                                                      "tier": "vetted", "agent": True}]}, {})
+        by = {r["name"]: r for r in rows}
+        self.assertEqual((by["kite"]["kind"], by["kite"].get("group")), ("pack", "agent"))
+        self.assertEqual((by["otter"]["kind"], by["otter"].get("group")), ("pack", "agent"))
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ page-agents.js, held to this one by unit/test_agents.py; the node agent's
 prefixes (builderbot_agent/sessions.py AGENT_PREFIXES) by the same test.
 """
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,7 @@ class Agent:
     live: bool = False      # wired end to end: parsed, offered, started
     tool: str = ""          # its row's name in the Library and on the Installed page, "" when it has none yet
     latest_url: str = ""    # where the newest release is asked (an npm registry `latest`, or a plain version)
+    pack: dict = field(default=None, compare=False, hash=False)  # a pack agent's adapter (R169 step 9), None for the shipped
 
     @property
     def arg(self):
@@ -119,6 +120,47 @@ TABLE = (
 
 _BY_ID = {a.id: a for a in TABLE}
 
+# The coding agents installed packs bring (R169 step 9): the server sets this
+# to toolpacks.offered_agents, [(name, label, adapter)]; a standalone reader
+# (bb-tty, the doctor) has none. Each is an ordinary row, live, installed and
+# updated as its pack is, so it has no update or sign-in job of its own.
+pack_source = lambda: ()    # noqa: E731
+_packs = {"key": None, "rows": ()}
+
+
+def _pack_rows():
+    got = tuple(pack_source() or ())
+    if got != _packs["key"]:
+        rows = []
+        for name, _label, a in got:
+            if name in _BY_ID:
+                continue
+            rows.append(Agent(id=name, name=a.get("name") or name, product=a.get("product") or name, command=a.get("command") or name,
+                              provider=a.get("provider") or "", reported=name, update_job="", login_job="", logout_job="",
+                              briefing="instructions-file" if (a.get("briefing") or {}).get("how") == "env-file" else "system-prompt-file",
+                              guards="hooks", state="hooks", transcripts=(a.get("transcripts") or {}).get("dir") or "",
+                              live=True, tool=name, pack=a))
+        _packs.update(key=got, rows=tuple(rows))
+    return _packs["rows"]
+
+
+def rows():
+    """Every agent: the table's, then the ones installed packs bring."""
+    return TABLE + _pack_rows()
+
+
+def page_rows():
+    """The pack agents as the page's table holds an agent (page-agents.js
+    AGENTS), with the models Start offers and what holds its guards."""
+    out = []
+    for a in _pack_rows():
+        evs = (a.pack.get("hooks") or {}).get("events") or {}
+        lacks = [w for k, w in (("recall", "the house rules' recall after a summary"), ("asking", "the asking mark")) if k not in evs]
+        out.append({"id": a.id, "name": a.name, "product": a.product, "command": a.command, "provider": a.provider, "live": True, "pack": True,
+                    "models": list(a.pack.get("models") or []),
+                    "guards": "the same guards through its own hooks, from its pack's adapter" + (f", but for {' and '.join(lacks)}, which it names no hook for" if lacks else "")})
+    return out
+
 
 # Each agent's own models and reasoning efforts, what Start's model and
 # effort step offers for it (R95 step 9) and the only words bb-tty passes on
@@ -142,12 +184,13 @@ OPEN_MODEL = re.compile(r"^[A-Za-z0-9._:/-]{1,120}$")
 
 def get(agent_id):
     """The adapter called this, or None."""
-    return _BY_ID.get(str(agent_id or ""))
+    k = str(agent_id or "")
+    return _BY_ID.get(k) or next((a for a in _pack_rows() if a.id == k), None)
 
 
 def live():
     """The agents a session may run today, Claude first."""
-    return tuple(a for a in TABLE if a.live)
+    return tuple(a for a in rows() if a.live)
 
 
 def default():
@@ -236,7 +279,8 @@ def session_name(agent_id, project, slot=1):
 def installable():
     """The agents the Library installs on a node, Claude first: every
     row with a toolchain row of its own, live or not yet, since an agent
-    is installed before a session can start it."""
+    is installed before a session can start it. A pack's agent is not
+    among them: it is installed and updated as its pack is."""
     return tuple(a for a in TABLE if a.tool)
 
 

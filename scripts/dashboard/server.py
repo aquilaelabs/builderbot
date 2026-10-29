@@ -4043,6 +4043,8 @@ import paths                                                     # noqa: E402
 paths.configure(state=STATE, workspace=WORKSPACE)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 workspace.packs_json = toolpacks.catalog_json
+# The coding agents installed packs bring, beside the table's (R169 step 9).
+agents.pack_source = toolpacks.offered_agents
 workspace.packs_files = toolpacks.hosted_files
 
 
@@ -5622,6 +5624,9 @@ def _snapshot(who):
         # Controller settings' Update checks.
         "checks": _timed("status:checks", checks.view) if users.is_admin(who) else None,
         "catalog_mirror": catalogmirror.held() if users.is_admin(who) else None,
+        # The coding agents installed packs bring (R169 step 9), which the
+        # page adds to its own table of the shipped five.
+        "pack_agents": agents.page_rows(),
         # ...and where this controller went, when it moved (R90 step 12):
         # the page is read-only then and says so.
         "moved_to": move.moved_to(),

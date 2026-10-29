@@ -1020,12 +1020,46 @@ def recipe(rec):
            "verbs": m["verbs"],
            "pack": {"url": rec["url"], "commit": rec["commit"], "path": rec.get("path", ""), "by": rec.get("by", ""), "at": rec.get("at", 0),
                     "tier": rec.get("tier") or ("here" if rec.get("hosted") else "url"),
-                    "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted"))}}
+                    "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted")), "agent": bool(offers_agent(rec))}}
+    # A coding agent it offers, for bb-tty and bb-agent-hook on the node,
+    # which read it from the bundle's config/toolpacks.json (R169 step 10).
+    if offers_agent(rec):
+        row["agent"] = offers_agent(rec)
     if m.get("system"):
         row["system"] = m["system"]
     if m.get("config"):
         row["config"] = m["config"]
     return row
+
+
+def offers_agent(rec):
+    """The coding agent an installed pack offers (R169 step 9), its adapter,
+    or None: only one the vetted catalog pinned, or an official one, since
+    the adapter decides what runs in every session of it."""
+    m = (rec or {}).get("manifest") or {}
+    return m.get("pack_agent") if m.get("pack_agent") and rec.get("tier") in ("vetted", "official") else None
+
+
+_offered = {"stamp": None, "rows": ()}
+
+
+def offered_agents():
+    """[(name, label, adapter)] for every installed pack that offers a coding
+    agent, in name order; read again only when the packs' file changes, since
+    every session name is asked of it."""
+    try:
+        st = FILE.stat() if FILE else None
+        stamp = (str(FILE), st.st_mtime_ns, st.st_size) if st else None
+    except OSError:
+        stamp = None
+    if stamp is None or stamp != _offered["stamp"]:
+        rows = []
+        for name, rec in sorted(packs().items()) if stamp is not None else ():
+            a = offers_agent(rec)
+            if a:
+                rows.append((name, rec["manifest"].get("label") or name, a))
+        _offered.update(stamp=stamp, rows=tuple(rows))
+    return _offered["rows"]
 
 
 def recipes():

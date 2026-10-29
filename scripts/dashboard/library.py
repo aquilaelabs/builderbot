@@ -118,6 +118,9 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
                     "config": i.get("config") or [], "values": pack_values.get(i["name"]) if i.get("config") else None,
                     "mine": pack_mine.get(i["name"]),
                     "repin": _repin(pack, pins.get(i["name"])) if pack else None,
+                    # A pack that brings a coding agent is its card under Coding
+                    # agents (R169 step 9), installed and updated as a pack.
+                    **({"group": "agent"} if pack and pack.get("agent") else {}),
                     "verb": "update" if i.get("state") == "update" else ("" if i.get("installed") else "install")})
     for s in services or []:
         m, st = s.get("manifest") or {}, s.get("status") or {}
@@ -159,7 +162,7 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
             continue
         if e.get("kind") == "service":
             continue
-        out.append({"kind": "pack", "tier": _tier(e.get("tier")), "name": e["name"], "label": e["name"], "about": e.get("about") or "",
+        out.append({"kind": "pack", **({"group": "agent"} if e.get("agent") is True else {}), "tier": _tier(e.get("tier")), "name": e["name"], "label": e["name"], "about": e.get("about") or "",
                     "platforms": e.get("platforms") or [], "installed": False, "version": "", "latest": e.get("commit", "")[:12], "update": False,
                     "running": False, "catalog": {"url": e["url"], "commit": e["commit"], "sha256": e["sha256"], "path": e.get("path", "")}, "verb": "add"})
     for c in (companions or {}).get("apps") or []:

@@ -165,6 +165,8 @@ def load_toolchains(packs=()):
                            # from, for the Library's card and the catalog's
                            # newer pin (B442).
                            "tier": str(pk.get("tier") or "url")[:12], "path": str(pk.get("path") or "")[:200],
+                           # Whether it brings a coding agent (R169 step 9).
+                           "agent": bool(pk.get("agent")),
                            "verbs": sorted(str(v) for v in (r.get("verbs") or {}))[:40],
                            # What it runs now, for an update to be read as
                            # what changes: each verb's words, and the
