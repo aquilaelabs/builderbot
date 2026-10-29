@@ -3004,6 +3004,32 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   ok(behind.mine === '<div class="pnote warn">Restart your session to use what changed: beta added to its project since it started.</div>'
      && !/Restart/.test(behind.theirs),
      `a card says your session is behind what changed, once, and not another person's (${JSON.stringify(behind)})`);
+  // Every note in a project's header is a band with its x (the operator, 29
+  // Oct): a node removed from under it as the restart band is, put away for
+  // this visit to the notebook and back once it is left and come back to;
+  // the card keeps its plain line.
+  const bands = await page.evaluate(() => {
+    state.claude_where = {};
+    // A project with no session of this account's, so its note is said.
+    const p = { ...state.projects.find(x => x.name === 'alpha'), name: 'bandtest', held: '', locked_me: false, claude_missing: '',
+                session_why: 'bb-sandbox-redhat was removed from the Nodes page. Pick another node in bandtest\'s settings, or enroll it again' };
+    const has = h => /pband/.test(h) && /data-pnote-x/.test(h) && /was removed from the Nodes page/.test(h);
+    pnoteOnShow('bandtest');
+    const shown = projectNote(p, true), card = projectNote(p);
+    pnotePutAway('bandtest', p.session_why);
+    const away = projectNote(p, true);
+    pnoteOnShow('bandtest');
+    const sameVisit = projectNote(p, true);
+    pnoteOnShow('');
+    pnoteOnShow('bandtest');
+    // An error is red, a wait yellow (the operator, 29 Oct).
+    const waiting = projectNote({ ...p, session_why: 'bb-sandbox is reconnecting after the controller restarted', session_waiting: true }, true);
+    return { band: has(shown), card: /pband/.test(card) ? 'band' : /pnote dim/.test(card) ? 'line' : card, away, sameVisit, back: has(projectNote(p, true)),
+             red: /class="pnote bad pband"/.test(shown), yellow: /class="pnote warn pband"/.test(waiting) };
+  });
+  ok(bands.band && bands.card === 'line' && bands.away === '' && bands.sameVisit === '' && bands.back,
+     `a note in the header is a band with its x, the card's a line; put away it stays away through the notebook's views and is back once the notebook is left (${JSON.stringify(bands)})`);
+  ok(bands.red && bands.yellow, `...a node removed from under it is an error's band in red, a node reconnecting a warning's in yellow (${JSON.stringify(bands)})`);
   await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:')));
     state.claude_where = {};
     state.sessions = (state.sessions || []).filter(s => s.name !== myClaude('alpha')); drawPanes(); });

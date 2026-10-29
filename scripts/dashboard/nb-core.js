@@ -1020,23 +1020,32 @@ function projectNote(p, band = false){
     .filter(r => r.who === state?.me).flatMap(r => r.behind || []))];
   // A band between the header and the view strip, put away with its x for
   // as long as it says the same (the operator, 28 Oct); what changed next
-  // brings it back.
+  // brings it back, and so does leaving the notebook and coming back to it
+  // (the operator, 29 Oct). Every note the header carries is one (pnoteBand).
   if (behind.length){
     const text = `Restart your session to use what changed: ${behind.join("; ")}.`;
-    if (!band) return `<div class="pnote warn">${esc(text)}</div>`;
-    if (pnotePutAway(p.name) === text) return "";
-    return `<div class="pnote warn pband" data-pnote="${esc(p.name)}"><span class="grow">${esc(text)}</span><button type="button" class="ic" data-pnote-x aria-label="put this away">×</button></div>`;
+    return band ? pnoteBand(p, text) : `<div class="pnote warn">${esc(text)}</div>`;
   }
   // The project's agent missing on its node, for an account that may install
   // it: the button says it (Install Claude, Install ChatGPT), so no line does.
   if (agentInstall(p, projectAgent(p))) return "";
   const said = held || p.session_why;
-  if (said && !p.locked_me && !here) return `<div class="pnote dim">${esc(said)}</div>`;
+  // An error where no session can run there and nothing passes by itself
+  // (a node removed, disabled, off or hosting only); a warning where it is a
+  // wait or a hold (the operator, 29 Oct: warnings yellow, errors red).
+  const tone = held || p.session_waiting ? "warn" : "bad";
+  if (said && !p.locked_me && !here) return band ? pnoteBand(p, said, tone) : `<div class="pnote dim">${esc(said)}</div>`;
   // ...and otherwise why Start agent is dead, whatever made it so (B88):
   // a Profile with no commit author, somebody else's node. A locked one
   // says so by its mark, and is left out.
   const dead = p.locked_me ? "" : claudeDeadWhy(p);
-  return dead ? `<div class="pnote dim">${esc(dead)}</div>` : "";
+  return !dead ? "" : band ? pnoteBand(p, dead) : `<div class="pnote dim">${esc(dead)}</div>`;
+}
+// A note in the project's header as a band with its x (the operator, 28 and
+// 29 Oct: every one, the way the restart band is), or "" while it is put away.
+function pnoteBand(p, text, tone = "warn"){
+  if (pnotePutAway(p.name) === text) return "";
+  return `<div class="pnote ${tone === "bad" ? "bad" : "warn"} pband" data-pnote="${esc(p.name)}"><span class="grow">${esc(text)}</span><button type="button" class="ic" data-pnote-x aria-label="put this away">×</button></div>`;
 }
 // The node to install Claude Code on in place of starting a session, or "":
 // the project's node has none and this account may install toolchains there
@@ -1164,12 +1173,22 @@ function projectHeader(t){
 }
 // The row's handlers serve the header too (the same data-* names); the
 // menu's own button is the one thing the row did differently.
-// The restart band put away in this browser, by project: the text it had.
+// The header's band put away, by project: the text it had, for this visit
+// to the notebook alone (the operator, 29 Oct: it comes back once you fully
+// leave the notebook and return). A view of the same notebook is the same
+// visit; another page, another project or a reload is not.
+const pnoteAway = {};
+let pnoteHere = "";
 function pnotePutAway(name, text){
-  try{
-    if (text !== undefined) localStorage.setItem("bb.pnote:" + name, text);
-    return localStorage.getItem("bb.pnote:" + name) || "";
-  }catch(e){ return ""; }
+  if (text !== undefined) pnoteAway[name] = text;
+  return pnoteAway[name] || "";
+}
+// The project the front pane is on, told on every draw of its bar: leaving
+// one forgets what was put away there.
+function pnoteOnShow(name){
+  if (name === pnoteHere) return;
+  if (pnoteHere) delete pnoteAway[pnoteHere];
+  pnoteHere = name;
 }
 function wireProjectHeader(bar){
   wireProjectRows(bar);

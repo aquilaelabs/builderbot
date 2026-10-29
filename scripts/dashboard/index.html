@@ -3508,6 +3508,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    operator, 28 Oct): tinted, its x at the right. */
 .pane .bar.proj .pnote.pband{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:var(--r-control);
   background:color-mix(in srgb, var(--warn) 14%, var(--panel));border:var(--hair) solid color-mix(in srgb, var(--warn) 40%, var(--line))}
+/* An error's band (the operator, 29 Oct: warnings yellow, errors red): what
+   will not pass by itself, in --bad, its words in --ink as the warning's are. */
+.pane .bar.proj .pnote.pband.bad{color:var(--ink);background:color-mix(in srgb, var(--bad) 14%, var(--panel));
+  border-color:color-mix(in srgb, var(--bad) 40%, var(--line))}
 .pane .bar.proj .pnote.pband>.grow{flex:1 1 auto;min-width:0}
 .pane .bar.proj .pnote.pband>button.ic{flex:0 0 auto;min-width:28px;min-height:28px;padding:0 8px}
 .pane .bar.proj .pnote.bad{color:var(--bad)}

@@ -46,6 +46,9 @@ function paintBar(pane, t, i){
   // close: the rail is how you leave it. A project (step 3) wears its
   // header: the name, the facts, the session's state and its actions.
   const proj = t.kind === "notebook";
+  // Which project the front pane is on, so a band put away there comes back
+  // once it is left (pnoteOnShow).
+  if (i === 0) pnoteOnShow(proj ? t.arg : "");
   // Painted, and wired, only when it changed (R218 step 10): assigned on
   // every draw, the page's sub-nav and a project's header were rebuilt by
   // each poll under the pointer that was about to press them.
