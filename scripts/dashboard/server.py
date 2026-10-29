@@ -2079,7 +2079,7 @@ def _attention(who):
             + [a for a in toolchains.attention(where) + toolchains.agent_attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
             # ...and a pack the vetted catalog withdrew that this install holds (R169 step 2).
-            + ([] if users.may(who, "toolchains-write") else catalogindex.attention(list(toolpacks.packs())))
+            + ([] if users.may(who, "toolchains-write") else catalogindex.attention(list(toolpacks.packs())) + toolpacks.unfit())
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
             # R192), for whoever may act on the Docker tab, which Update is.
             + ([] if users.may(who, "docker-write")
@@ -3804,6 +3804,8 @@ import library                                                   # noqa: E402
 catalogindex.configure(state=STATE, write_json=write_json)
 toolpacks.configure(state=STATE, write_json=write_json,
                     unpack=lambda aid, dest: projects.unpack_archive(aid, dest))
+# This build's version, for a pack's works_with (R169 step 6).
+toolpacks.running_version = lambda: image_stamp().get("version") or ""
 toolchains.packs_rows = toolpacks.recipes
 toolchains.refresh_packs()
 # The Android system images on each node's store, behind the Emulator tab:

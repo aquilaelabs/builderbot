@@ -291,6 +291,14 @@ def validate(m, shipped=()):
     if tch.get("root") not in (None, True, False):
         errors.append("touches.root is true or false")
     out["touches"] = {"hosts": hosts, "root": tch.get("root") is True}
+    # The BuilderBot versions it works with (R169 step 6), by release line
+    # ("0.9", "0.10"); none named, every one. Checked before it is added and
+    # said on the bell when this install moves to a line it does not name.
+    ww = m.get("works_with") if m.get("works_with") is not None else []
+    if not isinstance(ww, list) or len(ww) > 16 or not all(isinstance(x, str) and re.fullmatch(r"\d{1,3}\.\d{1,3}", x) for x in ww):
+        errors.append("works_with lists the BuilderBot release lines it works with, e.g. [\"0.9\", \"0.10\"]")
+        ww = []
+    out["works_with"] = ww
     inst = m.get("install") or {}
     if not isinstance(inst, dict):
         errors.append("install is an object: steps (each a list of words) and verify")
@@ -600,6 +608,8 @@ def add_staged(staged, by, shipped=(), may_root=False):
         name = m["name"]
         if (m.get("touches") or {}).get("root") and not may_root:
             return {"error": f"{name}: {ROOT_REFUSED}"}
+        if not fits(m):
+            return {"error": _unfit_why(m)}
         with _lock:
             data = _load()
             was = data["packs"].get(name)
@@ -660,6 +670,40 @@ def packs():
 
 
 ROOT_REFUSED = "it needs root on the node (its touches say so): an administrator adds it"
+running_version = lambda: ""    # noqa: E731 (this build's version, set by the server)
+
+
+def line_of(version):
+    """A version's release line, "0.9" of "0.9.0-dev.4342+48b768b"; "" when it has none."""
+    m = re.match(r"^v?(\d+)\.(\d+)", str(version or ""))
+    return f"{m.group(1)}.{m.group(2)}" if m else ""
+
+
+def fits(manifest, version=None):
+    """Whether a pack's manifest names this build's release line (R169 step 6):
+    True for one that names none, or a build with no version."""
+    ww = (manifest or {}).get("works_with") or []
+    line = line_of(running_version() if version is None else version)
+    return not ww or not line or line in ww
+
+
+def unfit():
+    """The bell's rows (kind pack) for each pack this install holds whose
+    works_with does not name the running release line."""
+    line = line_of(running_version())
+    out = []
+    for n, r in packs().items():
+        m = (r or {}).get("manifest") or {}
+        if line and not fits(m):
+            out.append({"kind": "pack", "name": n, "key": f"pack:unfit:{n}:{line}",
+                        "said": f"the pack {n} says it works with BuilderBot {', '.join(m.get('works_with') or [])}, and this is {line}: "
+                                "update it from the Library, or remove it"})
+    return out
+
+
+def _unfit_why(m):
+    line = line_of(running_version())
+    return f"{m['name']} works with BuilderBot {', '.join(m.get('works_with') or [])}, and this is {line}: a newer commit of it may name {line}"
 
 
 def add(url, commit, by, shipped=(), sha256="", tier="url", path="", may_root=False):
@@ -677,6 +721,9 @@ def add(url, commit, by, shipped=(), sha256="", tier="url", path="", may_root=Fa
     # One that needs root is an administrator's to add (R169 step 4).
     if (got.get("manifest") or {}).get("touches", {}).get("root") and not may_root:
         return {"error": f"{got['manifest']['name']}: {ROOT_REFUSED}"}
+    # ...and one that does not name this release line is not added (step 6).
+    if got.get("manifest") and not fits(got["manifest"]):
+        return {"error": _unfit_why(got["manifest"])}
     if path:
         return _add_folder(url, got["commit"], path, by, shipped, sha256, tier)
     m = got["manifest"]

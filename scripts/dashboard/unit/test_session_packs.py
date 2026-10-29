@@ -70,5 +70,26 @@ class Touches(unittest.TestCase):
         m, _ = toolpacks.validate(base)
         self.assertEqual(m["touches"], {"hosts": [], "root": False})
 
+class WorksWith(unittest.TestCase):
+    """R169 step 6: a pack names the release lines it works with; one that
+    does not name this build's is not added, and one held is said."""
+    def test_a_pack_fits_the_lines_it_names(self):
+        self.assertEqual(toolpacks.line_of("0.9.0-dev.4342+48b768b"), "0.9")
+        self.assertTrue(toolpacks.fits({"works_with": ["0.9", "0.10"]}, "0.10.2"))
+        self.assertFalse(toolpacks.fits({"works_with": ["0.9"]}, "0.10.0"))
+        self.assertTrue(toolpacks.fits({}, "0.10.0"), "none named: every one")
+        _, errs = toolpacks.validate({"name": "hexkit", "label": "x", "platforms": ["linux/amd64"], "works_with": ["nine"],
+                                      "verbs": {"go": {"run": ["{dir}/x"]}}})
+        self.assertTrue(any("works_with" in e for e in errs), errs)
+
+    def test_one_held_that_no_longer_fits_is_on_the_bell(self):
+        was = (toolpacks.running_version, toolpacks.packs)
+        self.addCleanup(lambda: (setattr(toolpacks, "running_version", was[0]), setattr(toolpacks, "packs", was[1])))
+        toolpacks.running_version = lambda: "0.10.0"
+        toolpacks.packs = lambda: {"hexkit": {"manifest": {"works_with": ["0.9"]}}, "ok": {"manifest": {}}}
+        rows = toolpacks.unfit()
+        self.assertEqual([r["name"] for r in rows], ["hexkit"])
+        self.assertIn("this is 0.10", rows[0]["said"])
+
 if __name__ == "__main__":
     unittest.main()

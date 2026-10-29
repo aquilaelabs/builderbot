@@ -213,6 +213,7 @@ function tpSeen(seen, was, offer = true){
       m.verify ? `, and checks it with ${w(m.verify)}` : ""}; on ${esc((m.platforms || []).join(", "))}.</div>
     ${verbs}
     ${(m.touches?.hosts || []).length ? `<div class="sub">Its install fetches from ${m.touches.hosts.map(h => `<code>${esc(h)}</code>`).join(", ")}.</div>` : ""}
+    ${(m.works_with || []).length ? `<div class="sub">It works with BuilderBot ${esc(m.works_with.join(", "))}.</div>` : ""}
     ${m.touches?.root ? `<div class="hint warn">It needs root on the node to install: only an administrator adds it.</div>` : ""}
     ${(m.terms || []).length ? `<div class="sub">Under ${m.terms.map(t => t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.label)}</a>` : esc(t.label)).join(", ")}.</div>` : ""}
     ${seen.guidance ? `<div class="sub">Comes with guidance a session reads as <code>bb help tool-${esc(m.name)}</code>.</div>` : ""}
