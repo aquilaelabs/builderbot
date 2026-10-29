@@ -173,7 +173,7 @@ function bootPage(hash){
   const parts = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   const key = parts[0] || "home", g = RAIL.find(x => x.key === key) || RAIL[0];
   const tool = g.tools.some(([k]) => k === parts[1]) ? parts[1] : g.tools[0][0];
-  const seg = (tools, on) => `<span class="subnav pseg">${tools.filter(([k]) => !PRESSED.has(k)).map(([k, label]) =>
+  const seg = (tools, on) => `<span class="subnav pseg hscroll">${tools.filter(([k]) => !PRESSED.has(k)).map(([k, label]) =>
       `<button type="button" disabled class="${k === on ? "on" : ""}">${esc(label)}</button>`).join("")}</span>`;
   const doc = (barHtml, body) => `<div class="doc on flush"><div class="doctab">${barHtml
     ? `<div class="field docbarrow">${barHtml}</div>` : ""}<div class="doclist">${body}</div></div></div>`;
@@ -190,8 +190,8 @@ function bootPage(hash){
     const btn = (on, w) => `<button type="button" disabled class="${on ? "on" : ""}">${w}</button>`;
     bar = `<span class="phead"><span class="pname">${skv(6)}</span><span class="pfacts">${skv(14)}</span><span class="sp"></span>
       <button type="button" disabled>Start agent</button><button type="button" disabled>Shell</button></span>`;
-    body = `<div class="doc on nbhost"><div class="nb"><div class="nbtabs"><div class="nbgroups">${GROUPS.map(([k, w]) => btn(k === grp[0], w)).join("")}</div>
-      <div class="nbsub">${grp[2].map(([v, w]) => btn(v === view, w)).join("")}</div></div>
+    body = `<div class="doc on nbhost"><div class="nb"><div class="nbtabs"><div class="nbgroups hscroll">${GROUPS.map(([k, w]) => btn(k === grp[0], w)).join("")}</div>
+      <div class="nbsub hscroll">${grp[2].map(([v, w]) => btn(v === view, w)).join("")}</div></div>
       ${bootView(view) || `<div class="nbview"><div class="field">${skRows(5)}</div></div>`}</div></div>`;
     return {rail: key, bar: `<div class="bar proj">${bar}</div>`, body: `<div class="skstack">${body}</div>`};
   }
@@ -1376,7 +1376,7 @@ const chipScroll = {};
 function chipsScrolled(e){
   const c = e.target;
   if (c?.matches?.(".chips[data-chips]")) chipScroll[c.dataset.chips] = c.scrollLeft;
-  if (c?.matches?.(".chips")) chipsEdge(c);
+  if (c?.matches?.(".chips, .hscroll")) chipsEdge(c);
 }
 // Which ends of a row of chips have more past them (the operator, 23 Oct: on
 // a desk a row that ran off the edge had no way along but a trackpad): .chl
@@ -1387,7 +1387,8 @@ function chipsEdge(c){
   c.classList.toggle("chr", max > 1 && c.scrollLeft < max - 1);
 }
 function chipsEdges(root = document){
-  root.querySelectorAll?.(".chips").forEach(chipsEdge);
+  // ...and a row of sub-tabs that may run off its edge (the operator, 29 Oct).
+  root.querySelectorAll?.(".chips, .hscroll").forEach(chipsEdge);
 }
 // A press on an end's arrow moves the row most of its width that way. The
 // arrows are the row's own ::before and ::after, so the press lands on the
@@ -1395,7 +1396,7 @@ function chipsEdges(root = document){
 const CHIP_ARROW = 28;
 function chipsArrow(e){
   const c = e.target;
-  if (!c?.matches?.(".chips.chl, .chips.chr, .dockline.chl, .dockline.chr") || chipDragged) return;
+  if (!c?.matches?.(".chips.chl, .chips.chr, .dockline.chl, .dockline.chr, .hscroll.chl, .hscroll.chr") || chipDragged) return;
   const r = c.getBoundingClientRect(), by = Math.max(80, c.clientWidth * 0.7);
   if (c.classList.contains("chl") && e.clientX < r.left + CHIP_ARROW) c.scrollBy({left: -by, behavior: "smooth"});
   else if (c.classList.contains("chr") && e.clientX > r.right - CHIP_ARROW) c.scrollBy({left: by, behavior: "smooth"});
@@ -1405,7 +1406,7 @@ function chipsArrow(e){
 // the browser's own swipe.
 let chipDrag = null, chipDragged = false;
 function chipsDown(e){
-  const c = e.target?.closest?.(".chips, .dockline");
+  const c = e.target?.closest?.(".chips, .dockline, .hscroll");
   if (!c || e.pointerType !== "mouse" || e.button !== 0 || c.scrollWidth <= c.clientWidth + 1) return;
   chipDrag = {c, x: e.clientX, left: c.scrollLeft, moved: false};
   chipDragged = false;
@@ -1428,13 +1429,13 @@ function chipsUp(){
   if (chipDragged) setTimeout(() => { chipDragged = false; }, 0);
 }
 function chipsClickGuard(e){
-  if (chipDragged && e.target?.closest?.(".chips")){ e.stopPropagation(); e.preventDefault(); }
+  if (chipDragged && e.target?.closest?.(".chips, .hscroll")){ e.stopPropagation(); e.preventDefault(); }
 }
 function chipsRestore(muts){
   for (const m of muts) for (const n of m.addedNodes){
     if (n.nodeType !== 1) continue;
     // Its ends, once it is laid out.
-    if (n.matches(".chips") || n.querySelector(".chips")) requestAnimationFrame(() => chipsEdges(n.parentNode || document));
+    if (n.matches(".chips, .hscroll") || n.querySelector(".chips, .hscroll")) requestAnimationFrame(() => chipsEdges(n.parentNode || document));
     for (const c of n.matches(".chips[data-chips]") ? [n] : n.querySelectorAll(".chips[data-chips]")){
       const x = chipScroll[c.dataset.chips];
       if (x && c.scrollLeft !== x){

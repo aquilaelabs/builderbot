@@ -526,8 +526,9 @@ async function spanning(){
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
     const ROWS = '.actbar, .ctlrow, .setcell .ctl, .setfoot, .tcnode, .chips';
     // A tab strip is navigation, and the phone rule for one is the opposite
-    // of a control's: it wraps into rows of equal-width tabs, every one of
-    // them visible (the design language, The notebook).
+    // of a control's: its tabs share the row while they fit, and past that
+    // it scrolls under a finger with its edges faded as the dock's line does
+    // (the operator, 29 Oct).
     const NAV = '.nbtabs, .switch, .subnav, .rlist';
     const vis = e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0;
     const out = [];

@@ -376,7 +376,7 @@ function shellBar(t, i){
   if (PRESSED.has(t.kind)) return backHead(t) + (g && GROUP_HEADS[g.key] && NODE_PICKED[t.kind] ? groupHeader(t, g) : "");
   const grouped = !!g && GROUP_HEADS[g.key];
   const nid = grouped ? groupNode(g, t.kind) : "";
-  const nav = `<span class="subnav pseg" role="tablist" aria-label="${esc(g ? g.label : tabLabel(t))}">${tools.map(([k, label]) => {
+  const nav = `<span class="subnav pseg hscroll" role="tablist" aria-label="${esc(g ? g.label : tabLabel(t))}">${tools.map(([k, label]) => {
     // A sub-tab whose feature the picked node lacks is drawn unavailable
     // (R178): muted, the reason on it, still a press, and the page says
     // the same and offers the one thing that makes it available.

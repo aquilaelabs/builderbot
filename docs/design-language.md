@@ -1286,7 +1286,7 @@ a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
 
 On a phone the tab strip is a picker (`#tabPick`, R119 step 5): one button naming the tab on show, with a count of the open ones, and a list under it of every tab, each with its close or a terminal's minimize, and New terminal last; Escape or a tap elsewhere closes it. There is no strip to swipe and no paging arrows, and the pane's own caption, which only repeated the picker's name, is not drawn. A desktop keeps the strip, which wraps.
 
-From R218 step 2 the strip's picker goes with the strip: the bottom bar is the rail (five groups and More), the dock is a sheet, and a page's own sub-nav (a project's views, a group's tools) wraps into rows of equal tabs so every one stays visible; nothing scrolls sideways.
+From R218 step 2 the strip's picker goes with the strip: the bottom bar is the rail (five groups and More), the dock is a sheet, and a page's own sub-nav (a group's tools, a notebook's groups and its views) shares the row's width while its tabs fit, and when there are more than fit each keeps its words and the row scrolls under a finger, its edges faded where more lies past them as the dock's line and a row of chips do, with the arrows and the drag a desk has for them (the operator, 29 Oct).
 
 ### a dialog (Web app)
 
