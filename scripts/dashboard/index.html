@@ -3448,6 +3448,14 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    a band of its own under a rule, in the notebook view strip's type, the
    group's actions at its right (the operator, 28 Oct: on the tabs' line). */
 .pane .bar.page.grouped{flex-wrap:wrap;gap:0 10px;font:var(--f-ui);padding-bottom:0}
+/* A page a press opened (R181): a small top header, Back to where it was
+   opened from and the page's name, in place of the sub-nav it is not on. */
+.pane .bar.page .backhead{display:flex;align-items:center;gap:6px;flex:1 1 100%;min-width:0;min-height:30px;font:var(--f-ui)}
+.pane .bar.page .backhead .backbtn{display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:2px 8px 2px 2px;color:var(--dim);background:none;border:0;border-radius:var(--r-control)}
+.pane .bar.page .backhead .backbtn:hover,.pane .bar.page .backhead .backbtn:focus-visible{color:var(--ink)}
+.pane .bar.page .backhead .backof{font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pane .bar.page .backhead .backof::before{content:"/";margin-right:6px;color:var(--dim);font-weight:400}
+@media(pointer:coarse){.pane .bar.page .backhead .backbtn{min-height:var(--tap)}}
 .pane .bar.page.grouped .phead{display:flex;align-items:center;gap:10px;flex:1 1 100%;min-width:0;flex-wrap:wrap;min-height:calc(var(--pbar-h) - 12px)}
 .pane .bar.page.grouped .phead>label.pick{display:inline-flex;align-items:center;gap:var(--field-gap);margin:0}
 /* The word stays for a reader of the page, as the select's label. */
@@ -7393,7 +7401,7 @@ untitleWatch();
 // Its declarations are page-shell.js; what runs at load is below: the
 // address bar's back and forward open what they name, the search is wired,
 // and the phone's More sheet closes on a tap elsewhere.
-addEventListener("hashchange", () => { sectNewVisit(); shellSeen = location.hash; if (!openRoute(location.hash)) shellSync(); });
+addEventListener("hashchange", () => { sectNewVisit(); shellCame(shellSeen, location.hash); shellSeen = location.hash; if (!openRoute(location.hash)) shellSync(); });
 // The page the address names reads its own data now, on the read the head
 // began (preGets), so it is usually in hand when the first status read
 // draws the page, which then opens as itself rather than as a second

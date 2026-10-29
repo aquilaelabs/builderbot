@@ -36,6 +36,9 @@ const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
   {key: "build", label: "Build", icon: "toolchains", tools: [["library", "Library"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"]]},
+  // nginx and the scanners are reached from their containers' Configure on
+  // the Containers page (R181, the operator, 29 Oct): pages of the group, by
+  // address and grant as before, kept off its sub-nav (PRESSED).
   {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["vms", "VMs"], ["nginx", "nginx"], ["scanners", "Scanners"]]},
   // The controller, a group of its own (the operator, 22 Oct): how this
   // BuilderBot behaves, with room for the pages a bare-metal install and
@@ -49,6 +52,11 @@ const RAIL = [
   {key: "settings", label: "Settings", icon: "settings", tools: [["profile", "Profile"]]},
   {key: "help", label: "Help", icon: "help", tools: [["help", "Help"]]},
 ];
+// The pages a press opens rather than a tab (R181): off their group's
+// sub-nav, each wearing a small top header with Back to the page it was
+// opened from.
+const PRESSED = new Set(["nginx", "scanners"]);
+
 // The five on a phone's bar: the rail's first four, so a phone and a desk
 // keep one order (the operator, 19 Oct), and More for the rest in it.
 const RAIL_PHONE = RAIL.slice(0, 4).map(g => g.key);
@@ -147,7 +155,7 @@ function railGo(key, tool){
   const was = location.hash;
   OPENERS[kind]?.();
   const to = routeOf(tabOf(panes[0]));
-  if (to && to !== was) shellPush(to);
+  if (to && to !== was) shellPush(to, was);
 }
 
 // A history entry the page made itself, and shellSync told so: it leaves an
@@ -155,7 +163,8 @@ function railGo(key, tool){
 // B303), and an entry pushed here without saying so read as one, so the
 // next page opened left the old page's address under it and Back went
 // there (B313).
-function shellPush(to){
+function shellPush(to, from = location.hash){
+  shellCame(from, to);
   history.pushState(null, "", to);
   shellSeen = to;
 }
@@ -353,7 +362,10 @@ function railMoreShow(on){
 // own close).
 function shellBar(t, i){
   const g = groupOf(t.kind);
-  const tools = g ? g.tools.filter(([k]) => railAllows(k) || k === t.kind) : [[t.kind, tabLabel(t)]];
+  const tools = g ? g.tools.filter(([k]) => !PRESSED.has(k) && (railAllows(k) || k === t.kind)) : [[t.kind, tabLabel(t)]];
+  // A page a press opened: its top header, Back and its name, in place of
+  // the sub-nav it is not on.
+  if (PRESSED.has(t.kind)) return backHead(t) + (g && GROUP_HEADS[g.key] && NODE_PICKED[t.kind] ? groupHeader(t, g) : "");
   const grouped = !!g && GROUP_HEADS[g.key];
   const nid = grouped ? groupNode(g, t.kind) : "";
   const nav = `<span class="subnav pseg" role="tablist" aria-label="${esc(g ? g.label : tabLabel(t))}">${tools.map(([k, label]) => {
@@ -368,7 +380,56 @@ function shellBar(t, i){
   // sub-nav's line at its right (the operator, 28 Oct).
   return grouped ? groupHeader(t, g) + `<span class="subrow">${nav}<span class="sp"></span>${GROUP_HEADS[g.key].actions ? GROUP_HEADS[g.key].actions() : ""}</span>` : nav;
 }
+// Where Back on a page a press opened goes (R181): the address it was
+// opened from, kept as it opens, with what that page is called; none when it
+// was opened by its own address (a reload, a link from outside), and Back
+// then opens its group's first page.
+let shellFrom = null;
+function shellCame(from, to){
+  const k = kindOfRoute(to);
+  if (!PRESSED.has(k) || kindOfRoute(from) === k) return;
+  shellFrom = from ? {kind: k, hash: from, label: routeLabel(from)} : null;
+}
+// The page kind an address names, or "".
+function kindOfRoute(hash){
+  const m = /^#\/([a-z]+)(?:\/([^/]+))?/.exec(hash || "");
+  if (!m) return "";
+  if (m[1] === "projects" && m[2] && !RAIL[1].tools.some(([k]) => k === m[2])) return "notebook";
+  const g = RAIL.find(x => x.key === m[1]);
+  return g ? ((g.tools || []).some(([k]) => k === m[2]) ? m[2] : g.tools[0][0]) : m[1];
+}
+// What a person calls the page at an address: its tool's name, or the project's.
+function routeLabel(hash){
+  const k = kindOfRoute(hash);
+  if (k === "notebook") return projLabel(decodeURIComponent(/^#\/projects\/([^/]+)/.exec(hash)[1]));
+  if (k === "notifications") return "Notifications";
+  for (const g of RAIL) for (const [key, label] of g.tools || []) if (key === k) return label;
+  return "";
+}
+function backHead(t){
+  const g = groupOf(t.kind);
+  const from = shellFrom?.kind === t.kind ? shellFrom : null;
+  const to = from?.label || (g ? (g.tools.find(([k]) => !PRESSED.has(k)) || [])[1] : "") || "back";
+  return `<span class="backhead"><button type="button" class="bare backbtn" data-shellback title="back to ${esc(to)}">${ICON_BACK}<span>${esc(to)}</span></button>`
+    + `<span class="backof">${esc(tabLabel(t))}</span></span>`;
+}
+const ICON_BACK = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+function shellBack(t){
+  const from = shellFrom?.kind === t?.kind ? shellFrom : null;
+  shellFrom = null;
+  // The address it was opened from, opened as a press would: the browser's
+  // own history need not hold it (a page opened without an entry of its own).
+  if (from && from.hash && openRoute(from.hash)){
+    const to = routeOf(tabOf(panes[0]));
+    if (to) shellPush(to, location.hash);
+    return;
+  }
+  const g = groupOf(t?.kind);
+  if (g) railGo(g.key);
+}
+
 function wireShellBar(bar){
+  bar.querySelectorAll("[data-shellback]").forEach(b => b.onclick = () => shellBack(tabOf(panes[0])));
   // The line under the tab on show slides to the one pressed (slideMark),
   // kept per group so another group's sub-nav never slides from this one.
   const sub = bar.querySelector(".subnav");

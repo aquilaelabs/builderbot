@@ -1,7 +1,8 @@
 # The scanners
 
 BuilderBot runs its own static analysis stack on each node that holds
-projects, from the **Scanners** page in the Containers group beside nginx.
+projects, from the **Scanners** page: Configure on a node's scanners row in
+the Containers page's System section opens it.
 Nothing is scanned on the controller and nothing of the controller's is
 mounted on a node: each node runs the scanners over the projects whose node
 it is and sends what they found up to the controller over the agent's own

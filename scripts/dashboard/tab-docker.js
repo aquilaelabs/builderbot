@@ -1821,6 +1821,7 @@ function dmRowsHtml(ins, job, blind){
         </div>
         <div class="actbar dmacts">
         ${open}
+        ${dmConfigureBtn(d)}
         ${!mayDocker() ? "" : `${d.running ? "" : `<button type="button" class="primary" data-dm="up" ${
           busy || (d.missing_env || []).length ? "disabled" : ""}
           title="${(d.missing_env || []).length
@@ -1877,7 +1878,6 @@ function dmRowsHtml(ins, job, blind){
         // What it uses: one band of four for a container, a table of its
         // services for a stack (the tables rule), each with its own use.
         blind ? "" : many ? dmServicesTable(d, finished) : dmStatStrip(d)}
-        ${managed ? `<div class="sub dim dmmanaged">BuilderBot's own: routes, certificates and Deploy on the ${pageLink("", "nginx page", "#/containers/nginx")}</div>` : ""}
         ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : d.relocating.archive ? "note" : "bad"} dmreloc">${esc(d.relocating.line)}${
           d.relocating.busy ? '<span class="dots"></span>'
           : d.relocating.archive && mayDocker() && !busy ? ` <a href="#" data-dmunpack>unpack it now</a>` : ""}</div>` : ""}
@@ -2275,6 +2275,7 @@ function dmWireRows(el, list = dockerList){
   // A container's log opens in a tab of the dock: streamed from its node
   // while it runs in an instance (log:ctr:), else read by the controller
   // every few seconds (log:dm:), stopped, on the controller or nobody's.
+  el.querySelectorAll("[data-dmconf]").forEach(b => b.onclick = () => DM_CONFIGURE[b.dataset.dmconf]?.go(dockerNode));
   el.querySelectorAll("[data-dmlog]").forEach(b => b.onclick = () => {
     const row = b.closest("[data-inst]"), name = b.dataset.dmlog;
     const [project, instance] = (row?.dataset.inst || "").split("|");
@@ -2464,8 +2465,9 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   // and the way onto it said under its heading.
   const notMine = o => !!state?.admin && o !== "System" && !gone(o)
     && (state?.projects || []).some(p => p.name === o && !p.mine);
-  // ...BuilderBot's own (System) after them and before another project's.
-  const rank = o => notMine(o) ? 2 : o === "System" ? 1 : 0;
+  // ...BuilderBot's own (System) pinned above them all (R181, the operator,
+  // 29 Oct), then this account's, then another project's.
+  const rank = o => o === "System" ? -1 : notMine(o) ? 2 : 0;
   const owners = [...new Set([...ins, ...cs].map(r => r.owner || ""))]
     .filter(Boolean).filter(o => !only || only === o)
     .sort((a, b) => rank(a) - rank(b) || byName(projLabel(a), projLabel(b)));
@@ -2532,6 +2534,19 @@ function dmLanLine(name, on){
       data-was="${on ? "1" : ""}"${want ? " checked" : ""}> Reaches the LAN</label></div></div>`;
 }
 
+// A system container's own page (R181): nginx's routes and certificates,
+// the scanners' schedule, the router's settings on the Installed page.
+// Its row is any container's row with this one press more.
+const DM_CONFIGURE = {
+  nginx: {page: "nginx", go: nid => { if (nid) NODE_SET.nginx(nid); railGo("containers", "nginx"); }},
+  scanners: {page: "scanners", go: () => railGo("containers", "scanners")},
+  router: {page: "installed", go: nid => openInstalledOn(nid, "", "service:model-router")},
+};
+function dmConfigureBtn(r){
+  const c = DM_CONFIGURE[r?.system];
+  return c && railAllows(c.page) ? `<button type="button" data-dmconf="${esc(r.system)}" title="its settings, on a page of their own">Configure</button>` : "";
+}
+
 function dmOtherRowsHtml(cs){
   return cs.map(c => dmOtherWrap(c, `
       <div class="grow">
@@ -2544,6 +2559,7 @@ function dmOtherRowsHtml(cs){
           c.ports.length ? ` · ${c.ports.map(esc).join(", ")}` : ""}</div>
         </div>
         <div class="actbar dmacts">
+        ${dmConfigureBtn(c)}
         ${!mayDocker() ? "" : `<button type="button" data-ctl="${
           c.state === "running" ? "stop" : "start"}" data-ctr="${esc(c.name || c.id)}"
           title="${c.state === "running" ? "Stop" : "Start"} it: docker ${c.state === "running" ? "stop" : "start"} ${esc(c.name || c.id)}">${

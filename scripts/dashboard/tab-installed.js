@@ -24,9 +24,12 @@ function openInstalledTab(){
 }
 // ...on a node somebody named (a project's Sign in on NODE, the bell), the
 // agent's row open on its sign-in once the rows land.
-function openInstalledOn(id, agent = ""){
+function openInstalledOn(id, agent = "", row = ""){
   if (id && id !== instNode){ instNode = id; inst = null; }
   if (agent) instWantAgent = agent;
+  // ...or any row by its key (service:model-router, R181: a system
+  // container's Configure), open at once.
+  if (row) instOpen.add(row);
   if (!(nodesList || []).some(n => n.id === id)) nodesStale = true;
   try{ localStorage.setItem("bb.instnode", id); }catch(e){ /* private */ }
   const was = location.hash;
