@@ -4,8 +4,8 @@
 #
 # overlayroot has just put a tmpfs over the read-only root, so anything
 # written anywhere lives until the next boot. Two places are made to last:
-# the data partition at /var (the state, the projects, docker, libvirt, the
-# logs), and /etc as an overlay whose upper half is on that partition, so a
+# the data partition at /var (the state, docker, libvirt, the logs), /srv
+# bound from it (the projects), and /etc as an overlay whose upper half is on that partition, so a
 # changed file in /etc (an account made, a hostname set, a unit enabled) is
 # kept across boots while every file the next image brings still shows
 # through. Nothing else persists: an apt install into the root is gone at
@@ -31,3 +31,11 @@ mount -t overlay overlay \
     -o "lowerdir=${rootmnt}/etc,upperdir=${rootmnt}/var/lib/builderbot-os/etc/upper,workdir=${rootmnt}/var/lib/builderbot-os/etc/work" \
     "${rootmnt}/etc" \
     || panic "BuilderBot OS: /etc's overlay did not mount"
+# /srv on the data partition too: the projects live under it
+# (/srv/builderbot/projects, the controller's WORKSPACE), and on the root's
+# tmpfs they were gone at every boot (B437).
+mkdir -p "${rootmnt}/var/lib/builderbot-os/srv" "${rootmnt}/srv"
+[ -z "$(ls -A "${rootmnt}/var/lib/builderbot-os/srv")" ] && [ -n "$(ls -A "${rootmnt}/srv" 2>/dev/null)" ] \
+    && cp -a "${rootmnt}/srv/." "${rootmnt}/var/lib/builderbot-os/srv/"
+mount --bind "${rootmnt}/var/lib/builderbot-os/srv" "${rootmnt}/srv" \
+    || panic "BuilderBot OS: /srv did not mount from the data partition"

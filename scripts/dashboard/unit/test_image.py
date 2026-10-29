@@ -47,6 +47,13 @@ class Partitions(unittest.TestCase):
         script = read(EXTRA, "etc", "initramfs-tools", "scripts", "init-bottom", "builderbot-os")
         self.assertIn(f"by-partuuid/{self.p['BB_PART_DATA']}", script)
 
+    def test_the_projects_under_srv_are_kept_on_the_data_partition(self):
+        # B437: the staged WORKSPACE is /srv/builderbot/projects, and the
+        # root is a tmpfs overlay, so /srv is bound from /var.
+        script = read(EXTRA, "etc", "initramfs-tools", "scripts", "init-bottom", "builderbot-os")
+        self.assertIn('mount --bind "${rootmnt}/var/lib/builderbot-os/srv" "${rootmnt}/srv"', script)
+        self.assertIn("WORKSPACE_DIR=/srv/builderbot/projects", read(ROOT, "nodes", "install-controller.sh"))
+
     def test_fstab_names_the_esp_here(self):
         self.assertIn(f"PARTUUID={self.p['BB_PART_ESP']}  /boot/efi", read(EXTRA, "etc", "fstab"))
 
