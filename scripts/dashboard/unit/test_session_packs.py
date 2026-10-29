@@ -51,9 +51,24 @@ class SessionPacks(unittest.TestCase):
         self.assertEqual((held["kind"], held["pack"]["commit"], held["cmd"]), ("pack", "a" * 40, ["tool", "install", "hexkit"]))
 
     def test_bb_tools_own_words_are_not_pack_names(self):
-        m, errs = toolpacks.validate({"name": "install", "label": "x", "platforms": ["linux/amd64"]})[:2]
+        m, errs = toolpacks.validate({"name": "install", "label": "x", "platforms": ["linux/amd64"],
+                                      "verbs": {"go": {"run": ["{dir}/x"]}}})[:2]
         self.assertTrue(any("bb tool's own words" in e for e in errs), errs)
 
+
+class Touches(unittest.TestCase):
+    """R169 step 4: a pack says what it touches, the hosts its install
+    fetches from and whether it needs root; Look shows both, and one that
+    needs root is an administrator's to add."""
+    def test_touches_is_held_to_its_shape(self):
+        base = {"name": "hexkit", "label": "Hex", "platforms": ["linux/amd64"], "layout": {"bin": ["bin"], "tool": "bin/hexkit"},
+                "verbs": {"dump": {"run": ["{dir}/bin/hexkit"]}}}
+        m, errs = toolpacks.validate(dict(base, touches={"hosts": ["github.com", "dl.example.org"], "root": True}))
+        self.assertEqual(m["touches"], {"hosts": ["github.com", "dl.example.org"], "root": True})
+        _, errs = toolpacks.validate(dict(base, touches={"hosts": ["https://x"], "root": "yes"}))
+        self.assertTrue(any("touches.hosts" in e for e in errs) and any("touches.root" in e for e in errs), errs)
+        m, _ = toolpacks.validate(base)
+        self.assertEqual(m["touches"], {"hosts": [], "root": False})
 
 if __name__ == "__main__":
     unittest.main()

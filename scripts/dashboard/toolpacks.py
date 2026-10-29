@@ -277,6 +277,20 @@ def validate(m, shipped=()):
         errors.append("terms lists what it is under, each {label, url}")
         terms = []
     out["terms"] = [{"label": str(t["label"])[:120], "url": str(t.get("url") or "")[:300]} for t in terms]
+    # What it touches (R169 step 4): the hosts its install fetches from and
+    # whether it needs root on the node, said on Look before it is added; a
+    # pack that needs root is an administrator's to add.
+    tch = m.get("touches") if m.get("touches") is not None else {}
+    if not isinstance(tch, dict):
+        errors.append("touches is an object: hosts (the names its install fetches from) and root (true or false)")
+        tch = {}
+    hosts = tch.get("hosts") or []
+    if not isinstance(hosts, list) or len(hosts) > 16 or not all(isinstance(h, str) and re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", h) for h in hosts):
+        errors.append("touches.hosts lists up to 16 host names an install fetches from, e.g. [\"github.com\"]")
+        hosts = []
+    if tch.get("root") not in (None, True, False):
+        errors.append("touches.root is true or false")
+    out["touches"] = {"hosts": hosts, "root": tch.get("root") is True}
     inst = m.get("install") or {}
     if not isinstance(inst, dict):
         errors.append("install is an object: steps (each a list of words) and verify")
@@ -570,7 +584,7 @@ def _git_here(name, *args, work=None):
     return _git([*AUTHOR, *pre, *args])
 
 
-def add_staged(staged, by, shipped=()):
+def add_staged(staged, by, shipped=(), may_root=False):
     """Keep a pack made here, as the version that was looked at: committed
     to its repository on this controller, its bundle written for the nodes.
     A pack of the same name made here is updated; one from a repository is
@@ -584,6 +598,8 @@ def add_staged(staged, by, shipped=()):
             return got
         m = got["manifest"]
         name = m["name"]
+        if (m.get("touches") or {}).get("root") and not may_root:
+            return {"error": f"{name}: {ROOT_REFUSED}"}
         with _lock:
             data = _load()
             was = data["packs"].get(name)
@@ -643,7 +659,10 @@ def packs():
         return _load()["packs"]
 
 
-def add(url, commit, by, shipped=(), sha256="", tier="url", path=""):
+ROOT_REFUSED = "it needs root on the node (its touches say so): an administrator adds it"
+
+
+def add(url, commit, by, shipped=(), sha256="", tier="url", path="", may_root=False):
     """Keep a pack pinned to `commit`, which the person approving it saw:
     the repository is fetched again at exactly that commit, so what is kept
     is what was shown. A pack of the same name is replaced (an update).
@@ -655,6 +674,9 @@ def add(url, commit, by, shipped=(), sha256="", tier="url", path=""):
     got = fetch(url, commit, shipped, sha256, path)
     if got.get("error"):
         return got
+    # One that needs root is an administrator's to add (R169 step 4).
+    if (got.get("manifest") or {}).get("touches", {}).get("root") and not may_root:
+        return {"error": f"{got['manifest']['name']}: {ROOT_REFUSED}"}
     if path:
         return _add_folder(url, got["commit"], path, by, shipped, sha256, tier)
     m = got["manifest"]

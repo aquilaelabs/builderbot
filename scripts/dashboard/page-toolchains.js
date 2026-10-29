@@ -212,6 +212,8 @@ function tpSeen(seen, was, offer = true){
     <div class="sub">Installs ${seen.here ? "by copying these files to the node" : "by fetching the repository at that commit"}${steps ? `, then running ${steps}` : ""}${
       m.verify ? `, and checks it with ${w(m.verify)}` : ""}; on ${esc((m.platforms || []).join(", "))}.</div>
     ${verbs}
+    ${(m.touches?.hosts || []).length ? `<div class="sub">Its install fetches from ${m.touches.hosts.map(h => `<code>${esc(h)}</code>`).join(", ")}.</div>` : ""}
+    ${m.touches?.root ? `<div class="hint warn">It needs root on the node to install: only an administrator adds it.</div>` : ""}
     ${(m.terms || []).length ? `<div class="sub">Under ${m.terms.map(t => t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.label)}</a>` : esc(t.label)).join(", ")}.</div>` : ""}
     ${seen.guidance ? `<div class="sub">Comes with guidance a session reads as <code>bb help tool-${esc(m.name)}</code>.</div>` : ""}
     ${seen.plain && offer ? `<div class="hint warn">Fetched over plain http: what Add keeps is this commit, checked by its hash, but read what it runs here before you add it.</div>` : ""}

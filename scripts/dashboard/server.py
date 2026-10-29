@@ -4601,16 +4601,16 @@ nodes.on_done("vm", vms.vm_done)
 phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, dict(req, _admin=True), True)
 
 
-def _pack_from_catalog(entry, by):
+def _pack_from_catalog(entry, by, may_root=False):
     """A pack from the vetted catalog kept at the commit the signed index
     pins, its sha256 checked (R169 step 5): what the Library's Install keeps,
     for a session's ask allowed or its dial at auto."""
     shipped = {r["name"] for r in toolchains.load_toolchains()}
     return toolpacks.add(entry["url"], entry["commit"], by, shipped, sha256=entry["sha256"],
-                         tier="official" if entry.get("tier") == "official" else "vetted", path=entry.get("path", ""))
+                         tier="official" if entry.get("tier") == "official" else "vetted", path=entry.get("path", ""), may_root=may_root)
 
 
-phone.pack_runner = lambda project, entry, by: _pack_from_catalog(entry, f"session:{project} (allowed by {by})")
+phone.pack_runner = lambda project, entry, by: _pack_from_catalog(entry, f"session:{project} (allowed by {by})", may_root=True)
 
 
 def _with_vmnets(nid, own):
@@ -11043,6 +11043,8 @@ class Handler(BaseHTTPRequestHandler):
             if mode == "deny":
                 return self._json({"error": f"{sess}'s settings say an agent may not add a tool pack (Install a tool pack is deny): "
                                             "a person adds one from the Library, or changes that in the project's settings"}, 403)
+            # At auto one that needs root is refused by the add itself (R169
+            # step 4), its words saying to ask: an administrator's alone.
             if mode == "ask":
                 return self._result(phone.ask_pack(field(req, "why") or f"add the tool pack {name}", sess, entry, asker_name=me.get("name") or ""))
             return self._result(_pack_from_catalog(entry, f"session:{sess}"))
@@ -11059,10 +11061,10 @@ class Handler(BaseHTTPRequestHandler):
             # archive's sha256 checked too.
             r = toolpacks.fetch(field(req, "url"), field(req, "commit"), shipped=shipped, sha256=field(req, "sha256"), path=field(req, "path"))
         elif action == "add" and field(req, "staged"):
-            r = toolpacks.add_staged(field(req, "staged"), by, shipped)
+            r = toolpacks.add_staged(field(req, "staged"), by, shipped, may_root=users.is_admin(me))
         elif action == "add":
             r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped, sha256=field(req, "sha256"),
-                              tier="vetted" if field(req, "sha256") else "url", path=field(req, "path"))
+                              tier="vetted" if field(req, "sha256") else "url", path=field(req, "path"), may_root=users.is_admin(me))
         elif action == "source":
             r = toolpacks.source(field(req, "name"))
         elif action == "where":
