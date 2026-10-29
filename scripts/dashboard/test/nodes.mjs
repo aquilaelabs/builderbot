@@ -3485,7 +3485,7 @@ ok(page.errors.length === 0,
     const nr = page.dialogs.length;
     await page.click(`${IDRV} [data-instact="remove"]`);
     const rd = await (async () => { for (let i = 0; i < 40; i++){ const d = await napi(`/api/toolchains?node=${shed.id}`); if (d.job?.running) return d.job; await new Promise(res => setTimeout(res, 250)); } return null; })();
-    ok(page.dialogs.length === nr + 1 && /NVIDIA driver/.test(page.dialogs[nr] || '') && rd?.action === 'remove' && (rd.queue || []).includes('nvidia-driver'),
+    ok(page.dialogs.length === nr + 1 && /Remove NVIDIA's driver from shed2\?.*nouveau takes the card back/s.test(page.dialogs[nr] || '') && rd?.action === 'remove' && (rd.queue || []).includes('nvidia-driver'),
        `Remove asks first, naming the driver, and queues the removal (${(page.dialogs[nr] || '').slice(0, 50)})`);
     await napi('/api/v1/jobs', { action: 'cancel', id: rd?.id });
     // The container toolkit (R102): the machine's second card, after the
