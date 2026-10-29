@@ -137,7 +137,7 @@ scripts/
     server.py                    the routes, the transport and the gates; each handler one call into a module beside it
     index.html                   the markup, the stylesheet and the wiring that runs at load
     terminal.html                one terminal on a page of its own: a tab popped out of the dock, and the Android app's session screen (R133)
-    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Schedules, nginx, Scanners, Storage, Library, Installed, an installed thing's own page, Toolchains, Agents, Emulator, Phone, Apps, Settings, Keys, Audit, Users, Profile, Findings, Projects)
+    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Schedules, nginx, Scanners, Storage, Library, a Library entry's own page, Installed, an installed thing's own page, Toolchains, Agents, Emulator, Phone, Apps, Settings, Keys, Audit, Users, Profile, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws

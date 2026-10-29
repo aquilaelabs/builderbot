@@ -61,7 +61,12 @@ const TOUR_STEPS = {
   library: [
     {say: "The Library is everything a BuilderBot installs or runs on a node: the coding agents, the toolchains for builds and tests, the tool packs you add, the apps a NAS runs, and the apps for your own machines."},
     {at: TOUR_MHEAD, say: "Pick the node here; it holds across the Library, the Emulator, the Phone and the CI runner. Check for updates reads what is newer; Add your own brings in a tool pack or an app of yours, looked at before it is kept."},
-    {at: `${TOUR_PANE} .lcard`, say: "Each card says its tier, what is installed and whether a newer one is out, with Install, Update or Remove on it; Details opens the whole description."},
+    {at: `${TOUR_PANE} .lcard`, say: "Each card says its tier, what is installed and whether a newer one is out, with Install or Update on it; Details opens its own page with the whole description."},
+  ],
+  // A Library entry's own page (R183), reached from its card's Details.
+  entry: [
+    {say: "One entry of the Library: what it is in full, where it comes from, what it asks for and what installing it does. Back, at the top, returns to the page you opened it from."},
+    {say: "Its one verb is at the right of its head, as on its card: Install, Update, New container or Download. What is set for it on a node is on the Installed page."},
   ],
   emulator: [
     {say: "The Android emulator on a node: the system images it holds and the virtual devices made from them."},

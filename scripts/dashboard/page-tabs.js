@@ -234,6 +234,12 @@ const TABKINDS = {
               icon: TOOL_ICONS.nodes,
               render: (i) => renderInstalledInto(i), live: () => `${instRev}/${nodesRev}/${signinRev()}`,
               open: () => loadInstalled() },
+  // A Library entry's own page (R183): the Library's read, one card of it,
+  // opened by its Details and named for the entry.
+  entry:     { multi: false, label: () => entryLabel(),
+              icon: TOOL_ICONS.toolchains,
+              render: (i) => renderEntryInto(i), live: () => `${libRev}/${nodesRev}/${entryKey}`,
+              open: () => { if (!lib) loadLibrary(); } },
   // An installed thing's own page (R181 step 2): Installed's read, one row
   // of it, opened by a press and named for the thing.
   thing:     { multi: false, label: () => thingLabel(),

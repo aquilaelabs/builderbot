@@ -119,15 +119,15 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
 {
   const said = await page.evaluate(() => {
     const keys = lib.rows.filter(r => r.kind === 'toolchain' && !r.machine && !r.wrong_platform).map(r => `toolchain:${r.name}`);
-    keys.forEach(k => libOpen.add(k)); libRev++; drawPanes();
+    // What each entry's page says (R183), from the same libDetail.
     const out = keys.map(k => {
-      const c = document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`);
       const r = lib.rows.find(x => `toolchain:${x.name}` === k);
+      const c = document.createElement('div');
+      c.innerHTML = `<div class="ldetail">${libDetail(r)}</div>`;
       return { name: r.name, tool: r.tool || '', detail: c?.querySelector('.ldetail')?.textContent.replace(/\s+/g, ' ') || '',
                terms: c?.querySelector('.ldetail .tcterms')?.textContent || '',
                google: !!c?.querySelector('.ldetail .tcterms a[href*="developer.android.com/studio/terms"]') };
     });
-    keys.forEach(k => libOpen.delete(k)); libRev++; drawPanes();
     return out;
   });
   const withTool = said.find(s => s.name === 'graphics' && s.tool) || said.find(s => s.tool);
@@ -687,12 +687,11 @@ ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown actio
      `Add keeps the pack at the commit looked at (${row.pack.commit.slice(0, 12)} by ${row.pack.by})`);
   await packCard('hexkit');
   const hcard = await page.evaluate(() => {
-    libOpen.add('pack:hexkit'); libRev++; drawPanes();
     const c = document.querySelector('.doc .librarytab .lcard[data-lrow="pack:hexkit"]');
-    const out = { pills: [...c.querySelectorAll('.lcmeta .pill')].map(p => p.textContent.trim()),
-                  detail: c.querySelector('.ldetail')?.textContent.replace(/\s+/g, ' ') || '' };
-    libOpen.delete('pack:hexkit'); libRev++; drawPanes();
-    return out;
+    const d = document.createElement('div');
+    d.innerHTML = libDetail(lib.rows.find(r => r.kind === 'pack' && r.name === 'hexkit'));
+    return { pills: [...c.querySelectorAll('.lcmeta .pill')].map(p => p.textContent.trim()),
+             detail: d.textContent.replace(/\s+/g, ' ') || '' };
   });
   ok(hcard.pills.includes('sideloaded') && /From .*packrepo at [0-9a-f]{12}, added by .*A session has bb tool hexkit/.test(hcard.detail),
      `its card wears sideloaded with Edit, its Details saying where it came from and what a session gets (${hcard.detail.slice(0, 120)})`);
@@ -869,12 +868,11 @@ ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown actio
   await page.waitForFunction(() => (toolchains?.items || []).find(i => i.name === 'wordy')?.pack?.here, null, { timeout: 20000 });
   await packCard('wordy');
   const wcard = await page.evaluate(() => {
-    libOpen.add('pack:wordy'); libRev++; drawPanes();
     const c = document.querySelector('.doc .librarytab .lcard[data-lrow="pack:wordy"]');
-    const out = { pills: [...c.querySelectorAll('.lcmeta .pill')].map(p => p.textContent.trim()),
-                  detail: c.querySelector('.ldetail')?.textContent.replace(/\s+/g, ' ') || '' };
-    libOpen.delete('pack:wordy'); libRev++; drawPanes();
-    return out;
+    const d = document.createElement('div');
+    d.innerHTML = libDetail(lib.rows.find(r => r.kind === 'pack' && r.name === 'wordy'));
+    return { pills: [...c.querySelectorAll('.lcmeta .pill')].map(p => p.textContent.trim()),
+             detail: d.textContent.replace(/\s+/g, ' ') || '' };
   });
   ok(wcard.pills.includes('sideloaded') && /Made here/.test(wcard.detail),
      `...Add keeps it, its card wearing sideloaded and saying it was made here (${wcard.detail.slice(0, 100)})`);

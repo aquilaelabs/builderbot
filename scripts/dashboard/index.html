@@ -2031,9 +2031,9 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
   border:var(--hair) solid var(--line);border-radius:var(--r-surface);min-width:0}
 .librarytab .lcard.open{grid-column:1/-1}
 .librarytab .lchead{display:flex;gap:10px;align-items:flex-start;min-width:0}
-.librarytab .lcicon{flex:none;width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--accent);
+.librarytab .lcicon,.entrytab .lcicon{flex:none;width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--accent);
   background:color-mix(in srgb, var(--accent) 14%, var(--panel))}
-.librarytab .lcicon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.librarytab .lcicon svg,.entrytab .lcicon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
 .librarytab .lctitle{min-width:0;display:flex;flex-direction:column;gap:3px}
 .librarytab .lcard .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);overflow-wrap:anywhere}
 .librarytab .lcmeta{display:flex;gap:4px;flex-wrap:wrap}
@@ -2056,12 +2056,12 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
 .librarytab .lcard.skcard .lcicon{background:var(--line)}
 /* A pack's or an app's own icon (R182): its picture fills the square, the
    kind's glyph kept under it for one that does not load. */
-.librarytab .lcicon.own{overflow:hidden;background:none}
-.librarytab .lcicon.own img{width:100%;height:100%;object-fit:contain;display:block}
-.librarytab .lcicon.own>svg{display:none}
-.librarytab .lcicon.own.broken{background:color-mix(in srgb, var(--accent) 14%, var(--panel))}
-.librarytab .lcicon.own.broken img{display:none}
-.librarytab .lcicon.own.broken>svg{display:block}
+.librarytab .lcicon.own,.entrytab .lcicon.own{overflow:hidden;background:none}
+.librarytab .lcicon.own img,.entrytab .lcicon.own img{width:100%;height:100%;object-fit:contain;display:block}
+.librarytab .lcicon.own>svg,.entrytab .lcicon.own>svg{display:none}
+.librarytab .lcicon.own.broken,.entrytab .lcicon.own.broken{background:color-mix(in srgb, var(--accent) 14%, var(--panel))}
+.librarytab .lcicon.own.broken img,.entrytab .lcicon.own.broken img{display:none}
+.librarytab .lcicon.own.broken>svg,.entrytab .lcicon.own.broken>svg{display:block}
 /* The Installed page (tab-installed.js, R172): a row a fold (rows-you-open),
    what it is one ellipsized line until Details opens it on the node's
    side of it and its Configure. */
@@ -7273,6 +7273,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-library.js"></script>
 <script src="tab-installed.js"></script>
 <script src="tab-thing.js"></script>
+<script src="tab-entry.js"></script>
 <script src="tab-emulator.js"></script>
 <script src="tab-docker.js"></script>
 <script src="page-welcome.js"></script>  <!-- a part of the page that is no tab: same rule -->
@@ -8067,7 +8068,7 @@ onRev("nodes", () => {
   if (shown("storage")) loadStorage();
   // ...and the Library and the Installed page, whose agents' versions ride
   // a node's census (R95); a page that said no node yet looks again.
-  if (shown("library")) loadLibrary();
+  if (shown("library") || shown("entry")) loadLibrary();
   if (shown("installed") || shown("thing")) loadInstalled();
   if (shown("emulator") && emu?.nonode) loadEmulator();
   // ...and Home's Getting started, which says whether a node is online.

@@ -58,6 +58,15 @@ const DRIVERS = {
     open: () => page.evaluate(() => openInstalledTab()),
     readyWhen: '.installedtab details.sect, .installedtab .empty',
   },
+  // A Library entry's own page (R183): the first toolchain's on the node.
+  entry: {
+    open: () => page.evaluate(async () => {
+      if (!lib || !lib.rows) await loadLibrary();
+      const r = (lib?.rows || []).find(x => x.kind === 'toolchain' && !x.wrong_platform);
+      openEntry(libNode, r ? `toolchain:${r.name}` : 'agent:claude-code');
+    }),
+    readyWhen: '.entrytab details.sect, .entrytab .notice',
+  },
   // An installed thing's own page (R181 step 2): Claude Code's on the node.
   thing: {
     open: () => page.evaluate(async () => {

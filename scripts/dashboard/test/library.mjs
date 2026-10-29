@@ -86,49 +86,64 @@ if (await page.evaluate(() => lib.rows.some(r => r.update && !r.wrong_platform))
   await page.waitForFunction(() => libKind === '');
 } else ok(!(await page.$('.doc .librarytab [data-libkind="update"]')), 'no update due here, so no Updates chip');
 
-// ---- a row opens on its description -----------------------------------
+// ---- Details opens the entry's own page (R183) ------------------------------
+// A card stays a card; Details opens that entry's page, a page a press opens
+// with the small top header's Back to the Library, its body what Details
+// says: the catalog's entry alone.
+const ENTRY = k => `.doc .entrytab [data-entry="${k}"]`;
+const toEntry = async k => {
+  await page.evaluate(k => openEntry(libNode, k), k);
+  await page.waitForSelector(`${ENTRY(k)} .ldetail`, { timeout: 15000 });
+};
+const toLibrary = async () => {
+  await page.evaluate(() => openLibrary());
+  await page.waitForSelector('.doc .librarytab .lcard', { timeout: 15000 });
+};
 {
   const key = await page.evaluate(() => document.querySelector('.doc .librarytab .lcard[data-lrow^="toolchain:"]')?.dataset.lrow || '');
-  ok(!!key, `a toolchain row to open (${key})`);
+  ok(!!key, `a toolchain card to open (${key})`);
   const sel = `.doc .librarytab .lcard[data-lrow="${key}"]`;
-  ok(await page.$eval(sel, r => !r.classList.contains('open') && getComputedStyle(r.querySelector('.ldetail')).display === 'none'),
-     'a card is shut on its name and two lines until Details');
+  ok(await page.$eval(sel, r => !r.querySelector('.ldetail') && r.querySelector('[data-libmore]').textContent === 'Details'),
+     'a card is its name and two lines, with Details, and opens nothing in place');
   await page.click(`${sel} [data-libmore]`);
-  await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), key);
-  ok(await page.$eval(sel, r => getComputedStyle(r.querySelector('.ldetail')).display !== 'none' && r.querySelector('[data-libmore]').textContent === 'Less'),
-     '...and Details opens it on the description, the card the grid\'s width, the button reading Less');
+  await page.waitForSelector(`${ENTRY(key)} .ldetail`, { timeout: 15000 });
+  const pg = await page.evaluate(k => ({ hash: location.hash, want: '#/build/library/' + encodeURIComponent(libNode) + '/' + encodeURIComponent(k),
+    back: document.querySelector('.pane .bar .backhead [data-shellback]')?.textContent.trim() || '',
+    name: document.querySelector('.pane .bar .backhead .backof')?.textContent.trim() || '',
+    label: lib.rows.find(r => `${r.kind}:${r.name}` === k)?.label || '' }), key);
+  ok(pg.hash === pg.want && /Library/.test(pg.back) && pg.name === pg.label,
+     `...Details opens the entry's own page at its own address, its top header's Back to the Library and its name (${JSON.stringify(pg)})`);
+  await page.click('.pane .bar [data-shellback]');
+  await page.waitForFunction(() => tabOf(panes[0])?.kind === 'library', null, { timeout: 10000 });
+  ok(true, '...and Back returns to the Library');
 }
 
 // ---- the whole description (step 2) -----------------------------------------
-// An app's row opens on its compose file with the blanks New container
-// fills; a toolchain's on what it adds to a session and its terms.
+// An app's page holds its compose file with the blanks New container fills;
+// a toolchain's what it adds to a session and its terms.
 {
-  const app = await page.evaluate(() => document.querySelector('.doc .librarytab .lcard[data-lrow^="app:"]')?.dataset.lrow || '');
+  const app = await page.evaluate(() => lib.rows.find(r => r.kind === 'app' && !r.wrong_platform) ? `app:${lib.rows.find(r => r.kind === 'app' && !r.wrong_platform).name}` : '');
   if (app){
-    await page.click(`.doc .librarytab .lcard[data-lrow="${app}"] [data-libmore]`);
-    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), app);
-    ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="${app}"]`, r => /image:/.test(r.querySelector('.libcompose')?.textContent || '')
+    await toEntry(app);
+    ok(await page.$eval(ENTRY(app), r => /image:/.test(r.querySelector('.libcompose')?.textContent || '')
        && r.querySelector('.ldetail code') && /New container opens the Containers page/.test(r.querySelector('.ldetail').textContent)),
-       `an app's row opens on its compose file, its blanks and how New container makes it one (${app})`);
+       `an app's page holds its compose file, its blanks and how New container makes it one (${app})`);
   } else ok(true, 'no app rows here (the account may not make containers)');
   const tc = await page.evaluate(() => {
     const r = lib.rows.find(x => x.kind === 'toolchain' && (x.tool || x.terms?.length));
     return r ? `toolchain:${r.name}` : '';
   });
   if (tc){
-    if (!await page.$eval(`.doc .librarytab .lcard[data-lrow="${tc}"]`, r => r.classList.contains('open')))
-      await page.click(`.doc .librarytab .lcard[data-lrow="${tc}"] [data-libmore]`);
-    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), tc);
-    ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="${tc}"] .ldetail`, d => /bb tool|Licensed|accept/.test(d.textContent)),
-       `a toolchain's row opens on what it adds to a session and its terms (${tc})`);
+    await toEntry(tc);
+    ok(await page.$eval(`${ENTRY(tc)} .ldetail`, d => /bb tool|Licensed|accept/.test(d.textContent)),
+       `a toolchain's page says what it adds to a session and its terms (${tc})`);
   }
-  const ag = await page.evaluate(() => document.querySelector('.doc .librarytab .lcard[data-lrow="agent:claude-code"]')?.dataset.lrow || '');
-  if (ag){
-    await page.click(`.doc .librarytab .lcard[data-lrow="${ag}"] [data-libmore]`);
-    await page.waitForFunction(k => document.querySelector(`.doc .librarytab .lcard[data-lrow="${k}"]`)?.classList.contains('open'), ag);
-    ok(await page.$eval(`.doc .librarytab .lcard[data-lrow="${ag}"] .ldetail`, d => /session account/.test(d.textContent) && /Installed page/.test(d.textContent) && !d.querySelector('[data-signin]')),
-       "Claude Code's row opens on its facts, pointing at the Installed page for this person's sign-in (R172: the Library is the catalog)");
+  if (await page.evaluate(() => lib.rows.some(r => r.kind === 'agent' && r.name === 'claude-code'))){
+    await toEntry('agent:claude-code');
+    ok(await page.$eval(`${ENTRY('agent:claude-code')} .ldetail`, d => /session account/.test(d.textContent) && /Installed page/.test(d.textContent) && !d.querySelector('[data-signin]')),
+       "Claude Code's page holds its facts, pointing at the Installed page for this person's sign-in (R172: the Library is the catalog)");
   }
+  await toLibrary();
 }
 
 // ---- the verbs are the pages' own ------------------------------------------
@@ -230,11 +245,10 @@ if (await page.$('.doc .librarytab [data-libkind="app"][data-libact="install"]')
   const RT = '.doc .librarytab .lcard[data-lrow="service:model-router"]';
   ok(await page.$(RT) !== null && await page.$eval(RT, c => /official/.test(c.querySelector('.lcmeta').textContent) && c.querySelector('[data-libact="install"]')?.disabled === true),
      'the model router is a Services card, official, its Install dead while nothing is behind it');
-  await page.evaluate(() => { libOpen.add('service:model-router'); libRev++; drawPanes(); });
-  await page.waitForSelector(`${RT}.open .ldetail`, { timeout: 10000 });
-  ok(await page.$eval(`${RT}.open`, c => !c.querySelector('.lcform') && !c.querySelector('[data-signin]') && /Installed page/.test(c.querySelector('.ldetail').textContent)),
-     '...and Details is the entry alone, pointing at the Installed page for what is set per node');
-  await page.evaluate(() => { libOpen.delete('service:model-router'); libRev++; drawPanes(); });
+  await toEntry('service:model-router');
+  ok(await page.$eval(ENTRY('service:model-router'), c => !c.querySelector('.lcform') && !c.querySelector('[data-signin]') && /Installed page/.test(c.querySelector('.ldetail').textContent)),
+     '...and its page is the entry alone, pointing at the Installed page for what is set per node');
+  await toLibrary();
 }
 
 // ---- no node ---------------------------------------------------------------

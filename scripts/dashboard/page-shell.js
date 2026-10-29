@@ -35,7 +35,7 @@ const RAIL_ICONS = {
 const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
-  {key: "build", label: "Build", icon: "toolchains", tools: [["library", "Library"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"]]},
+  {key: "build", label: "Build", icon: "toolchains", tools: [["library", "Library"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["entry", "Library"]]},
   // nginx and the scanners are reached from their containers' Configure on
   // the Containers page (R181, the operator, 29 Oct): pages of the group, by
   // address and grant as before, kept off its sub-nav (PRESSED).
@@ -55,7 +55,7 @@ const RAIL = [
 // The pages a press opens rather than a tab (R181): off their group's
 // sub-nav, each wearing a small top header with Back to the page it was
 // opened from.
-const PRESSED = new Set(["nginx", "scanners", "thing"]);
+const PRESSED = new Set(["nginx", "scanners", "thing", "entry"]);
 
 // The five on a phone's bar: the rail's first four, so a phone and a desk
 // keep one order (the operator, 19 Oct), and More for the rest in it.
@@ -89,7 +89,7 @@ function railAllows(kind){
     case "emulator": return !!a.install;
     // The Library (R170): the toolchains and the coding agents as one, so
     // either area draws it; what each row offers is the server's to gate.
-    case "library": return !!a.install || !!a.curate || !!a.nodes;
+    case "library": case "entry": return !!a.install || !!a.curate || !!a.nodes;
     // What is installed on a node (R172): the same areas as the Library.
     case "installed": case "thing": return !!a.install || !!a.configure || !!a.nodes;
     case "jobs": return !!a.jobs;
@@ -223,6 +223,8 @@ function routeOf(t){
   if (t.kind === "home") return "#/home";
   // An installed thing's page names its node and itself under Installed's.
   if (t.kind === "thing") return `#/machines/installed/${encodeURIComponent(instNode || "")}/${encodeURIComponent(thingKey)}`;
+  // ...and a Library entry's page its node and itself under the Library's (R183).
+  if (t.kind === "entry") return `#/build/library/${encodeURIComponent(libNode || "")}/${encodeURIComponent(entryKey)}`;
   const node = NODE_PICKED[t.kind]?.() || "";
   // A page named as its group is (Jobs, beside Schedules since R117) keeps
   // the group's own address, #/jobs/failed as Home links it, never
@@ -270,6 +272,8 @@ function openRoute(hash){
   if (a && !(g.tools || []).some(([k]) => k === a) && groupOf(a)) g = groupOf(a);
   // An installed thing's page (R181 step 2): #/machines/installed/NODE/KIND:NAME.
   if (g.key === "machines" && a === "installed" && b && c){ railWant = g.key; openThing(decodeURIComponent(b), decodeURIComponent(c)); return true; }
+  // A Library entry's page (R183): #/build/library/NODE/KIND:NAME.
+  if (g.key === "build" && a === "library" && b && c){ railWant = g.key; openEntry(decodeURIComponent(b), decodeURIComponent(c)); return true; }
   const multi = (g.tools || []).length > 1;
   // A group of one tool names its node second (#/group/NODE), as routeOf
   // writes it.
@@ -402,6 +406,7 @@ function kindOfRoute(hash){
   const m = /^#\/([a-z]+)(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?/.exec(hash || "");
   if (!m) return "";
   if (m[1] === "machines" && m[2] === "installed" && m[4]) return "thing";
+  if (m[1] === "build" && m[2] === "library" && m[4]) return "entry";
   if (m[1] === "projects" && m[2] && !RAIL[1].tools.some(([k]) => k === m[2])) return "notebook";
   const g = RAIL.find(x => x.key === m[1]);
   return g ? ((g.tools || []).some(([k]) => k === m[2]) ? m[2] : g.tools[0][0]) : m[1];

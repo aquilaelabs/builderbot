@@ -384,8 +384,11 @@ line saying what it is, and at its right the one verb it takes: Install,
 Update, Remove, Edit on a pack, Download on a companion, and on an app New
 container, since an app is not installed on the node but made as a
 container, each press another one under its own name. Details opens the
-card on the catalog's entry alone (the operator, 28 Oct: the Library is
-the catalog): what it is in full, its platforms, terms, size and source,
+entry's own page, with a small top header whose **Back** returns to the
+page you came from, and an address of its own
+(`#/build/library/NODE/KIND:NAME`), on the catalog's entry alone (the
+operator, 28 Oct: the Library is the catalog): its one verb in its head,
+what it is in full, its platforms, terms, size and source,
 what it adds to a session and what it asks for per node; a pack's
 **Look**, which fetches its manifest at the commit it is pinned to and says
 what it fetches and runs, as the Add tool pack dialog does; an app's

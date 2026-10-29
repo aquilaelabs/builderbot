@@ -20,7 +20,7 @@ let ndHistory = {};              // the own machine's reporting per node: {span,
 // its dialog opened still has its nodes.
 let nodesStale = false;
 // The pages that draw the list: a node picker each, or the rows themselves.
-const NODE_READERS = ["nodes", "toolchains", "agents", "library", "installed", "thing", "emulator", "docker", "projects", "settings", "debug"];
+const NODE_READERS = ["nodes", "toolchains", "agents", "library", "entry", "installed", "thing", "emulator", "docker", "projects", "settings", "debug"];
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}

@@ -20,7 +20,6 @@
 
 let lib = null, libNode = "", libRev = 0, libSeq = 0, libLanded = 0, libFollow = null;
 let libQ = "", libKind = "", libTier = "";
-const libOpen = new Set();     // the rows opened on their descriptions (rows-you-open)
 const libSeen = {};            // what a pack's Look brought back, by row key ("looking" while it is asked)
 let libWantAgent = "";         // the agent whose card a door asked to open, until the rows land
 // The sections, in the page's order: what a session runs first, then what
@@ -91,8 +90,9 @@ async function loadLibrary(){
   libLanded = asked;
   if (libWantAgent && !lib.error){
     const r = (lib.rows || []).find(x => x.kind === "agent" && x.agent === libWantAgent);
-    if (r) libOpen.add(`agent:${r.name}`);
     libWantAgent = "";
+    // The agent's own entry page (R183), once the card is drawn.
+    if (r) setTimeout(() => openEntry(libNode, `agent:${r.name}`));
   }
   // The lines the Toolchains and Agents pages draw read their own page's
   // state: the node's sandbox flag (Install them now on a system line) and
@@ -297,15 +297,15 @@ function libDriverPick(m){
     </select></label>`;
 }
 
+// ...Details opening the entry's own page (R183), never the card in place.
 function libRow(r, may){
-  const key = `${r.kind}:${r.name}`, open = libOpen.has(key);
+  const key = `${r.kind}:${r.name}`;
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : "";
-  return `<div class="lcard${open ? " open" : ""}${r.running ? " busy" : ""}" data-lrow="${esc(key)}">
+  return `<div class="lcard${r.running ? " busy" : ""}" data-lrow="${esc(key)}">
     <div class="lchead">${libIcon(r)}
-      <div class="lctitle"><div class="name">${esc(r.label)} <button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button></div><div class="lcmeta">${libPills(r)}</div></div></div>
+      <div class="lctitle"><div class="name">${esc(r.label)} <button type="button" class="link lmore" data-libmore="${esc(key)}">Details</button></div><div class="lcmeta">${libPills(r)}</div></div></div>
     <div class="lcabout">${esc(r.about)}</div>
-    ${r.machine && r.name === TC_DRIVER ? libDriverPick(r.machine) : ""}
-    <div class="ldetail">${open ? libDetail(r) : ""}</div>${err}
+    ${r.machine && r.name === TC_DRIVER ? libDriverPick(r.machine) : ""}${err}
     <div class="pcacts actbar">${libState(r)}${libActs(r, may)}</div>
   </div>`;
 }
@@ -443,11 +443,7 @@ function wireLibrary(root){
   }
   root.querySelectorAll("[data-libkind]").forEach(b => b.onclick = () => { libKind = b.dataset.libkind; libRev++; drawPanes(); });
   root.querySelectorAll("[data-libtier]").forEach(b => b.onclick = () => { libTier = b.dataset.libtier; libRev++; drawPanes(); });
-  root.querySelectorAll("[data-libmore]").forEach(b => b.onclick = () => {
-    const k = b.dataset.libmore;
-    if (libOpen.has(k)) libOpen.delete(k); else libOpen.add(k);
-    libRev++; drawPanes();
-  });
+  root.querySelectorAll("[data-libmore]").forEach(b => b.onclick = () => openEntry(libNode, b.dataset.libmore));
   const chk = root.querySelector("[data-libcheck]");
   if (chk) chk.onclick = () => pressing(chk, async () => { busy(chk, "Checking"); await tcAct("check"); await loadLibrary(); });
   const ab = root.querySelector("[data-libabort]");

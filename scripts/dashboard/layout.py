@@ -50,7 +50,9 @@ TAB_KINDS = {"term", "library", "installed", "emulator", "notebook", "projects",
              "nodes", "settings", "jobs", "users", "profile", "phone", "runner", "home", "notices", "help",
              "sessions", "chat", "schedules", "debug", "keys", "audit", "scanners", "machine", "network",
              # An installed thing's own page (R181 step 2), a press's.
-             "thing"}
+             "thing",
+             # A Library entry's own page (R183), a press's.
+             "entry"}
 
 
 def _layouts():
