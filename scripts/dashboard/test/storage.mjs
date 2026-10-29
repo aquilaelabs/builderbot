@@ -55,22 +55,23 @@ const drawn = await page.$eval(sect, s => ({ status: s.querySelector('.toolstate
   vals: [...s.querySelectorAll('.ndmeter .val')].map(v => v.textContent),
   stores: /cache store/.test(s.textContent) && /Docker/.test(s.textContent) && /reclaimable/.test(s.textContent),
   proj: [...s.querySelectorAll('.stproj:not(.sthead) .name')].map(n => n.textContent.trim()),
-  // Measure now in the page's bar with every header button, and no Refresh
-  // (the operator, 17 Oct): the walk lands with the census the page follows.
-  measure: !!document.querySelector('.storagetab .docbarrow .actbar [data-stmeasure]') && !document.querySelector('#stReload'),
+  // Measure now on the head's action row under its facts, as a node's
+  // buttons are on the Nodes page (the operator, 29 Oct), and no Refresh
+  // (17 Oct): the walk lands with the census the page follows.
+  measure: !!document.querySelector('.storagetab .pghead .actbar [data-stmeasure]') && !document.querySelector('.storagetab .docbarrow [data-stmeasure]') && !document.querySelector('#stReload'),
   // Each meter's block: what BuilderBot holds on that disk, largest first (R203).
   disks: [...s.querySelectorAll('.stdisk')].map(d => { const rows = []; let e = d.nextElementSibling;
     while (e && e.classList.contains('row')){ rows.push(e.querySelector('.name, .sub').textContent.trim().split(' ·')[0]); e = e.nextElementSibling; }
     return `${d.closest('details').querySelector('summary .t').textContent}: ${rows.join(', ')}`; }) }));
 ok(/measured 10 min ago/.test(drawn.status) && drawn.meters.join() === '/,/mnt/share' && drawn.used && /93\.8 GB \/ 125 GB/.test(drawn.vals[0])
    && drawn.stores && drawn.proj.join('|') === 'alpha|beta' && drawn.measure,
-   `...the node: each filesystem a meter, the stores and Docker's share, the projects in rows, Measure now in the bar (${JSON.stringify(drawn)})`);
+   `...the node: each filesystem a meter, the stores and Docker's share, the projects in rows, Measure now under the head's facts (${JSON.stringify(drawn)})`);
 ok(drawn.disks.join(' | ') === '/: cache store, the accounts\' homes, Docker, artifacts store, synced copies | /mnt/share: ',
    `...and under each meter what BuilderBot holds on that disk, largest first, the share with nothing on it bare (${JSON.stringify(drawn.disks)})`);
 // The meters are one stack: every track the same width, the values one column.
 const stack = await page.$$eval(`${sect} .ndmeter .track`, ts => new Set(ts.map(t => Math.round(t.getBoundingClientRect().width))).size);
 ok(stack === 1, 'every meter in the stack has the same track width');
-await page.click(`.storagetab .docbarrow [data-stmeasure="${minted.id}"]`);
+await page.click(`.storagetab .pghead [data-stmeasure="${minted.id}"]`);
 const job = await (async () => { for (let i = 0; i < 40; i++){
   const js = (await api('/api/v1/jobs?active=1')).jobs || [];
   const j = js.find(x => x.type === 'storage' && x.node === minted.id);
@@ -81,7 +82,7 @@ ok(job && job.type === 'storage', `Measure now queues the agent's storage job on
 // ...and the button comes back once the press is answered: the bar's markup
 // is the same after it, and a repaint that skipped it left Asking for good.
 const back = await page.waitForFunction(id => {
-  const b = document.querySelector(`.storagetab .docbarrow [data-stmeasure="${id}"]`);
+  const b = document.querySelector(`.storagetab .pghead [data-stmeasure="${id}"]`);
   return b && !b.disabled && b.textContent.trim() === 'Measure now';
 }, minted.id, { timeout: 15000 }).then(() => true, () => false);
 ok(back, 'Measure now reads Measure now again once its press is answered, not Asking');

@@ -366,7 +366,7 @@ function renderLibraryInto(i){
   if (lib === null){
     d.setBar(skActBar([["Check for updates", "", "Check"], ["Add your own", "primary", "Add"]]));
     const skcard = () => `<div class="lcard skcard"><div class="lchead"><span class="lcicon"></span><div class="lctitle">${skv(7, "name")}${skv(4)}</div></div>${skRows(1)}</div>`;
-    d.list.innerHTML = skTpl(pageHead({title: GHOST, facts: [["Installed", GHOST], ["Updates due", GHOST], ["Store", GHOST]]})
+    d.list.innerHTML = skTpl(pageHead({facts: [["Installed", GHOST], ["Updates due", GHOST], ["Store", GHOST]]})
       + `<div class="field lfilter libfilter"><input type="search" disabled placeholder="search by name or what it does">${skel("chips")}</div>`
       + `<div class="field libgroups">${LIB_KINDS.map(([k, title]) => `<div class="libgroup"><h3 class="libgname">${esc(title)}</h3><div class="lgrid">${skcard()}${skcard()}${skcard()}</div></div>`).join("")}</div>`);
     if (!libSeq) loadLibrary();
@@ -405,7 +405,7 @@ function renderLibraryInto(i){
   const rows = all.filter(r => libMatch(r, libQ) && (!libKind || (LIB_STANDS[libKind] ? LIB_STANDS[libKind](r) : libGroup(r) === libKind)) && (!libTier || r.tier === libTier));
   const inst = all.filter(r => r.installed).length, due = all.filter(r => r.update).length;
   const free = lib.store?.free_mb ? `${(lib.store.free_mb / 1024).toFixed(1)} GB free` : "";
-  const head = pageHead({title: lib.name || "", facts: [
+  const head = pageHead({facts: [
     ["Installed", `${inst} of ${all.filter(r => r.kind !== "app" && r.kind !== "companion").length}`],
     ["Updates due", due ? String(due) : ""],
     ["Store", lib.store?.root ? `${lib.store.root}${free ? ", " + free : ""}` : ""],

@@ -296,7 +296,7 @@ function renderInstalledInto(i){
   if (!d) return;
   if (inst === null){
     d.setBar("");    // the node is the Machines header's (R177)
-    d.list.innerHTML = skTpl(pageHead({title: GHOST, facts: [["Installed", GHOST], ["Updates due", GHOST]]})
+    d.list.innerHTML = skTpl(pageHead({facts: [["Installed", GHOST], ["Updates due", GHOST]]})
       + INST_KINDS.map(([k, title]) => docSection("installed", k, title, "", skRows(2))).join(""));
     if (!instSeq) loadInstalled();
     return;
@@ -320,7 +320,7 @@ function renderInstalledInto(i){
       unmet.map(([r, ps]) => `${esc(r)}: ${esc(ps.join(" "))}`).join("; ")}. ${inst.sandbox && may.install
         ? `<button type="button" data-instsysdeps${inst.job?.running ? " disabled" : ""} title="install these on ${esc(inst.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
         : "This node's owner installs them: the agent does not administer the machine."}</div></div>` : "";
-  const head = pageHead({title: inst.name || "", facts: [
+  const head = pageHead({facts: [
     ["Installed", String(rows.filter(r => r.installed).length)],
     ["Updates due", due ? String(due) : ""],
     ["Store", inst.store?.root || ""],

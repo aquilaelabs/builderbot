@@ -223,7 +223,7 @@ function renderEmulatorInto(i){
     ${
     // Its node as a head (the operator, 25 Oct): where the images an
     // emulator boots are kept; its free space is the tile's (R218 step 24).
-    pageHead({title: d.name || "", cls: "tchead",
+    pageHead({cls: "tchead",
       pills: d.root && !d.wrong_platform ? "" : `<span class="pill warn">${d.wrong_platform ? "another platform" : "no store yet"}</span>`,
       facts: [["System images", d.root && !d.wrong_platform ? d.root : ""],
               ["Platform", d.wrong_platform ? `${d.platform}: the Android tools are packaged for ${d.wrong_platform}` : ""]]})}

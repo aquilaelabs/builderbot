@@ -295,7 +295,7 @@ function nginxUndeployed(n){
   // Deploy brings, and Deploy at its right (R178: the bar holds no picker and
   // no button, so the page is one shape on every node).
   return `<div data-ngnode="${esc(n.node)}">
-    ${pageHead({title: n.name || "", cls: "toolstate", pills: `<span class="pill">not deployed</span>`,
+    ${pageHead({cls: "toolstate", pills: `<span class="pill">not deployed</span>`,
       actions: `<button type="button" class="primary" data-ngdeploy>Deploy</button>`, facts: [
       ["Deploy brings", count || certs ? `${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
                                        : "nginx alone: its routes and certificates are set here once it is there"]]})}
@@ -410,7 +410,7 @@ function nginxBody(n){
     </div>`);
   // The page's head, deployed as undeployed: its state and what it runs.
   return `<div data-ngnode="${esc(n.node)}">
-    ${pageHead({title: n.name || "", cls: "toolstate", pills: pill, facts})}
+    ${pageHead({cls: "toolstate", pills: pill, facts})}
     ${clash}
     ${image}
     ${hosts}
@@ -437,7 +437,7 @@ function renderNginxInto(i){
     // Its template (R218 step 16): the bar and the state row's words are
     // the page's own; the node and its routes are on their way.
     d.setBar(nginxBar(null));
-    d.list.innerHTML = skTpl(`${pageHead({title: GHOST, cls: "toolstate", facts: [["Container", GHOST], ["Routes", GHOST]]})}${
+    d.list.innerHTML = skTpl(`${pageHead({cls: "toolstate", facts: [["Container", GHOST], ["Routes", GHOST]]})}${
       ["image", "hostnames", "routes", "certs"].map(k => ngSect(k, "", `<div class="field">${skRows(2)}</div>`)).join("")}`);
     loadNginx();
     return;

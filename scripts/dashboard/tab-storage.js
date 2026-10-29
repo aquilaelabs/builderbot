@@ -751,9 +751,10 @@ function storagePhones(n){
       p.mb === null || p.mb === undefined ? `<span class="dim">?</span>` : sgb(p.mb)])}</div>`).join(""), "sttbl");
 }
 
-// Measure now, the page's upkeep, in its bar with every header button (the
-// operator, 17 Oct): the walk's numbers arrive with the node's census, which
-// the page follows, so it has no Refresh.
+// Measure now, the page's upkeep, on the head's action row under its facts,
+// as a node's own buttons are on the Nodes page (the operator, 29 Oct): the
+// walk's numbers arrive with the node's census, which the page follows, so
+// it has no Refresh.
 // Given GHOST, the placeholder's: there and dead until the node is known.
 function storageMeasureBtn(n){
   if (n === GHOST) return storageMay ? `<button type="button" disabled>Measure now</button>` : "";
@@ -761,12 +762,6 @@ function storageMeasureBtn(n){
   return `<button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
     n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>`;
 }
-// The bar: the node and Measure now; given nothing, the placeholder's.
-// Measure now alone: the node is picked in the Machines group's header (R177).
-function storageBar(pnodes, n){
-  return nodeBar("", storageMeasureBtn(pnodes ? n : GHOST));
-}
-
 // What the tab says about one node: the state row, then its disks. Given
 // null, the placeholder (R218, the operator 18 Oct: drawn by the page's own
 // code so it cannot drift): the same bands and By project, shimmering where
@@ -778,7 +773,7 @@ function storageBody(n, where){
   const byProject = (count, body) => docSection("storage", "projects", "By project", count,
     `<div class="field"><div class="hint">What each project's folders hold${n ? ` on ${esc(n.name)}` : ""}.${helpIcon("Its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.")}</div></div>
       ${body}`);
-  if (!n) return `${pageHead({title: GHOST, cls: "toolstate", facts: [["Measured", GHOST], ["Walk", GHOST], ...setOn]})}${skRows(2)}${byProject("", skRows(3))}`;
+  if (!n) return `${pageHead({cls: "toolstate", facts: [["Measured", GHOST], ["Walk", GHOST], ...setOn], actions: storageMeasureBtn(GHOST)})}${skRows(2)}${byProject("", skRows(3))}`;
   const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
   const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
@@ -786,9 +781,9 @@ function storageBody(n, where){
   // the memory BuilderBot's work is kept to there (R110 step 4).
   const fence = !("fence" in n) ? "" : n.fence ? `${humanBytes(n.fence[0] * 1048576)}, ${humanBytes(n.fence[1] * 1048576)} in use`
     : "not fenced from the system's memory: run its setup again";
-  const head = pageHead({title: n.name || "", pills: pill, cls: "toolstate", facts: [
+  const head = pageHead({pills: pill, cls: "toolstate", facts: [
     ["Walk", n.measured ? `${n.took_s ? `took ${n.took_s}s, ` : ""}every hour` : "an hour after the agent starts, then every hour"],
-    ["Its work's memory", fence], ...setOn]});
+    ["Its work's memory", fence], ...setOn], actions: storageMeasureBtn(n)});
   return `<div data-stnode="${esc(n.node)}">
     ${head}
     ${storageMachineDisks(n)}
@@ -810,7 +805,7 @@ function renderStorageInto(i){
   if (!d) return;
   if (storageList === null){
     // The page's own bar and body, given nothing.
-    d.setBar(storageBar(null));
+    d.setBar("");
     d.list.innerHTML = skTpl(storageBody(null));
     loadStorage();
     return;
@@ -826,10 +821,9 @@ function renderStorageInto(i){
   }
   const where = ["workspace", "cache", "artifacts", "appdata", "emulator", "builds"];
   const n = storagePick();
-  const pnodes = storageList.map(x => ({id: x.node, name: x.name, live: x.live}));
-  // One order for every page's top (the operator, 17 Oct): the node and
-  // Measure now in the bar; when it was measured on the status line under it.
-  d.setBar(storageBar(pnodes, n));
+  // The node is the group header's (R177) and Measure now the head's, so
+  // the page's own bar has nothing to carry.
+  d.setBar("");
   d.list.innerHTML = n ? storageBody(n, where)
     : noNodeYet("the disks measured here are a node's");
   wireStorageTab(d.el);

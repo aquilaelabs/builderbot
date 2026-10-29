@@ -481,14 +481,40 @@ function machinesLive(){
 function machinesNode(kind){
   return NODE_PICKED[kind]?.() || "";
 }
+// One node per group (the operator, 29 Oct: the header's pick is the node
+// every sub-tab of the group shows). A page whose own node differs from the
+// group's is moved to it when it is drawn, read again for it; a page an
+// opener sent to a node of its own (a node's row, a Library entry) takes
+// the group with it, which is how a node it last reported differs from
+// what the page holds now. Kept in this browser per group.
+const GROUP_CUR = {}, PAGE_SEEN = {};
+function groupKept(g){ try{ return localStorage.getItem("bb.group." + g.key) || ""; }catch(e){ return ""; } }
+function groupKeep(g, nid){
+  GROUP_CUR[g.key] = nid;
+  try{ localStorage.setItem("bb.group." + g.key, nid); }catch(e){ /* private */ }
+}
 function groupNode(g, kind){
   const live = machinesLive();
-  const cur = machinesNode(kind);
-  return live.some(n => n.id === cur) ? cur : live[0]?.id || "";
+  const ok = id => !!id && live.some(n => n.id === id);
+  const page = machinesNode(kind);
+  let cur = ok(GROUP_CUR[g.key]) ? GROUP_CUR[g.key] : groupKept(g);
+  if (kind in PAGE_SEEN && ok(page) && page !== PAGE_SEEN[kind]) cur = page;
+  if (!ok(cur)) cur = ok(page) ? page : live[0]?.id || "";
+  if (cur !== GROUP_CUR[g.key]) groupKeep(g, cur);
+  if (cur && page !== cur && NODE_SET[kind]){
+    NODE_SET[kind](cur);
+    // Read for its node after this draw, not inside it.
+    if (GROUP_LOAD[kind]) setTimeout(() => { if (tabOf(panes[0])?.kind === kind) GROUP_LOAD[kind](); }, 0);
+    else setTimeout(drawPanes, 0);
+  }
+  PAGE_SEEN[kind] = cur;
+  return cur;
 }
 function groupPick(g, nid){
+  groupKeep(g, nid);
   (g.tools || []).forEach(([k]) => {
     if (NODE_SET[k]) NODE_SET[k](nid);
+    PAGE_SEEN[k] = nid;
     if (GROUP_KEEP[k]){ try{ localStorage.setItem(GROUP_KEEP[k], nid); }catch(e){ /* private */ } }
     if (k === "docker" && typeof dockerNodeKeep === "function") dockerNodeKeep();
   });
