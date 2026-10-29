@@ -328,7 +328,7 @@ function mountState(m, reported){
 // says is there, and the labels an install would register with: the node's
 // own name among them, which is the label a workflow's runs-on uses to land
 // here. Install and Remove are system jobs like the rest of the plane.
-function nodeRunnerSection(n, c, between = ""){
+function nodeRunnerSection(n, c, between = "", acts = ""){
   // One runner per git host on a node (R53): the record's asks and the
   // census's reports, joined by slot, each a row with its own state and
   // buttons; the addbar at the top takes a new one, host, address and
@@ -433,7 +433,7 @@ function nodeRunnerSection(n, c, between = ""){
   // of their own, a card on that page (the operator, 18 Oct: it read as
   // loose rows under lines that ran to the edge).
   return `${pageHead({cls: "toolstate", pills: `<span class="pill ${pill}">${esc(status)}</span>`,
-        facts: [["Runners", "one per git host, its labels deciding which workflows land here"]]})}${between}
+        facts: [["Runners", "one per git host, its labels deciding which workflows land here"]], actions: acts})}${between}
       ${addbar ? `<div class="field">${addbar}</div>` : ""}
       <div class="ndruns">${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}</div>
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
@@ -2063,23 +2063,27 @@ function renderRunnerInto(i){
     // Its template (R218 step 16): the bar and the state row's words are the
     // page's own; the node and its runners are on their way.
     // In the node's panel, as it lands: its rows are bands there, not a card.
-    d.setBar(skActBar([["Add runner", "primary"]]));
+    d.setBar("");
     d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${pageHead({cls: "toolstate",
-      facts: [["Runners", "one per git host, its labels deciding which workflows land here"]]})}<div class="ndruns">${skRows(1)}</div></div>`);
+      facts: [["Runners", "one per git host, its labels deciding which workflows land here"]],
+      actions: `<button type="button" class="primary" disabled>Add runner</button>`})}<div class="ndruns">${skRows(1)}</div></div>`);
     return;
   }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
   const has = n => (n.reported?.services?.runners || []).length || Object.keys(n.services?.runners || {}).length;
   if (!ns.some(n => n.id === runnerNode)) runnerNode = (ns.find(has) || ns[0])?.id || "";
   const n = ns.find(x => x.id === runnerNode);
-  d.setBar(nodeBar("", runnerAddBtn(n, n ? nodeDraft(n) : {})));    // the node is the Build group's header's (R178)
-  const show = d.el.querySelector("[data-nrunnershow]");
-  if (show) show.onclick = () => { nodeDraft(n).addRunner = true; nodesRev++; drawPanes(); };
+  // The node is the Build group's header's (R178), and Add runner sits on
+  // the head's action row under its facts (the operator, 29 Oct: the bar
+  // it stood in left a gap), so the bar carries nothing.
+  d.setBar("");
   d.list.innerHTML = n
     ? `<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n),
         // Several to compare; one is what the section under it says already.
-        (state?.node_runners || []).length > 1 ? runnerRows() : "")}</div></div>`
+        (state?.node_runners || []).length > 1 ? runnerRows() : "", runnerAddBtn(n, nodeDraft(n)))}</div></div>`
     : noNodeYet("a runner is added to a node");
+  const show = d.list.querySelector("[data-nrunnershow]");
+  if (show) show.onclick = () => { nodeDraft(n).addRunner = true; nodesRev++; drawPanes(); };
   if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
   d.list.querySelectorAll(".ndrunro button").forEach(b => { b.disabled = true; });
   // CI runners switched off on this install (R81): every control here dead,
@@ -2091,9 +2095,8 @@ function renderRunnerInto(i){
   d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
 }
 
-// Add runner, the page's main action, in its bar with every other header
-// button (the operator, 17 Oct: all of a page's header buttons on one row);
-// while the add band is open it is the band's to finish or cancel.
+// Add runner, the page's main action, on the head's action row; while the
+// add band is open it is the band's to finish or cancel.
 function runnerAddBtn(n, c){
   // Not drawn where this account's roles do not give it (the operator, 21 Oct).
   if (!n || c.addRunner || n.runner_new === false || nodeMay(n) !== "write") return "";

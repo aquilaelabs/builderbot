@@ -2092,6 +2092,11 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
 .librarytab .lcard .libdrvpick{display:flex;align-items:center;gap:6px;font:var(--f-note);color:var(--dim)}
 .librarytab .lcard .libdrvpick select{flex:1 1 auto;min-width:0}
 .librarytab .libfilter .chips{flex:0 1 auto}
+/* The search with the page's buttons at its right, a line of its own over
+   the chips (the operator, 29 Oct: they stood in the bar over a gap). */
+.librarytab .libfilter .libsearchrow{flex:1 1 100%;display:flex;align-items:center;gap:var(--field-gap);min-width:0}
+.librarytab .libfilter .libsearchrow>input[type=search]{flex:1 1 16rem;min-width:0;max-width:28rem}
+.librarytab .libfilter .libsearchrow>.actbar{margin-inline-start:auto;flex:0 0 auto}
 .agentstab .agpart+.agpart{border-top:var(--hair) solid var(--line)}
 .agentstab .agpart>.actbar{margin-top:10px}
 .agentstab .sicode{font:var(--f-data);font-weight:600;letter-spacing:.12em;user-select:all}

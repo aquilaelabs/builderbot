@@ -782,10 +782,10 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await page.waitForSelector(`${RROW} .ndconf`, { timeout: 15000 });
   const GH = 'github.com-example-org', RUN = `${RROW} .ndrun[data-slot="${GH}"]`;
   ok(await page.$eval(`${RROW} .ndrunnone`, e => /no runner on this node/.test(e.textContent))
-     && await page.$('.runnertab .docbarrow .actbar [data-nrunnershow].primary') !== null
+     && await page.$('.runnertab .pghead .actbar [data-nrunnershow].primary') !== null && await page.$('.runnertab .docbarrow [data-nrunnershow]') === null
      && await page.$(`${RROW} [data-k="runner:url"]`) === null,
-     'the CI runners section says there is none and adds one from the bar, the page\'s main action, a button until pressed');
-  await page.click('.runnertab .docbarrow [data-nrunnershow]');
+     'the CI runners section says there is none and adds one from under its head, the page\'s main action, a button until pressed');
+  await page.click('.runnertab .pghead [data-nrunnershow]');
   await page.waitForSelector(`${RROW} [data-k="runner:url"]`, { timeout: 10000 });
   ok(await page.$eval(`${RROW} [data-k="runner:forge"]`, s => s.value === '' && [...s.options].some(o => o.value === 'gitea'))
      && await page.$(`${RROW} [data-nrunnercancel]`) !== null,

@@ -36,12 +36,11 @@ function openPhoneTab(){
   openTab({kind: "phone", arg: "__phone", label: "Phone"});   // the kind's open hook probes
 }
 
-// The bar, the page's and its placeholder's (R218, the operator 18 Oct):
-// the node switcher and Check now in the button group every page's bar has.
-function phoneBar(nodes, n){
-  // The node is the Build group's header's (R178): Check now alone.
-  const g = !nodes;
-  return nodeBar("", `<button type="button"${g ? " disabled" : ` id="phRefresh"`} title="ask the node's adb about the phone now">Check now</button>`);
+// Check now, on the phone's own row under the header (the operator, 29
+// Oct: the bar it stood in left a gap over the page); the node is the
+// Build group's header's (R178), so the bar carries nothing.
+function phoneCheckBtn(ghost){
+  return `<button type="button"${ghost ? " disabled" : ` id="phRefresh"`} title="ask the node's adb about the phone now">Check now</button>`;
 }
 
 function renderPhoneInto(i){
@@ -52,10 +51,10 @@ function renderPhoneInto(i){
     // (connect, pair) with their labels are the page's own; the node and
     // its phone are on their way.
     const fld = (label, em, grow = false) => skField(label, em, grow ? "grow" : "");
-    d.setBar(phoneBar(null));
+    d.setBar("");
     // In the card the rows land in (.phonetab).
-    d.list.innerHTML = skTpl(`<div class="phonetab"><div class="row toolstate"><div class="grow"><div class="name">Phone on ${skv(6)}</div>
-        <div class="sub">${skv(10)}</div></div></div>
+    d.list.innerHTML = skTpl(`<div class="phonetab"><div class="row toolstate"><div class="grow"><div class="name">Phone ${skv(6)}</div>
+        <div class="sub">${skv(10)}</div></div><span class="acts">${phoneCheckBtn(true)}</span></div>
       <div class="row">${fld("Phone IP address", 18, true)}${fld("Port", 7)}<span class="acts"><button type="button" class="primary" disabled>Connect</button></span></div>
       <div class="row"><div class="grow prefrow ctlrow">${fld("Pairing port", 9)}${fld("Pairing code", 9)}</div>
         <span class="acts"><button type="button" disabled>Pair</button></span>
@@ -67,7 +66,7 @@ function renderPhoneInto(i){
   // said so, not swapped for the first that has it.
   const picked = (nodesList || []).find(x => x.id === phNode);
   const n = nodes.find(x => x.id === phNode) || (!phNode ? nodes[0] : null);
-  d.setBar(phoneBar(nodes, n));
+  d.setBar("");
   phFoot = "";
   d.list.innerHTML = n ? phonePanel(n)
     : picked ? `<div class="hint">${esc(picked.name)} has no adb: install Android platform tools on it from the ${pageLink("library", "Library")}.</div>`
@@ -169,15 +168,15 @@ function phonePanel(n){
   // remembers, and at the foot how a session reaches it.
   const rows = [
     `<div class="row toolstate">
-       <div class="grow"><div class="name">Phone on ${esc(n.name)} ${state}${
+       <div class="grow"><div class="name">Phone ${state}${
            n.owner ? ` <span class="dim">· connected by ${esc(n.owner.name)}${n.mine ? " (you)" : ""}</span>` : ""}</div>
          <div class="sub">${!n.live
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
            : dev ? (dev.serial ? esc(dev.serial) : `connected by ${esc(n.owner?.name || "somebody")}; which phone is theirs to know`)
            : "no phone on its adb"}</div></div>
-       ${dev && (n.mine || state?.admin) && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"${
+       <span class="acts">${phoneCheckBtn(false)}${dev && (n.mine || state?.admin) && mayPhone() ? `<button type="button" id="phDisconnect"${
          n.mine ? "" : ` data-other="${esc(n.owner?.name || "somebody")}"`}
-         >Disconnect</button></span>` : ""}
+         >Disconnect</button>` : ""}</span>
      </div>`,
     // An IP and its port, both read off the phone's wireless debugging
     // screen. Android hands out a new port every time wireless debugging is

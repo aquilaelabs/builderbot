@@ -317,7 +317,10 @@ function libRow(r, may){
 // The band under the head: the search, then the kind chips and the tier
 // chips side by side (the chips rule: one band where a list is narrowed
 // more than one way).
-function libFilterBand(rows){
+// The search on a line of its own with the page's buttons at its right
+// (the operator, 29 Oct: under the head, where the bar left a gap), then
+// the chips under it.
+function libFilterBand(rows, acts = ""){
   const count = (key, f) => rows.filter(f).length;
   // Installed, then Updates, first after All (the operator, 29 Oct): every
   // card installed, or with an update due, each in its own kind's section;
@@ -327,8 +330,8 @@ function libFilterBand(rows){
                  ...LIB_KINDS.map(([k, l]) => ({key: k, label: l, count: count(k, r => libGroup(r) === k)}))];
   const tiers = LIB_TIERS.map(([k, l]) => ({key: k, label: l, count: count(k, r => r.tier === k)}));
   return `<div class="field lfilter libfilter">
-    <input id="libFind" type="search" maxlength="80" autocomplete="off" spellcheck="false" aria-label="search the library"
-      placeholder="search by name or what it does" value="${esc(libQ)}">
+    <div class="libsearchrow"><input id="libFind" type="search" maxlength="80" autocomplete="off" spellcheck="false" aria-label="search the library"
+      placeholder="search by name or what it does" value="${esc(libQ)}">${acts ? `<span class="actbar">${acts}</span>` : ""}</div>
     <div class="chips" data-chips="libkind">${chipButtons(kinds, libKind, "data-libkind", rows.length)}</div>
     <div class="chips" data-chips="libtier">${chipButtons(tiers, libTier, "data-libtier")}</div>
   </div>`;
@@ -364,10 +367,10 @@ function renderLibraryInto(i){
   const d = docSurface(i, "library");
   if (!d) return;
   if (lib === null){
-    d.setBar(skActBar([["Check for updates", "", "Check"], ["Add your own", "primary", "Add"]]));
+    d.setBar("");
     const skcard = () => `<div class="lcard skcard"><div class="lchead"><span class="lcicon"></span><div class="lctitle">${skv(7, "name")}${skv(4)}</div></div>${skRows(1)}</div>`;
     d.list.innerHTML = skTpl(pageHead({facts: [["Installed", GHOST], ["Updates due", GHOST], ["Store", GHOST]]})
-      + `<div class="field lfilter libfilter"><input type="search" disabled placeholder="search by name or what it does">${skel("chips")}</div>`
+      + `<div class="field lfilter libfilter"><div class="libsearchrow"><input type="search" disabled placeholder="search by name or what it does"><span class="actbar"><button type="button" disabled>${barSaid("Check for updates", "Check")}</button><button type="button" class="primary" disabled>${barSaid("Add your own", "Add")}</button></span></div>${skel("chips")}</div>`
       + `<div class="field libgroups">${LIB_KINDS.map(([k, title]) => `<div class="libgroup"><h3 class="libgname">${esc(title)}</h3><div class="lgrid">${skcard()}${skcard()}${skcard()}</div></div>`).join("")}</div>`);
     if (!libSeq) loadLibrary();
     return;
@@ -384,14 +387,16 @@ function renderLibraryInto(i){
   const node = (nodesList || []).find(x => x.id === libNode) || {};
   const stale = nodeStale(node), pro = node.reported?.store_ro === true;
   const clean = may.install && !pro ? (lib.cleanable || []) : [];
-  // The node is the Build group's header's (R178).
-  d.setBar(nodeBar("", may.install
+  // The node is the Build group's header's (R178), and the buttons sit on
+  // the search's line under the head, so the bar carries nothing.
+  d.setBar("");
+  const acts = may.install
     ? `${busy ? abortBtn('data-libabort', job.aborting) : ""}
        <button type="button" data-libcheck${busy || stale ? " disabled" : ""} title="ask each upstream what it has now">${
          busy && job.action === "check" ? `${barSaid("Checking for updates", "Checking")}<span class="dots"></span>`
          : (lib.rows || []).some(r => r.latest) ? barSaid("Re-check for updates", "Re-check") : barSaid("Check for updates", "Check")}</button>${
         may.packs ? `<button type="button" class="primary" data-libadd>${barSaid("Add your own", "Add")}</button>` : ""}${
-        clean.length ? `<button type="button" class="danger" data-libclean${busy ? " disabled" : ""}>Remove</button>` : ""}` : ""));
+        clean.length ? `<button type="button" class="danger" data-libclean${busy ? " disabled" : ""}>Remove</button>` : ""}` : "";
   if (lib.error){
     paint(d.list, `<div class="field"><div class="notice bad">${esc("could not read the library: " + lib.error)}</div></div>`);
     return;
@@ -424,7 +429,7 @@ function renderLibraryInto(i){
         ? `<button type="button" data-libsysdeps${busy || stale ? " disabled" : ""} title="install these on ${esc(lib.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
         : "This node's owner installs them: the agent does not administer the machine."}</div></div>` : ""}`;
   libHold = busy ? "another toolchain job is running on this node" : stale ? "this node is not reporting" : pro ? "this node's store is read-only to it" : "";
-  paint(d.list, `<div data-libnode="${esc(libNode)}">${notes}${head}${libFilterBand(all)}<div class="field libgroups">${libSections(rows, may)}</div></div>`);
+  paint(d.list, `<div data-libnode="${esc(libNode)}">${notes}${head}${libFilterBand(all, acts)}<div class="field libgroups">${libSections(rows, may)}</div></div>`);
   // The ellipsis on a card whose job runs is ticked by the one timer every
   // page shares (tcTickDots), so a redraw does not restart it.
   if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);

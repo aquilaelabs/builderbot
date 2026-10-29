@@ -81,6 +81,13 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
   ok(await page.$$eval('.doc .librarytab .libgroup', (ds, n) => ds.length === n, sects.length), '...and All puts every group back');
 } else ok(true, 'one kind only here, so no kind chips (chips need two groups)');
 
+// The page's buttons on the search's line under the head, the bar empty
+// (the operator, 29 Oct: they stood over a gap).
+ok(await page.evaluate(() => !!document.querySelector('.doc .librarytab .libsearchrow #libFind')
+   && !!document.querySelector('.doc .librarytab .libsearchrow .actbar [data-libcheck]')
+   && !document.querySelector('.pane .bar [data-libcheck], .doc .librarytab .docbarrow [data-libcheck]')),
+   'Check for updates and Add your own sit on the search\'s line, not in a bar over the head');
+
 // Installed, the chip after All (the operator, 29 Oct): the cards
 // installed on this node, each in its own kind's section; no chip while
 // nothing is.
