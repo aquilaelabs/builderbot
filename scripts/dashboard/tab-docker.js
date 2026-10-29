@@ -1220,7 +1220,7 @@ async function loadWire(d){
     // answering in time, as under a loaded gate) says nothing about the
     // wiring: what was read before stays, and with nothing read before it
     // says it could not (B12), never "publishes nothing".
-    if (!st.wired) throw new Error(dmWireSeen[key] ? "kept" : "the compose file could not be read just now");
+    if (!st.wired) throw new Error(dmWireSeen[key] ? "kept" : st.wired_why ? `compose says: ${st.wired_why}` : "the compose file could not be read just now");
     const ports = st.ports || [], mounts = st.mounts || [];
     const portLine = p => {
       const at = `${daemonHost()}:${p.published || ""}`;

@@ -2648,8 +2648,16 @@ def _build_env(project, instance=MAIN):
         t = forms.get("file")
         if t:
             out["BB_BUILD_TAG"] = str(t)
-    # The docker group's id on the instance's node (R86), for a compose that
-    # runs a service as a member of it to reach the daemon's socket.
+    return out | _node_env(project, instance)
+
+
+def _node_env(project, instance=MAIN):
+    """What a compose is handed about the node its instance runs on: the
+    docker group's id there (R86, BB_DOCKER_GID), for a compose that runs a
+    service as a member of it to reach the daemon's socket. Every compose
+    call has it, `config` too: a file that requires it (${BB_DOCKER_GID:?})
+    could not be read at all without it (B448)."""
+    out = {}
     with contextlib.suppress(Exception):
         nid = _instance_node(project, instance) if instance else ""
         g = (node_reported(nid) or {}).get("docker_gid") if nid and node_reported else None
@@ -3758,7 +3766,7 @@ def _config(project, instance=MAIN, env_extra=None):
     than making it cheap to ask carelessly: state() does that for one row, and
     overview() for the listing it draws.
     """
-    r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30, env_extra=env_extra)
+    r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30, env_extra=_node_env(project, instance) | (env_extra or {}))
     _cfg_err.said = ""
     if r["code"] != 0:
         # What compose said, kept for the caller that shows it (the

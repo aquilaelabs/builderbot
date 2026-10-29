@@ -84,6 +84,7 @@
 
 ### Fixed
 
+- A container's Ports and mounts reads again when its compose file needs the node's docker group (`${BB_DOCKER_GID:?...}`): the read asked compose without it, so it said the file could not be read on every open. When compose does refuse a file, the row now says what compose said.
 - Switching a phone's browser to its desktop site, or a browser updating itself, no longer signs you out: a sign-in is held to the browser it was made in (Safari, Chrome, Firefox) rather than to its whole identifying string, and a cookie taken to another browser is still refused. Sign-ins kept from before stay signed in through the upgrade.
 
 ### Removed

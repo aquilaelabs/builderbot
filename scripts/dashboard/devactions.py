@@ -1097,6 +1097,10 @@ def state(project, instance=devapp.MAIN):
         # page's Ports and mounts kept "publishes nothing" over the lines it
         # had read a moment before (B12).
         out["wired"] = cfg is not None
+        # ...and when it is not, what compose said (B448), so the row names
+        # the line rather than a "just now" that reads as a passing timeout.
+        if cfg is None:
+            out["wired_why"] = getattr(devapp._cfg_err, "said", "") or ""
         # ...and the ports somebody else is already on. After wiring(), which
         # is what says which ports this instance wants. Its own field rather
         # than a line in `problems`, because the two views that read this
