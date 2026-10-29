@@ -528,7 +528,16 @@ print(json.dumps(out))
   await page.keyboard.press('Escape');
   ok(opened.ghosts === 0 && opened.fades === 1 && opened.face === 0,
      `...and a box opening there fades in alone, the face never copied over it (${JSON.stringify(opened)})`);
-  await page.click(`${card} .pcback [data-pedit]`);
+  // Back turns the same card, never a copy drawn over it as the turn ends:
+  // the grid replaced then flashed the card in Firefox (the operator, 29 Oct).
+  const kept = await page.evaluate(async sel => {
+    const c = document.querySelector(sel);
+    c.querySelector('.pcback [data-pedit]').click();
+    await new Promise(r => setTimeout(r, 700));
+    const now = document.querySelector(sel);
+    return { same: now === c, front: !now.classList.contains('flipped') };
+  }, card);
+  ok(kept.same && kept.front, `...and Back turns that card back in place, the card never drawn again over its turn (${JSON.stringify(kept)})`);
   // The pin by the name, pressed in while it is pinned; a press lets it out,
   // and Home's glance (step 5) is what it decides.
   ok(await page.$eval(`${card} .pcfront [data-pmark]`, b => b.getAttribute('aria-pressed') === 'true'),
