@@ -596,6 +596,23 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
                    kept, a run id for one, `--project NAME` from elsewhere);
                    for a project on GitHub's own runners, its runs and the end
                    of each failed job's log, read by the controller from GitHub
+bb forge whoami    what this project's token may do on its git host (GitHub,
+                   GitLab, Gitea), as measured, and what to ask for; `measure`
+                   asks the host again
+bb forge pr|issue|run|release ACTION [ARGS]
+                   the git host worked through the controller with the
+                   project's token, which never reaches a session: pr list,
+                   view N, create --title --head --base [--body] [--draft],
+                   comment N --body, review N --approve|--request-changes|
+                   --body, close N, merge N [--method merge|squash|rebase];
+                   issue list, view N, create --title [--body] [--label a,b],
+                   comment N --body, close N, label N NAME...; run list
+                   [--branch B], view ID, log ID [--lines N] [--job], rerun
+                   ID [--failed], dispatch WORKFLOW --ref B [-f NAME=VALUE];
+                   release list, view TAG. --state open|closed|all on a list,
+                   --json for the host's answer whole. Each needs what the
+                   token allows and the project's Permissions, On the git
+                   host, permit (docs/git-hosts.md)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -4681,6 +4698,13 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         python3 tools/api-doc.py --check || rc=1
     fi
 
+    # The git host page against the abilities (R188): the table a token is
+    # measured by and the relay refuses by, so the page cannot drift from it.
+    if [ -f docs/git-hosts.md ] && [ -f tools/git-hosts-doc.py ]; then
+        section "git hosts (docs/git-hosts.md vs forgeaccess.ABILITIES)"
+        python3 tools/git-hosts-doc.py --check || rc=1
+    fi
+
     # The layout page against the tree (R91): a module the page does not
     # name is a newcomer's dead end, and the page drifted a dozen files
     # behind before this held it.
@@ -6100,6 +6124,16 @@ cmd_version_edit() {
     BB_WORKSPACE="$WORKSPACE" python3 "$BB_LIB/release-edit.py" "$proj" "$@"
 }
 
+# bb forge (R188): the project's git host worked through the controller,
+# which holds the token (lib/forge-verbs.py, dashboard/forgeaccess.py).
+cmd_forge() {
+    local proj
+    proj="$(project_here)" \
+        || die "not inside a project under ${WORKSPACE}; cd into one first"
+    export BB_FORGE_AUTH; BB_FORGE_AUTH="$(bb_auth_or_die)"
+    python3 "$BB_LIB/forge-verbs.py" "$proj" "$@"
+}
+
 cmd_version() {
     case " $* " in *" release "*"--edit "*|*" --edit "*"release "*|*" release "*"--remove "*)
         case " $* " in *" -h "*|*" --help "*) ;; *) cmd_version_edit "$@"; return $? ;; esac ;;
@@ -6293,6 +6327,7 @@ case "${1:-help}" in
     settings) shift; cmd_settings "$@" ;;
     router-key) shift; BB_RK_AUTH="$(bb_auth_or_die)" BB_RK_PROJECT="${BB_PROJECT:-$(project_here 2>/dev/null || true)}" python3 "$BB_LIB/router-key.py" "$@" ;;
     version)  shift; cmd_version "$@" ;;
+    forge)    shift; cmd_forge "$@" ;;
     changelog) shift; cmd_changelog "$@" ;;
     projects) shift; cmd_projects "$@" ;;
     shell)    exec bash -l ;;

@@ -4866,6 +4866,13 @@ except OSError as e:
     print(f"dashboard: checkouts' credential helpers left as they were: {e}", flush=True)
 # The session network reaches the containers of the projects a project reads.
 devapp.reads_of = prefs.reads_trees
+# What an agent may do on a project's git host (R188): measured with the
+# project's own token here, and the bb forge relay, which never hands the
+# token to a node.
+import forgeaccess                                               # noqa: E402
+forgeaccess.configure(state=STATE, write_json=write_json, target=projects.forge_target, prefs_get=prefs.get)
+preamble.forge_line = forgeaccess.briefing
+projects.token_changed = forgeaccess.token_changed
 devapp.hosts_of = lambda p: (prefs.get(p) or {}).get("hosts") or []
 devapp.reaches_of = prefs.reaches_on
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
@@ -5819,6 +5826,7 @@ GET_ROUTES = (
     ("prefix", "/api/snapshots", "_get_snapshots"),
     ("prefix", "/api/transcript", "_get_transcript"),
     ("prefix", "/api/git", "_get_git"),
+    ("exact", "/api/forge-access", "_get_forge_access"),
     ("prefix", "/api/project-sessions", "_get_project_sessions"),
     ("prefix", "/api/changelog", "_get_changelog"),
     ("prefix", "/api/version", "_get_version"),
@@ -5939,6 +5947,8 @@ POST_ROUTES = (
     ("prefix", "/api/create", "_create"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/git", "_git_act"),
+    ("exact", "/api/forge-access", "_forge_access_post"),
+    ("exact", "/api/forge", "_forge"),
     ("prefix", "/api/project-sessions", "_project_sessions"),
     ("prefix", "/api/unlink", "_unlink"),
     ("prefix", "/api/link", "_link"),
@@ -7566,6 +7576,17 @@ class Handler(BaseHTTPRequestHandler):
             # Whose token a press would use (R159), by name.
             body["token"] = _token_said(name, users.uid_of(self._who()))
         return self._result(body)
+
+    def _get_forge_access(self):
+        """GET /api/forge-access: what an agent may do on this project's git
+        host (R188), each ability with what its token says and the project's
+        own override, from the kept measure; for a project this account
+        sees."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._result(forgeaccess.view(name))
 
     def _get_changelog(self):
         """GET /api/changelog: changelog.reading, for a project this account
@@ -10852,6 +10873,39 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"name": fname, "text": text})
         return self._attachment(fname, text.encode("utf-8"), "text/plain; charset=utf-8")
 
+    def _forge_access_post(self, req):
+        """POST /api/forge-access {project, action: measure}: the token
+        measured again, for the Permissions section's Measure; an account's
+        on a project it may change."""
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "an account's: a session reads it with bb forge whoami"}, 403)
+        name = field(req, "project")
+        if self._not_project(name) or self._readonly(name):
+            return None
+        if field(req, "action") != "measure":
+            return self._json({"error": "action: measure"}, 400)
+        return self._json(forgeaccess.view(name, measure_now=True))
+
+    def _forge(self, req):
+        """POST /api/forge {project, verb, args}: one bb forge verb (R188),
+        run here with the project's own token under what the token allows
+        and the project's override, for a session on its own project or an
+        account that may change it. Every call is audited."""
+        me = self._who() or {}
+        name = field(req, "project")
+        if me.get("session"):
+            if name != me["session"]:
+                return self._json({"error": "a session works its own project's git host and no other"}, 403)
+        elif self._not_project(name) or self._readonly(name):
+            return None
+        verb = " ".join(str(req.get("verb") or "").split())[:40]
+        body, code = forgeaccess.run(name, verb, req.get("args") or {})
+        if verb not in ("whoami", "measure") or code >= 400:
+            db.audit(self._principal(), "forge", name, {"verb": verb, "code": code,
+                                                       "error": (body or {}).get("error", "") if isinstance(body, dict) else ""})
+        return self._json(body, code)
+
     def _git_act(self, req):
         """The Git view's actions (roadmap R36 step 2): fixed git commands on
         the project's tree on the controller, under the acting account's
@@ -12390,6 +12444,9 @@ class Handler(BaseHTTPRequestHandler):
         # Test (the operator, 7 Oct): a read and a dry-run push with what it
         # authenticates with, or with a token typed and not saved yet.
         if req.get("action") == "test":
+            # ...and the stored token measured on the host again (R188).
+            if not req.get("token"):
+                forgeaccess.token_changed(name)
             return self._json(*projects.auth_test(name, str(req.get("token") or "")))
         # Its own deploy key, made or pasted beside the token (the operator,
         # 12 Oct): the private half goes to the root-only helper and no

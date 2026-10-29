@@ -422,7 +422,7 @@ into this later one (its changelog stitched), and `bb version backport
 COMMIT` carries a later line's fix onto the patch line (docs/versions.md).
 
 ## Git
-<!-- BUILDERBOT:TOPIC git: bb git push and its policy, credentials, bb ci-log, what the controller watches in CI -->
+<!-- BUILDERBOT:TOPIC git: bb git push and its policy, credentials, bb forge on the git host, bb ci-log, what the controller watches in CI -->
 
 Never write a credential into a repository: not in a test fixture, not in CI
 config, not in an .env file that is not gitignored. A branch another
@@ -446,6 +446,15 @@ controller looks at a project's CI once a day (a moving runner label, an
 action a major behind, a red main branch, GitHub's own notices), and `bb
 catchup` prints what it found: drift there is worth a roadmap item or a fix
 on your branch before it becomes a red run.
+
+The git host itself (GitHub, GitLab, Gitea) is `bb forge`: pull requests
+(`pr list`, `view`, `create`, `comment`, `review`, `merge`), issues, CI runs
+and their logs (`run log ID` is a failed run's log, when `bb ci-log` has only
+its outcome), and releases, one set of verbs on every host, run by the
+controller with the project's token, which never reaches you. What it may
+do is the token's and then the project's: your briefing says it in Your git
+host, `bb forge whoami` prints it whole, and a verb either refuses is
+refused with the permission to ask the person for. Merging starts off.
 
 <!-- BUILDERBOT:IF android *.gradle *.gradle.kts android AndroidManifest.xml -->
 ## Android

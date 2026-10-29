@@ -701,6 +701,23 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
                    kept, a run id for one, `--project NAME` from elsewhere);
                    for a project on GitHub's own runners, its runs and the end
                    of each failed job's log, read by the controller from GitHub
+bb forge whoami    what this project's token may do on its git host (GitHub,
+                   GitLab, Gitea), as measured, and what to ask for; `measure`
+                   asks the host again
+bb forge pr|issue|run|release ACTION [ARGS]
+                   the git host worked through the controller with the
+                   project's token, which never reaches a session: pr list,
+                   view N, create --title --head --base [--body] [--draft],
+                   comment N --body, review N --approve|--request-changes|
+                   --body, close N, merge N [--method merge|squash|rebase];
+                   issue list, view N, create --title [--body] [--label a,b],
+                   comment N --body, close N, label N NAME...; run list
+                   [--branch B], view ID, log ID [--lines N] [--job], rerun
+                   ID [--failed], dispatch WORKFLOW --ref B [-f NAME=VALUE];
+                   release list, view TAG. --state open|closed|all on a list,
+                   --json for the host's answer whole. Each needs what the
+                   token allows and the project's Permissions, On the git
+                   host, permit (docs/git-hosts.md)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first

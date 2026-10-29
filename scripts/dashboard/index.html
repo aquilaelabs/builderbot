@@ -6034,6 +6034,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="nbglance" id="permHint" data-tiles="3" data-said></div>
       <div class="modal inline permdials"><div class="box"></div></div>
       <div class="permgit"></div>
+      <div class="permhost"></div>
     </div>
     <!-- The reading room. A history and the changelog are things you READ,
          and they were opening in place of whatever you were looking at: the
@@ -6378,6 +6379,9 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <label for="rnToken">Access token<span class="help" data-help="leave empty to keep the current one" tabindex="0">?</span></label>
       <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
+      <!-- What to give the token for what an agent should do there (R188):
+           the git hosts page, in a tab of its own so this dialog stays. -->
+      <a class="link whichperms" href="/#/help/git-hosts" target="_blank" rel="noopener">Which permissions?</a>
       <!-- A stored token is not shown and not typed over: the field is closed
            and this is the way in. Clearing is staged like everything else in
            this dialog: pressing it changes what the dialog says, and Rename
@@ -7093,6 +7097,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <label for="pToken">Access token<span class="help" data-help="optional: a token for this repository alone, kept on the controller; a session can push with it but not read it" tabindex="0">?</span></label>
       <input id="pToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
+      <a class="link whichperms" href="/#/help/git-hosts" target="_blank" rel="noopener">Which permissions?</a>
       <div class="hint" id="pTokenHint"></div>
     </div>
     <div class="field" id="pKeyField" hidden>

@@ -59,6 +59,13 @@ GITPOL_MODES = ("allow", "deny")
 # operator, 15 Oct: a test's made-up address held a push fifteen minutes).
 GITPOL_KEY_MODES = {"push": GITPOL_MODES, "main": GITPOL_MODES, "scan": ("hold", "off")}
 GITPOL_DEFAULT = {"push": "allow", "main": "deny", "scan": "hold"}
+# What an agent may do on the git host over what the project's token allows
+# (R188): one per ability in forgeaccess.ABILITIES, which a unit test holds
+# equal, allow or deny, merging off until somebody turns it on.
+FORGEPOL_DEFAULT = {"code_read": "allow", "push": "allow", "workflows": "allow", "pr_read": "allow",
+                    "pr_write": "allow", "merge": "deny", "issues_read": "allow", "issues_write": "allow",
+                    "actions_read": "allow", "actions_write": "allow", "releases_read": "allow",
+                    "releases_write": "allow"}
 GATE_MODES = ("auto", "ask", "deny")
 # The modes a gate takes beyond those three, by kind: the wiki may also be
 # hidden, which keeps it from a session altogether, reading included
@@ -147,7 +154,7 @@ def configure(*, write_json, state):
 # outputs, its captures and snapshots, its tests' place, its gate on what a
 # session enters into its notebook) stays the repository's.
 GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", "packs_on", "test_node",
-                "agents_off", "agent_default", "agent_slots", "gitpol", "color", "devbuild", "makevms", "vm_caps", "installpacks",
+                "agents_off", "agent_default", "agent_slots", "gitpol", "forgepol", "color", "devbuild", "makevms", "vm_caps", "installpacks",
                 "test_change", "gpu", "report", "sign", "keys", "release", "pc", "log_from", "diag")
 # repos.py's answers, handed over by the server: (project_of, members,
 # is_repos). Unset (bb loading this by path), _rp reads the same from the files.
@@ -474,6 +481,11 @@ def _clean(rec):
                            if isinstance(rec.get("gitpol"), dict)
                            and (rec.get("gitpol") or {}).get(k) in GITPOL_KEY_MODES[k] else GITPOL_DEFAULT[k])
                        for k in GITPOL_KEYS},
+            # ...and on the git host, over what its token allows (R188).
+            "forgepol": {k: ((rec.get("forgepol") or {}).get(k)
+                             if isinstance(rec.get("forgepol"), dict)
+                             and (rec.get("forgepol") or {}).get(k) in GITPOL_MODES else v)
+                         for k, v in FORGEPOL_DEFAULT.items()},
             "gate": {k: ((rec.get("gate") or {}).get(k)
                          if isinstance(rec.get("gate"), dict)
                          and gate_ok(k, (rec.get("gate") or {}).get(k)) else "auto")
@@ -880,7 +892,7 @@ def set_prefs(project, **kw):
 
 
 def _set_prefs(project, node=None, nodes=None, build=None, test=None,
-              outputs=None, gate=None, gitpol=None,
+              outputs=None, gate=None, gitpol=None, forgepol=None,
               devbuild=None, tests_in=None, test_node=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None, snapshots_on=None,
@@ -982,6 +994,15 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 if v not in GITPOL_KEY_MODES[k]:
                     return {"error": f"{k}: {' or '.join(GITPOL_KEY_MODES[k])}, not {v}"}
                 cur["gitpol"][k] = v
+        if forgepol is not None:
+            if not isinstance(forgepol, dict):
+                return {"error": "forgepol is {ability: allow|deny}"}
+            for k, v in forgepol.items():
+                if k not in FORGEPOL_DEFAULT:
+                    return {"error": f"not an ability on the git host: {k}; one of {', '.join(FORGEPOL_DEFAULT)}"}
+                if v not in GITPOL_MODES:
+                    return {"error": f"{k}: allow or deny, not {v}"}
+                cur["forgepol"][k] = v
         if gate is not None:
             if not isinstance(gate, dict):
                 return {"error": "gate is {roadmap|bugs|rules: auto|ask|deny}"}
@@ -1106,7 +1127,7 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["sign"] != "ask" or cur["keys"] != "ask" or cur["release"] != "ask"
                 or cur["pc"] != "deny" or cur["installpacks"] != "ask"
                 or cur["dev_keep"] != DEV_KEEP
-                or cur["gitpol"] != GITPOL_DEFAULT):
+                or cur["gitpol"] != GITPOL_DEFAULT or cur["forgepol"] != FORGEPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose; _clean puts the defaults
             # back on the way out.
@@ -1115,6 +1136,8 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("gate", None)
             if cur["gitpol"] == GITPOL_DEFAULT:
                 rec.pop("gitpol", None)
+            if cur["forgepol"] == FORGEPOL_DEFAULT:
+                rec.pop("forgepol", None)
             if cur["devbuild"] == "deny":
                 rec.pop("devbuild", None)
             if cur["makevms"] == "deny":
@@ -1297,7 +1320,7 @@ def dialog_save(name, req, uid):
     r = set_prefs(name, node=req.get("node"), nodes=req.get("nodes"),
                   build=req.get("build"),
                   test=req.get("test"), outputs=req.get("outputs"),
-                  gate=req.get("gate"), gitpol=req.get("gitpol"),
+                  gate=req.get("gate"), gitpol=req.get("gitpol"), forgepol=req.get("forgepol"),
                   devbuild=req.get("devbuild"),
                   makevms=req.get("makevms"), vm_caps=req.get("vm_caps"), installpacks=req.get("installpacks"),
                   tests_in=req.get("tests_in"), test_node=req.get("test_node"),

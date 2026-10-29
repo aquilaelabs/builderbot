@@ -32,6 +32,7 @@ dashboard's rail.
 ## Work on a project
 
 - [projects.md](projects.md): the Projects page: making, cloning and linking a project, its menu and settings, archiving and deleting it
+- [git-hosts.md](git-hosts.md): what an agent can do on your git host (GitHub, GitLab, Gitea): each ability, the token permission it needs, and the project's Allow or Deny over it
 - [notebook.md](notebook.md): a project's page: Overview, Roadmap, Bugs, Git, Tests, Analysis, Artifacts, Docker, Wiki and Design
 - [sessions.md](sessions.md): sessions of each agent, Claude, ChatGPT and Copilot: starting one, the Sessions page, what a session sees, what it is told and the rules it is held to
 

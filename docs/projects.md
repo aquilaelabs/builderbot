@@ -335,6 +335,19 @@ named from that repository's `.git/config` and nowhere else, with git's
 empty-value reset ahead of it, so the globally configured helper is never
 asked and no container-wide token authenticates the fetch.
 
+The token is also what an agent works the git host with, through `bb
+forge`: pull requests, issues, CI runs and their logs, and releases on
+GitHub, GitLab, Gitea or Forgejo, each run on the controller with the token,
+which never reaches a session. The controller measures what the token may
+do without changing anything (when it is stored, when Test is pressed and
+once a day), and the project's Permissions view, **On the git host**, lists
+each ability with what the token says and an Allow or Deny over it: Deny
+takes the ability away whatever the token allows, and merging starts at
+Deny. Every session is told at its start what it may do there and what to
+ask for. *Which permissions?* beside the token field opens
+[git-hosts.md](git-hosts.md), the table of abilities with what to tick for
+each on every host.
+
 That last part is the point. A token minted to reach one private repo usually
 reaches every repo it was scoped to; in the environment it also reaches them
 from every project and every session. Here it opens the one project you gave it

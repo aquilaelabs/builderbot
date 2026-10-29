@@ -88,6 +88,19 @@ prefs_mod = None
 # a fact about the machine, not the tree, so the briefing's GPU section is
 # decided by it and costs a session on a node without one nothing.
 node_gpu = None
+# What the project's token may do on its git host (R188), from the server
+# (forgeaccess.briefing); bb, which has no server, hands in nothing.
+forge_line = None
+
+
+def forge_said(project):
+    """The git host's lines for the briefing, or ""."""
+    if not forge_line:
+        return ""
+    try:
+        return forge_line(project) or ""
+    except Exception:                                    # noqa: BLE001 - a briefing never fails on it
+        return ""
 _TESTCHANGE = "<!-- BUILDERBOT:TESTCHANGE -->"
 # What a change asked for during a test run does, in the words a session
 # reads: the project's setting (prefs.TEST_CHANGE), one answer per project
@@ -417,7 +430,8 @@ def briefing(project, gates=True):
             if not line.strip() and out and not out[-1].strip():
                 continue
             if line.strip() in (_READS, _DESIGN):
-                said = "\n\n".join(x for x in (identity_line(project), dials_line(project), reads_line(project),
+                said = "\n\n".join(x for x in (identity_line(project), dials_line(project), forge_said(project),
+                                                reads_line(project),
                                                 sees_line(project), packs_line(project)) if x) \
                     if line.strip() == _READS else design_line(project)
                 if said:

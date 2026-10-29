@@ -26,6 +26,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | GET | `/api/snapshots` | prefix | `_get_snapshots` | GET /api/snapshots?project=NAME: the days kept of the project's tree (snapshots.py), newest first, and how many it keeps. | refused: settings |
 | GET | `/api/transcript` | prefix | `_get_transcript` | GET /api/transcript?project=NAME&id=SESSION: one of the signed-in account's own conversations with Claude on that project as a text file, every command and answer in it (transcripts.render); as JSON with as=json, which i |  |
 | GET | `/api/git` | prefix | `_get_git` | GET /api/git: the notebook's Git view (gitview.view), for a project this account may see. |  |
+| GET | `/api/forge-access` | exact | `_get_forge_access` | GET /api/forge-access: what an agent may do on this project's git host (R188), each ability with what its token says and the project's own override, from the kept measure; for a project this account sees. |  |
 | GET | `/api/project-sessions` | prefix | `_get_project_sessions` | GET /api/project-sessions?project=NAME: every account's sessions on the project, for its settings dialog. | refused: settings |
 | GET | `/api/changelog` | prefix | `_get_changelog` | GET /api/changelog: changelog.reading, for a project this account sees. |  |
 | GET | `/api/version` | prefix | `_get_version` | GET /api/version. |  |
@@ -133,6 +134,8 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | POST | `/api/create` | prefix | `_create` | New project: a fresh local repo, a clone or a link, and what the dialog chose besides (projects.create_from_dialog). | refused: create |
 | POST | `/api/profile` | prefix | `_profile` | The signed-in account's own settings (the Profile page): read on GET, saved on POST, by profiletab.py. |  |
 | POST | `/api/git` | prefix | `_git_act` | The Git view's actions (roadmap R36 step 2): fixed git commands on the project's tree on the controller, under the acting account's author and the project's own credentials (gitview.verb). |  |
+| POST | `/api/forge-access` | exact | `_forge_access_post` | POST /api/forge-access {project, action: measure}: the token measured again, for the Permissions section's Measure; an account's on a project it may change. |  |
+| POST | `/api/forge` | exact | `_forge` | POST /api/forge {project, verb, args}: one bb forge verb (R188), run here with the project's own token under what the token allows and the project's override, for a session on its own project or an account that may chang |  |
 | POST | `/api/project-sessions` | prefix | `_project_sessions` | POST /api/project-sessions {project, action: "end", session, node}: an administrator ending one of them (projsessions.py). | refused: settings |
 | POST | `/api/unlink` | prefix | `_unlink` | Take the remote off a project, with the credential and the push grant that came with it. | refused: create |
 | POST | `/api/link` | prefix | `_link` | Link an existing local repo to an empty repo on a host. | refused: create |

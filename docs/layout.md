@@ -95,6 +95,7 @@ scripts/
   lib/git-policy.py              `bb git policy`
   lib/relay.py                   a notebook verb relayed from a node to the controller
   lib/release-edit.py            `bb version release --edit`: the notes and files read where it is typed, the edit asked over the API
+  lib/forge-verbs.py             `bb forge`: a verb and its arguments asked of the controller, which works the git host with the project's token
   lib/controller-stamp.py        the controller's build, for `bb status` and `bb catchup`
   lib/dash.py                    the dashboard's modules loaded by path for the notebook verbs, and the account name and "who wrote it" they share
   lib/markup.py                  YAML's subset, JSON, TOML, XML and Markdown's headings read in the standard library, for the records and the code map (R167)
@@ -187,6 +188,7 @@ scripts/
     agents.py                    the coding agents a session may run, one adapter each (R95): how each installs, signs in, is launched, briefed, guarded and read; page-agents.js is the page's copy
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the pins Home shows
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
+    forgeaccess.py               what an agent may do on a project's git host: the abilities, the token measured without changing anything, the project's Allow or Deny, and bb forge's verbs on GitHub, GitLab and Gitea
     systems.py                   the systems a node can be: what Enroll node's pulldown offers, each with its provisioner family and its vetting (R204)
     ftp.py                       a project's file access over FTP and in an editor: the switches, the port, each account's access, and access_for, the one answer both doors give (R151, R159)
     wssync.py                    a node's projects as a synced copy: the index, state, since, get and put for its agent, and conflicts (R162)
@@ -386,6 +388,7 @@ tools/readme-shots.mjs           the README's pictures (dashboard, notebook, nod
 tools/bb-ref.sh                  writes the bb block of docs/reference.md from bb help; bb lint holds the two equal
 tools/builderbot-stick.py        the USB stick maker (R161 step 5): a release's stick image onto a removable disk on Windows, a Mac or Linux, checked and read back, Python's own library alone
 tools/api-doc.py                 writes docs/api.md from server.py's route tables; bb lint holds the two equal
+tools/git-hosts-doc.py           writes docs/git-hosts.md from forgeaccess.ABILITIES; bb lint holds the two equal
 tools/packs-export.py            writes the official packs under packs/ from config/toolchains.json and agents.py's table; bb lint's --check holds them to it (R169 step 1)
 tools/check-sysdeps.py           checks every recipe's system packages, and with --controller the controller's own list, against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
@@ -412,6 +415,7 @@ docs/image.md                    BuilderBot OS, the appliance image: what it is,
 docs/install.md                  setup, start to finish: the checklist with the decisions each step needs
 docs/architecture.md             the map: the seven parts, how they reach each other, where each is explained
 docs/api.md                      every /api/ route with its method, handler, first sentence and what it refuses on, written by tools/api-doc.py
+docs/git-hosts.md                what an agent can do on a git host and the token permission each needs, written by tools/git-hosts-doc.py
 docs/how-it-works.md             the overview: what the image carries, its security model and hooks, and which doc explains each part
 docs/dashboard.md                the dashboard: signing in, the rail, Home, the bell, color schemes, the dock and its terminals
 docs/projects.md                 the Projects page: making, linking, archiving and deleting a project, and its repository's access
