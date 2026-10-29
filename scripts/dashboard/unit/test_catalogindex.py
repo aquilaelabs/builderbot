@@ -66,6 +66,12 @@ class Index(unittest.TestCase):
         r4 = catalogindex.fetch("https://catalog.example/", opener=down)
         self.assertIn("did not answer", r4["error"])
         self.assertEqual(len(r4["index"]["packs"]), 1)
+        # Another address under Controller settings: neither the cache nor
+        # the kept index is the old catalog's answer (B443).
+        r5 = catalogindex.index("https://other.example/", opener=down)
+        self.assertIn("did not answer", r5["error"])
+        self.assertIsNone(r5["index"])
+        self.assertEqual(len(catalogindex.index("https://catalog.example/", opener=down)["index"]["packs"]), 1)
 
     def test_without_a_shipped_key_nothing_is_trusted(self):
         catalogindex.PUB_FILE = os.path.join(self.d, "none.pub")
@@ -81,7 +87,7 @@ class Index(unittest.TestCase):
         self.assertEqual((rows[0]["kind"], rows[0]["name"], rows[0]["key"]), ("pack", "ghidra", "pack:withdrawn:ghidra"))
         self.assertIn("remove it", rows[0]["said"])
         # Within the hour the kept copy answers without the network.
-        self.assertEqual(len(catalogindex.index(opener=down_fail)["index"]["packs"]), 2)
+        self.assertEqual(len(catalogindex.index("https://catalog.example/", opener=down_fail)["index"]["packs"]), 2)
 
 
 def down_fail(u):

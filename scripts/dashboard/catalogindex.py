@@ -99,10 +99,14 @@ def _path():
     return os.path.join(STATE, "catalog-index.json")
 
 
-def _kept():
+def _kept(base=None):
+    """The index kept under the state, None when there is none or it was
+    read from another address than `base` (B443)."""
     try:
         with open(_path(), encoding="utf-8") as f:
             d = json.load(f)
+        if base and isinstance(d, dict) and d.get("url", base) != base:
+            return None
         return d if isinstance(d, dict) and isinstance(d.get("packs"), list) else None
     except (OSError, ValueError):
         return None
@@ -118,15 +122,15 @@ def fetch(url=None, opener=None):
         data = get(base + "index.json")
         sig = get(base + "index.sig").decode("utf-8", "replace")
     except Exception as e:                                             # noqa: BLE001 (the network's reasons are many)
-        return {"error": f"the catalog did not answer: {str(e)[:200]}", "index": _kept()}
+        return {"error": f"the catalog did not answer: {str(e)[:200]}", "index": _kept(base)}
     if len(data) > MAX_BYTES:
-        return {"error": "the index is over 4 MB, which no catalog's is: refused", "index": _kept()}
+        return {"error": "the index is over 4 MB, which no catalog's is: refused", "index": _kept(base)}
     why = verify(data, sig)
     if why:
-        return {"error": why, "index": _kept()}
+        return {"error": why, "index": _kept(base)}
     idx, why = parse(data)
     if why:
-        return {"error": why, "index": _kept()}
+        return {"error": why, "index": _kept(base)}
     idx["fetched_at"] = int(time.time())
     idx["url"] = base
     with _lock:
@@ -147,10 +151,13 @@ def _write(path, data):
 def index(url=None, fresh=False, opener=None):
     """The index as kept, fetched when it is older than an hour or asked
     fresh: {index, error}."""
+    # Each answer is the address asked's: a catalog moved under Controller
+    # settings is read at once, not after the old one's hour (B443).
+    base = (url or DEFAULT_URL).rstrip("/") + "/"
     with _lock:
-        if not fresh and _cache["index"] and time.time() - _cache["at"] < KEEP_S:
+        if not fresh and _cache["index"] and _cache["index"].get("url", base) == base and time.time() - _cache["at"] < KEEP_S:
             return {"index": _cache["index"], "error": ""}
-        kept = _kept()
+        kept = _kept(base)
         if not fresh and kept and time.time() - int(kept.get("fetched_at") or 0) < KEEP_S:
             _cache.update(at=float(kept.get("fetched_at") or 0), index=kept)
             return {"index": kept, "error": ""}
