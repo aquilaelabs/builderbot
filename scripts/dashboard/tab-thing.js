@@ -79,10 +79,10 @@ function renderThingInto(i){
   const may = inst.may || {};
   const ver = r.version && r.version !== "-" && r.version !== "present" ? r.version : "";
   // Its version and an update as the row wears them, then where it stands.
-  const pills = `${ver ? `<span class="pill" title="installed">${esc(ver)}</span>` : ""}${r.update && r.latest ? ` <span class="pill warn">${esc(r.latest)} is out</span>` : ""} ${instState(r)}`;
+  const pills = `${ver ? `<span class="pill" title="installed">${esc(ver)}</span>` : ""}${r.update && r.latest ? ` <span class="pill warn">${esc(r.latest)} is out</span>` : ""}`;
   const head = pageHead({title: r.label, pills, facts: [
     ["Node", inst.name || ""],
-  ], actions: `<span class="actbar irow" data-irow="${esc(thingKey)}">${instActs(r, may)}</span>`});
+  ], actions: `<span class="irow" data-irow="${esc(thingKey)}" data-style="display:contents">${instState(r)}${instActs(r, may)}</span>`});
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && inst?.job?.errors?.[r.name] ? `<div class="field"><div class="sub bad">${esc(inst.job.errors[r.name])}</div></div>` : "";
   const sects = (THING_SECTS[r.kind] || THING_SECTS.toolchain).map(([k, title, body]) => {
     const html = body(r);

@@ -2072,6 +2072,12 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
    side of it and its Configure. */
 .installedtab .irow:not(.open) .idetail{display:none}
 .installedtab .irow .idetail{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+/* An installed thing's page and a Library entry's (R181, R183): each line of
+   what it is a line of its own, and the card's icon beside the name. */
+:is(.thingtab,.entrytab) .idetail,.entrytab .ldetail{display:flex;flex-direction:column;gap:6px}
+:is(.thingtab,.entrytab) .pghead .name{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
+:is(.thingtab,.entrytab) .pghead .name .lcicon{margin-right:4px}
+:is(.thingtab,.entrytab) .pghead .actbar .state{margin-right:auto;font:var(--f-note)}
 .installedtab .irow .idetail .agpart{margin-top:6px}
 .installedtab .irow:not(.open) .iabout{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .installedtab .irow .imore{font:var(--f-note);min-height:0;padding:0 2px;margin-left:4px;background:none;border:0;color:var(--dim);text-decoration:underline;cursor:pointer;vertical-align:middle}

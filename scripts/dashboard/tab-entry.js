@@ -47,11 +47,13 @@ function renderEntryInto(i){
     return;
   }
   const may = lib.may || {};
-  const head = pageHead({title: r.label, pills: `${libPills(r)} ${libState(r)}`, facts: [["Node", lib.name || ""]],
-    actions: `<span class="actbar">${libActs(r, may)}</span>`, cls: "entryhead"});
+  // The card's head: its icon beside its name and pills, where it stands at
+  // the action bar's left as on the card's foot, then its one verb.
+  const head = pageHead({title: r.label, pills: libPills(r), facts: [["Node", lib.name || ""]],
+    actions: `${libState(r)}${libActs(r, may)}`, cls: "entryhead"}).replace('<div class="name">', `<div class="name">${libIcon(r)}`);
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="field"><div class="sub bad">${esc(lib.job.errors[r.name])}</div></div>` : "";
   const about = `${r.about ? `<span class="sub">${esc(r.about)}</span>` : ""}${r.machine && r.name === TC_DRIVER ? libDriverPick(r.machine) : ""}${libDetail(r)}`;
-  paint(d.list, `<div data-libnode="${esc(libNode)}" data-entry="${esc(entryKey)}"><div class="field entryicon">${libIcon(r)}</div>${head}${err}${
+  paint(d.list, `<div data-libnode="${esc(libNode)}" data-entry="${esc(entryKey)}">${head}${err}${
     docSection("entry", "about", "What it is", "", `<div class="field ldetail">${about}</div>`, {open: true})}</div>`);
   wireLibrary(d.el);
 }
