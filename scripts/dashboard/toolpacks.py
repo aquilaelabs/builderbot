@@ -380,6 +380,19 @@ def _git(args, cwd=None, timeout=FETCH_TIMEOUT):
 PATH_IN = re.compile(r"[a-z0-9][\w./-]{0,120}")
 
 
+mirror_bundle = None    # catalogmirror.bundle(url, commit): the imported mirror's bundle holding it, or None
+
+
+def _source(url, commit):
+    """Where a fetch reads `url` at `commit` (its head when none): the
+    imported catalog mirror's bundle when it holds that commit (R169 step 6),
+    nothing going to the network, else the repository itself, shallow."""
+    b = mirror_bundle(url, commit) if mirror_bundle and commit else None
+    if b:
+        return [b, f"refs/pins/{commit}"]
+    return ["--depth", "1", url, commit or "HEAD"]
+
+
 def fetch(url, commit="", shipped=(), sha256="", path=""):
     """The repository at `commit` (its default branch's head when none):
     {commit, manifest, guidance} with the manifest validated, or {error}.
@@ -403,7 +416,7 @@ def fetch(url, commit="", shipped=(), sha256="", path=""):
     at = f"{path}/" if path else ""
     tmp = tempfile.mkdtemp(prefix="toolpack-")
     try:
-        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", "--depth", "1", url, commit or "HEAD"]):
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", *_source(url, commit)]):
             try:
                 r = _git(args)
             except subprocess.TimeoutExpired:
@@ -451,7 +464,7 @@ def fetch_folder(url, commit, sha256, path, files, cap=256 << 10):
         return {"error": "a catalog entry's folder is a plain relative path inside the repository"}
     tmp = tempfile.mkdtemp(prefix="catalog-")
     try:
-        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", "--depth", "1", url, commit]):
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", *_source(url, commit)]):
             try:
                 r = _git(args)
             except subprocess.TimeoutExpired:
@@ -724,7 +737,9 @@ def add(url, commit, by, shipped=(), sha256="", tier="url", path="", may_root=Fa
     # ...and one that does not name this release line is not added (step 6).
     if got.get("manifest") and not fits(got["manifest"]):
         return {"error": _unfit_why(got["manifest"])}
-    if path:
+    # One from the mirror is kept hosted, its folder or its whole tree, so
+    # the nodes take it from the controller and need no network either.
+    if path or (mirror_bundle and mirror_bundle(url, got["commit"])):
         return _add_folder(url, got["commit"], path, by, shipped, sha256, tier)
     m = got["manifest"]
     with _lock:
@@ -749,7 +764,7 @@ def _add_folder(url, commit, path, by, shipped, sha256, tier):
     d.mkdir()
     tmp = tempfile.mkdtemp(prefix="toolpack-")
     try:
-        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", "--depth", "1", url, commit]):
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", *_source(url, commit)]):
             r = _git(args)
             if r.returncode != 0:
                 return {"error": f"could not fetch {url}: {(r.stderr or r.stdout).strip().splitlines()[-1:] or 'git failed'}"}

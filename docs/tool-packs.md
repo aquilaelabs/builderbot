@@ -115,6 +115,25 @@ index's pin too, never at the repository's head. A pack is kept as vetted or
 official only at a commit and sha256 the signed index pins; anything else
 is a pack by address.
 
+### Without the network
+
+A controller that cannot reach the catalog installs from a mirror of it.
+`tools/catalog-mirror.py catalog-mirror.tar.gz`, run on a machine with the
+network (from a checkout of BuilderBot), reads the catalog's index, checks
+its signature, and fetches every repository the index pins at each commit it
+pins, into one archive: the index as signed and a git bundle per repository.
+`--from-dir` reads the index from a checkout of the catalog instead.
+
+Controller settings' **Vetted catalog** imports it with **Import a mirror**.
+The import is refused when the index is not the maintainers', when a pinned
+repository is missing, or when the mirror was made before the one held.
+Once imported, the Library reads the mirror's index whenever the catalog
+does not answer, and a pack or app the mirror holds is fetched from its
+bundle with nothing going to the network. A pack kept this way is kept as a
+pack made here, so the nodes take it from the controller too. **Forget**
+drops the mirror; what was kept from it stays. The same group holds the
+catalog's address.
+
 ### Docker apps in the catalog
 
 An entry of `"kind": "app"` is a Docker app: its folder holds `bbapp.json`

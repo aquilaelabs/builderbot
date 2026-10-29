@@ -162,6 +162,7 @@ function renderSettingsInto(i){
   wirePathsSection(d.el);
   wireSettingsSections(d.el);
   wireChecks(d.el);
+  wireCatalogMirror(d.el);
   settingsKeep(d.el);
   if (reportsList === null) loadReports();
   const ac = d.el.querySelector("#setAppsCheck");
@@ -518,6 +519,12 @@ const SETTING_GROUPS = [
      return off ? `${off} off` : Object.keys(c).length ? "on" : ""; },
    fields: CHECK_KINDS.map(([k, label, hint]) => ({key: `check_${k}`, label, type: "select", hint,
      options: [["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["off", "Off: only Check now"]]}))},
+  // The vetted catalog (R169): where its signed index is read, and a mirror
+  // of it imported for a controller that cannot reach it (step 6).
+  {key: "catalog", title: "Vetted catalog", intro: catalogIntro, status: catalogStatus,
+   heading: s => `${/aquilaelabs\/builderbot-catalog\//.test(s?.settings?.catalog_url?.value || "") ? "the public catalog" : "another catalog"}${s?.catalog_mirror ? ", a mirror held" : ""}`,
+   fields: [{key: "catalog_url", label: "Address", type: "text", placeholder: "https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/",
+     hint: "where the Library reads the catalog's index.json and index.sig, checked against the maintainers' key this install ships"}]},
   {key: "apps", title: "Apps", off: "apps", intro: appsIntro, status: appsStatus,
    heading: s => `${["apps_android", ...(s?.settings?.offer_unvetted?.value ? ["apps_vscode", "apps_companion"] : [])]
      .filter(k => s?.settings?.[k]?.value).length} offered`,
@@ -677,6 +684,48 @@ function wireChecks(root){
     notify(j.error || "checking: the answer is here in a moment", !!j.error);
     setTimeout(() => refresh(), 4000);
   }));
+}
+
+// The mirror's line and its two presses: Import takes an archive that
+// tools/catalog-mirror.py made on a machine with the network.
+function catalogIntro(s){
+  const m = s?.catalog_mirror;
+  return `<div class="sub">The Library lists the packs and apps BuilderBot's maintainers reviewed, from the index at this address. A controller that cannot reach it imports a mirror instead: <code>tools/catalog-mirror.py</code> makes one on a machine with the network, and the Library then installs from it with nothing fetched.</div>
+    <div class="field">${m
+      ? `<div class="row stack2"><div class="grow"><span class="name">Mirror</span> <span class="sub">${m.packs} entr${m.packs === 1 ? "y" : "ies"} from ${m.repos} repositor${m.repos === 1 ? "y" : "ies"}, made ${esc(m.generated || "at an unknown time")}, imported ${esc(ago(m.imported_at))}</span></div>
+          <button type="button" data-mirrorforget>Forget</button></div>`
+      : `<div class="sub dim">No mirror imported.</div>`}</div>
+    <div class="addbar ctlrow"><input id="mirrorFile" type="file" hidden accept=".tar,.tgz,.tar.gz,application/gzip,application/x-tar">
+      <button type="button" data-mirrorimport>${m ? "Import a newer mirror" : "Import a mirror"}</button></div>`;
+}
+function catalogStatus(s){
+  return s?.catalog_mirror ? `a mirror made ${s.catalog_mirror.generated || "earlier"} answers when the catalog does not · applies at once` : "applies at once";
+}
+function wireCatalogMirror(root){
+  const file = root.querySelector("#mirrorFile");
+  root.querySelector("[data-mirrorimport]")?.addEventListener("click", () => file?.click());
+  if (file) file.onchange = async () => {
+    const f = file.files[0];
+    if (!f) return;
+    const b = root.querySelector("[data-mirrorimport]");
+    if (b) busy(b, "Importing");
+    const u = await fetch("/api/upload-archive?name=" + encodeURIComponent(f.name), {method: "POST", body: f});
+    const uj = await u.json().catch(() => ({}));
+    const j = !u.ok || uj.error ? {error: uj.error || `the upload failed (HTTP ${u.status})`}
+      : await (await postJSON("/api/catalog-mirror", {action: "import", archive: uj.id})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `the mirror is imported: ${j.packs} entries, made ${j.generated}`, !!j.error);
+    if (state && !j.error) state.catalog_mirror = j.mirror;
+    settingsRev++; drawPanes(); refresh();
+  };
+  root.querySelector("[data-mirrorforget]")?.addEventListener("click", async e => {
+    const b = e.currentTarget;
+    if (!await askYes("Forget the catalog's mirror? The Library reads the catalog's address alone again; packs kept from the mirror stay.")) return;
+    busy(b, "Forgetting");
+    const j = await (await postJSON("/api/catalog-mirror", {action: "forget"})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "the mirror is forgotten", !!j.error);
+    if (state && !j.error) state.catalog_mirror = null;
+    settingsRev++; drawPanes();
+  });
 }
 
 function appsIntro(){

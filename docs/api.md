@@ -118,7 +118,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove, check and update on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
 | POST | `/api/scanners` | exact | `_scanners` | Deploy, update, remove, run now, the schedule and a version check (scanners.py): compose and scan jobs on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
 | POST | `/api/router` | exact | `_router` | POST /api/router: a node's model router (router.py): its keys and endpoints saved, Deploy, Save and Remove as a written container's compose jobs, Ollama's models pulled and removed, a project allowed or not, the models a | refused: docker-write |
-| POST | `/api/library` | exact | `_library` | POST /api/library (R172): a card's Configure, Install and Remove for a service (the model router, router.py's own verbs, docker-write as the nginx page), the router's models, spend and Ollama's pulls, and Configure for a | refused: docker-write |
+| POST | `/api/library` | exact | `_library` | POST /api/library (R172): a card's Configure, Install and Remove for a service (the model router, router.py's own verbs, docker-write as the nginx page), the router's models, spend and Ollama's pulls, and Configure for a |  |
 | POST | `/api/images` | exact | `_images` | Check for updates on the Containers page (imagecheck.py, R195): every container's registry images on one node, or all, asked now. | refused: docker-write |
 | POST | `/api/storage` | exact | `_storage` | Measure now on the Storage page: a node's disks walked at once (nodes.node_storage_measure). |  |
 | POST | `/api/schedules` | exact | `_schedules` | POST /api/schedules (R117): save (add or change, turning one on or off among them), remove, or run now. |  |
@@ -141,7 +141,7 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | POST | `/api/users` | prefix | `_users` | The Users page's verbs. | refused: admin |
 | POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. |  |
 | POST | `/api/agents` | exact | `_agents` | POST /api/agents: install (or update), remove or check one coding agent on one node (agentcode.verb), the one way an agent is managed (R95, the operator 22 Oct): whoever may install toolchains there. |  |
-| POST | `/api/toolpacks` | exact | `_toolpacks` | POST /api/toolpacks: look at a tool pack by its repository's address, or at one made here from a pasted manifest or an uploaded archive (/api/upload-archive's id); add it as it was shown; read a pack made here's manifest | refused: admin |
+| POST | `/api/toolpacks` | exact | `_toolpacks` | POST /api/toolpacks: look at a tool pack by its repository's address, or at one made here from a pasted manifest or an uploaded archive (/api/upload-archive's id); add it as it was shown; read a pack made here's manifest | refused: curate |
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: toolchains-write |
 | POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: controller |
 | POST | `/api/idle` | prefix | `_idle` | The idle rule for every agent's sessions (idle.py): minutes, 0 for never. | refused: controller |
@@ -150,11 +150,12 @@ The companion app's own contract is `apps/android/api-surface.json`.
 | POST | `/api/transcripts` | exact | `_transcripts` | POST /api/transcripts {project, id, action}: one of the signed-in person's own conversations deleted, or made visible to every session on the project (share) or private again (unshare). |  |
 | POST | `/api/settings` | prefix | `_settings_post` | POST /api/settings. | refused: controller, refused: debug |
 | POST | `/api/checks` | exact | `_checks_post` | POST /api/checks {kind}: Check now, for one of the update checks under Controller settings (R176, checks.py). | refused: controller |
+| POST | `/api/catalog-mirror` | exact | `_catalog_mirror_post` | POST /api/catalog-mirror {action: import, archive} or {action: forget}: the vetted catalog's mirror under Controller settings (R169 step 6), its archive taken through /api/upload-archive. | refused: controller |
 | POST | `/api/rules` | prefix | `_rules` | The operator's house rules for one project: the whole list, saved (rules.verb). | refused: rules |
 | POST | `/api/global-rules` | prefix | `_global_rules` | The rules that apply to EVERY project (R63): rules.global_verb. | refused: controller |
 | POST | `/api/pending` | prefix | `_pending` | Approve or deny what a session has waiting (roadmap #27): pending.verb. | refused: pending |
 | POST | `/api/memory` | prefix | `_memory` | Edit, create or delete one of this project's memories, rewrite their index, or read the history: memory.verb, behind the gates here. |  |
-| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: nodes-write, refused: debug, refused: docker-write, refused: vms-write, refused: settings |
+| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: nodes-write, refused: debug, refused: docker-write, refused: curate, refused: vms-write, refused: settings |
 | POST | `/api/brief` | prefix | `_brief` | POST /api/brief: the first Claude press's Build it and Start without it, and a session's take as it starts: brief.verb, behind the gates here. |  |
 | POST | `/api/design` | prefix | `_design` | POST /api/design: a Design section's Save of the language and the pages, and the file written into the tree: design.verb, for an account that works on the project. |  |
 | POST | `/api/wiki` | exact | `_wiki` | POST /api/wiki: a page saved, removed or renamed, and the wiki pushed to or pulled from the forge's (wiki.verb), for an account that works on the project. |  |

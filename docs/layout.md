@@ -170,6 +170,7 @@ scripts/
     packconfig.py                what each added pack is configured with per node (R172): the answers to its config block, secrets sealed, handed in the hello
     library.py                   the Library's one list (R170): the toolchains and packs with what a node's store holds, the coding agents, the apps, the catalog's offers and the companions as rows of one shape
     catalogindex.py              the vetted catalog's index (R169 step 2): fetched from the catalog's address, its signature checked against config/catalog.pub before an entry is read, a withdrawn pack on the bell
+    catalogmirror.py             the vetted catalog's mirror (R169 step 6): an archive tools/catalog-mirror.py made, imported under Controller settings once its index is the maintainers', answering when the catalog does not and holding each pinned repository as a git bundle
     emulator.py                  everything behind the Emulator page: a node's Android system images
     enrollscript.py              Enroll node as one script: the answers, the token and a WireGuard tunnel inside the provisioner
     memory.py                    everything behind the memory book: what Claude remembers per project
@@ -337,6 +338,7 @@ scripts/
     coverage.py                  function coverage under bb tests coverage only
   agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
 packs/                           the official packs (R169 step 1): every shipped toolchain and every coding agent as a pack in bbtool.json's format, tagged official and bundled for an install with no network, written by tools/packs-export.py from the tables and held to them by bb lint
+tools/catalog-mirror.py          makes the vetted catalog's mirror on a machine with the network: the signed index and a git bundle per repository at every commit it pins, for a controller that cannot reach the catalog (R169 step 6)
     official/                    one folder per shipped toolchain (a colon in its name a hyphen), its bbtool.json carrying the recipe config/toolchains.json has under shipped
     agents/                      one folder per coding agent, its bbtool.json carrying the adapter agents.py's table has under agent
     services/                    one folder per deployed thing of BuilderBot's that is a pack (R172): the model router, its service block and its config block, what its Installed row asks for per node

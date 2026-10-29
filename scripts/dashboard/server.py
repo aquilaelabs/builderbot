@@ -3799,11 +3799,17 @@ toolchains.configure(run=run, write_json=write_json, state=STATE,
 # /config, and carried to the nodes in the bundle beside the shipped one.
 import toolpacks                                                   # noqa: E402
 import catalogindex                                              # noqa: E402
+import catalogmirror                                             # noqa: E402
 import library                                                   # noqa: E402
 
 catalogindex.configure(state=STATE, write_json=write_json)
 toolpacks.configure(state=STATE, write_json=write_json,
                     unpack=lambda aid, dest: projects.unpack_archive(aid, dest))
+# The catalog's mirror (R169 step 6): its index when the catalog does not
+# answer, and its bundles for the fetches of what it pins.
+catalogmirror.configure(state=STATE, unpack=lambda aid, dest: projects.unpack_archive(aid, dest))
+catalogindex.mirror_index = catalogmirror.index
+toolpacks.mirror_bundle = catalogmirror.bundle
 # This build's version, for a pack's works_with (R169 step 6).
 toolpacks.running_version = lambda: image_stamp().get("version") or ""
 toolchains.packs_rows = toolpacks.recipes
@@ -5605,6 +5611,7 @@ def _snapshot(who):
         # ...and each update check's cadence and last run (R176), for
         # Controller settings' Update checks.
         "checks": _timed("status:checks", checks.view) if users.is_admin(who) else None,
+        "catalog_mirror": catalogmirror.held() if users.is_admin(who) else None,
         # ...and where this controller went, when it moved (R90 step 12):
         # the page is read-only then and says so.
         "moved_to": move.moved_to(),
@@ -5934,6 +5941,7 @@ POST_ROUTES = (
     ("exact", "/api/transcripts", "_transcripts"),
     ("prefix", "/api/settings", "_settings_post"),
     ("exact", "/api/checks", "_checks_post"),
+    ("exact", "/api/catalog-mirror", "_catalog_mirror_post"),
     ("prefix", "/api/rules", "_rules"),
     ("prefix", "/api/global-rules", "_global_rules"),
     ("prefix", "/api/pending", "_pending"),
@@ -8710,6 +8718,22 @@ class Handler(BaseHTTPRequestHandler):
             return
         r = checks.run_now(str(req.get("kind") or ""))
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _catalog_mirror_post(self, req):
+        """POST /api/catalog-mirror {action: import, archive} or {action:
+        forget}: the vetted catalog's mirror under Controller settings (R169
+        step 6), its archive taken through /api/upload-archive. An
+        administrator's."""
+        if self._refused("controller"):
+            return
+        action = field(req, "action")
+        if action == "import":
+            r = catalogmirror.take(field(req, "archive"), time.time())
+        elif action == "forget":
+            r = catalogmirror.forget()
+        else:
+            return self._json({"error": "a mirror is imported or forgotten"}, 400)
+        return self._json(r | {"mirror": catalogmirror.held()}, 400 if r.get("error") else 200)
 
     def _settings_post(self, req):
         """POST /api/settings."""

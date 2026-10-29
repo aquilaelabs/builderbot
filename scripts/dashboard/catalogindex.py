@@ -14,10 +14,12 @@ import time
 import urllib.request
 
 STATE = None
+mirror_index = None      # catalogmirror.index: the imported mirror's index, for when the catalog does not answer
 write_json = None
 PUB_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "config", "catalog.pub")
 DEFAULT_URL = "https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/"
 KEEP_S = 3600
+MISS_S = 300
 MAX_BYTES = 4 << 20
 _lock = threading.RLock()
 _cache = {"at": 0.0, "index": None, "error": ""}
@@ -99,6 +101,17 @@ def _path():
     return os.path.join(STATE, "catalog-index.json")
 
 
+def _fallback(base):
+    """What answers when the catalog does not: the index kept from this
+    address, or the imported mirror's when it is as new or newer (R169
+    step 6), or None."""
+    k = _kept(base)
+    m = mirror_index() if mirror_index else None
+    if m and (not k or str(m.get("generated", "")) >= str(k.get("generated", ""))):
+        return m
+    return k
+
+
 def _kept(base=None):
     """The index kept under the state, None when there is none or it was
     read from another address than `base` (B443)."""
@@ -122,15 +135,15 @@ def fetch(url=None, opener=None):
         data = get(base + "index.json")
         sig = get(base + "index.sig").decode("utf-8", "replace")
     except Exception as e:                                             # noqa: BLE001 (the network's reasons are many)
-        return {"error": f"the catalog did not answer: {str(e)[:200]}", "index": _kept(base)}
+        return {"error": f"the catalog did not answer: {str(e)[:200]}", "index": _fallback(base)}
     if len(data) > MAX_BYTES:
-        return {"error": "the index is over 4 MB, which no catalog's is: refused", "index": _kept(base)}
+        return {"error": "the index is over 4 MB, which no catalog's is: refused", "index": _fallback(base)}
     why = verify(data, sig)
     if why:
-        return {"error": why, "index": _kept(base)}
+        return {"error": why, "index": _fallback(base)}
     idx, why = parse(data)
     if why:
-        return {"error": why, "index": _kept(base)}
+        return {"error": why, "index": _fallback(base)}
     idx["fetched_at"] = int(time.time())
     idx["url"] = base
     with _lock:
@@ -161,7 +174,14 @@ def index(url=None, fresh=False, opener=None):
         if not fresh and kept and time.time() - int(kept.get("fetched_at") or 0) < KEEP_S:
             _cache.update(at=float(kept.get("fetched_at") or 0), index=kept)
             return {"index": kept, "error": ""}
+        # A catalog that did not answer is asked again after five minutes,
+        # not on every read: a box with no network reads its mirror at once.
+        miss = _cache.get("missed") or {}
+        if not fresh and miss.get("base") == base and time.time() - miss.get("at", 0) < MISS_S:
+            return {"index": _fallback(base), "error": miss["error"]}
     r = fetch(url, opener)
+    with _lock:
+        _cache["missed"] = {"base": base, "at": time.time(), "error": r["error"]} if r.get("error") else {}
     return {"index": r.get("index"), "error": r.get("error", "")}
 
 
