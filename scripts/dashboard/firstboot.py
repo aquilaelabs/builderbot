@@ -79,9 +79,6 @@ def apply(path=None):
         for k, why in WAITS.items():
             if cfg.get(k):
                 waiting.append({"what": k, "said": why, "count": len(cfg[k]) if isinstance(cfg[k], list) else 1})
-        net = (cfg.get("machine") or {}).get("network")
-        if net and net != "dhcp":
-            waiting.append({"what": "network", "said": "the stick's network settings are written by the Network page; it takes DHCP until then"})
         # Kept for the pieces that adopt the rest, the password hash and the
         # SMB hashes taken out: those are on the accounts, and nowhere else.
         kept = {k: v for k, v in cfg.items() if k not in ("owner", "people")}

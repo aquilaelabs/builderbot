@@ -3,7 +3,7 @@
 controller starts: builderbot/firstboot.json on the ESP holds, after its
 marker line, the JSON a stick maker's --config wrote (format 1, docs/image.md).
 When it does, the machine's own part is applied here (the hostname, the time
-zone), the rest is handed to the controller's account under
+zone, a static address written to the stick's builderbot.env), the rest is handed to the controller's account under
 /run/builderbot-os/firstboot/, and the file on the stick is blanked in place,
 its size kept, so the password hash it may carry is never left on the stick.
 The controller applies what it was handed and says what it did on This
@@ -45,6 +45,50 @@ def run(*argv):
         return "" if r.returncode == 0 else (r.stderr or r.stdout).strip()[:200] or f"exit {r.returncode}"
     except (OSError, subprocess.TimeoutExpired) as e:
         return str(e)
+
+
+NETKEYS = (("address", "BB_NET_ADDRESS"), ("netmask", "BB_NET_MASK"), ("gateway", "BB_NET_GATEWAY"), ("dns", "BB_NET_DNS"))
+ADDR = re.compile(r"[0-9]{1,3}(\.[0-9]{1,3}){3}|[0-9]{1,2}")
+
+
+def network(net):
+    """A static address in the configuration becomes the stick's own network
+    settings (R161 step 12): BB_NET_* lines added to builderbot.env in its
+    4 KiB, so every boot's network step applies them, this one included
+    (they go to its file under /run too). A line the stick already has, as
+    a stick maker's --set wrote it, is kept over the configuration's."""
+    if not isinstance(net, dict) or net.get("dhcp") is True:
+        return ""
+    lines = []
+    for k, key in NETKEYS:
+        v = net.get(k)
+        v = ",".join(str(x) for x in v) if isinstance(v, list) else str(v or "")
+        if v and not all(ADDR.fullmatch(x) for x in v.split(",")):
+            return f"{k} {v!r} is not an address: DHCP stands"
+        if v:
+            lines.append(f"{key}={v}")
+    if not lines or not lines[0].startswith("BB_NET_ADDRESS="):
+        return "no address in it: DHCP stands"
+    path = os.path.join(ESP, "builderbot.env")
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except OSError:
+        return "the stick has no builderbot.env to write it into"
+    if any(x.split("=", 1)[0].strip() == "BB_NET_ADDRESS" for x in raw.decode("utf-8", "replace").splitlines()):
+        return "the stick's own BB_NET_ADDRESS kept"
+    body = raw.rstrip(b" \n") + b"\n"
+    add = "".join(x + "\n" for x in lines).encode()
+    if not raw.endswith(b"\n") or len(body) + len(add) > len(raw) - 1:
+        return "no room for it in the stick's builderbot.env"
+    with open(path, "r+b") as f:
+        f.write(body + add + b" " * (len(raw) - 1 - len(body) - len(add)) + b"\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.makedirs(os.path.dirname(RUN), exist_ok=True)
+    with open(os.path.join(os.path.dirname(RUN), "net"), "a", encoding="utf-8") as f:
+        f.write(add.decode())
+    return "applied"
 
 
 MIRROR = b"BB-MIRROR-1\n"
@@ -106,6 +150,9 @@ def main():
     if zone:
         ok = ZONE.fullmatch(zone) and os.path.isfile(os.path.join("/usr/share/zoneinfo", zone))
         said["timezone"] = (run("timedatectl", "set-timezone", zone) or "applied") if ok else f"{zone!r} is not a time zone here"
+    net = network(m.get("network"))
+    if net:
+        said["network"] = net
     pw = account()
     os.makedirs(RUN, mode=0o700, exist_ok=True)
     if pw:

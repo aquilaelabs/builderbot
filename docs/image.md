@@ -137,14 +137,18 @@ first boot applies before anyone signs in. It is a JSON object:
 
 ```json
 {"format": 1, "first_run": "skip",
- "machine": {"hostname": "tower", "timezone": "Europe/Berlin"},
+ "machine": {"hostname": "tower", "timezone": "Europe/Berlin",
+             "network": {"address": "192.0.2.20", "netmask": "255.255.255.0",
+                         "gateway": "192.0.2.1", "dns": ["1.1.1.1"]}},
  "owner": {"name": "ada", "password_hash": "pbkdf2_sha256$600000$SALT$HASH"},
  "people": [{"name": "sam", "role": "user", "smb_nt": "NTHASH"}],
  "shares": [], "pools": [], "array": {}, "apps": []}
 ```
 
 Before the controller starts, the boot sets the hostname and the time zone,
-hands the rest to the controller and blanks the file on the stick, so the
+writes a static address (`"network": "dhcp"` or leaving it out keeps DHCP)
+into the stick's `builderbot.env` as the `BB_NET_` lines above, unless the
+stick already names one, hands the rest to the controller and blanks the file on the stick, so the
 password hash is never left there. The controller makes the owner from the
 hash (the dashboard's own scheme, so a tool that writes the file hashes what
 was typed) and each person by name and role, with their SMB password where
@@ -160,9 +164,8 @@ themselves. It runs as root (sudo) on Linux and a
 Mac and as an administrator on Windows, where it locks and dismounts the
 stick's volumes first. A stick made this way boots the appliance with the
 slot loaded into memory and keeps its configuration on the stick's data
-partition. The stick's own network settings file (a plain file on the ESP,
-read at boot and written by the Network page) is the Network page's
-bare-metal half; until then the stick takes DHCP.
+partition. Its network settings are the `BB_NET_` lines in `builderbot.env`;
+without them the stick takes DHCP.
 
 ## Installing it on a machine
 

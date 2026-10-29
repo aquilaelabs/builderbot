@@ -57,6 +57,41 @@ class Take(unittest.TestCase):
             self.assertFalse(run.exists())
 
 
+    def test_a_static_address_becomes_the_sticks_own_network_settings(self):
+        # R161 step 12: the configuration's network written into the stick's
+        # builderbot.env in its 4 KiB, for every boot's network step, and into
+        # this boot's /run file; a stick that names an address keeps its own.
+        def boot(net, env_lines=""):
+            with tempfile.TemporaryDirectory() as d:
+                esp = Path(d, "esp"); (esp / "builderbot").mkdir(parents=True)
+                head = "# builderbot.env BB-STICK-ENV-1: x\n" + env_lines
+                (esp / "builderbot.env").write_bytes(head.encode() + b" " * (4095 - len(head)) + b"\n")
+                cfg = dict(CFG, machine={"hostname": "", "network": net})
+                body = b"BB-FIRSTBOOT-1\n" + json.dumps(cfg).encode() + b"\n"
+                (esp / "builderbot" / "firstboot.json").write_bytes(body + b" " * (65535 - len(body)) + b"\n")
+                run = Path(d, "run")
+                r = subprocess.run([sys.executable, TAKE], capture_output=True, text=True, check=False,
+                                   env=dict(os.environ, BB_ESP=str(esp), BB_OS_RUN=str(run), BB_CONTROLLER_ENV=str(Path(d, "none")), PATH=d))
+                self.assertEqual(r.returncode, 0, r.stderr)
+                env = (esp / "builderbot.env").read_bytes()
+                self.assertEqual(len(env), 4096, "its size kept")
+                net_run = run / "net"
+                handed = json.loads((run / "firstboot" / "firstboot.json").read_text())
+                return ([x for x in env.decode().splitlines() if x.startswith("BB_")],
+                        net_run.read_text() if net_run.exists() else "", handed["machine"].get("network"))
+        lines, run_net, said = boot({"interface": "eth0", "address": "192.0.2.20", "netmask": "255.255.255.0", "gateway": "192.0.2.1", "dns": ["1.1.1.1", "9.9.9.9"]})
+        self.assertEqual(lines, ["BB_NET_ADDRESS=192.0.2.20", "BB_NET_MASK=255.255.255.0", "BB_NET_GATEWAY=192.0.2.1", "BB_NET_DNS=1.1.1.1,9.9.9.9"])
+        self.assertEqual(run_net.splitlines(), lines, "this boot's network step applies it too")
+        self.assertEqual(said, "applied")
+        lines, run_net, said = boot({"address": "192.0.2.20"}, "BB_NET_ADDRESS=192.0.2.9\n")
+        self.assertEqual(lines, ["BB_NET_ADDRESS=192.0.2.9"])
+        self.assertIn("own BB_NET_ADDRESS kept", said)
+        self.assertEqual(boot("dhcp")[0], [])
+        self.assertEqual(boot("dhcp")[2], None, "DHCP is nothing to say")
+        lines, _, said = boot({"address": "192.0.2.20", "gateway": "router; rm -rf /"})
+        self.assertEqual(lines, [])
+        self.assertIn("is not an address: DHCP stands", said)
+
     def test_the_sticks_mirror_is_handed_over_at_every_boot(self):
         # R169 step 6: a filled catalog-mirror.bin is copied out for the
         # controller, the stick left as it is; a blank one hands nothing.
