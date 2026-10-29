@@ -561,8 +561,8 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   BuilderBot itself, each with its delete, **Download diagnostics** and
   **Clear reports**.
 - **Updates** (a controller installed bare metal, R90): the release this
-  install runs and the newest published, checked daily and on **Check
-  now**; **Update** runs the installer's update through this machine's
+  install runs and the newest published, checked on its cadence under
+  Update checks (weekly unless set) and on **Check now**; **Update** runs the installer's update through this machine's
   own node, the bundle verified and the state copied aside, and the install
   comes back by itself if the new release does not answer. On BuilderBot OS
   the same press writes the release's image into the slot not in use and
@@ -586,6 +586,13 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   install's first page restores one ([image.md](image.md)).
 - **Update window**: a newer release applied by itself at an hour, daily or
   one weekday, the way Update does it; off by default.
+- **Update checks** (R176): how often BuilderBot asks by itself for what is
+  newer, each check daily, weekly (the default), monthly or off, with when it
+  last ran and **Check now** beside it: a newer BuilderBot (a bare-metal
+  install's), the container images, nginx, the scanners and the Library (the
+  toolchains' and coding agents' newest versions and the vetted catalog's
+  index). Off leaves only Check now. A node's own check of what it holds is
+  its **Version check** on its row's Advanced section, weekly unless set.
 - **Idle sessions**: the idle rule, which ends any agent's session after N minutes
   with nothing typed or written, here and on every node, where the node
   itself enforces it so the rule holds while this container is down.

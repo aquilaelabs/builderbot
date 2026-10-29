@@ -2200,14 +2200,24 @@ def versions_loop():
     # A catalog edit still forces one, and that is decided when the file is
     # read: load_versions zeroes the timestamp when the digest it was saved
     # against is not the one running now.
-    due = _tc_checked + TC_CHECK_EVERY if _tc_checked else 0
+    import checks
+    last = _tc_checked
     while True:
-        if TOOLCHAINS and time.time() >= due and not _tc_job["running"]:
+        # The catalog's cadence (R176): this controller's store, the agents'
+        # newest versions and the vetted index, weekly unless set.
+        if TOOLCHAINS and (not last or checks.due("catalog", last)) and checks.every("catalog") is not None and not _tc_job["running"]:
             if start_job("check", [p["name"] for p in TOOLCHAINS], auto=True):
-                due = time.time() + TC_CHECK_EVERY
+                last = time.time()
         with contextlib.suppress(Exception):
             node_checks_due()
         time.sleep(300)
+
+
+def node_check_every(n):
+    """A node's version check cadence (R176): its config's check_versions,
+    daily, weekly (the default), monthly or off; seconds, or None for off."""
+    v = ((n or {}).get("config") or {}).get("check_versions") or "weekly"
+    return {"daily": 86400, "weekly": 7 * 86400, "monthly": 30 * 86400, "off": None}.get(v, 7 * 86400)
 
 
 def node_checks_due(now=None):
@@ -2234,7 +2244,11 @@ def node_checks_due(now=None):
                     if (j.get("spec") or {}).get("action") == "check"), default=0)
         # ...or sooner, for a node that has just started (nodes.checks_wanted).
         wanted = n["id"] in getattr(nodes, "checks_wanted", ())
-        if last and now - last < TC_CHECK_EVERY and not wanted:
+        # The node's own cadence (R176): its page's setting, weekly unless set.
+        every = node_check_every(n)
+        if every is None and not wanted:
+            continue
+        if last and now - last < (every or TC_CHECK_EVERY) and not wanted:
             continue
         r = node_job("system", n["id"], "check", [])
         if r.get("ok") or r.get("job"):
@@ -2242,12 +2256,14 @@ def node_checks_due(now=None):
             getattr(nodes, "checks_wanted", set()).discard(n["id"])
     # Claude Code on the same clock (R145): asked once for every node, since
     # what is out is one answer, when any node was due or a week has passed.
-    if claudecode and (queued or now - int(claudecode.latest().get("at") or 0) >= TC_CHECK_EVERY):
+    import checks
+    agents_every = checks.every("catalog") or TC_CHECK_EVERY
+    if claudecode and (queued or now - int(claudecode.latest().get("at") or 0) >= agents_every):
         with contextlib.suppress(Exception):
             claudecode.check()
     # The other coding agents on the same clock (R95 step 2).
     for a in agentcode.tracked() if agentcode else ():
-        if queued or now - int(agentcode.latest(a.id).get("at") or 0) >= TC_CHECK_EVERY:
+        if queued or now - int(agentcode.latest(a.id).get("at") or 0) >= agents_every:
             with contextlib.suppress(Exception):
                 agentcode.check(a.id)
     return queued

@@ -1257,6 +1257,9 @@ function nodeAdvancedSection(n, stale, inflight){
     ${act(n.state === "draining" ? "Undrain" : "Drain",
         n.state === "draining" ? "Draining: it finishes what is running and takes nothing new. Undrain takes new work again." : "Finishes what is running and takes nothing new, so the machine can reboot.",
         `<button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}">${n.state === "draining" ? "Undrain" : "Drain"}</button>`)}
+    ${n.kind !== "agent" || !n.reported?.stores?.toolchains ? "" : act("Version check",
+        "How often the Library asks what is newer for what this node holds; Check for updates on the Library asks at once.",
+        `<select data-ndcheck aria-label="version check">${optionList([["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["off", "Off"]], n.config?.check_versions || "weekly")}</select>`)}
     ${act("Clear cache", stale ? esc(staleWhy(n)) : "Drops every project's build cache here; the next build fetches again.",
         `<button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}>${inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>`)}
     ${act(n.state === "disabled" ? "Enable" : "Disable",
@@ -2517,6 +2520,12 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
 }
 
 function wireNodesTab(root){
+  // A node's own version check's cadence (R176), saved on its pick.
+  root.querySelectorAll("[data-ndcheck]").forEach(s => s.onchange = async () => {
+    const id = s.closest("[data-node]")?.dataset.node || "";
+    const j = await nodeAct({action: "update", id, fields: {check_versions: s.value}});
+    if (j?.error) notify(j.error, true); else notify(`its versions are checked ${s.value === "off" ? "only when asked" : s.value}`);
+  });
   // The own machine's hold-next checkbox beside Reboot (R161 step 11).
   if (typeof wireHoldNext === "function") wireHoldNext(root);
   wireSignin(root);

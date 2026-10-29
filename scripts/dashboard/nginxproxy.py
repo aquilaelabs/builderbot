@@ -570,13 +570,16 @@ def attention(deployed):
     return out
 
 
+import checks  # noqa: E402 (the cadence, R176)
+
+
 def check_loop():
     """The weekly check, from when the last one happened rather than from
     the start: a container restart is not a reason to ask the registry
     again. Started by the server beside the toolchains' loop."""
     time.sleep(CHECK_DELAY)
     while True:
-        if time.time() >= int(latest_image().get("at") or 0) + CHECK_EVERY:
+        if checks.due("nginx", int(latest_image().get("at") or 0)):
             with contextlib.suppress(Exception):   # noqa: BLE001 (the loop outlives one bad answer)
                 check_image()
         time.sleep(300)

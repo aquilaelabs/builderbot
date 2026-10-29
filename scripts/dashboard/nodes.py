@@ -649,6 +649,18 @@ def node_update(principal, node_id, fields):
         clean = {str(k)[:40]: str(v)[:120]
                  for k, v in list(fields["labels"].items())[:24]}
         sets.append("labels = ?"); args.append(json.dumps(clean))
+    if "check_versions" in fields:
+        # Its own version check's cadence (R176): the Library's answers for
+        # this node, asked daily, weekly (the default), monthly or never.
+        v = str(fields["check_versions"] or "")
+        if v not in ("daily", "weekly", "monthly", "off"):
+            return {"error": "a node's version check is daily, weekly, monthly or off"}
+        cfg = dict(n.get("config") or {})
+        if v == "weekly":
+            cfg.pop("check_versions", None)
+        else:
+            cfg["check_versions"] = v
+        sets.append("config = ?"); args.append(json.dumps(cfg))
     if "host_only" in fields:
         on = fields["host_only"] is True
         if on:

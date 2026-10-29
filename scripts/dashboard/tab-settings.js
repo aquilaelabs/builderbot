@@ -33,7 +33,7 @@ async function loadApps(){
 // them dropped and the tab repainted, which the live key has to notice.
 let settingsRev = 0;
 function settingsLive(){
-  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.logs, state?.paths, settingsRev, devAppsRev]);
+  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.logs, state?.paths, settingsRev, devAppsRev, state?.checks]);
 }
 
 // Typed and not yet applied, by control id, across the tab's redraws: one
@@ -161,6 +161,7 @@ function renderSettingsInto(i){
   wireIdleSection(d.el);
   wirePathsSection(d.el);
   wireSettingsSections(d.el);
+  wireChecks(d.el);
   settingsKeep(d.el);
   if (reportsList === null) loadReports();
   const ac = d.el.querySelector("#setAppsCheck");
@@ -497,11 +498,26 @@ async function clearReports(btn){
 // group is one section with one Apply, a field that has never been saved
 // says so beside it, and the bar says whether a change applies at once or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
+// The checks, in the order Controller settings lists them, with what each asks.
+const CHECK_KINDS = [
+  ["release", "A newer BuilderBot", "Asks the releases for a newer version than this install runs, on a bare-metal install; the Update window applies it."],
+  ["images", "Container images", "Asks each project container's registry for a newer image."],
+  ["nginx", "nginx", "Asks the registry for a newer nginx image for the nodes that serve hostnames."],
+  ["scanners", "Scanners", "Asks for newer versions of the scanners the nodes run over projects."],
+  ["catalog", "Library", "Asks upstream for the toolchains' and coding agents' newest versions, and the vetted catalog for its index. A node's own check of what it holds is on its page."]];
 const SETTING_GROUPS = [
   // The apps this controller offers its people (R272 step 3, apps.py): each
   // one on is fetched from the release matching this controller, checked
   // against its sha256 and offered on its card in the Library (under Build); Look now asks the
   // release again rather than waiting for the daily look.
+  // Update checks on one clock (R176, checks.py): each check BuilderBot
+  // makes by itself, how often, when it last ran, and Check now. A node's
+  // own version check is its page's.
+  {key: "checks", title: "Update checks", intro: checksIntro, status: checksStatus,
+   heading: () => { const c = state?.checks || {}; const off = Object.values(c).filter(x => x.cadence === "off").length;
+     return off ? `${off} off` : Object.keys(c).length ? "on" : ""; },
+   fields: CHECK_KINDS.map(([k, label, hint]) => ({key: `check_${k}`, label, type: "select", hint,
+     options: [["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["off", "Off: only Check now"]]}))},
   {key: "apps", title: "Apps", off: "apps", intro: appsIntro, status: appsStatus,
    heading: s => `${["apps_android", ...(s?.settings?.offer_unvetted?.value ? ["apps_vscode", "apps_companion"] : [])]
      .filter(k => s?.settings?.[k]?.value).length} offered`,
@@ -643,6 +659,26 @@ function connectionStatus(s){
 }
 
 // What the Apps section holds, over its switches, and Look now.
+function checksIntro(){
+  const c = state?.checks || {};
+  return `<div class="field">${CHECK_KINDS.filter(([k]) => c[k]).map(([k, label]) =>
+    `<div class="row stack2 ckrow"><div class="grow"><span class="name">${esc(label)}</span> <span class="sub dim">${c[k].at ? `checked ${esc(ago(c[k].at))}` : "not checked yet"}</span></div>
+      <button type="button" data-checknow="${esc(k)}">Check now</button></div>`).join("")}</div>`;
+}
+function checksStatus(){
+  const c = state?.checks || {};
+  const due = Object.values(c).filter(x => x.cadence !== "off").length;
+  return `${due} of ${Object.keys(c).length} on their own clock · applies at once`;
+}
+function wireChecks(root){
+  root.querySelectorAll("[data-checknow]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Checking");
+    const j = await (await postJSON("/api/checks", {kind: b.dataset.checknow})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "checking: the answer is here in a moment", !!j.error);
+    setTimeout(() => refresh(), 4000);
+  }));
+}
+
 function appsIntro(){
   return `<div class="sub">Each one on is fetched from the release that matches this controller, checked, and offered on the ${
     pageLink("library", "Library")}, under For you, for your people to download and keep current.</div>

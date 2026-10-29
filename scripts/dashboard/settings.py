@@ -128,6 +128,10 @@ KEYS = {
     # picked only on a controller started in debug mode with the dev switch
     # on. Reset to normal at a start without debug mode, as the switches are.
     "release_channel": {"default": "normal", "kind": "choice", "applied": "now", "choices": ["normal", "dev"]},
+    # How often each check runs by itself (R176, checks.py): weekly unless
+    # an administrator says otherwise; Check now beside each runs it at once.
+    **{f"check_{k}": {"default": "weekly", "kind": "choice", "applied": "now", "choices": ["daily", "weekly", "monthly", "off"]}
+       for k in ("release", "images", "nginx", "scanners", "catalog")},
     "update_hour": {"default": 4, "kind": "number", "min": 0, "max": 23, "applied": "now"},
     # The room a node keeps for itself (R110): the disk left free under
     # which the bell warns and a build, a test or a container's rebuild is

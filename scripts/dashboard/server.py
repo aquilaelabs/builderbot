@@ -5167,6 +5167,18 @@ releasecheck.configure(version=lambda: image_stamp().get("version") or "", bare_
                        channel=lambda: str(settings.get("release_channel") or "normal"), dev_ok=settings.dev_channel_ok)
 
 
+# Update checks on one clock (R176, checks.py): each check's cadence a
+# setting, when it last ran read off its own module, and Check now.
+import checks                                                    # noqa: E402
+checks.configure(state=STATE, settings_mod=settings,
+                 last={"images": imagecheck.last_at, "nginx": lambda: int(nginxproxy.latest_image().get("at") or 0),
+                       "scanners": lambda: int(scanners._load()["latest"].get("at") or 0),
+                       "catalog": lambda: int(toolchains._tc_checked or 0)},
+                 run={**({"release": lambda: (releasecheck.check(), checks.stamp("release"))} if BARE_METAL else {}),
+                      "images": imagecheck.check, "nginx": nginxproxy.check_image, "scanners": scanners.check_versions,
+                      "catalog": lambda: toolchains.start_job("check", [p["name"] for p in toolchains.TOOLCHAINS], auto=True)})
+
+
 def _own_os():
     """What the controller's own machine says of BuilderBot OS (R160 step
     4), or {} where it runs on another system or in a container."""
@@ -5565,6 +5577,9 @@ def _snapshot(who):
         # ...and what a stick's prepared configuration did (R161 step 8), an
         # administrator's to read on This machine.
         "firstboot": firstboot.view() if BARE_METAL and users.is_admin(who) else None,
+        # ...and each update check's cadence and last run (R176), for
+        # Controller settings' Update checks.
+        "checks": _timed("status:checks", checks.view) if users.is_admin(who) else None,
         # ...and where this controller went, when it moved (R90 step 12):
         # the page is read-only then and says so.
         "moved_to": move.moved_to(),
@@ -5893,6 +5908,7 @@ POST_ROUTES = (
     ("prefix", "/api/snapshots", "_snapshots"),
     ("exact", "/api/transcripts", "_transcripts"),
     ("prefix", "/api/settings", "_settings_post"),
+    ("exact", "/api/checks", "_checks_post"),
     ("prefix", "/api/rules", "_rules"),
     ("prefix", "/api/global-rules", "_global_rules"),
     ("prefix", "/api/pending", "_pending"),
@@ -8661,6 +8677,14 @@ class Handler(BaseHTTPRequestHandler):
               f"{r['moved_to']}" + (f"; kept: {', '.join(r['kept'])}" if r["kept"] else ""), flush=True)
         threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
         return self._json(r)
+
+    def _checks_post(self, req):
+        """POST /api/checks {kind}: Check now, for one of the update checks
+        under Controller settings (R176, checks.py). An administrator's."""
+        if self._refused("controller"):
+            return
+        r = checks.run_now(str(req.get("kind") or ""))
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _settings_post(self, req):
         """POST /api/settings."""
