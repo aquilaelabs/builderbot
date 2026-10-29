@@ -48,7 +48,9 @@ def configure(*, state, write_json, lock):
 # report as a document tab beside the notebook's own view of it.
 TAB_KINDS = {"term", "library", "installed", "emulator", "notebook", "projects", "docker", "findings", "roles", "nginx", "vms", "storage",
              "nodes", "settings", "jobs", "users", "profile", "phone", "runner", "home", "notices", "help",
-             "sessions", "chat", "schedules", "debug", "keys", "audit", "scanners", "machine", "network"}
+             "sessions", "chat", "schedules", "debug", "keys", "audit", "scanners", "machine", "network",
+             # An installed thing's own page (R181 step 2), a press's.
+             "thing"}
 
 
 def _layouts():

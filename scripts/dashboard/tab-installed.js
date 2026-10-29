@@ -14,8 +14,7 @@
 "use strict";
 
 let inst = null, instNode = "", instRev = 0, instSeq = 0, instLanded = 0, instFollow = null;
-let instWantAgent = "";        // the agent whose row a door asked to open, until the rows land
-const instOpen = new Set();    // the rows opened on their detail (rows-you-open)
+let instWantAgent = "";        // the agent whose page a door asked for, until the rows land
 const instDraft = {};          // what was typed into a Configure form and not saved yet, by row
 const INST_KINDS = [["agent", "Coding agents"], ["toolchain", "Toolchains"], ["pack", "Tool packs"], ["service", "Services"]];
 
@@ -26,10 +25,10 @@ function openInstalledTab(){
 // agent's row open on its sign-in once the rows land.
 function openInstalledOn(id, agent = "", row = ""){
   if (id && id !== instNode){ instNode = id; inst = null; }
+  // ...or any thing's own page by its key (service:model-router, R181: a
+  // system container's Configure), at its Configure.
+  if (row){ openThing(id, row, "configure"); return; }
   if (agent) instWantAgent = agent;
-  // ...or any row by its key (service:model-router, R181: a system
-  // container's Configure), open at once.
-  if (row) instOpen.add(row);
   if (!(nodesList || []).some(n => n.id === id)) nodesStale = true;
   try{ localStorage.setItem("bb.instnode", id); }catch(e){ /* private */ }
   const was = location.hash;
@@ -74,19 +73,22 @@ async function loadInstalled(){
     inst = got;
   }catch(e){ if (!keep()) return; inst = {error: failWords(e)}; }
   instLanded = asked;
+  let wantPage = "";
   if (!inst.error){
     tcSandboxNow = !!inst.sandbox; agYours = inst.yours || {plugins: [], mcp: {}};
     if (toolchains && !toolchains.nonode && !toolchains.error) toolchains.job = inst.job; else toolchains = {name: inst.name, job: inst.job, items: []};
     if (instWantAgent){
       const r = (inst.rows || []).find(x => x.kind === "agent" && x.agent === instWantAgent);
-      if (r) instOpen.add(`agent:${r.name}`);
       instWantAgent = "";
+      // The agent's own page, at its sign-in (R181 step 2), once drawn.
+      if (r) wantPage = `agent:${r.name}`;
     }
   }
   clearTimeout(instFollow); instFollow = null;
   if ((inst.rows || []).some(r => r.running)) instFollow = setTimeout(loadInstalled, 3000);
   instRev++;
   drawPanes();
+  if (wantPage) openThing(instNode, wantPage, "signin");
 }
 
 // What is here: an installed row, the machine's own rows, a deployed
@@ -153,8 +155,10 @@ function agExtras(a){
       : `Set up in ${esc(a.product)}'s own configuration, for you alone.`}</div></div>`;
 }
 
-function instDetail(r){
-  const n = (nodesList || []).find(x => x.id === instNode);
+// What an installed thing is on this node, for its page's first section
+// (R181 step 2): the machine's own driver and toolkit, a toolchain's or a
+// pack's lines, an agent's.
+function instAboutLines(r){
   const lines = [];
   if (r.machine){
     lines.push(r.name === TC_DRIVER ? tcDriverLine(r.machine) : tcToolkitLine(r.machine));
@@ -162,6 +166,7 @@ function instDetail(r){
     if (r.machine.settling) lines.push(`<span class="sub">The node is reporting what the last job left<span class="dots"></span></span>`);
     return lines.filter(Boolean).join("");
   }
+  if (r.about) lines.push(`<span class="sub">${esc(r.about)}</span>`);
   if (r.kind === "toolchain" || r.kind === "pack"){
     if (r.tool) lines.push(`<span class="sub">Adds <code>bb tool ${esc(r.tool)}</code> to a session.</span>`);
     if (r.needs?.length) lines.push(`<span class="sub">Needs ${esc(r.needs.join(", "))}, installed with it.${r.needed_by?.length ? ` Needed by ${esc(r.needed_by.join(", "))}.` : ""}</span>`);
@@ -173,14 +178,6 @@ function instDetail(r){
     if (r.reopen) lines.push(`<span class="sub warn">${r.reopen === 1 ? "1 session" : `${r.reopen} sessions`} open here started before this was installed: reopen ${r.reopen === 1 ? "it" : "them"} to use it.</span>`);
     if (r.pinned?.length) lines.push(`<span class="sub">Pinned by ${esc(r.pinned.map(projLabel).join(", "))}.</span>`);
     if (r.pack) lines.push(`<span class="sub">${r.pack.here ? "Made here" : `From <code>${esc(r.pack.url)}</code> at ${esc((r.pack.commit || "").slice(0, 12))}`}${r.pack.by ? `, added by ${esc(r.pack.by)}` : ""}.</span>`);
-    // This node's answers for whoever may Configure here, and each
-    // person's own for whoever works on this node's projects (R172 step 5).
-    if (r.config?.length && r.values && inst?.may?.configure) lines.push(instConfigForm(r, "node"));
-    if (r.config?.length && r.mine && inst?.may?.yours) lines.push(instConfigForm(r, "person"));
-  }
-  if (r.kind === "service"){
-    lines.push(instServiceLines(r));
-    lines.push(instConfigForm(r));
   }
   if (r.kind === "agent"){
     const a = agentById(r.agent);
@@ -190,13 +187,24 @@ function instDetail(r){
     if (r.agent === "open"){
       const rt = (inst?.rows || []).find(x => x.kind === "service" && x.service === "router");
       lines.push(rt?.installed ? `<span class="sub">Runs through the model router on this node${(rt.status?.models || []).length ? `, ${rt.status.models.filter(m => !m.wild).length} models known` : ""}.</span>`
-        : `<span class="sub warn">Needs the model router on this node: under Services here.</span>`);
+        : `<span class="sub warn">Needs the model router on this node: under Services on the Installed page.</span>`);
     }
-    if (n && (r.installed || r.agent === "claude") && typeof signinBlock === "function" && a?.provider)
-      lines.push(`<div class="field agpart"><div class="fsub">Your sign-in</div>${signinBlock(n, r.agent)}</div>`);
-    if (n && r.installed && a) lines.push(agExtras(a));
   }
   return lines.filter(Boolean).join("");
+}
+
+// What a toolchain or a pack asks for here: this node's answers for whoever
+// may Configure here, and each person's own for whoever works on this node's
+// projects (R172 step 5).
+function instConfigLines(r){
+  const lines = [];
+  if (r.config?.length && r.values && inst?.may?.configure) lines.push(instConfigForm(r, "node"));
+  if (r.config?.length && r.mine && inst?.may?.yours) lines.push(instConfigForm(r, "person"));
+  return lines.join("");
+}
+// Whether a row has a Configure of its own on its page.
+function instConfigurable(r){
+  return r.kind === "service" ? !!inst?.may?.configure : !!instConfigLines(r);
 }
 
 // What a pack or a service asks for on this node (R172): its config block
@@ -270,15 +278,17 @@ function instServiceLines(r){
       <button type="button" data-instsvc="ollama-pull">Pull</button></div>${pulled ? `<div class="rows">${pulled}</div>` : `<div class="sub dim">Nothing pulled yet.</div>`}</div>` : ""}`;
 }
 
+// A row: what it is in a line, where it stands and its verbs; Open, and
+// Configure where it asks for anything, open its own page (R181 step 2).
 function instRow(r, may){
-  const key = `${r.kind}:${r.name}`, open = instOpen.has(key);
+  const key = `${r.kind}:${r.name}`;
   const ver = r.version && r.version !== "-" && r.version !== "present" ? ` <span class="pill" title="installed">${esc(r.version)}</span>` : "";
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && inst?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(inst.job.errors[r.name])}</div>` : "";
-  return `<div class="row irow${open ? " open" : ""}" data-irow="${esc(key)}"><div class="grow">
-      <div class="name">${esc(r.label)}${ver}${r.update && r.latest ? ` <span class="pill warn">${esc(r.latest)} is out</span>` : ""} <button type="button" class="link imore" data-instmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button></div>
-      <div class="sub iabout">${esc(r.about)}</div>
-      <div class="idetail">${open ? instDetail(r) : ""}</div>${err}
-    </div><div class="acts">${instState(r)}${instActs(r, may)}</div></div>`;
+  const conf = instConfigurable(r) ? `<button type="button" data-instopen="${esc(key)}" data-instat="configure">Configure</button>` : "";
+  return `<div class="row irow" data-irow="${esc(key)}"><div class="grow">
+      <div class="name">${esc(r.label)}${ver}${r.update && r.latest ? ` <span class="pill warn">${esc(r.latest)} is out</span>` : ""} <button type="button" class="link imore" data-instopen="${esc(key)}">Open</button></div>
+      <div class="sub iabout">${esc(r.about)}</div>${err}
+    </div><div class="acts">${instState(r)}<span class="actbar">${conf}${instActs(r, may)}</span></div></div>`;
 }
 
 function renderInstalledInto(i){
@@ -328,11 +338,7 @@ function renderInstalledInto(i){
 function wireInstalled(root){
   wireSections(root);
   if (typeof wireSignin === "function") wireSignin(root);
-  root.querySelectorAll("[data-instmore]").forEach(b => b.onclick = () => {
-    const k = b.dataset.instmore;
-    if (instOpen.has(k)) instOpen.delete(k); else instOpen.add(k);
-    instRev++; drawPanes();
-  });
+  root.querySelectorAll("[data-instopen]").forEach(b => b.onclick = () => openThing(instNode, b.dataset.instopen, b.dataset.instat || ""));
   root.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = async () => { await tcAct("sysdeps", [b.dataset.tcsys]); loadInstalled(); });
   root.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = async () => { await tcAct("install", [b.dataset.tcneed]); loadInstalled(); });
   const sd = root.querySelector("[data-instsysdeps]");

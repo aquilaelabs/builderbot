@@ -38,7 +38,7 @@ node it shows (a picker where the project works on several):
   asking you) and its **Open**, **Restart** and **End**.
 - **Start.** A line for each agent installed on that node, the project's own
   first: **New** starts a conversation, or **Sign in** where you have no
-  sign-in to it there, which opens the Installed page at that agent's row, on its sign-in.
+  sign-in to it there, which opens that agent's own page on the node, at its sign-in.
 - **Resume.** Your conversations on the project, newest first, each with its
   agent, when it was and its first words; one running in a session of yours
   is marked so and not offered, since two sessions would write over it.
@@ -124,15 +124,15 @@ your sign-in, what you added to the agent and Remove.
   GitHub's or xAI's page; nothing is pasted back. Codex's device login has to be
   switched on in the ChatGPT account's security settings first.
 
-- **Your plugins and MCP servers.** Each agent's row on the Installed page
-  lists what you added to that agent on the node, as the node last said: Claude Code's plugins, and
+- **Your plugins and MCP servers.** Each agent's own page on a node (Open on
+  its Installed row) lists what you added to that agent on the node, as the node last said: Claude Code's plugins, and
   every agent's MCP servers by name (never their settings). They are changed
   in a session, for you alone; Profile no longer lists them.
 
 The Nodes page keeps one line per node saying which agents are installed
 there and which you are signed in to. A project's Start sends a person to
-the Installed page, at that agent's row, when they have no sign-in on its
-node.
+that agent's own page on its node, at its sign-in, when they have no
+sign-in there.
 
 ## The guards
 

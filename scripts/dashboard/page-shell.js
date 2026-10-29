@@ -45,7 +45,7 @@ const RAIL = [
   // the USB edition add beside Settings (R90, R56). After Containers, so a
   // phone's bar keeps its four.
   {key: "controller", label: "Controller", icon: "controller", tools: [["machine", "This machine"], ["settings", "Settings"], ["network", "Network"], ["keys", "Keys"], ["audit", "Audit"], ["debug", "Debug"]]},
-  {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"], ["installed", "Installed"]]},
+  {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"], ["installed", "Installed"], ["thing", "Installed"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"], ["schedules", "Schedules"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
@@ -55,7 +55,7 @@ const RAIL = [
 // The pages a press opens rather than a tab (R181): off their group's
 // sub-nav, each wearing a small top header with Back to the page it was
 // opened from.
-const PRESSED = new Set(["nginx", "scanners"]);
+const PRESSED = new Set(["nginx", "scanners", "thing"]);
 
 // The five on a phone's bar: the rail's first four, so a phone and a desk
 // keep one order (the operator, 19 Oct), and More for the rest in it.
@@ -91,7 +91,7 @@ function railAllows(kind){
     // either area draws it; what each row offers is the server's to gate.
     case "library": return !!a.install || !!a.curate || !!a.nodes;
     // What is installed on a node (R172): the same areas as the Library.
-    case "installed": return !!a.install || !!a.configure || !!a.nodes;
+    case "installed": case "thing": return !!a.install || !!a.configure || !!a.nodes;
     case "jobs": return !!a.jobs;
     // An administrator's own cron (R117), its own area.
     case "schedules": return !!a.schedules;
@@ -221,6 +221,8 @@ function routeOf(t){
   // Home is #/home, the address everything links to, though its group
   // holds Controller settings too.
   if (t.kind === "home") return "#/home";
+  // An installed thing's page names its node and itself under Installed's.
+  if (t.kind === "thing") return `#/machines/installed/${encodeURIComponent(instNode || "")}/${encodeURIComponent(thingKey)}`;
   const node = NODE_PICKED[t.kind]?.() || "";
   // A page named as its group is (Jobs, beside Schedules since R117) keeps
   // the group's own address, #/jobs/failed as Home links it, never
@@ -266,6 +268,8 @@ function openRoute(hash){
   // #/home/settings, bookmarks from before Controller settings had a group
   // of its own, open it there.
   if (a && !(g.tools || []).some(([k]) => k === a) && groupOf(a)) g = groupOf(a);
+  // An installed thing's page (R181 step 2): #/machines/installed/NODE/KIND:NAME.
+  if (g.key === "machines" && a === "installed" && b && c){ railWant = g.key; openThing(decodeURIComponent(b), decodeURIComponent(c)); return true; }
   const multi = (g.tools || []).length > 1;
   // A group of one tool names its node second (#/group/NODE), as routeOf
   // writes it.
@@ -388,12 +392,16 @@ let shellFrom = null;
 function shellCame(from, to){
   const k = kindOfRoute(to);
   if (!PRESSED.has(k) || kindOfRoute(from) === k) return;
+  const was = shellFrom?.hash;
   shellFrom = from ? {kind: k, hash: from, label: routeLabel(from)} : null;
+  // A header drawn before this was known names it on the next draw.
+  if ((shellFrom?.hash || null) !== (was || null) && typeof drawPanes === "function") setTimeout(drawPanes);
 }
 // The page kind an address names, or "".
 function kindOfRoute(hash){
-  const m = /^#\/([a-z]+)(?:\/([^/]+))?/.exec(hash || "");
+  const m = /^#\/([a-z]+)(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?/.exec(hash || "");
   if (!m) return "";
+  if (m[1] === "machines" && m[2] === "installed" && m[4]) return "thing";
   if (m[1] === "projects" && m[2] && !RAIL[1].tools.some(([k]) => k === m[2])) return "notebook";
   const g = RAIL.find(x => x.key === m[1]);
   return g ? ((g.tools || []).some(([k]) => k === m[2]) ? m[2] : g.tools[0][0]) : m[1];

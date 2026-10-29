@@ -58,6 +58,15 @@ const DRIVERS = {
     open: () => page.evaluate(() => openInstalledTab()),
     readyWhen: '.installedtab details.sect, .installedtab .empty',
   },
+  // An installed thing's own page (R181 step 2): Claude Code's on the node.
+  thing: {
+    open: () => page.evaluate(async () => {
+      if (!inst || !inst.rows) await loadInstalled();
+      const r = (inst?.rows || []).find(x => x.kind === 'agent');
+      openThing(instNode, r ? `agent:${r.name}` : 'agent:claude-code');
+    }),
+    readyWhen: '.thingtab details.sect, .thingtab .notice',
+  },
   emulator: {
     // The harness's sandbox node reports a store, so the tab draws its head.
     open: () => page.evaluate(() => openEmulator()),

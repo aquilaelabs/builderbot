@@ -76,7 +76,7 @@ second node can be started from the same place. Where this account is
 signed in on the project's node, the press starts the session or opens the
 chooser with Resume and New conversation, as it always has. Where
 it is not, the chooser offers **Sign in on** that node in their place, which
-opens the Installed page on that node with that agent's row unfolded. A
+opens that agent's own page on that node, at its sign-in. A
 project on several nodes lists each under its name: Resume and New
 conversation for a node this account is signed in on, the sign-in for one it
 is not, and the reason alone for one where a session cannot start.
