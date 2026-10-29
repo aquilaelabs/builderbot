@@ -174,6 +174,24 @@ slot loaded into memory and keeps its configuration on the stick's data
 partition. Its network settings are the `BB_NET_` lines in `builderbot.env`;
 without them the stick takes DHCP.
 
+## Its disks at the first run
+
+A machine that is its own controller has a disks step in its first run,
+after This machine. It lists every disk but the one it runs from, by model,
+size, kind and serial; a disk that holds something is kept unless you tick
+it. You say how safe the storage should be (no copy, one disk may fail, two
+disks may fail) rather than pick a RAID level, and it picks the layout from
+the disks and says why: disks of one size become a ZFS mirror, raidz1 or
+raidz2, which checks every block and repairs one that rots; disks of mixed
+sizes become an array with its largest disk as parity, which uses every
+disk and grows one at a time; an SSD beside hard disks becomes a fast pool
+of its own for apps, VMs and projects, never a cache. As you choose it says
+how much you can use, how many disks may fail and how it grows, and
+Advanced picks another layout. **Make it** names every disk it erases by
+serial before anything is written, and then one press makes the Media,
+Backups and Projects shares on it. The Storage page does all of this too,
+later, the same way.
+
 ## At the console
 
 A machine running BuilderBot OS welcomes whoever is at its screen with

@@ -1182,6 +1182,11 @@ body.firstrun #panes{display:none}
 .setnum{flex:0 0 auto;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
   font:var(--f-pill);color:var(--dim);border:var(--hair) solid var(--line)}
 .setstep.done .setnum{color:var(--pass);border-color:var(--green2-edge)}
+/* The disks step (R161 step 3): each disk a row to tick, the plan in words. */
+.setstep .setdisk label{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.setstep .setdisk .sub{flex:1 1 100%}
+.setstep .setplan{margin:10px 0 0}
+.setstep .setplan p{margin:2px 0}
 .setstepbody p{margin:0;color:var(--dim)}
 .setstepbody p b{color:var(--ink)}
 .setstep>.actbar{justify-content:flex-end;flex-wrap:wrap}

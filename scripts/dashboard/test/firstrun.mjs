@@ -160,12 +160,23 @@ await firstRun(false);
       // is refused for an agent behind the one it ships.
       const shipped = async () => own ? (await (await fetch(base + '/api/v1/nodes', { headers: H })).json()).agent || {} : {};
       return { tok, go: async () => post('/api/v1/agent/enroll', { user: 'bb', version: (await shipped()).version || '1', digest: (await shipped()).digest || 'sha256:' + '1'.repeat(64),
-        census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', ...(own ? { administers: true, sandbox: true } : {}) } },
+        census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', ...(own ? { administers: true, sandbox: true, disks: OWN_DISKS } : {}) } },
         { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }) };
     };
     const finish = () => post('/api/settings', { set: { setup_done: true } });
     return { base, proc, enroll, finish, stop: () => proc.kill('SIGTERM') };
   };
+
+  // The own machine's disks (R161 step 3): the stick it runs from, three
+  // hard disks of one size, a larger one holding something, and an SSD.
+  const TB = 1048576 * 4;
+  var OWN_DISKS = [
+    { name: 'sda', model: 'Cruzer', serial: 'STICK1', size_mb: 30000, ssd: false, removable: true, system: true, holds: '', parts: [] },
+    { name: 'sdb', model: 'WD Red', serial: 'WD-B', size_mb: TB, ssd: false, removable: false, system: false, holds: '', parts: [] },
+    { name: 'sdc', model: 'WD Red', serial: 'WD-C', size_mb: TB, ssd: false, removable: false, system: false, holds: '', parts: [] },
+    { name: 'sdd', model: 'WD Red', serial: 'WD-D', size_mb: TB, ssd: false, removable: false, system: false, holds: '', parts: [] },
+    { name: 'sde', model: 'Seagate', serial: 'SG-E', size_mb: TB * 2, ssd: false, removable: false, system: false, holds: 'ext4', parts: [] },
+    { name: 'nvme0n1', model: 'Samsung 990', serial: 'S-N', size_mb: 1048576, ssd: true, removable: false, system: false, holds: '', parts: [] }];
 
   const ctr = await controller('container');
   const none = await ctr.finish();
@@ -195,6 +206,28 @@ await firstRun(false);
   ok(before.title === 'This machine' && before.state === 'waiting' && /agent is being installed/.test(before.text) && before.finish,
      `its setup page shows this machine as the node being set up, with where it is, and Finish waits (${JSON.stringify(before)})`);
   ok(before.more === 'Enroll another machine' && !before.primary, '...and offers Enroll for more machines, as an option');
+
+  // ---- its disks (R161 step 3) ------------------------------------------------
+  // What they are for and how many may fail, the layout picked from them
+  // and said with why, nothing written until Make it names every disk.
+  const plans = await page.evaluate(disks => {
+    const p = (ds, o) => { const r = setupDiskPlan(ds, o); return { kind: r.main?.kind, layout: r.main?.layout, parity: r.main?.parity, usable: r.main?.usable_mb,
+      fail: r.main?.may_fail, fast: r.fast?.layout || '', notes: r.notes.length }; };
+    const by = n => disks.find(d => d.name === n);
+    const same3 = ['sdb', 'sdc', 'sdd'].map(by);
+    return { raidz1: p(same3, { lose: 1 }), mirror: p(same3.slice(0, 2), { lose: 1 }), raidz2: p([...same3, { ...by('sdb'), name: 'sdf' }], { lose: 2 }),
+             twoOfThree: p(same3, { lose: 2 }), mixed: p([...same3, by('sde')], { lose: 1 }), fast: p([...same3, by('nvme0n1')], { lose: 1 }),
+             forced: p(same3, { lose: 1, layout: 'array' }), stick: p([by('sda')], {}) };
+  }, OWN_DISKS);
+  const TB4 = 1048576 * 4;
+  ok(plans.raidz1.layout === 'raidz1' && plans.raidz1.usable === 2 * TB4 && plans.raidz1.fail === 1
+     && plans.mirror.layout === 'mirror' && plans.raidz2.layout === 'raidz2' && plans.raidz2.fail === 2,
+     `disks of one size are ZFS: a mirror of two, raidz1 for one failure, raidz2 for two (${JSON.stringify([plans.raidz1, plans.mirror, plans.raidz2])})`);
+  ok(plans.twoOfThree.layout === 'raidz1' && plans.twoOfThree.notes === 1, `...two failures asked of three disks says it needs four (${JSON.stringify(plans.twoOfThree)})`);
+  ok(plans.mixed.kind === 'array' && plans.mixed.parity.join() === 'sde' && plans.mixed.usable === 3 * TB4 && plans.mixed.fail === 1,
+     `disks of mixed sizes are an array, its largest as parity (${JSON.stringify(plans.mixed)})`);
+  ok(plans.fast.fast === 'single' && plans.fast.layout === 'raidz1', `an SSD beside hard disks is a fast pool of its own, never a cache (${JSON.stringify(plans.fast)})`);
+  ok(plans.forced.kind === 'array' && plans.stick.kind === undefined, '...Advanced forces an array, and the stick the system runs from is never offered');
   await (await bm.enroll('otherbox', false)).go();
   const other = await bm.finish();
   ok(/still being set up as a node/.test(other.error || ''), `another node answering does not finish it (${other.error || 'finished'})`);
@@ -203,6 +236,41 @@ await firstRun(false);
   const after = await draw();
   ok(after.state === 'done' && /the machine this controller runs on, is enrolled and answering/.test(after.text) && !after.finish,
      `...and the step is done with Finish open (${JSON.stringify(after)})`);
+  // The disks step reads the machine once it answers (a pending node's
+  // census is not read): its card, and what Make it sends.
+  await page.evaluate(() => setupDisksLoad());
+  const drawn = await page.waitForFunction(() => [...document.querySelectorAll('#setupPanel .setstep h3')].some(h => h.textContent === 'Your disks')
+    && document.querySelector('#setupPanel .setdisk'), null, { timeout: 20000 }).then(() => true, () => false);
+  if (!drawn){
+    const why = await page.evaluate(async () => ({ steps: [...document.querySelectorAll('#setupPanel .setstep h3')].map(h => h.textContent),
+      own: !!setupSteps().own, bare: state?.bare_metal, read: await (await fetch('/api/storage')).json() }));
+    ok(false, `the disks step drew no disks (${JSON.stringify(why).slice(0, 900)})`);
+  }
+  const card = await page.evaluate(() => {
+    const s = [...document.querySelectorAll('#setupPanel .setstep')].find(x => x.querySelector('h3')?.textContent === 'Your disks');
+    return { second: [...document.querySelectorAll('#setupPanel .setstep h3')][1]?.textContent, rows: s.querySelectorAll('.setdisk').length,
+             held: !s.querySelector('[data-setdiskuse="sde"]').checked && /erases it/.test(s.textContent),
+             plan: s.querySelector('.setplan')?.textContent.replace(/\s+/g, ' ').trim(), fast: /fast pool/.test(s.textContent) };
+  });
+  ok(card.second === 'Your disks' && card.rows === 5 && card.held && /A ZFS raidz1 of 3 disks/.test(card.plan) && /one disk may fail/.test(card.plan) && card.fast,
+     `the first run's second step is the disks: each but the stick a row, one holding data kept unless ticked, the plan in words and the SSD a fast pool (${JSON.stringify(card)})`);
+  const sent = [];
+  await page.route('**/api/v1/nodes', async r => {
+    const b = r.request().postDataJSON?.() || {};
+    if (r.request().method() === 'POST' && /^storage-/.test(b.action || '')){ sent.push(b); return r.fulfill({ json: { ok: true, job: 'j_x' } }); }
+    return r.fallback();
+  });
+  const asked = page.dialogs.length;
+  await page.click('#setupPanel [data-setdisksmake]');
+  await page.waitForFunction(() => document.querySelector('#setupPanel [data-setdisksmake]')?.textContent.includes('Making') || false, null, { timeout: 10000 }).catch(() => {});
+  await sleep(500);
+  await page.unroute('**/api/v1/nodes');
+  const ask = page.dialogs.slice(asked).join(' ');
+  ok(/WD-B/.test(ask) && /WD-C/.test(ask) && /WD-D/.test(ask) && /S-N/.test(ask) && !/SG-E/.test(ask) && !/STICK1/.test(ask) && /erased/.test(ask),
+     `Make it names every disk it erases by serial first, and none it keeps (${ask.slice(0, 160)})`);
+  ok(sent.length === 2 && sent[0].pool === 'create' && sent[0].layout === 'raidz1' && sent[0].disks.join() === 'sdb,sdc,sdd'
+     && sent[1].name === 'fast' && sent[1].layout === 'single' && sent[1].disks.join() === 'nvme0n1',
+     `...and makes it with the Storage page's own calls: the raidz1 and the fast pool (${JSON.stringify(sent)})`);
   const fin2 = await bm.finish();
   ok(!fin2.error, `a bare-metal first run finishes with only its own node (${fin2.error || 'ok'})`);
   // This machine (R90 step 8): the rail's Controller group opens on it, its

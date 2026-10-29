@@ -4,6 +4,7 @@
 
 ### Added
 
+- A machine that is its own controller sets up its disks in its first run: you say how many disks may fail, it picks a ZFS layout or an array with parity from the disks there and says how much you can use and how it grows, names every disk it erases before it writes, and makes the Media, Backups and Projects shares after.
 - BuilderBot OS's console shows BuilderBot's logo above the login prompt at every boot, with the release it runs and the address to open the dashboard at; the installer opens on the same logo.
 - A tool pack or a catalog app can carry its own icon: `icon` in `bbtool.json` or `bbapp.json` names a PNG, WebP or SVG file in it (64 KB at most), which its Library card shows in place of its kind's glyph. It is read at the commit the pack is pinned to and shown only as an image, so an SVG's scripts never run.
 - Two release channels: the releases as published, and a dev channel of the pre-releases CI publishes from a dev build (a vX.Y.Z-dev.N tag, the same files, never the latest), picked under Controller settings, Updates, on a controller started in debug mode with the dev switch on; every other install sees the releases alone; bb version release --dev cuts and pushes such a tag
