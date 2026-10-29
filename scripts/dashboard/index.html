@@ -3546,6 +3546,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 #pjGrid>.pjgroup>.pjgname .dim{font:var(--f-note)}
 #pjGrid>.pjgroup>.askline{margin:0 0 8px}
 #pjGrid>details.sect{margin:20px 0 0}
+/* On a phone Archived is a band to the screen's edges, as a notebook's
+   sections are, rather than a box inset in the grid's band (the operator,
+   29 Oct); it ends the page, so it meets the band's foot too. */
+@media(max-width:900px){ #pjGrid>details.sect{margin:20px calc(0px - var(--row-x)) -12px;border-radius:0;border-inline:0} }
 .pgrid .empty{grid-column:1/-1}
 .pcard{position:relative;display:flex;flex-direction:column;gap:6px;padding:var(--row-y) var(--row-x);background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);min-width:0}
 /* A colored card, and a project page's header as its card is (the operator,
