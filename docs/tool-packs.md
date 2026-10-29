@@ -191,7 +191,7 @@ the scripts it runs:
     "verify": ["{dir}/bin/hexkit", "--version"]
   },
   "layout": {"bin": ["bin"], "tool": "bin/hexkit"},
-  "system": {"apt": ["libmagic1"]},
+  "system": {"apt": ["libmagic1"], "dnf": ["file-libs"], "pacman": ["file"]},
   "verbs": {
     "dump": {"about": "A file's bytes as hex.", "usage": "FILE",
              "run": ["{dir}/bin/hexkit", "dump", "{args}"]},
@@ -211,7 +211,7 @@ the scripts it runs:
 | `install.steps` | What runs after the repository is fetched into the store, each a list of words; `{dir}` is the pack's directory. This is where a pack downloads its binaries. |
 | `install.verify` | One command that must succeed for the install to count. |
 | `layout` | `bin`: directories inside the pack to put on `PATH`. `env`: variables to set, each a path inside the pack or `=VALUE`. `tool`: a file whose presence means it is installed. |
-| `system.apt` | Debian packages the node needs; installed first where the node lets BuilderBot administer it. |
+| `system.apt`, `system.dnf`, `system.pacman`, `system.zypper`, `system.apk` | The system packages the node needs, in each package manager's own names, installed first where the node lets BuilderBot administer it. A node's family installs its own manager's list; a pack that names lists, but none for a node's manager, is not offered on that node, its card and an Install there saying which managers it names. A pack with no system packages fits every family. |
 | `verbs` | The commands a session calls as `bb tool NAME VERB`. |
 | `works_with` | The BuilderBot release lines it works with, e.g. `["0.9", "0.10"]`; none named is every one. A pack that does not name this install's line is not added, and one held that stops fitting after an upgrade is a line on the bell saying to update or remove it (R169 step 6). |
 | `touches` | What it touches: `hosts`, up to 16 host names its install fetches from, and `root`, true when it needs root on the node to install. Look shows both before it is added, and a pack that needs root is added by an administrator alone (R169 step 4). |

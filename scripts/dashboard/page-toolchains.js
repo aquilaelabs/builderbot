@@ -212,6 +212,7 @@ function tpSeen(seen, was, offer = true){
     <div class="sub">Installs ${seen.here ? "by copying these files to the node" : "by fetching the repository at that commit"}${steps ? `, then running ${steps}` : ""}${
       m.verify ? `, and checks it with ${w(m.verify)}` : ""}; on ${esc((m.platforms || []).join(", "))}.</div>
     ${verbs}
+    ${Object.keys(m.system || {}).length ? `<div class="sub">System packages it installs first: ${Object.entries(m.system).map(([k, v]) => `${esc(k)} <code>${esc(v.join(" "))}</code>`).join("; ")}; a node of another package manager is not offered it.</div>` : ""}
     ${(m.touches?.hosts || []).length ? `<div class="sub">Its install fetches from ${m.touches.hosts.map(h => `<code>${esc(h)}</code>`).join(", ")}.</div>` : ""}
     ${(m.works_with || []).length ? `<div class="sub">It works with BuilderBot ${esc(m.works_with.join(", "))}.</div>` : ""}
     ${m.touches?.root ? `<div class="hint warn">It needs root on the node to install: only an administrator adds it.</div>` : ""}

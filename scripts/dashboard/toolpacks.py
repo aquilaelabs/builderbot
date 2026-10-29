@@ -329,13 +329,25 @@ def validate(m, shipped=()):
         errors.append("layout.env maps NAME to a path inside the pack (\"\" for the pack itself) or =VALUE")
         env = {}
     out["layout"] = {"bin": bins, "env": env, "tool": tool or MANIFEST}
-    apt = (m.get("system") or {}).get("apt") if isinstance(m.get("system"), dict) else None
-    if apt is not None and not (isinstance(apt, list) and all(isinstance(a, str) and re.fullmatch(r"[a-z0-9.+|-]{1,80}", a)
-                                                              for a in apt)):
-        errors.append("system.apt lists Debian package names")
-        apt = None
-    if apt:
-        out["system"] = {"apt": apt}
+    # System packages per package manager (R171), as the shipped recipes
+    # carry them: the node's family script installs its own manager's list,
+    # and a node whose manager the pack names none for is not offered it.
+    sysd = m.get("system") if isinstance(m.get("system"), dict) else {}
+    keep = {}
+    for mgr, shape in SYSTEM_NAMES.items():
+        names = sysd.get(mgr)
+        if names is None:
+            continue
+        if not (isinstance(names, list) and len(names) <= 60 and all(isinstance(a, str) and shape.fullmatch(a) for a in names)):
+            errors.append(f"system.{mgr} lists {SYSTEM_WORDS[mgr]} package names")
+            continue
+        if names:
+            keep[mgr] = names
+    for mgr in sysd:
+        if mgr not in SYSTEM_NAMES:
+            errors.append(f"system.{mgr} is not a package manager a node runs: {', '.join(SYSTEM_NAMES)}")
+    if keep:
+        out["system"] = keep
     verbs = m.get("verbs") or {}
     if not isinstance(verbs, dict) or (not verbs and not stands_in):
         errors.append("verbs names at least one command a session calls, each {about, usage, run}")
@@ -680,6 +692,14 @@ def hosted_files():
 def packs():
     with _lock:
         return _load()["packs"]
+
+
+# The package managers a node's family runs (provision-linux.sh's families),
+# each with the shape of its package names.
+SYSTEM_NAMES = {"apt": re.compile(r"[a-z0-9.+|-]{1,80}"), "dnf": re.compile(r"[A-Za-z0-9._+|-]{1,80}"),
+                "pacman": re.compile(r"[a-z0-9@._+|-]{1,80}"), "zypper": re.compile(r"[A-Za-z0-9._+|-]{1,80}"),
+                "apk": re.compile(r"[a-z0-9._+|-]{1,80}")}
+SYSTEM_WORDS = {"apt": "Debian and Ubuntu", "dnf": "Fedora and Red Hat", "pacman": "Arch", "zypper": "openSUSE", "apk": "Alpine"}
 
 
 ROOT_REFUSED = "it needs root on the node (its touches say so): an administrator adds it"

@@ -1341,6 +1341,13 @@ def payload_for_node(nid):
     fam = str((rep.get("sysdeps") or {}).get("family") or "")
     unmet = (rep.get("sysdeps") or {}).get("unmet") or {}
     sysl = {p["name"]: (p.get("system") or {}).get(fam) or [] for p in TOOLCHAINS} if fam else {}
+    # A pack that names system packages for other managers alone is not for
+    # this node (R171), said on its row as a platform miss is.
+    recipes = {p["name"]: p for p in TOOLCHAINS}
+    for i in items:
+        miss = "" if i.get("wrong_platform") else family_miss(recipes.get(i["name"]) or {}, fam)
+        if miss:
+            i["wrong_platform"] = f"not for this node: {miss}"
     for i in items:
         names = sysl.get(i["name"]) or []
         if names:
@@ -1820,6 +1827,16 @@ def supports(tc, plat):
     return any(x == plat or x == f"{o}/*" for x in want)
 
 
+def family_miss(tc, fam):
+    """Why a recipe is not for a node of package manager `fam` (R171): it
+    names system packages, but none for that manager. "" when it fits, or
+    when the node has not said its family."""
+    sysd = tc.get("system") or {}
+    if not fam or not sysd or fam in sysd or fam == "macos":
+        return ""
+    return f"it names system packages for {', '.join(sorted(sysd))} only, and this node installs with {fam}"
+
+
 def unsupported(names, plat):
     """[(name, platforms)] for the ones this platform cannot have."""
     by = {p["name"]: p for p in TOOLCHAINS}
@@ -2066,6 +2083,12 @@ def node_job(principal, nid, action, names, driver=""):
                              + "; ".join(f"{x} is packaged for {p}" for x, p in no)
                              + ". The catalog names the platform each recipe works on; "
                                "adding another is a URL per row, not a code change."}
+        fam = str(((n.get("reported") or {}).get("sysdeps") or {}).get("family") or "")
+        by = {p["name"]: p for p in TOOLCHAINS}
+        off = [(x, family_miss(by.get(x) or {}, fam)) for x in names]
+        off = [(x, w) for x, w in off if w]
+        if off:
+            return {"error": "; ".join(f"{x} is not for {n['name']}: {w}" for x, w in off)}
         need_kb = sum(_need_kb(x) for x in names)
         free = store.get("free_mb")
         if need_kb and free is not None and free * 1024 < need_kb * 1.2:
