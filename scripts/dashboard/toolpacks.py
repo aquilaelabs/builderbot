@@ -731,7 +731,7 @@ def add(url, commit, by, shipped=(), sha256="", tier="url", path="", may_root=Fa
         d = _load()
         rec = {"name": m["name"], "url": url, "commit": got["commit"], "manifest": m,
                "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time()),
-               "tier": "vetted" if tier == "vetted" and sha256 else "url", "sha256": sha256 or ""}
+               "tier": tier if tier in ("vetted", "official") and sha256 else "url", "sha256": sha256 or ""}
         was = d["packs"].get(m["name"])
         if was and was.get("url") != url:
             return {"error": f"a pack called {m['name']} is already here from {was.get('url')}; remove it first"}
@@ -776,7 +776,7 @@ def _add_folder(url, commit, path, by, shipped, sha256, tier):
         rec = data["packs"].get(out["pack"]["name"])
         if rec:
             rec.update({"url": url, "commit": commit, "path": path, "sha256": sha256 or "",
-                        "tier": "vetted" if tier == "vetted" and sha256 else "url"})
+                        "tier": tier if tier in ("vetted", "official") and sha256 else "url"})
             write_json(FILE, data)
             out["pack"] = rec
     return out

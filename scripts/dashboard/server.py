@@ -4603,6 +4603,14 @@ nodes.on_done("vm", vms.vm_done)
 phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, dict(req, _admin=True), True)
 
 
+def _catalog_pin(url, commit, sha256, path=""):
+    """The kept index's pack entry pinning exactly this url, commit, sha256
+    and folder, withdrawn ones left out, or None (B440)."""
+    return next((e for e in (catalogindex.index(settings.get("catalog_url") or None).get("index") or {}).get("packs") or []
+                 if e.get("kind", "pack") == "pack" and not e.get("withdrawn") and e["url"] == url and e["commit"] == commit
+                 and e["sha256"] == sha256 and (e.get("path") or "") == (path or "")), None)
+
+
 def _pack_from_catalog(entry, by, may_root=False):
     """A pack from the vetted catalog kept at the commit the signed index
     pins, its sha256 checked (R169 step 5): what the Library's Install keeps,
@@ -11064,9 +11072,15 @@ class Handler(BaseHTTPRequestHandler):
             r = toolpacks.fetch(field(req, "url"), field(req, "commit"), shipped=shipped, sha256=field(req, "sha256"), path=field(req, "path"))
         elif action == "add" and field(req, "staged"):
             r = toolpacks.add_staged(field(req, "staged"), by, shipped, may_root=users.is_admin(me))
+        elif action == "add" and field(req, "sha256"):
+            # The tier is the signed index's, never the request's (B440): a
+            # sha256 is taken only for the pin the index names.
+            pin = _catalog_pin(field(req, "url"), field(req, "commit"), field(req, "sha256"), field(req, "path"))
+            if not pin:
+                return self._json({"error": "that commit is not the one the vetted catalog pins: Refresh the catalog and Look again"}, 400)
+            r = _pack_from_catalog(pin, by, may_root=users.is_admin(me))
         elif action == "add":
-            r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped, sha256=field(req, "sha256"),
-                              tier="vetted" if field(req, "sha256") else "url", path=field(req, "path"), may_root=users.is_admin(me))
+            r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped, path=field(req, "path"), may_root=users.is_admin(me))
         elif action == "source":
             r = toolpacks.source(field(req, "name"))
         elif action == "where":

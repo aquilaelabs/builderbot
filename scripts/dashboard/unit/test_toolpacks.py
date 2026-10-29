@@ -125,6 +125,10 @@ class Repository(unittest.TestCase):
         r = toolpacks.add(self.url, commit, "operator", sha256=good, tier="vetted")
         self.assertTrue(r.get("ok"), r)
         self.assertEqual((r["pack"]["tier"], toolpacks.recipes()[0]["pack"]["tier"]), ("vetted", "vetted"))
+        # The tier the index gave is kept, an official one too, and none
+        # without the index's sha256 (B440).
+        self.assertEqual(toolpacks.add(self.url, commit, "operator", sha256=good, tier="official")["pack"]["tier"], "official")
+        self.assertEqual(toolpacks.add(self.url, commit, "operator", tier="vetted")["pack"]["tier"], "url")
 
     def test_a_pack_in_a_folder_of_the_repository(self):
         # R170 step 6: a pack kept in a folder (the catalog's own packs/):
