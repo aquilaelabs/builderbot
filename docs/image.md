@@ -174,6 +174,15 @@ slot loaded into memory and keeps its configuration on the stick's data
 partition. Its network settings are the `BB_NET_` lines in `builderbot.env`;
 without them the stick takes DHCP.
 
+## At the console
+
+A machine running BuilderBot OS welcomes whoever is at its screen with
+BuilderBot's logo above the login prompt, the release and slot it runs, and
+the address to open the dashboard at (this machine's address and the
+dashboard's port), which the console fills in and redraws as the network
+comes up. The installer opens on the same logo. Both are plain characters,
+so a serial console or a server's remote screen draws them too.
+
 ## Installing it on a machine
 
 `builderbot-os-VERSION.iso` boots the same root live (UEFI or BIOS) with

@@ -26,9 +26,14 @@ medium_disk=""
 [ -n "$medium_dev" ] && medium_disk="$(lsblk -no PKNAME "$medium_dev" 2>/dev/null | head -1)"
 [ -n "$medium_disk" ] || medium_disk="$(basename "${medium_dev:-none}")"
 
-say "Welcome to BuilderBot OS ${VER:-}.
+# BuilderBot's logo over the welcome (R185), the one the console shows at
+# every boot.
+LOGO="$(cat "$LIB/logo" 2>/dev/null || true)"
+whiptail --title "BuilderBot OS" --msgbox "$LOGO
 
-This installs it onto a disk of this machine: the whole disk is laid out again (two root slots for updates and a data partition grown to the disk), and everything on it is lost. The machine comes up as its own controller, reached on the LAN at http://ITS-ADDRESS:7680, where the first page makes the owner."
+Welcome to BuilderBot OS ${VER:-}.
+
+This installs it onto a disk of this machine: the whole disk is laid out again (two root slots for updates and a data partition grown to the disk), and everything on it is lost. The machine comes up as its own controller, reached on the LAN at http://ITS-ADDRESS:7680, where the first page makes the owner." 24 76
 
 pick=""
 while [ -z "$pick" ]; do

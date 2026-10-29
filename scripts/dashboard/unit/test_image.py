@@ -470,6 +470,40 @@ class Workflow(unittest.TestCase):
             self.assertIn("not the data partition", out)
             self.assertEqual(mib, 16)
 
+    def test_the_console_welcomes_with_the_logo_the_release_and_the_address(self):
+        # R185: BuilderBot's logo, plain characters a serial console draws and
+        # no backslash (an escape in an issue file), opens the installer and
+        # sits over every boot's login prompt with the release, the slot and
+        # the dashboard's address, the getty's own \\4 standing for this
+        # machine's IPv4 address; Debian's own line is blanked.
+        lib = os.path.join(EXTRA, "usr", "lib", "builderbot-os")
+        logo = read(lib, "logo")
+        self.assertTrue(logo.strip())
+        self.assertTrue(all(32 <= ord(c) < 127 for c in logo.replace("\n", "")), "plain printable ASCII")
+        self.assertNotIn("\\", logo)
+        self.assertLessEqual(max(len(x) for x in logo.splitlines()), 72, "inside the installer's box")
+        self.assertIn('LOGO="$(cat "$LIB/logo"', read(lib, "installer"))
+        self.assertIn("ExecStart=-/usr/lib/builderbot-os/welcome", read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service"))
+        self.assertEqual(read(EXTRA, "etc", "issue").strip(), "", "Debian's own line goes")
+        with tempfile.TemporaryDirectory() as d:
+            fake = os.path.join(d, "lib"); os.makedirs(fake)
+            shutil.copy(os.path.join(lib, "logo"), fake)
+            open(os.path.join(fake, "release"), "w").write("BUILDERBOT_OS_VERSION=0.9.0\n")
+            open(os.path.join(fake, "slot"), "w").write("#!/bin/sh\necho a\n")
+            os.chmod(os.path.join(fake, "slot"), 0o755)
+            env_file = os.path.join(d, "controller.env")
+            open(env_file, "w").write("DASHBOARD_PORT=8443\n")
+            out = os.path.join(d, "issue.d")
+            r = sh(f"bash {os.path.join(lib, 'welcome')}", {"BB_OS_LIB": fake, "BB_ISSUE_DIR": out, "BB_CONTROLLER_ENV": env_file})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            issue = open(os.path.join(out, "10-builderbot.issue")).read()
+            self.assertIn("B U I L D E R B O T", issue)
+            self.assertIn("BuilderBot OS 0.9.0, slot a", issue)
+            self.assertIn("Open http://\\4:8443/ in a browser on this network.", issue)
+            os.unlink(env_file)
+            sh(f"bash {os.path.join(lib, 'welcome')}", {"BB_OS_LIB": fake, "BB_ISSUE_DIR": out, "BB_CONTROLLER_ENV": env_file})
+            self.assertIn("http://\\4:7680/", open(os.path.join(out, "10-builderbot.issue")).read(), "the default port without an env file")
+
     def test_the_disk_is_xz_and_the_stick_variant_runs_from_memory(self):
         # R161 step 5: xz, which the stick maker opens with Python's own
         # library; the stick's disk is the same with bb_toram=1 set.

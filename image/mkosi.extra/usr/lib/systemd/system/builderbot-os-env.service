@@ -3,7 +3,7 @@ Description=BuilderBot OS: the boot's own settings for the controller, from the 
 ConditionKernelCommandLine=bbslot
 DefaultDependencies=no
 After=boot-efi.mount local-fs.target
-Before=builderbot-controller.service systemd-networkd.service
+Before=builderbot-controller.service systemd-networkd.service getty.target
 
 [Service]
 Type=oneshot
@@ -16,6 +16,9 @@ ExecStart=-/usr/lib/builderbot-os/firstboot-take
 ExecStart=-/usr/lib/builderbot-os/net
 # The data partition grown to its disk, up to BB_DATA_MAX (R161 step 13).
 ExecStart=-/usr/lib/builderbot-os/grow
+# The console's welcome above the login prompt (R185): the logo, the release
+# and the dashboard's address.
+ExecStart=-/usr/lib/builderbot-os/welcome
 RemainAfterExit=yes
 
 [Install]
