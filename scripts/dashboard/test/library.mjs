@@ -68,6 +68,24 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
   ok(await page.$$eval('.doc .librarytab .libgroup', ds => ds.length === 6), '...and All puts the six back');
 } else ok(true, 'one kind only here, so no kind chips (chips need two groups)');
 
+// Updates, the chip after All (the operator, 29 Oct): the cards with an
+// update due, each in its own section, and no chip while none is.
+if (await page.evaluate(() => lib.rows.some(r => r.update && !r.wrong_platform))){
+  ok(await page.evaluate(() => {
+    const cs = [...document.querySelectorAll('.doc .librarytab [data-chips="libkind"] .chip')];
+    return cs[1]?.dataset.libkind === 'update' && /^Updates/.test(cs[1].textContent.trim());
+  }), 'Updates is the chip after All while an update is due');
+  await page.click('.doc .librarytab [data-libkind="update"]');
+  await page.waitForFunction(() => libKind === 'update');
+  ok(await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('.doc .librarytab .lcard')];
+    return cards.length === lib.rows.filter(r => r.update && !r.wrong_platform).length
+      && cards.every(c => lib.rows.find(r => `${r.kind}:${r.name}` === c.dataset.lrow)?.update);
+  }), '...and pressed it shows the cards with an update due and no others');
+  await page.click('.doc .librarytab [data-libkind=""]');
+  await page.waitForFunction(() => libKind === '');
+} else ok(!(await page.$('.doc .librarytab [data-libkind="update"]')), 'no update due here, so no Updates chip');
+
 // ---- a row opens on its description -----------------------------------
 {
   const key = await page.evaluate(() => document.querySelector('.doc .librarytab .lcard[data-lrow^="toolchain:"]')?.dataset.lrow || '');

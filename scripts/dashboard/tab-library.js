@@ -315,12 +315,15 @@ function libRow(r, may){
 // more than one way).
 function libFilterBand(rows){
   const count = (key, f) => rows.filter(f).length;
-  const kinds = LIB_KINDS.map(([k, l]) => ({key: k, label: l, count: count(k, r => libGroup(r) === k)}));
+  // Updates first after All (the operator, 29 Oct): every card with an
+  // update due, in its own section; drawn only while one is.
+  const kinds = [{key: "update", label: "Updates", count: count("update", r => r.update)},
+                 ...LIB_KINDS.map(([k, l]) => ({key: k, label: l, count: count(k, r => libGroup(r) === k)}))];
   const tiers = LIB_TIERS.map(([k, l]) => ({key: k, label: l, count: count(k, r => r.tier === k)}));
   return `<div class="field lfilter libfilter">
     <input id="libFind" type="search" maxlength="80" autocomplete="off" spellcheck="false" aria-label="search the library"
       placeholder="search by name or what it does" value="${esc(libQ)}">
-    <div class="chips" data-chips="libkind">${chipButtons(kinds, libKind, "data-libkind")}</div>
+    <div class="chips" data-chips="libkind">${chipButtons(kinds, libKind, "data-libkind", rows.length)}</div>
     <div class="chips" data-chips="libtier">${chipButtons(tiers, libTier, "data-libtier")}</div>
   </div>`;
 }
@@ -329,7 +332,8 @@ function libSections(rows, may){
   return LIB_KINDS.map(([k, title]) => {
     const all = (lib.rows || []).filter(r => libGroup(r) === k);
     const here = rows.filter(r => libGroup(r) === k);
-    if (libKind && libKind !== k) return "";
+    if (libKind && libKind !== "update" && libKind !== k) return "";
+    if (libKind === "update" && !here.length) return "";
     const inst = all.filter(r => r.installed).length;
     const count = !all.length ? "" : k === "app" || k === "companion" ? `${all.length}` : `${inst} of ${all.length} installed`;
     // The catalog's trouble is the packs' alone, said over them, never in the node's head.
@@ -386,7 +390,9 @@ function renderLibraryInto(i){
   // A card not for this node is not drawn (R170 step 9): counted in the head.
   const all = (lib.rows || []).filter(r => !r.wrong_platform);
   const notHere = (lib.rows || []).length - all.length;
-  const rows = all.filter(r => libMatch(r, libQ) && (!libKind || libGroup(r) === libKind) && (!libTier || r.tier === libTier));
+  // The last update installed takes the Updates chip with it: back to All.
+  if (libKind === "update" && !all.some(r => r.update)) libKind = "";
+  const rows = all.filter(r => libMatch(r, libQ) && (!libKind || (libKind === "update" ? r.update : libGroup(r) === libKind)) && (!libTier || r.tier === libTier));
   const inst = all.filter(r => r.installed).length, due = all.filter(r => r.update).length;
   const free = lib.store?.free_mb ? `${(lib.store.free_mb / 1024).toFixed(1)} GB free` : "";
   const head = pageHead({title: lib.name || "", facts: [
