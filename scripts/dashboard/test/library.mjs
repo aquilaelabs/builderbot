@@ -82,7 +82,9 @@ if (await page.$('.doc .librarytab [data-libkind="toolchain"]')){
 } else ok(true, 'one kind only here, so no kind chips (chips need two groups)');
 
 // Installed, the chip after All (the operator, 29 Oct): the cards
-// installed on this node, each in its own kind's section.
+// installed on this node, each in its own kind's section; no chip while
+// nothing is.
+if (await page.evaluate(() => lib.rows.some(r => r.installed && !r.wrong_platform))){
 ok(await page.evaluate(() => {
   const cs = [...document.querySelectorAll('.doc .librarytab [data-chips="libkind"] .chip')];
   return cs[1]?.dataset.libkind === 'installed' && /^Installed/.test(cs[1].textContent.trim());
@@ -96,13 +98,15 @@ ok(await page.evaluate(() => {
 }), '...and pressed it shows what is installed here and nothing else');
 await page.click('.doc .librarytab [data-libkind=""]');
 await page.waitForFunction(() => libKind === '');
+} else ok(!(await page.$('.doc .librarytab [data-libkind="installed"]')), 'nothing installed here, so no Installed chip');
 
 // Updates, the chip after Installed (the operator, 29 Oct): the cards with an
 // update due, each in its own section, and no chip while none is.
 if (await page.evaluate(() => lib.rows.some(r => r.update && !r.wrong_platform))){
   ok(await page.evaluate(() => {
     const cs = [...document.querySelectorAll('.doc .librarytab [data-chips="libkind"] .chip')];
-    return cs[2]?.dataset.libkind === 'update' && /^Updates/.test(cs[2].textContent.trim());
+    const at = cs.findIndex(c => c.dataset.libkind === 'update');
+    return at > 0 && at <= 2 && cs.slice(1, at).every(c => c.dataset.libkind === 'installed') && /^Updates/.test(cs[at].textContent.trim());
   }), 'Updates is the chip after Installed while an update is due');
   await page.click('.doc .librarytab [data-libkind="update"]');
   await page.waitForFunction(() => libKind === 'update');
