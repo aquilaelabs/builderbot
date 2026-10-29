@@ -78,7 +78,7 @@ install -m 0644 "$RELEASE" "$MNT/builderbot/a/release"
 # the stick maker writes a person's --set lines into these same bytes while
 # the image streams, and nothing writes a FAT by hand on any system. A line
 # without "=" is nothing to the reader, so the padding is blank.
-{ { printf '%s\n' "# builderbot.env BB-STICK-ENV-1: KEY=VALUE lines the boot reads (TZ, BB_RELEASE_LINE)"
+{ { printf '%s\n' "# builderbot.env BB-STICK-ENV-1: KEY=VALUE lines the boot reads (TZ, BB_RELEASE_LINE, BB_HOSTNAME, BB_NET_*)"
     head -c 4096 /dev/zero | tr '\0' ' '; } | head -c 4095; printf '\n'
 } > "$MNT/builderbot.env"
 [ "$(stat -c %s "$MNT/builderbot.env")" = 4096 ] || die "builderbot.env is not its 4 KiB"

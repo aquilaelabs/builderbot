@@ -12,8 +12,10 @@ number on Windows. The image is builderbot-os-VERSION.stick.raw.xz from a
 release (its sha256 beside it is fetched and checked), the newest one when
 nothing else is named, or a file you have. --set KEY=VALUE, as often as
 needed, writes a line into the stick's builderbot.env, which each boot reads:
-TZ (the machine's time zone, Europe/Berlin) and BB_RELEASE_LINE (the release
-line updates follow, 0.9) are the ones it takes. --mirror FILE puts a
+TZ (the machine's time zone, Europe/Berlin), BB_RELEASE_LINE (the release
+line updates follow, 0.9), BB_HOSTNAME, and a static address for the wired
+network: BB_NET_ADDRESS, BB_NET_MASK (24 or 255.255.255.0), BB_NET_GATEWAY
+and BB_NET_DNS (1.1.1.1,9.9.9.9); without BB_NET_ADDRESS it takes DHCP. --mirror FILE puts a
 mirror of the vetted catalog (tools/catalog-mirror.py's archive, up to
 64 MiB) on the stick, which the controller imports as it starts, so a
 machine with no network installs tool packs from it.
@@ -164,7 +166,7 @@ def check_sha(path, sha_file):
 
 # ---- the stick's builderbot.env --------------------------------------------------
 KEY = re.compile(r"[A-Z][A-Z0-9_]{0,40}")
-VALUE = re.compile(r"[A-Za-z0-9_./:+-]{0,200}")
+VALUE = re.compile(r"[A-Za-z0-9_./:+,-]{0,200}")
 
 
 def env_block(sets):
@@ -175,9 +177,9 @@ def env_block(sets):
     for s in sets:
         k, sep, v = s.partition("=")
         if not sep or not KEY.fullmatch(k) or not VALUE.fullmatch(v):
-            die(f"--set {s}: a KEY=VALUE, the key in capitals, the value letters, digits and _ . / : + -")
+            die(f"--set {s}: a KEY=VALUE, the key in capitals, the value letters, digits and _ . / : + , -")
         lines.append(f"{k}={v}")
-    body = ENV_MARK + b": KEY=VALUE lines the boot reads (TZ, BB_RELEASE_LINE)\n" + "".join(x + "\n" for x in lines).encode()
+    body = ENV_MARK + b": KEY=VALUE lines the boot reads (TZ, BB_RELEASE_LINE, BB_HOSTNAME, BB_NET_*)\n" + "".join(x + "\n" for x in lines).encode()
     if len(body) > ENV_SIZE - 1:
         die(f"--set: {len(body)} bytes of lines, and builderbot.env holds {ENV_SIZE}")
     return body + b" " * (ENV_SIZE - 1 - len(body)) + b"\n"
@@ -381,7 +383,7 @@ def main(argv=None):
     w.add_argument("--image", help="builderbot-os-VERSION.stick.raw.xz, a file you have")
     w.add_argument("--release", help="the release's tag to fetch the image from (vX.Y.Z)")
     w.add_argument("--latest", action="store_true", help="fetch the newest release's image (what it does when nothing else is named)")
-    w.add_argument("--set", action="append", metavar="KEY=VALUE", help="a line for the stick's builderbot.env: TZ=Region/City, BB_RELEASE_LINE=X.Y")
+    w.add_argument("--set", action="append", metavar="KEY=VALUE", help="a line for the stick's builderbot.env: TZ=Region/City, BB_RELEASE_LINE=X.Y, BB_HOSTNAME=NAME, BB_NET_ADDRESS=A.B.C.D, BB_NET_MASK=24, BB_NET_GATEWAY=A.B.C.D, BB_NET_DNS=A.B.C.D,E.F.G.H")
     w.add_argument("--config", metavar="FILE", help="a prepared configuration (JSON, docs/image.md) the stick's first boot applies, skipping the first-run page where it says so")
     w.add_argument("--mirror", metavar="FILE", help="a mirror of the vetted catalog (tools/catalog-mirror.py) for a machine with no network, imported as the controller starts")
     w.add_argument("--channel", choices=["normal", "dev"], default="normal", help=argparse.SUPPRESS)

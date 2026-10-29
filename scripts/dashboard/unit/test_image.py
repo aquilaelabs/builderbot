@@ -340,6 +340,12 @@ class Workflow(unittest.TestCase):
             r = sh(f"bash {tool}", {"BB_ESP": esp, "BB_OS_RUN": run, "BB_CMDLINE": c})
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(open(os.path.join(run, "env")).read().splitlines(), ["DEBUG_MODE=1", "TZ=Europe/Paris", "BB_RELEASE_LINE=0.9", "BB_RELEASE_CHANNEL=dev"])
+            self.assertEqual(open(os.path.join(run, "net")).read(), "", "a stick that names no network settings")
+            with open(os.path.join(esp, "builderbot.env"), "a") as f:
+                f.write("BB_HOSTNAME=tower\nBB_NET_ADDRESS=192.0.2.20\nBB_NET_DNS=1.1.1.1,9.9.9.9;x\n")
+            sh(f"bash {tool}", {"BB_ESP": esp, "BB_OS_RUN": run, "BB_CMDLINE": c})
+            self.assertNotIn("BB_NET_ADDRESS", open(os.path.join(run, "env")).read(), "the network's keys are not the controller's")
+            self.assertEqual(open(os.path.join(run, "net")).read().splitlines(), ["BB_HOSTNAME=tower", "BB_NET_ADDRESS=192.0.2.20", "BB_NET_DNS=1.1.1.1,9.9.9.9x"])
             os.unlink(os.path.join(esp, "builderbot.env"))
             open(c, "w").write("bbslot=a builderbot.debug=1\n")
             sh(f"bash {tool}", {"BB_ESP": esp, "BB_OS_RUN": run, "BB_CMDLINE": c})
@@ -363,9 +369,48 @@ class Workflow(unittest.TestCase):
                       read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service"))
         self.assertTrue(os.access(os.path.join(EXTRA, "usr", "lib", "builderbot-os", "firstboot-take"), os.X_OK))
         unit = read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service")
-        self.assertIn("Before=builderbot-controller.service", unit)
+        self.assertIn("Before=builderbot-controller.service systemd-networkd.service", unit)
+        self.assertIn("ExecStart=-/usr/lib/builderbot-os/net", unit)
         self.assertIn("builderbot-os-env.service", read(IMG, "mkosi.postinst"))
         self.assertIn("EnvironmentFile=-/run/builderbot-os/env", read(ROOT, "nodes", "install-controller.sh"))
+
+    def test_the_sticks_network_settings_write_a_network_file_before_dhcps(self):
+        # R161 step 12: BB_NET_ADDRESS and its mask, gateway and DNS become a
+        # runtime .network file that sorts before the image's 80-dhcp one;
+        # anything that is not an address leaves DHCP standing.
+        tool = os.path.join(EXTRA, "usr", "lib", "builderbot-os", "net")
+        self.assertTrue(os.access(tool, os.X_OK))
+        self.assertIn("80-dhcp.network", read(IMG, "mkosi.postinst"))
+        with tempfile.TemporaryDirectory() as d:
+            run, nd = os.path.join(d, "run"), os.path.join(d, "network")
+            os.makedirs(run)
+            env = {"BB_OS_RUN": run, "BB_NETWORK_DIR": nd, "BB_NET_NO_APPLY": "1"}
+            out = os.path.join(nd, "10-builderbot-stick.network")
+
+            def boot(lines):
+                open(os.path.join(run, "net"), "w").write("".join(x + "\n" for x in lines))
+                return sh(f"bash {tool}", env)
+            r = boot(["BB_HOSTNAME=tower", "BB_NET_ADDRESS=192.0.2.20", "BB_NET_MASK=255.255.255.0", "BB_NET_GATEWAY=192.0.2.1", "BB_NET_DNS=1.1.1.1,9.9.9.9"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("the hostname is tower", r.stdout)
+            self.assertEqual(open(out).read(), "[Match]\nName=en* eth*\n\n[Network]\nAddress=192.0.2.20/24\nGateway=192.0.2.1\nDNS=1.1.1.1\nDNS=9.9.9.9\n")
+            boot(["BB_NET_ADDRESS=10.0.0.5", "BB_NET_MASK=16"])
+            self.assertEqual(open(out).read(), "[Match]\nName=en* eth*\n\n[Network]\nAddress=10.0.0.5/16\n", "a mask as its length, no gateway or DNS")
+            boot(["BB_NET_ADDRESS=10.0.0.5"])
+            self.assertIn("Address=10.0.0.5/24", open(out).read(), "24 when the mask is left out")
+            for bad in (["BB_NET_ADDRESS=10.0.0.300"], ["BB_NET_ADDRESS=10.0.0.5", "BB_NET_MASK=255.0.255.0"],
+                        ["BB_NET_ADDRESS=10.0.0.5", "BB_NET_MASK=33"], ["BB_NET_ADDRESS=10.0.0.5", "BB_NET_GATEWAY=router"]):
+                boot(["BB_NET_ADDRESS=10.0.0.5"])
+                r = boot(bad)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertFalse(os.path.exists(out), bad)
+                self.assertIn("DHCP stands", r.stderr)
+            r = boot(["BB_NET_ADDRESS=10.0.0.5", "BB_NET_DNS=1.1.1.1,dns.example"])
+            self.assertEqual(open(out).read().count("DNS="), 1)
+            self.assertIn("dns.example in BB_NET_DNS is not an IPv4 address", r.stderr)
+            r = boot(["BB_HOSTNAME=Not_A_Host"])
+            self.assertFalse(os.path.exists(out), "no address, DHCP")
+            self.assertIn("is not a hostname", r.stderr)
 
     def test_the_disk_is_xz_and_the_stick_variant_runs_from_memory(self):
         # R161 step 5: xz, which the stick maker opens with Python's own

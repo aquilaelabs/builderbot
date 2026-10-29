@@ -88,7 +88,7 @@ class Stick(unittest.TestCase):
 
     def stick_with_env(self, at):
         """An image whose builderbot.env starts `at` bytes in, as lay-disk lays it."""
-        block = self.m.ENV_MARK + b": KEY=VALUE lines the boot reads (TZ, BB_RELEASE_LINE)\n"
+        block = self.m.ENV_MARK + b": KEY=VALUE lines the boot reads (TZ, BB_RELEASE_LINE, BB_HOSTNAME, BB_NET_*)\n"
         block += b" " * (self.m.ENV_SIZE - 1 - len(block)) + b"\n"
         raw = os.urandom(at) + block + os.urandom((3 << 20) - at)
         img = os.path.join(self.d, "builderbot-os-0.9.0.stick.raw.xz")
@@ -106,14 +106,14 @@ class Stick(unittest.TestCase):
             raw, img, dev = self.stick_with_env(at)
             with mock.patch.object(self.m, "CHUNK", 1 << 20), \
                     mock.patch.object(self.m, "open_disk", side_effect=lambda d: open(d, "r+b", buffering=0)):
-                self.m.write_image(img, dev, sets=["TZ=Europe/Berlin", "BB_RELEASE_LINE=0.9"])
+                self.m.write_image(img, dev, sets=["TZ=Europe/Berlin", "BB_RELEASE_LINE=0.9", "BB_NET_DNS=1.1.1.1,9.9.9.9"])
             got = open(dev, "rb").read()
             self.assertEqual(len(got), len(raw))
             self.assertEqual(got[:at], raw[:at])
             self.assertEqual(got[at + self.m.ENV_SIZE:], raw[at + self.m.ENV_SIZE:])
             env = got[at:at + self.m.ENV_SIZE].decode()
             self.assertTrue(env.startswith("# builderbot.env BB-STICK-ENV-1"))
-            self.assertEqual([x for x in env.splitlines() if "=" in x and not x.startswith("#")], ["TZ=Europe/Berlin", "BB_RELEASE_LINE=0.9"])
+            self.assertEqual([x for x in env.splitlines() if "=" in x and not x.startswith("#")], ["TZ=Europe/Berlin", "BB_RELEASE_LINE=0.9", "BB_NET_DNS=1.1.1.1,9.9.9.9"])
 
     def test_config_writes_the_prepared_configuration_beside_the_env_file(self):
         # R161 step 8: firstboot.json's 64 KiB behind its own marker, the two

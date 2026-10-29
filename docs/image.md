@@ -110,9 +110,14 @@ names the removable disks here (the system disk marked, and never written),
 it, says what is on the stick is lost, writes the disk whole and reads it
 back; `verify` reads a stick back against an image. `--set KEY=VALUE`, as
 often as needed, writes a line into the stick's `builderbot.env`, the file on
-the ESP each boot reads into the controller's environment: `TZ`
-(`Europe/Berlin`) and `BB_RELEASE_LINE` (the release line updates follow,
-`0.9`) are the ones it takes. The file is 4 KiB laid by the image itself, and
+the ESP each boot reads: `TZ` (`Europe/Berlin`) and `BB_RELEASE_LINE` (the
+release line updates follow, `0.9`) for the controller, and the stick's
+network settings. `BB_HOSTNAME` names the machine; `BB_NET_ADDRESS`
+(`192.0.2.20`) gives the wired interfaces a static address instead of
+DHCP, with `BB_NET_MASK` (`24` or `255.255.255.0`, `24` when left out),
+`BB_NET_GATEWAY` and `BB_NET_DNS` (`1.1.1.1,9.9.9.9`). A value that is not
+an address is said in the boot's log and DHCP stands, so a mistyped stick
+still comes up on the network. The file is 4 KiB laid by the image itself, and
 the maker writes the lines into those same bytes as the image streams, so
 nothing writes a FAT partition by hand on any system; with the stick in
 another machine it is a plain file to edit, and `verify` takes the same
