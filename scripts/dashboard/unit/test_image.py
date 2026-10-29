@@ -89,6 +89,16 @@ class Packages(unittest.TestCase):
         self.assertTrue(want, "the family names nothing")
         self.assertEqual(want - self.packages(), set())
 
+    def test_the_image_carries_every_tool_lay_disk_asks_for(self):
+        # B446: the installer runs the image's own lay-disk on the ISO, so each
+        # tool it checks for has to come with a package the image lists.
+        lay = read(IMG, "lay-disk")
+        tools = set(re.search(r"for t in ([^;]+); do command -v", lay).group(1).split())
+        carried = {"sfdisk": "fdisk", "mkfs.vfat": "dosfstools", "mkfs.ext4": "e2fsprogs",
+                   "grub-install": "grub-common", "grub-editenv": "grub-common", "partprobe": "parted"}
+        self.assertEqual(tools - set(carried), set(), "a tool lay-disk asks for that this test does not map to its package")
+        self.assertEqual({carried[t] for t in tools} - self.packages(), set())
+
     def test_the_image_carries_the_vm_host_feature(self):
         # vmhost_pkgs is past the provisioner's library return, so its deb
         # line is read as text.
