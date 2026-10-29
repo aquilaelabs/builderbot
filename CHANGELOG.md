@@ -82,6 +82,10 @@
 - Accounts become users of their own on every node as this version's agent lands there: a home moves once the account's sessions started before have ended, and until then that account's terminals open the old way; nothing to do. A sign-in is sealed the next time its person opens a terminal on the node or signs in there, and a session can start for an account only while somebody has opened a terminal for it on that node in the last five minutes, so a scheduled start for an account nobody has opened waits for them (e6d74b8)
 - Signing in again once after this upgrade: a browser's sign-in now has a record of its own, which says when a person's tokens may be used, and the cookies from before carry none. A project's token from 0.8.0 stays its owner's for that project; everyone else on it gives their own in the project's settings (Give it to this project) before their pushes go (3b4d293)
 
+### Fixed
+
+- Switching a phone's browser to its desktop site, or a browser updating itself, no longer signs you out: a sign-in is held to the browser it was made in (Safari, Chrome, Firefox) rather than to its whole identifying string, and a cookie taken to another browser is still refused. Sign-ins kept from before stay signed in through the upgrade.
+
 ### Removed
 
 - The built-in static analysis scan on the Schedules page, and tools/scan.sh with it: the Scanners page runs the scanners now, and an install's scan schedule became the page's schedule (migration 0016); SCANNER_REPORTS_PATH is deprecated and removed in the release after (e6d74b8)

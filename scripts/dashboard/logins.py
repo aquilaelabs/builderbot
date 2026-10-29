@@ -95,10 +95,32 @@ def basic(uid):
 
 
 def _ua_digest(ua):
-    """A browser's User-Agent, digested; "" for none, so a sign-in made with
-    no User-Agent at all (a script, a socket) binds to nothing and the
-    first browser to present it is the one it is held to."""
-    return hashlib.sha256(str(ua).encode("utf-8", "replace")).hexdigest()[:16] if ua else ""
+    """The browser a User-Agent names, digested; "" for none, so a sign-in
+    made with no User-Agent at all (a script, a socket) binds to nothing and
+    the first browser to present it is the one it is held to. The browser
+    alone (Safari, Chrome, Firefox), never its version or its system (B447):
+    a browser's update, and a phone's switch to its desktop site, change the
+    rest of the string and are the same browser."""
+    return family_digest(browser_family(ua)) if ua else ""
+
+
+def browser_family(ua):
+    """Which browser a User-Agent is, as browser_words names it; for one it
+    does not know, the string with its numbers left out."""
+    ua = str(ua or "")
+    fam = next((w for pat, w in BROWSERS if pat in ua), "")
+    return fam or re.sub(r"[0-9._]+", "", ua)[:80]
+
+
+def family_digest(family):
+    """The stored binding of a browser family (migration 0018 writes these)."""
+    return "f:" + hashlib.sha256(str(family).encode("utf-8", "replace")).hexdigest()[:16]
+
+
+# A browser by the word its User-Agent carries, the more particular first
+# (Edge's and Opera's say Chrome too, Chrome's says Safari).
+BROWSERS = (("Edg/", "Edge"), ("OPR/", "Opera"), ("Firefox/", "Firefox"), ("Chrome/", "Chrome"), ("CriOS/", "Chrome"),
+            ("FxiOS/", "Firefox"), ("EdgiOS/", "Edge"), ("Safari/", "Safari"), ("curl/", "curl"))
 
 
 def browser_words(ua):
@@ -109,9 +131,7 @@ def browser_words(ua):
     sysname = next((w for pat, w in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"),
                                      ("Windows", "Windows"), ("Mac OS X", "Mac"), ("CrOS", "ChromeOS"),
                                      ("Linux", "Linux")) if pat in ua), "")
-    browser = next((w for pat, w in (("Edg/", "Edge"), ("OPR/", "Opera"), ("Firefox/", "Firefox"),
-                                     ("Chrome/", "Chrome"), ("CriOS/", "Chrome"), ("FxiOS/", "Firefox"),
-                                     ("Safari/", "Safari"), ("curl/", "curl")) if pat in ua), "")
+    browser = next((w for pat, w in BROWSERS if pat in ua), "")
     if not browser and not sysname:
         return re.sub(r"[^\w ./();,:-]", "", ua)[:40] or "a browser"
     return f"{browser or 'a browser'}{' on ' + sysname if sysname else ''}"

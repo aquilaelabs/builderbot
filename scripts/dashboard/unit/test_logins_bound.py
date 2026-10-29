@@ -2,11 +2,15 @@
 8): a cookie presented from another is refused, a row ended from Profile
 refuses its cookie, the rows list what Profile shows, and a row from before
 binding is bound to the first browser seen."""
+import hashlib
+import importlib.util
+import json
 import os
 import shutil
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import logins  # noqa: E402
@@ -47,6 +51,39 @@ class Bound(unittest.TestCase):
         self.assertEqual(logins.browser_words(""), "a browser")
         self.assertEqual(logins.browser_words("Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"), "Firefox on Linux")
 
+
+    def test_the_same_browser_on_its_desktop_site_or_a_new_version_stays_signed_in(self):
+        # B447: the browser is the binding, never its version or its system.
+        lid = logins.mint("u_12345678", "", PHONE, "10.0.0.5")
+        mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+        self.assertTrue(logins.seen("u_12345678", lid, mac), "Safari's desktop site")
+        self.assertTrue(logins.seen("u_12345678", lid, PHONE.replace("17.0", "18.1")), "Safari updated")
+        lid = logins.mint("u_12345678", "", CHROME, "10.0.0.5")
+        self.assertTrue(logins.seen("u_12345678", lid, CHROME.replace("Chrome/130.0", "Chrome/131.0")))
+        self.assertFalse(logins.seen("u_12345678", lid, PHONE), "another browser, still refused")
+
+
+class Migration0018(unittest.TestCase):
+    def test_a_whole_string_binding_becomes_its_browsers_and_stays_signed_in(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        spec = importlib.util.spec_from_file_location("m0018", os.path.join(here, "..", "statemigrations", "0018_signin_by_browser.py"))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        t = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, t, True)
+        old = hashlib.sha256(PHONE.encode()).hexdigest()[:16]
+        Path(t, "logins.json").write_text(json.dumps({"u_12345678": {
+            "a": {"ua": old, "agent": "Safari on iPhone", "at": 1, "last": 1},
+            "b": {"ua": old, "agent": "a browser", "at": 1, "last": 1},
+            "basic": {"at": 1, "last": 1, "kind": "basic"}}}))
+        m.run({"state": t})
+        m.run({"state": t})
+        d = json.loads(Path(t, "logins.json").read_text())["u_12345678"]
+        self.assertEqual(d["a"]["ua"], logins.family_digest("Safari"))
+        self.assertEqual(d["b"]["ua"], "", "held to nothing, bound again by the first browser seen")
+        self.assertNotIn("ua", d["basic"])
+        logins.configure(state=t)
+        self.assertTrue(logins.seen("u_12345678", "a", PHONE), "signed in through the upgrade")
 
 if __name__ == "__main__":
     unittest.main()
