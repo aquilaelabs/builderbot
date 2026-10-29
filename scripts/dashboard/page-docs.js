@@ -1393,7 +1393,7 @@ function chipsEdges(root = document){
 // A press on an end's arrow moves the row most of its width that way. The
 // arrows are the row's own ::before and ::after, so the press lands on the
 // row itself, at its edge, never on a chip.
-const CHIP_ARROW = 28;
+const CHIP_ARROW = 32;
 function chipsArrow(e){
   const c = e.target;
   if (!c?.matches?.(".chips.chl, .chips.chr, .dockline.chl, .dockline.chr, .hscroll.chl, .hscroll.chr") || chipDragged) return;
