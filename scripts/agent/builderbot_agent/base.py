@@ -220,6 +220,44 @@ APT_BIN = os.environ.get("BUILDERBOT_APT_BIN", "apt-get")
 IDLE_UNIT = float(os.environ.get("BUILDERBOT_IDLE_UNIT", "60"))
 # The session names a coding agent runs under (claude-<project>).
 AGENT_PREFIXES = tuple(f"{a}-" for a in AGENT_IDS)
+_pack_ids = {"stamp": None, "ids": ()}
+
+
+def pack_agent_ids():
+    """The coding agents vetted packs bring (R169 step 10), by the rows of
+    the root bundle's config/toolpacks.json that carry an adapter: read
+    again only when the file changes. Never a shipped agent's id."""
+    path = os.path.join(ROOT_BUNDLE_DIR, "current", "config", "toolpacks.json")
+    try:
+        st = os.stat(path)
+        stamp = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return ()
+    if stamp != _pack_ids["stamp"]:
+        ids = ()
+        try:
+            with open(path, encoding="utf-8") as f:
+                rows = json.load(f).get("toolchains") or []
+            ids = tuple(sorted(r["name"] for r in rows if isinstance(r, dict) and isinstance(r.get("agent"), dict)
+                               and re.fullmatch(r"[a-z][a-z0-9]{1,15}", str(r.get("name") or "")) and r["name"] not in AGENT_IDS))
+        except (OSError, ValueError, AttributeError, TypeError):
+            pass
+        _pack_ids.update(stamp=stamp, ids=ids)
+    return _pack_ids["ids"]
+
+
+def agent_prefixes():
+    """Every coding agent's session prefix, the shipped and the packs'."""
+    return AGENT_PREFIXES + tuple(f"{a}-" for a in pack_agent_ids())
+
+
+def respawnable(cmd):
+    """Whether a pane's start command is a coding agent's launcher bb-tty
+    wrote, the shipped agents' or a pack's (R169 step 10)."""
+    if re.fullmatch(RESPAWNABLE, cmd):
+        return True
+    ids = pack_agent_ids()
+    return bool(ids) and bool(re.fullmatch(RESPAWNABLE.replace("|".join(AGENT_IDS), "|".join(AGENT_IDS + ids)), cmd))
 
 
 def harden():

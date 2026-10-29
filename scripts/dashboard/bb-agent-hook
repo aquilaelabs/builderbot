@@ -4,6 +4,9 @@
     bb-agent-hook AGENT EVENT [PROJECT SESSION]
     bb-agent-hook --claude-settings PROJECT ACCOUNT DIR
     bb-agent-hook --agent-events AGENT
+    bb-agent-hook --pack-agent AGENT             a pack agent's adapter, as JSON
+    bb-agent-hook --pack-hooks AGENT             its hooks file written in its shape
+    bb-agent-hook --pack-launch AGENT            its launcher's lines, for bb-tty
 
 Codex CLI and Copilot CLI each carry hooks of their own now (Codex's
 PreToolUse, UserPromptSubmit, Stop, PermissionRequest and PostCompact;
@@ -28,6 +31,13 @@ refuses), Copilot with its permissionDecision on stdout before a tool.
 
 Every failure of its own lets the call through, as each hook does: a guard
 is never worth an agent that cannot work.
+
+A coding agent a vetted pack brings (R169 step 10) is held the same way from
+its adapter, which the bundle carries in the pack's row of
+config/toolpacks.json: its event names, its payload's shape (snake as
+Claude's and Codex's, camel as Grok's and Copilot's) and tool names, and its
+hooks file's shape, grouped answering as Claude does and flat as Copilot
+does.
 """
 import contextlib
 import json
@@ -50,9 +60,45 @@ GREP = {"grep", "Grep", "search_file_content"}
 PATCH_FILE = re.compile(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$", re.M)
 
 
+SHIPPED = ("claude", "codex", "copilot", "grok", "open")
+
+
+def packs_file():
+    return os.environ.get("BB_TOOLPACKS_JSON") or os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "config", "toolpacks.json")
+
+
+def pack_adapter(agent):
+    """The adapter of the coding agent a pack in this bundle brings, or None
+    (a shipped agent's name is never a pack's)."""
+    if agent in SHIPPED or not re.fullmatch(r"[a-z][a-z0-9]{1,15}", str(agent or "")):
+        return None
+    try:
+        with open(packs_file(), encoding="utf-8") as f:
+            rows = json.load(f).get("toolchains") or []
+    except (OSError, ValueError, AttributeError):
+        return None
+    for r in rows if isinstance(rows, list) else []:
+        if isinstance(r, dict) and r.get("name") == agent and isinstance(r.get("agent"), dict):
+            return r["agent"]
+    return None
+
+
+def protocol(agent):
+    """How the agent reads a hook's answer: "copilot" (a permissionDecision
+    on stdout before a tool) or "claude" (exit 2 and the reason on stderr)."""
+    if agent == "copilot":
+        return "copilot"
+    a = pack_adapter(agent) if agent not in SHIPPED else None
+    return "copilot" if a and (a.get("hooks") or {}).get("shape") == "flat" else "claude"
+
+
 def as_claude(agent, raw):
     """The payload in Claude Code's shape: the fields BuilderBot's hooks read."""
     d = raw if isinstance(raw, dict) else {}
+    pack = pack_adapter(agent) if agent not in SHIPPED else None
+    tools = (pack.get("hooks") or {}).get("tools") or {} if pack else {}
+    if pack and (pack.get("hooks") or {}).get("payload") == "camel":
+        agent = "grok"
     if agent == "grok":
         # Grok Build's camelCase, its tool's input an object.
         args = d.get("toolInput")
@@ -81,14 +127,16 @@ def as_claude(agent, raw):
         out = dict(d)
         out.setdefault("tool_input", d.get("tool_input") or {})
     name, spec = str(out.get("tool_name") or ""), out.get("tool_input") or {}
-    if name in SHELL:
+    # A pack agent's own tool names, beside the usual ones.
+    shell, edit, grep = SHELL | set(tools.get("shell") or ()), EDIT | set(tools.get("edit") or ()), GREP | set(tools.get("grep") or ())
+    if name in shell:
         cmd = spec.get("command") if isinstance(spec, dict) else spec
         if isinstance(cmd, list):
             # Codex hands a command as its argv, with `bash -lc SCRIPT` the
             # usual shape: the script is what a rule reads.
             cmd = cmd[2] if len(cmd) == 3 and cmd[1] in ("-lc", "-c") else shlex.join(str(x) for x in cmd)
         out["tool_name"], out["tool_input"] = "Bash", {"command": str(cmd or "")}
-    elif name in EDIT:
+    elif name in edit:
         path = ""
         if isinstance(spec, dict):
             path = spec.get("file_path") or spec.get("path") or spec.get("filePath") or ""
@@ -99,7 +147,7 @@ def as_claude(agent, raw):
             m = PATCH_FILE.search(spec)
             path = m.group(1).strip() if m else ""
         out["tool_name"], out["tool_input"] = "Edit", {"file_path": path}
-    elif name in GREP:
+    elif name in grep:
         pat = spec.get("pattern") or spec.get("query") or "" if isinstance(spec, dict) else str(spec or "")
         out["tool_name"], out["tool_input"] = "Grep", {"pattern": str(pat)}
     return out
@@ -122,7 +170,18 @@ def keep(agent, raw):
         # Any model's plugin keeps its own export (opencode export) in the
         # same folder; nothing to copy here.
         return
-    if agent == "copilot":
+    pack = pack_adapter(agent)
+    if pack:
+        # Where its adapter says it keeps a conversation, by the id its
+        # payload carries, inside that folder and nowhere else.
+        tr = pack.get("transcripts") or {}
+        key = tr.get("session_key") or ("sessionId" if (pack.get("hooks") or {}).get("payload") == "camel" else "session_id")
+        sid = str(d.get(key) or "")
+        base = os.path.realpath(os.path.join(home, tr.get("dir") or ""))
+        src = os.path.realpath(os.path.join(base, (tr.get("file") or "").replace("{session}", sid))) if tr.get("dir") and tr.get("file") else ""
+        if not src.startswith(base + os.sep):
+            return
+    elif agent == "copilot":
         sid = str(d.get("sessionId") or "")
         src = str(d.get("transcriptPath") or "") or os.path.join(
             os.environ.get("COPILOT_HOME") or os.path.join(home, ".copilot"), "session-state", sid, "events.jsonl")
@@ -297,10 +356,69 @@ def claude_settings(proj, who, where):
     return out
 
 
+# How long each event's call is given, for an agent whose hooks file names
+# one (a pack agent's): the other agents' own.
+TIMEOUTS = {"pre": 120, "prompt": 900, "stop": 3600, "recall": 30, "asking": 15}
+
+
 def agent_events(agent):
     """[[the agent's event name, this script's event, its timeout]], for
     bb-tty to write into that agent's hooks file."""
+    pack = pack_adapter(agent)
+    if pack:
+        evs = (pack.get("hooks") or {}).get("events") or {}
+        return [[evs[ev], ev, TIMEOUTS[ev]] for ev in HOOKS if ev in evs and ev in TIMEOUTS]
     return [[spec[agent][0], ev, spec[agent][1]] for ev, spec in HOOKS.items() if agent in spec]
+
+
+def pack_hooks(agent, home, cmd):
+    """A pack agent's hooks file, written in its shape under `home`: BuilderBot's
+    own, so it is replaced whole at each start. The path it wrote, or ""."""
+    pack = pack_adapter(agent)
+    if not pack:
+        return ""
+    h = pack.get("hooks") or {}
+    base = os.path.realpath(home)
+    path = os.path.realpath(os.path.join(base, h.get("file") or ""))
+    if not h.get("file") or not path.startswith(base + os.sep):
+        return ""
+    evs = agent_events(agent)
+    if h.get("shape") == "flat":
+        doc = {"version": 1, "hooks": {n: [{"type": "command", "bash": f"{cmd} {ev}", "timeoutSec": t}] for n, ev, t in evs}}
+    else:
+        doc = {"hooks": {n: [{"hooks": [{"type": "command", "command": f"{cmd} {ev}", "timeout": t}]}] for n, ev, t in evs}}
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    tmp = path + ".new"
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1)
+    os.replace(tmp, path)
+    return path
+
+
+def pack_launch(agent):
+    """The lines bb-tty's launcher takes for a pack agent, quoted here: its
+    environment words, the briefing its way (from $bf, the briefing's file
+    when there is one), the model picked ($am) after its flag, and its
+    resume arguments on a respawn. The exec line itself is bb-tty's."""
+    pack = pack_adapter(agent)
+    if not pack:
+        return ""
+    q = shlex.quote
+    out = [f"export {k}={q(v)}" for k, v in sorted((pack.get("env") or {}).items())
+           if re.fullmatch(r"[A-Z][A-Z0-9_]{0,40}", k) and not k.startswith("BB_") and k not in ("PATH", "HOME")]
+    b = pack.get("briefing") or {}
+    if b.get("how") == "flag-text" and b.get("flag"):
+        out.append(f'if [ -n "${{bf:-}}" ] && [ -s "$bf" ]; then extra+=({q(b["flag"])} "$(cat "$bf")"); fi')
+    elif b.get("how") == "flag-file" and b.get("flag"):
+        out.append(f'if [ -n "${{bf:-}}" ] && [ -s "$bf" ]; then extra+=({q(b["flag"])} "$bf"); fi')
+    elif b.get("how") == "env-file" and b.get("env"):
+        out.append(f'if [ -n "${{bf:-}}" ] && [ -s "$bf" ]; then export {b["env"]}="$bf"; fi')
+    if pack.get("models") and pack.get("model_flag"):
+        out.append(f'case " {" ".join(q(m) for m in pack["models"])} " in *" ${{am:-}} "*) ;; *) am="" ;; esac')
+        out.append(f'[ -z "${{am:-}}" ] || extra+=({q(pack["model_flag"])} "$am")')
+    if pack.get("respawn"):
+        out.append(f'if [ "${{1:-}}" = --respawn ]; then extra+=({" ".join(q(w) for w in pack["respawn"])}); fi')
+    return "\n".join(out) + "\n"
 
 
 def main(argv):
@@ -309,6 +427,21 @@ def main(argv):
         return 0
     if argv[:1] == ["--agent-events"] and len(argv) == 2:
         print(json.dumps(agent_events(argv[1])))
+        return 0
+    if argv[:1] == ["--pack-agent"] and len(argv) == 2:
+        a = pack_adapter(argv[1])
+        if not a:
+            return 1
+        print(json.dumps(a))
+        return 0
+    if argv[:1] == ["--pack-hooks"] and len(argv) == 2:
+        here = os.path.dirname(os.path.abspath(__file__))
+        return 0 if pack_hooks(argv[1], os.environ.get("HOME", ""), f"{os.path.join(os.environ.get('BB_HOOKS_DIR') or here, 'bb-agent-hook')} {argv[1]}") else 1
+    if argv[:1] == ["--pack-launch"] and len(argv) == 2:
+        got = pack_launch(argv[1])
+        if not got:
+            return 1
+        sys.stdout.write(got)
         return 0
     if len(argv) < 2:
         return 0
@@ -331,8 +464,9 @@ def main(argv):
     said = []
     why = wall((call.get("tool_input") or {}).get("file_path", ""), call.get("cwd") or "") \
         if event == "pre" and call.get("tool_name") == "Edit" else ""
+    proto = protocol(agent)
     if why:
-        if agent == "copilot":
+        if proto == "copilot":
             print(json.dumps({"permissionDecision": "deny", "permissionDecisionReason": why}))
             return 0
         print(why, file=sys.stderr)
@@ -343,7 +477,7 @@ def main(argv):
             said.append(out.strip())
         if code == 2:
             reason = err.strip() or "refused by a BuilderBot guard"
-            if agent == "copilot" and event == "pre":
+            if proto == "copilot" and event == "pre":
                 print(json.dumps({"permissionDecision": "deny", "permissionDecisionReason": reason}))
                 return 0
             print(reason, file=sys.stderr)
@@ -351,7 +485,7 @@ def main(argv):
     # What a hook had to say to the model (a rule's text, a note), passed on
     # where the agent reads a hook's output; Copilot's before a tool reads
     # only a decision, so nothing goes there.
-    if said and not (agent == "copilot" and event == "pre"):
+    if said and not (proto == "copilot" and event == "pre"):
         print(json.dumps({"hookSpecificOutput": {"hookEventName": EVENTS.get(event, event),
                                                  "additionalContext": context(said)}}))
     return 0

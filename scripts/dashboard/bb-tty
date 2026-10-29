@@ -372,6 +372,8 @@ agent_models() {
     case "$1" in
         codex) printf %s "gpt-6.1-sol gpt-6-sol gpt-6-astra gpt-6-luna gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna gpt-5.5" ;;
         copilot) printf %s "auto claude-sonnet-5.5 claude-opus-5.5 claude-haiku-5.5 gpt-6.1-sol gpt-6-sol gpt-5.6-sol gpt-5-mini gemini-4-argon gemini-3.8-flash grok-4.7" ;;
+        # A pack agent's, from its adapter (R169 step 10).
+        "${PACK_AGENT:-//}") jq -r '(.models // []) | join(" ")' <<<"$PACK_ADAPTER" 2>/dev/null ;;
     esac
 }
 agent_efforts() {
@@ -845,6 +847,13 @@ PY
             printf 'export BB_ROUTER_KEY=%q OPENCODE_CONFIG=%q BB_TRANSCRIPT_DIR=%q\n' "${BB_ROUTER_KEY:-}" "$dir/opencode.json" "$tdir/open"
             printf 'export OPENCODE_DISABLE_AUTOUPDATE=1\n'
         fi
+        # A pack agent's own lines (R169 step 10), quoted by bb-agent-hook
+        # from its adapter: its environment words, the briefing its way from
+        # its file, the model after its flag, its resume on a respawn.
+        if [ -n "${PACK_AGENT:-}" ] && [ "$ag" = "$PACK_AGENT" ]; then
+            printf 'bf=%q\n' "${BB_AGENT_BRIEFING:-}"
+            python3 "$(dirname "$(readlink -f "$0")")/bb-agent-hook" --pack-launch "$ag" || return 1
+        fi
         if [ "$ag" = codex ]; then
             printf '[ -z "${am:-}" ] || extra+=(-m "$am")\n'
             printf '[ -z "${ae:-}" ] || extra+=(-c "model_reasoning_effort=\\"$ae\\"")\n'
@@ -931,6 +940,14 @@ PY
         # which keeps the session open after it.
         if [ "$ag" = copilot ]; then
             printf ' "${extra[@]}" ${first:+-i} ${first:+"$first"}\n'
+        elif [ -n "${PACK_AGENT:-}" ] && [ "$ag" = "$PACK_AGENT" ]; then
+            # A pack agent's first prompt its way: after its flag, after
+            # --, or not handed over.
+            case "$(jq -r '.first_prompt.how // "none"' <<<"$PACK_ADAPTER")" in
+                flag) printf ' "${extra[@]}" ${first:+%q} ${first:+"$first"}\n' "$(jq -r '.first_prompt.flag // empty' <<<"$PACK_ADAPTER")" ;;
+                after-dashdash) printf ' "${extra[@]}" ${first:+--} ${first:+"$first"}\n' ;;
+                *) printf ' "${extra[@]}"\n' ;;
+            esac
         else
             printf ' "${extra[@]}" ${first:+--} ${first:+"$first"}\n'
         fi
@@ -1463,12 +1480,27 @@ start() {
     [[ "$s" =~ ^u_[0-9a-f]{8}~ ]] && b="${s#*~}"
     case "$b" in
         claude-*|codex-*|copilot-*|grok-*) tmux set-option -t "$s" mouse on ;;
+        "${PACK_AGENT:-//}"-*) tmux set-option -t "$s" mouse on ;;
         *)        tmux set-option -t "$s" mouse off ;;
     esac
 
     tmux_keys
     exec tmux attach-session -t "$s"
 }
+
+# A coding agent a vetted pack brings (R169 step 10): its id is the
+# argument's prefix when this bundle's config/toolpacks.json carries its
+# adapter, which bb-agent-hook reads; the agents' branch below takes it.
+PACK_AGENT="" PACK_ADAPTER=""
+case "$target" in
+    [a-z]*:*)
+        pa="${target%%:*}"
+        case "$pa" in claude|codex|copilot|grok|open|shell|ctr|*[!a-z0-9]*) ;; *)
+            if PACK_ADAPTER="$(python3 "$(dirname "$(readlink -f "$0")")/bb-agent-hook" --pack-agent "$pa" 2>/dev/null)"; then
+                PACK_AGENT="$pa"
+            fi ;;
+        esac ;;
+esac
 
 case "$target" in
     shell)
@@ -1501,7 +1533,7 @@ case "$target" in
         start "$(sess "shell-${proj}-${num}")" "$dir" "${RUN[@]}"
         ;;
 
-    claude:*|codex:*|copilot:*|grok:*|open:*)
+    claude:*|codex:*|copilot:*|grok:*|open:*|"${PACK_AGENT:-//}":*)
         # The coding agent this session runs (R95): the argument's prefix,
         # by the agent table's ids (scripts/dashboard/agents.py), each with
         # what a person reads it as. Claude's is the path this branch has
@@ -1510,6 +1542,7 @@ case "$target" in
         # its settings file with the hooks, its transcripts).
         agent="${target%%:*}"
         rest="${target#*:}"
+        agent_cmd=""
         case "$agent" in
             claude)  agent_name=Claude;  agent_product="Claude Code" ;;
             codex)   agent_name=ChatGPT; agent_product="Codex CLI" ;;
@@ -1517,6 +1550,11 @@ case "$target" in
             grok)    agent_name=Grok;    agent_product="Grok Build" ;;
             # Any model (R144 step 2): OpenCode, pointed at a node's router.
             open)    agent_name="Any model"; agent_product="OpenCode" ;;
+            # A pack's (R169 step 10), as its adapter names it.
+            *)       agent_name="$(jq -r '.name // empty' <<<"$PACK_ADAPTER")"
+                     agent_product="$(jq -r '.product // empty' <<<"$PACK_ADAPTER")"
+                     agent_cmd="$(jq -r '.command // empty' <<<"$PACK_ADAPTER")"
+                     [ -n "$agent_cmd" ] || bad "The ${agent} pack names no command for its agent." ;;
         esac
         # claude:PROJECT                  a fresh conversation
         # claude:PROJECT:r:UUID           resume that transcript (Claude's)
@@ -1649,6 +1687,15 @@ case "$target" in
                 # Any model signs in to nobody: its keys are the router's,
                 # handed over below once a router allows this project.
                 open) [ -n "${BB_ROUTER_URL:-}" ] ;;
+                # A pack agent's: the variable its adapter names, or its
+                # file under the home; one that names neither signs in to
+                # nobody (R169 step 11).
+                *)
+                    local se sf
+                    se="$(jq -r '.signin.env // empty' <<<"$PACK_ADAPTER")"
+                    sf="$(jq -r '.signin.file // empty' <<<"$PACK_ADAPTER")"
+                    if [ -z "$se$sf" ]; then return 0; fi
+                    { [ -n "$se" ] && [ -n "${!se:-}" ]; } || { [ -n "$sf" ] && [ -s "$HOME/$sf" ]; } ;;
             esac
         }
         # The router's address, this project's own key and the models it
@@ -1683,7 +1730,7 @@ case "$target" in
         fi
         # Installed on purpose, from the node's Agents page, never by the
         # provisioner (R145): without it there is nothing for a session to run.
-        if ! command -v "$agent" >/dev/null 2>&1; then
+        if ! command -v "${agent_cmd:-$agent}" >/dev/null 2>&1; then
             bad "${agent_product} is not installed on ${BB_NODE:-this node}: the Library installs it there." \
                 "Open the Library, pick ${BB_NODE:-this node}, and press Install on" \
                 "${agent_name}; then open this again."
@@ -1724,7 +1771,11 @@ case "$target" in
             # Its updater off in the launcher's environment, as Copilot's.
             grok)    cmd=(grok) ;;
             open)    cmd=(opencode) ;;
+            *)       cmd=("$agent_cmd") ;;
         esac
+        if [ -n "$resume" ] && [ -n "$PACK_AGENT" ]; then
+            bad "${agent_name} resumes its newest conversation when its session comes back, not one picked by its id."
+        fi
         if [ -n "$resume" ] && [ "$agent" != claude ]; then
             # Another agent's conversation resumes below, once its tree is
             # known: its log is kept in that tree's folder (R95 step 8).
@@ -1826,6 +1877,8 @@ case "$target" in
                         if ( umask 077; mkdir -p "$idir" ) && cp -f "$pref" "$idir/AGENTS.md" 2>/dev/null; then
                             export COPILOT_CUSTOM_INSTRUCTIONS_DIRS="$idir"
                         fi ;;
+                    # A pack agent's, its way (bb-agent-hook --pack-launch).
+                    *) [ -z "$PACK_AGENT" ] || export BB_AGENT_BRIEFING="$pref" ;;
                 esac
             else
                 echo "WARNING: could not write this session's briefing to ${pref};" >&2
@@ -1924,8 +1977,10 @@ case "$target" in
             # session's own tree is answered for them the same way.
             agent_first_run "$agent" "$dir" || true
             # ...and its project's other repositories (R136), trusted and
-            # writable to it as Claude's settings make them.
+            # writable to it as Claude's settings make them; a pack agent
+            # names no such option, so it works in its own tree alone.
             for wd in ${BB_WORK_DIRS:-}; do
+                [ -z "$PACK_AGENT" ] || break
                 agent_first_run "$agent" "$wd" || true
                 cmd+=(--add-dir "$wd")
             done
@@ -1951,7 +2006,12 @@ case "$target" in
                 echo "WARNING: could not write OpenCode's config; this session starts with no router and no briefing." >&2
             fi
         fi
-        if [ "$agent" != claude ]; then
+        if [ -n "$PACK_AGENT" ]; then
+            # A pack agent's guards are its hooks or nothing: it does not
+            # start without them (R169 step 10).
+            BB_HOOKS_DIR="$(lasting_dir)" python3 "$(dirname "$(readlink -f "$0")")/bb-agent-hook" --pack-hooks "$agent" \
+                || bad "Could not write ${agent_product}'s hooks, so it would run without BuilderBot's guards: it does not start."
+        elif [ "$agent" != claude ]; then
             # Its guards are its own hooks, holding Claude's (R95 step 6).
             if ! agent_hooks "$agent"; then
                 echo "WARNING: could not write ${agent_product}'s hooks; this session is held by" >&2

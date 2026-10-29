@@ -63,8 +63,10 @@ class Official(unittest.TestCase):
         self.assertEqual(clean["agent"]["command"], "claude")
         clean, errors = toolpacks.validate({**m, "agent": {**a, "guards": "none"}})
         self.assertTrue(any("cannot take BuilderBot's guards" in e for e in errors))
+        # Another pack's agent block is a pack agent's adapter (R169 step 8),
+        # which never takes a shipped agent's name or its table's fields.
         clean, errors = toolpacks.validate({**m, "tier": "url"})
-        self.assertTrue(any("official pack's alone" in e for e in errors))
+        self.assertTrue(any("a coding agent BuilderBot ships" in e for e in errors), errors)
 
     def test_the_packs_written_match_the_tables(self):
         r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "packs-export.py"), "--check"], capture_output=True, text=True, check=False)

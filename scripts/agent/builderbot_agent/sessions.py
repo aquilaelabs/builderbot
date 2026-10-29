@@ -14,7 +14,7 @@ import time
 from .jobs import pump
 from .base import (
     AGENT_INSTALLS,
-    AGENT_PREFIXES,
+    agent_prefixes,
     AGENTS_DIR,
     CLAUDE_INSTALL,
     CLAUDE_DIR,
@@ -23,7 +23,7 @@ from .base import (
     FIREWALL_EVERY_S,
     IDLE_UNIT,
     NFT_BIN,
-    RESPAWNABLE,
+    respawnable,
     SESSION,
     ROOT_BUNDLE_DIR,
     SESSION_BIN,
@@ -695,7 +695,7 @@ class SessionsMixin:
             if op.get("respawn"):
                 cmd = (self._tmux(["display-message", "-p", "-t", sess,
                                    "#{pane_start_command}"]) or "").strip()
-                if re.fullmatch(RESPAWNABLE, cmd):
+                if respawnable(cmd):
                     # Word by word. tmux runs more than one argument as the
                     # program and its arguments, so the view's launcher line
                     # handed over whole names a program nobody has, and the
@@ -1071,7 +1071,7 @@ class SessionsMixin:
                 continue
             # The account's prefix alone off: a second slot ends in ~2 (R143).
             base = re.sub(r"^u_[0-9a-f]{8}~", "", name)
-            if base.startswith(AGENT_PREFIXES) and time.time() - last > limit * IDLE_UNIT:
+            if base.startswith(agent_prefixes()) and time.time() - last > limit * IDLE_UNIT:
                 log(f"sessions: ending {name} (idle {limit} minute(s), the controller's rule)")
                 self._tmux(["kill-session", "-t", "=" + name])
 

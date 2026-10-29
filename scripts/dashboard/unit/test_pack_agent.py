@@ -13,6 +13,8 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import agents  # noqa: E402
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
 import library  # noqa: E402
 import toolpacks  # noqa: E402
 
@@ -134,6 +136,96 @@ class Listed(unittest.TestCase):
         by = {r["name"]: r for r in rows}
         self.assertEqual((by["kite"]["kind"], by["kite"].get("group")), ("pack", "agent"))
         self.assertEqual((by["otter"]["kind"], by["otter"].get("group")), ("pack", "agent"))
+
+
+
+def load_hook():
+    path = os.path.join(os.path.dirname(__file__), "..", "bb-agent-hook")
+    loader = importlib.machinery.SourceFileLoader("bb_agent_hook_pack", path)
+    spec = importlib.util.spec_from_loader("bb_agent_hook_pack", loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+class OnTheNode(unittest.TestCase):
+    """R169 step 10: the bundle's pack row carries the adapter, and the node
+    side holds the agent to the guards from it."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        m, errors = toolpacks.validate(KITE)
+        self.assertEqual(errors, [])
+        self.rec = {"name": "kite", "url": "https://example.com/kite", "commit": "a" * 40, "manifest": m, "tier": "vetted"}
+        self.packs = os.path.join(self.d, "toolpacks.json")
+        self.write(KITE)
+        env = mock.patch.dict(os.environ, {"BB_TOOLPACKS_JSON": self.packs, "HOME": os.path.join(self.d, "home"), "BB_TREE": "/w/p"})
+        env.start()
+        self.addCleanup(env.stop)
+        self.h = load_hook()
+
+    def write(self, manifest):
+        m, errors = toolpacks.validate(manifest)
+        self.assertEqual(errors, [])
+        rec = dict(self.rec, manifest=m)
+        Path(self.packs).write_text(json.dumps({"toolchains": [toolpacks.recipe(rec)]}))
+
+    def test_its_payload_and_its_own_tool_names_read_as_claudes(self):
+        got = self.h.as_claude("kite", {"toolName": "run_command", "toolInput": {"command": "git push --force"}, "sessionId": "s1"})
+        self.assertEqual((got["tool_name"], got["tool_input"], got["session_id"]), ("Bash", {"command": "git push --force"}, "s1"))
+        self.assertEqual(self.h.as_claude("claude", {"tool_name": "run_command"})["tool_name"], "run_command", "its names are its own alone")
+        self.assertEqual(self.h.agent_events("kite"), [["PreToolUse", "pre", 120], ["PostCompact", "recall", 30],
+                                                       ["UserPromptSubmit", "prompt", 900], ["Stop", "stop", 3600]])
+        self.assertIsNone(self.h.pack_adapter("claude"), "a shipped agent is never a pack's")
+
+    def test_its_hooks_file_is_written_in_its_shape_under_home_alone(self):
+        home = os.environ["HOME"]
+        path = self.h.pack_hooks("kite", home, "/b/bb-agent-hook kite")
+        self.assertEqual(path, os.path.join(os.path.realpath(home), ".kite", "hooks", "builderbot.json"))
+        doc = json.loads(Path(path).read_text())
+        self.assertEqual(doc["hooks"]["PreToolUse"], [{"hooks": [{"type": "command", "command": "/b/bb-agent-hook kite pre", "timeout": 120}]}])
+        self.assertEqual(self.h.protocol("kite"), "claude")
+        flat = copy.deepcopy(KITE)
+        flat["agent"]["hooks"]["shape"] = "flat"
+        self.write(flat)
+        doc = json.loads(Path(self.h.pack_hooks("kite", home, "/b/h kite")).read_text())
+        self.assertEqual(doc["version"], 1)
+        self.assertEqual(doc["hooks"]["Stop"], [{"type": "command", "bash": "/b/h kite stop", "timeoutSec": 3600}])
+        self.assertEqual(self.h.protocol("kite"), "copilot", "a flat file's agent reads a refusal as Copilot does")
+
+    def test_its_launcher_lines_are_quoted_words(self):
+        lines = self.h.pack_launch("kite")
+        self.assertIn("export KITE_DISABLE_AUTOUPDATER=1\n", lines)
+        self.assertIn('extra+=(--rules "$(cat "$bf")")', lines)
+        self.assertIn('if [ "${1:-}" = --respawn ]; then extra+=(-c); fi', lines)
+        self.assertIn('[ -z "${am:-}" ] || extra+=(--model "$am")', lines)
+        self.assertEqual(self.h.pack_launch("claude"), "")
+
+    def test_its_conversation_is_copied_from_its_folder_and_never_from_outside_it(self):
+        home = os.environ["HOME"]
+        os.makedirs(os.path.join(home, ".kite", "sessions", "s1"))
+        Path(home, ".kite", "sessions", "s1", "log.jsonl").write_text('{"text": "hi"}\n')
+        self.h.keep("kite", {"sessionId": "s1"})
+        kept = Path(home, ".claude", "projects", "-w-p", "kite", "s1.jsonl")
+        self.assertEqual(kept.read_text(), '{"text": "hi"}\n')
+        Path(self.d, "secret").write_text("no")
+        self.h.keep("kite", {"sessionId": "../../../secret"})
+        self.assertFalse(Path(home, ".claude", "projects", "-w-p", "kite", "../../../secret.jsonl").exists())
+
+    def test_the_node_agent_respawns_its_launcher_and_reads_its_sessions(self):
+        sys.path.insert(0, os.path.dirname(__file__))
+        import agentpkg  # noqa: PLC0415
+        node = agentpkg.load("builderbot_agent")
+        cur = os.path.join(self.d, "bundle", "current", "config")
+        os.makedirs(cur)
+        Path(cur, "toolpacks.json").write_text(Path(self.packs).read_text())
+        line = "/home/x/.cache/builderbot/u/u_0000abcd/project/p/kite-run.sh"
+        node.ROOT_BUNDLE_DIR = os.path.join(self.d, "bundle")
+        self.assertEqual(node.pack_agent_ids(), ("kite",))
+        self.assertTrue(node.respawnable(line))
+        self.assertIn("kite-", node.agent_prefixes())
+        self.assertFalse(node.respawnable(line.replace("kite-run", "otter-run")))
+        self.assertTrue(node.respawnable(line.replace("kite-run", "codex-run")), "the shipped agents' as before")
 
 
 if __name__ == "__main__":
