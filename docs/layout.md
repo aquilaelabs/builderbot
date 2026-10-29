@@ -24,7 +24,7 @@ image/                           BuilderBot OS, the appliance image the installe
   mkosi.conf                     the tree: Debian trixie, its packages (the controller's own come from config/controller-packages.tsv)
   mkosi.postinst                 inside the tree once its packages are in: install-controller.sh --stage, apt diverted, the services enabled
   mkosi.sandbox/                 apt's settings for a dated snapshot (its Release files are past their date by design)
-  mkosi.extra/                   what is laid into the tree: the initramfs script that mounts /var and /etc's overlay, fstab, the slot tool, the apt stub, the first-boot unit, the boot's own settings and the stick's network file, the installer and its unit
+  mkosi.extra/                   what is laid into the tree: the initramfs script that mounts /var and /etc's overlay, fstab, the slot tool, the apt stub, the first-boot unit, the boot's own settings and the stick's network file, the data partition grown to its disk, the installer and its unit
   partitions.sh                  the disk's fixed partition UUIDs, sizes and labels, one place for build.sh, the initramfs, fstab and GRUB
   grub.cfg                       GRUB's menu on the ESP: the two slots, bb_slot from grubenv naming the one to boot
   iso-grub.cfg                   the ISO's menu (R160 step 2): the same root booted live, with the installer or without

@@ -14,6 +14,8 @@ ExecStart=-/usr/lib/builderbot-os/firstboot-take
 # The stick's hostname and static address (R161 step 12), before the network
 # comes up; a stick that names none keeps DHCP.
 ExecStart=-/usr/lib/builderbot-os/net
+# The data partition grown to its disk, up to BB_DATA_MAX (R161 step 13).
+ExecStart=-/usr/lib/builderbot-os/grow
 RemainAfterExit=yes
 
 [Install]

@@ -80,6 +80,12 @@ also says what still lives on the stick and how much has been written to it,
 in its life and since this boot. An installed disk has none of this: its
 data partition is the machine's disk.
 
+**The data partition takes the stick's room.** The image's data partition
+is 2 GB; at each boot it is grown to the end of the stick (the filesystem
+with it, while mounted) and never shrunk. `BB_DATA_MAX` in `builderbot.env`
+caps it (`64G`, `512M`, `2T`; a bare number is GiB), to leave the rest of a
+big stick unused.
+
 ## The configuration backed up, and a new stick
 
 With a backup password set under Controller settings, Backup, the
@@ -115,7 +121,8 @@ release line updates follow, `0.9`) for the controller, and the stick's
 network settings. `BB_HOSTNAME` names the machine; `BB_NET_ADDRESS`
 (`192.0.2.20`) gives the wired interfaces a static address instead of
 DHCP, with `BB_NET_MASK` (`24` or `255.255.255.0`, `24` when left out),
-`BB_NET_GATEWAY` and `BB_NET_DNS` (`1.1.1.1,9.9.9.9`). A value that is not
+`BB_NET_GATEWAY` and `BB_NET_DNS` (`1.1.1.1,9.9.9.9`). `BB_DATA_MAX` caps the
+stick's data partition (below). A value that is not
 an address is said in the boot's log and DHCP stands, so a mistyped stick
 still comes up on the network. The file is 4 KiB laid by the image itself, and
 the maker writes the lines into those same bytes as the image streams, so
@@ -193,8 +200,8 @@ into the bare-metal controller with the machine as its own node, as a stick
 or an installed disk does. Give it two processors and 4 GB at least, and
 turn nested virtualization on for it where VMs are to run inside it (the
 Features row says when `/dev/kvm` is missing); the data partition is grown
-to the disk the hypervisor gives it at the first boot once R160 step 2's
-installer lands, and is 2 GB until then.
+to the disk the hypervisor gives it at boot, so a disk made bigger later is
+taken up at the next one.
 
 ## What persists
 

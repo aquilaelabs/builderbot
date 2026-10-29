@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# The data partition given the room its disk has (R161 step 13): a stick, or a
+# VM disk made bigger, is written from an image whose data partition is its
+# fixed small size, so at each boot the last partition, /var, is grown to the
+# end of its disk, no further than BB_DATA_MAX in the stick's builderbot.env
+# (64G, 512M, 2T; a bare number is GiB), and its ext4 grown with it while
+# mounted. It never shrinks one; a disk the installer laid out (lay-disk
+# --grow) has no room left, so nothing happens there.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=image/partitions.sh
+. "${BB_PARTITIONS:-$HERE/partitions.sh}"
+ENVF="${BB_OS_RUN:-/run/builderbot-os}/env"
+say() { echo "grow: $*"; }
+
+cap="$( [ -r "$ENVF" ] && sed -n 's/^BB_DATA_MAX=//p' "$ENVF" | tail -n 1 || true)"
+cap_mib=""
+if [ -n "$cap" ]; then
+    if [[ "$cap" =~ ^([0-9]{1,7})([MGT]?)i?B?$ ]]; then
+        n=$((10#${BASH_REMATCH[1]}))
+        case "${BASH_REMATCH[2]}" in M) cap_mib=$n ;; T) cap_mib=$((n * 1048576)) ;; *) cap_mib=$((n * 1024)) ;; esac
+    else
+        say "BB_DATA_MAX=$cap is not a size (64G, 512M, 2T): no cap"
+    fi
+fi
+
+# The disk and the partition: by the data partition's fixed UUID, or a disk
+# named for a test (an image file, whose filesystem is not touched).
+if [ -n "${BB_GROW_DISK:-}" ]; then
+    disk="$BB_GROW_DISK"; part=""
+else
+    part="$(readlink -f "/dev/disk/by-partuuid/$BB_PART_DATA" 2>/dev/null || true)"
+    [ -b "$part" ] || { say "no data partition by its UUID: nothing to grow"; exit 0; }
+    disk="/dev/$(lsblk -no pkname "$part" | head -n 1)"
+    [ -b "$disk" ] || { say "no disk under $part"; exit 0; }
+fi
+
+table="$(sfdisk --json "$disk")"
+read -r num start size uuid last_lba <<< "$(python3 -c '
+import json, re, sys
+t = json.load(sys.stdin)["partitiontable"]
+p = max(t["partitions"], key=lambda x: x["start"])
+print(re.search(r"(\d+)$", p["node"]).group(1), p["start"], p["size"], p.get("uuid", "").lower(), t.get("lastlba", 0))' <<< "$table")"
+[ "$uuid" = "$BB_PART_DATA" ] || { say "the last partition is not the data partition: left as it is"; exit 0; }
+[ "$num" = 5 ] || { say "the data partition is not partition 5: left as it is"; exit 0; }
+
+# A disk bigger than the image keeps its backup GPT where the image ended;
+# moved to the disk's end first, so the room past it can be used.
+if [ -n "${BB_GROW_DISK:-}" ]; then sectors=$(( $(stat -c %s "$disk") / 512 )); else sectors="$(blockdev --getsz "$disk")"; fi
+end=$(( sectors - 34 ))
+if [ "$last_lba" -lt "$end" ]; then
+    sfdisk --quiet --relocate gpt-bak-std "$disk" >/dev/null 2>&1 || { say "could not move the backup GPT to the disk's end"; exit 0; }
+fi
+want=$(( (end - start) / 2048 * 2048 ))
+if [ -n "$cap_mib" ] && [ "$want" -gt $(( cap_mib * 2048 )) ]; then want=$(( cap_mib * 2048 )); fi
+if [ "$want" -gt $(( size + 2048 )) ]; then
+    echo "size=$want" | sfdisk --quiet --no-reread --no-tell-kernel -N 5 "$disk" >/dev/null \
+        || { say "sfdisk could not grow partition 5 of $disk"; exit 0; }
+    [ -z "$part" ] || partx -u -n 5 "$disk" || { say "the kernel did not take the new size; it does at the next boot"; exit 0; }
+    say "the data partition is $(( want / 2048 )) MiB, was $(( size / 2048 ))${cap_mib:+ (BB_DATA_MAX $cap)}"
+fi
+# Its filesystem to the partition's size, at every boot: nothing to do once
+# it is, and a boot the kernel missed the new size on is caught up by the next.
+if [ -n "$part" ]; then
+    resize2fs "$part" >/dev/null 2>&1 || say "resize2fs could not grow $part"
+fi

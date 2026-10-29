@@ -7,6 +7,7 @@ host name for Debian; the slot tool reads the command line; the installer
 has its stage and first-boot actions and the first-boot unit calls them
 where they are laid out; the Debian family treats the image's packages as
 fixed; the workflow pins the mkosi build.sh pins."""
+import json
 import os
 import re
 import shutil
@@ -421,6 +422,53 @@ class Workflow(unittest.TestCase):
             r = boot(["BB_HOSTNAME=Not_A_Host"])
             self.assertFalse(os.path.exists(out), "no address, DHCP")
             self.assertIn("is not a hostname", r.stderr)
+
+    @unittest.skipUnless(shutil.which("sfdisk"), "sfdisk is not here")
+    def test_the_data_partition_grows_to_its_disk_up_to_the_cap(self):
+        # R161 step 13: a stick bigger than the image has its data partition,
+        # the last, grown to the disk's end at boot, no further than
+        # BB_DATA_MAX, and never shrunk; a last partition that is not the
+        # data partition is left as it is.
+        tool = os.path.join(EXTRA, "usr", "lib", "builderbot-os", "grow")
+        self.assertIn("ExecStart=-/usr/lib/builderbot-os/grow", read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service"))
+        v = shell_vars(os.path.join(IMG, "partitions.sh"))
+        with tempfile.TemporaryDirectory() as d:
+            run = os.path.join(d, "run"); os.makedirs(run)
+            disk = os.path.join(d, "disk.img")
+
+            def lay(mib, data_uuid=v["BB_PART_DATA"]):
+                with open(disk, "wb") as f:
+                    f.truncate(64 << 20)
+                table = ("label: gpt\nstart=2048, size=2048, name=bios\nsize=4MiB, name=esp\nsize=4MiB, name=a\nsize=4MiB, name=b\n"
+                         f"size=16MiB, uuid={data_uuid}, name=bbdata\n")
+                r = subprocess.run(["sfdisk", "--quiet", disk], input=table, capture_output=True, text=True, check=False)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                with open(disk, "r+b") as f:
+                    f.truncate(mib << 20)       # the image written to a bigger stick
+
+            def grow(cap=""):
+                open(os.path.join(run, "env"), "w").write(f"BB_DATA_MAX={cap}\n" if cap else "")
+                r = sh(f"bash {tool}", {"BB_GROW_DISK": disk, "BB_OS_RUN": run, "BB_PARTITIONS": os.path.join(IMG, "partitions.sh")})
+                self.assertEqual(r.returncode, 0, r.stderr)
+                t = json.loads(subprocess.run(["sfdisk", "--json", disk], capture_output=True, text=True, check=True).stdout)["partitiontable"]
+                return r.stdout, t["partitions"][-1]["size"] // 2048, t["lastlba"]
+            lay(256)
+            out, mib, last = grow()
+            self.assertIn("the data partition is", out)
+            self.assertGreater(mib, 200)
+            self.assertEqual(last, (256 << 11) - 34, "the backup GPT moved to the disk's end")
+            self.assertEqual(grow()[0], "", "nothing to say once it is grown")
+            lay(256)
+            self.assertEqual(grow("64M")[1], 64)
+            self.assertEqual(grow("32M")[1], 64, "never shrunk")
+            lay(256)
+            out, mib, _ = grow("lots")
+            self.assertIn("is not a size", out)
+            self.assertGreater(mib, 200, "a cap that is not a size is no cap")
+            lay(256, data_uuid="00000000-0000-4000-8000-000000000001")
+            out, mib, _ = grow()
+            self.assertIn("not the data partition", out)
+            self.assertEqual(mib, 16)
 
     def test_the_disk_is_xz_and_the_stick_variant_runs_from_memory(self):
         # R161 step 5: xz, which the stick maker opens with Python's own

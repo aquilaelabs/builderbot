@@ -15,7 +15,8 @@ needed, writes a line into the stick's builderbot.env, which each boot reads:
 TZ (the machine's time zone, Europe/Berlin), BB_RELEASE_LINE (the release
 line updates follow, 0.9), BB_HOSTNAME, and a static address for the wired
 network: BB_NET_ADDRESS, BB_NET_MASK (24 or 255.255.255.0), BB_NET_GATEWAY
-and BB_NET_DNS (1.1.1.1,9.9.9.9); without BB_NET_ADDRESS it takes DHCP. --mirror FILE puts a
+and BB_NET_DNS (1.1.1.1,9.9.9.9); without BB_NET_ADDRESS it takes DHCP.
+BB_DATA_MAX (64G) caps the data partition, which grows to the stick's size. --mirror FILE puts a
 mirror of the vetted catalog (tools/catalog-mirror.py's archive, up to
 64 MiB) on the stick, which the controller imports as it starts, so a
 machine with no network installs tool packs from it.
@@ -383,7 +384,7 @@ def main(argv=None):
     w.add_argument("--image", help="builderbot-os-VERSION.stick.raw.xz, a file you have")
     w.add_argument("--release", help="the release's tag to fetch the image from (vX.Y.Z)")
     w.add_argument("--latest", action="store_true", help="fetch the newest release's image (what it does when nothing else is named)")
-    w.add_argument("--set", action="append", metavar="KEY=VALUE", help="a line for the stick's builderbot.env: TZ=Region/City, BB_RELEASE_LINE=X.Y, BB_HOSTNAME=NAME, BB_NET_ADDRESS=A.B.C.D, BB_NET_MASK=24, BB_NET_GATEWAY=A.B.C.D, BB_NET_DNS=A.B.C.D,E.F.G.H")
+    w.add_argument("--set", action="append", metavar="KEY=VALUE", help="a line for the stick's builderbot.env: TZ=Region/City, BB_RELEASE_LINE=X.Y, BB_HOSTNAME=NAME, BB_NET_ADDRESS=A.B.C.D, BB_NET_MASK=24, BB_NET_GATEWAY=A.B.C.D, BB_NET_DNS=A.B.C.D,E.F.G.H, BB_DATA_MAX=64G")
     w.add_argument("--config", metavar="FILE", help="a prepared configuration (JSON, docs/image.md) the stick's first boot applies, skipping the first-run page where it says so")
     w.add_argument("--mirror", metavar="FILE", help="a mirror of the vetted catalog (tools/catalog-mirror.py) for a machine with no network, imported as the controller starts")
     w.add_argument("--channel", choices=["normal", "dev"], default="normal", help=argparse.SUPPRESS)
