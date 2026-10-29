@@ -116,5 +116,16 @@ class Kinds(unittest.TestCase):
                          [("jdk", "pack", "packs/official/jdk"), ("whoami", "app", "packs/apps/whoami"), ("model-router", "service", ""), ("odd", "pack", "")])
 
 
+
+class Shipped(unittest.TestCase):
+    def test_the_image_carries_the_key_the_index_is_checked_against(self):
+        # Left out, every released install said it ships no catalog key and
+        # trusted no index (B451); a bare-metal install lays out by the same lines.
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        with open(os.path.join(root, "Dockerfile"), encoding="utf-8") as f:
+            self.assertIn("COPY config/catalog.pub /opt/builderbot/config/catalog.pub", f.read())
+        self.assertIsNotNone(catalogindex._pubkey(os.path.join(root, "config", "catalog.pub")))
+
+
 if __name__ == "__main__":
     unittest.main()
