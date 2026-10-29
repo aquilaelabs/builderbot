@@ -165,6 +165,142 @@ def _agent(a, errors):
     return out
 
 
+# A coding agent from a vetted pack (R169 step 8): an adapter of data, never
+# code. Its hooks file is one of the two shapes bb-tty writes for the shipped
+# agents (grouped: {hooks: {EVENT: [{hooks: [{type, command, timeout}]}]}} as
+# Claude's, Codex's and Grok's; flat: {version: 1, hooks: {EVENT: [{type,
+# bash, timeoutSec}]}} as Copilot's), and its payload one of the two field
+# shapes they send (Claude's snake_case, or the camelCase of Grok and
+# Copilot), so bb-agent-hook holds it to the same guards with no code of its
+# own. Before a tool, a prompt and the stop are required: an agent that
+# cannot take the guards is not listed.
+PACK_AGENT = re.compile(r"^[a-z][a-z0-9]{1,15}$")
+PACK_AGENT_SHAPES = ("grouped", "flat")
+PACK_AGENT_PAYLOADS = ("snake", "camel")
+PACK_AGENT_EVENTS = ("pre", "prompt", "stop", "recall", "asking")
+PACK_AGENT_NEEDS = ("pre", "prompt", "stop")
+PACK_AGENT_BRIEFING = ("flag-text", "flag-file", "env-file", "none")
+PACK_AGENT_FIRST = ("after-dashdash", "flag", "none")
+SHIPPED_AGENTS = ("claude", "codex", "copilot", "grok", "open")
+FLAG = re.compile(r"^-{1,2}[A-Za-z0-9][A-Za-z0-9-]{0,40}$")
+ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]{0,40}$")
+ARG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._=:,/-]{0,80}$|^-{1,2}[A-Za-z0-9][A-Za-z0-9._=:,/-]{0,80}$")
+EVENT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._]{0,40}$")
+TOOL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,60}$")
+
+
+def _pack_agent(name, a, errors):
+    """The adapter of a coding agent a vetted pack brings, checked and cut
+    down to what bb-tty and bb-agent-hook read, or None."""
+    if not isinstance(a, dict):
+        errors.append("agent is an object: name, product, command, briefing, hooks, signin, transcripts")
+        return None
+    bad = len(errors)
+    if not PACK_AGENT.fullmatch(name):
+        errors.append("a pack that brings a coding agent is named 2 to 16 of a-z and 0-9, starting with a letter: its sessions are named after it")
+    elif name in SHIPPED_AGENTS:
+        errors.append(f"{name} is a coding agent BuilderBot ships; a pack's agent takes a name of its own")
+    out = {}
+    for k, cap in (("name", 30), ("product", 60), ("provider", 60)):
+        v = a.get(k, "")
+        if not isinstance(v, str) or len(v) > cap or (k != "provider" and not v.strip()):
+            errors.append(f"agent.{k} is a short string" + ("" if k == "provider" else ", required"))
+        out[k] = str(v or "").strip()[:cap]
+    cmd = a.get("command")
+    if not (isinstance(cmd, str) and re.fullmatch(r"[a-z][a-z0-9._-]{0,39}", cmd)):
+        errors.append("agent.command is the program's name, which the pack's layout.bin puts on PATH")
+    out["command"] = str(cmd or "")
+    b = a.get("briefing") if isinstance(a.get("briefing"), dict) else {"how": a.get("briefing") or "none"}
+    how = b.get("how")
+    if how not in PACK_AGENT_BRIEFING:
+        errors.append(f"agent.briefing.how is one of {', '.join(PACK_AGENT_BRIEFING)}")
+    out["briefing"] = {"how": how}
+    if how in ("flag-text", "flag-file"):
+        if not (isinstance(b.get("flag"), str) and FLAG.fullmatch(b["flag"])):
+            errors.append(f"agent.briefing.flag is the option {how} hands the briefing with, e.g. --rules")
+        out["briefing"]["flag"] = str(b.get("flag") or "")
+    elif how == "env-file":
+        if not (isinstance(b.get("env"), str) and ENV_NAME.fullmatch(b["env"])):
+            errors.append("agent.briefing.env is the variable that names the briefing's file")
+        out["briefing"]["env"] = str(b.get("env") or "")
+    h = a.get("hooks")
+    if not isinstance(h, dict):
+        errors.append("agent.hooks is an object: file, shape, payload and events (pre, prompt and stop at least): an agent that cannot take BuilderBot's guards is not listed")
+        h = {}
+    if not (isinstance(h.get("file"), str) and REL.fullmatch(h["file"])):
+        errors.append("agent.hooks.file is its hooks file's path under the account's home, e.g. .foo/hooks/builderbot.json")
+    if h.get("shape") not in PACK_AGENT_SHAPES:
+        errors.append(f"agent.hooks.shape is one of {', '.join(PACK_AGENT_SHAPES)}")
+    if h.get("payload") not in PACK_AGENT_PAYLOADS:
+        errors.append(f"agent.hooks.payload is one of {', '.join(PACK_AGENT_PAYLOADS)}")
+    evs = h.get("events") if isinstance(h.get("events"), dict) else {}
+    for k in evs:
+        if k not in PACK_AGENT_EVENTS:
+            errors.append(f"agent.hooks.events.{k} is not one of BuilderBot's: {', '.join(PACK_AGENT_EVENTS)}")
+        elif not (isinstance(evs[k], str) and EVENT_NAME.fullmatch(evs[k])):
+            errors.append(f"agent.hooks.events.{k} is the agent's own name for that event")
+    missing = [k for k in PACK_AGENT_NEEDS if k not in evs]
+    if missing:
+        errors.append(f"agent.hooks.events names no {', '.join(missing)}: an agent that cannot take BuilderBot's guards is not listed")
+    tools = h.get("tools") if isinstance(h.get("tools"), dict) else {}
+    for k, v in tools.items():
+        if k not in ("shell", "edit", "grep") or not (isinstance(v, list) and len(v) <= 8 and all(isinstance(t, str) and TOOL_NAME.fullmatch(t) for t in v)):
+            errors.append("agent.hooks.tools maps shell, edit and grep to the agent's own tool names")
+    out["hooks"] = {"file": str(h.get("file") or ""), "shape": h.get("shape"), "payload": h.get("payload"),
+                    "events": {k: v for k, v in evs.items() if k in PACK_AGENT_EVENTS},
+                    "tools": {k: list(v) for k, v in tools.items() if k in ("shell", "edit", "grep") and isinstance(v, list)}}
+    env = a.get("env") if a.get("env") is not None else {}
+    if not (isinstance(env, dict) and len(env) <= 8 and all(ENV_NAME.fullmatch(str(k)) and isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9._:,-]{0,80}", v)
+                                                          for k, v in env.items())):
+        errors.append("agent.env maps up to 8 NAME to plain words (an updater off, a telemetry switch), never a path or a secret")
+        env = {}
+    if any(k.startswith("BB_") or k in ("PATH", "HOME", "LD_PRELOAD", "LD_LIBRARY_PATH") for k in env):
+        errors.append("agent.env sets none of PATH, HOME, LD_* or BuilderBot's own BB_ names")
+    out["env"] = dict(env)
+    si = a.get("signin") if isinstance(a.get("signin"), dict) else {}
+    for k, v in (("respawn", a.get("respawn")), ("signin.login", si.get("login"))):
+        v = v if v is not None else []
+        if not (isinstance(v, list) and len(v) <= 6 and all(isinstance(x, str) and ARG.fullmatch(x) for x in v)):
+            errors.append(f"agent.{k} lists up to 6 plain words")
+            v = []
+        out[k.split(".")[-1]] = list(v)
+    if out["login"] and out["login"][0] != out["command"]:
+        errors.append("agent.signin.login runs the agent's own command, e.g. [\"foo\", \"login\"]")
+    fp = a.get("first_prompt") if isinstance(a.get("first_prompt"), dict) else {"how": a.get("first_prompt") or "none"}
+    if fp.get("how") not in PACK_AGENT_FIRST:
+        errors.append(f"agent.first_prompt.how is one of {', '.join(PACK_AGENT_FIRST)}")
+    out["first_prompt"] = {"how": fp.get("how")}
+    if fp.get("how") == "flag":
+        if not (isinstance(fp.get("flag"), str) and FLAG.fullmatch(fp["flag"])):
+            errors.append("agent.first_prompt.flag is the option a first prompt goes after, e.g. -i")
+        out["first_prompt"]["flag"] = str(fp.get("flag") or "")
+    sf, se = si.get("file", ""), si.get("env", "")
+    if sf and not (isinstance(sf, str) and REL.fullmatch(sf)):
+        errors.append("agent.signin.file is where its sign-in is kept, under the account's home")
+    if se and not (isinstance(se, str) and ENV_NAME.fullmatch(se)):
+        errors.append("agent.signin.env is a variable whose presence signs it in (an API key)")
+    out["signin"] = {"file": str(sf or ""), "env": str(se or "")}
+    tr = a.get("transcripts") if isinstance(a.get("transcripts"), dict) else {}
+    td, tf = tr.get("dir", ""), tr.get("file", "")
+    if td and not (isinstance(td, str) and REL.fullmatch(td)):
+        errors.append("agent.transcripts.dir is the folder its conversations are kept in, under the account's home")
+    if tf and not (isinstance(tf, str) and re.fullmatch(r"[A-Za-z0-9._/{}-]{1,120}", tf) and "{session}" in tf and ".." not in tf):
+        errors.append("agent.transcripts.file is a conversation's file under that folder, with {session} for its id")
+    sk = tr.get("session_key", "") or ""
+    if sk and not (isinstance(sk, str) and re.fullmatch(r"[a-z_A-Z]{1,40}", sk)):
+        errors.append("agent.transcripts.session_key is the payload's field the session's id is in")
+    out["transcripts"] = {"dir": str(td or ""), "file": str(tf or ""), "session_key": str(sk)}
+    models = a.get("models") if a.get("models") is not None else []
+    if not (isinstance(models, list) and len(models) <= 24 and all(isinstance(x, str) and re.fullmatch(r"[A-Za-z0-9._:/-]{1,60}", x) for x in models)):
+        errors.append("agent.models lists up to 24 model names Start offers")
+        models = []
+    out["models"] = list(models)
+    if models and not (isinstance(a.get("model_flag"), str) and FLAG.fullmatch(a["model_flag"])):
+        errors.append("agent.model_flag is the option a model is picked with, e.g. --model")
+    out["model_flag"] = str(a.get("model_flag") or "") if models else ""
+    return out if len(errors) == bad else None
+
+
 def _config(c, errors, depth=0):
     """The config block checked: a list of fields, each {name, label, kind,
     help, required, env, choices (choice), fields (list)}; [] with the
@@ -247,7 +383,9 @@ def validate(m, shipped=()):
         errors.append("shipped (a toolchain's recipe) is an official pack's alone")
     if m.get("agent") is not None:
         if not official:
-            errors.append("agent (a coding agent's adapter) is an official pack's alone")
+            a = _pack_agent(name, m["agent"], errors)
+            if a:
+                out["pack_agent"] = a
         else:
             a = _agent(m["agent"], errors)
             if a:
@@ -264,7 +402,7 @@ def validate(m, shipped=()):
             out["service"] = {"kind": str(sv["kind"])}
     if m.get("config") is not None:
         out["config"] = _config(m["config"], errors)
-    stands_in = "shipped" in out or "agent" in out or "service" in out
+    stands_in = "shipped" in out or "agent" in out or "service" in out or "pack_agent" in out
     plats = m.get("platforms") or []
     if not isinstance(plats, list) or not plats or not all(isinstance(p, str) and PLATFORM.fullmatch(p) for p in plats):
         # The wildcard named too, in the form the rule takes (B111): a bare

@@ -61,8 +61,7 @@ fetched from, how it is verified, the system packages it needs), and under
 in, how it takes the briefing and BuilderBot's guards, where its
 conversations are). Both carry `"tier": "official"`, which is what lets
 them stand in for install steps and verbs and take a shipped name; a pack
-you add is `url`, and a pack from the vetted catalog, when it comes, is
-`vetted`. An agent whose manifest cannot name how it takes the guards is
+you add is `url`, and a pack from the vetted catalog is `vetted`. An agent whose manifest cannot name how it takes the guards is
 not a pack and is not listed. The files are written from the tables by
 `tools/packs-export.py --write` and `bb lint` fails when they drift, so
 the format is one; the installer and the agents' adapters still read
@@ -73,6 +72,54 @@ them at tier official to the catalog's own commit (`--catalog DIR
 --index`, then the maintainer signs), so the catalog is the one list of
 everything official and an install's Library shows a shipped row as the
 catalog's, never twice.
+
+### A coding agent of your own
+
+A pack from the vetted catalog can bring a coding agent beside the five
+BuilderBot ships. Its `agent` block is an adapter of data, never code: it
+says how BuilderBot starts the agent, hands it the briefing and holds it to
+the same guards, in the shapes BuilderBot already writes for the shipped
+agents. The pack installs the agent's program like any pack (its `install`
+steps, its `layout.bin` on `PATH`), and a catalog update updates it.
+
+```json
+"agent": {
+  "name": "Kite", "product": "Kite CLI", "provider": "Kite Labs",
+  "command": "kite",
+  "briefing": {"how": "flag-text", "flag": "--rules"},
+  "hooks": {"file": ".kite/hooks/builderbot.json", "shape": "grouped", "payload": "camel",
+            "events": {"pre": "PreToolUse", "prompt": "UserPromptSubmit", "stop": "Stop",
+                       "recall": "PostCompact", "asking": "PermissionRequest"},
+            "tools": {"shell": ["run_command"], "edit": ["edit_file"]}},
+  "env": {"KITE_DISABLE_AUTOUPDATER": "1"},
+  "respawn": ["-c"],
+  "first_prompt": {"how": "after-dashdash"},
+  "signin": {"file": ".kite/auth.json", "env": "KITE_API_KEY", "login": ["kite", "login"]},
+  "transcripts": {"dir": ".kite/sessions", "file": "{session}/log.jsonl", "session_key": "sessionId"},
+  "models": ["kite-1", "kite-1-mini"], "model_flag": "--model"
+}
+```
+
+| Key | What it says |
+|---|---|
+| `name`, `product`, `provider` | What the page calls it (Start, the dock, the Library card). |
+| `command` | The program a session runs, on `PATH` from the pack's own `layout.bin`. |
+| `briefing` | How it takes BuilderBot's briefing: `flag-text` (the text after `flag`), `flag-file` (the file's path after `flag`), `env-file` (a variable naming the file) or `none`. |
+| `hooks` | Its hooks file under the account's home, written by BuilderBot at each start. `shape` is `grouped` (`{hooks: {EVENT: [{hooks: [{type, command, timeout}]}]}}`, as Claude Code, Codex CLI and Grok Build read) or `flat` (`{version: 1, hooks: {EVENT: [{type, bash, timeoutSec}]}}`, as Copilot CLI reads). `payload` is the fields its hooks send: `snake` (`tool_name`, `tool_input`, `session_id`) or `camel` (`toolName`, `toolInput`, `sessionId`). `events` names its own event for BuilderBot's `pre` (before a tool), `prompt`, `stop`, and optionally `recall` (after a summary) and `asking` (its permission prompt). `tools` adds its own names for a shell, an edit and a search where they are not the usual ones. |
+| `env` | Up to eight fixed words its sessions start with (an updater or telemetry off). Never a path, `PATH`, `HOME`, `LD_*` or a `BB_` name. |
+| `respawn` | The arguments that resume its newest conversation, when a session comes back. |
+| `first_prompt` | How a new project's brief is handed over: after `--`, after a `flag`, or not at all. |
+| `signin` | Where its sign-in is kept (a file under home, or a variable such as an API key), and the login command a terminal tab runs for it. |
+| `transcripts` | Where its conversations are kept, so `bb transcripts` and the Sessions view read them, and which payload field carries a session's id. |
+| `models`, `model_flag` | What Start's model step offers, and the option a pick is handed over with. |
+
+`pre`, `prompt` and `stop` are required: an agent that cannot take the
+guards is refused, as the shipped ones would be. The pack's name is its
+sessions' name (`kite-myproject`), so it is 2 to 16 lowercase letters and
+digits and never a shipped agent's. An agent is offered only from a pack the
+vetted catalog pinned (or an official one): a pack added by its address
+installs its program but never offers its agent, since the adapter decides
+what runs in every session of it.
 
 ## The vetted catalog
 
