@@ -150,6 +150,10 @@ const shell = async (page, tidy) => {
 const tab = async (page, open, settle = 4000) => {
   await page.evaluate(open);
   await page.waitForTimeout(settle);
+  // A slow read (the Containers page across a node) is still its loading
+  // placeholders after the settle: wait for them to go, a minute at most.
+  await page.waitForFunction(() => !document.querySelector('.skel'), null, { timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(500);
 };
 const shoot = async (page, file, { keep = false } = {}) => {
   // To the top, unless the picture is of a part further down the page.
