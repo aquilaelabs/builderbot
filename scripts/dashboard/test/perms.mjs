@@ -40,7 +40,7 @@ ok(!await page.$('.rolestab .rlist input, .rolestab [data-rwho]') && !!await pag
    '...no account and no field in the list, and New role at the right of the page\'s bar');
 await page.click('.rolestab [data-rpick="admin"]');
 await faded(page);
-ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 17
+ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 19
      && [...t.querySelectorAll('[data-rread]')].every(c => c.disabled)),
    '...a built-in one reads as every area, with nothing to change and no Save');
 
@@ -229,7 +229,8 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   ok(nd.status === 200 && (nd.body.nodes || []).length === 0,
      `...and without Nodes Read the nodes answer only for its own projects, here none (${(nd.body.nodes || []).length})`);
   const st = (await api('/api/status', undefined, depAuth)).body.areas || {};
-  ok(st.toolchains === 'read' && st.nodes === '' && st.jobs === '', `the status carries each area's level (${JSON.stringify(st)})`);
+  // Toolchains is the Install area since R174, its old name an alias.
+  ok(st.install === 'read' && st.nodes === '' && st.jobs === '', `the status carries each area's level (${JSON.stringify(st)})`);
   const dp = await newPage(browser, { viewport: { width: 1280, height: 900 },
     httpCredentials: { username: 'dep', password: 'deppass11' },
     extraHTTPHeaders: { Authorization: 'Basic ' + Buffer.from('dep:deppass11').toString('base64') } });

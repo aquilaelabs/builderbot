@@ -85,10 +85,11 @@ ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
 {
   const link = await page.evaluate(() => {
     const was = state.areas;
-    // The Library is open to either grant (railAllows): both off, it is shut.
-    state.areas = { ...(was || {}), toolchains: '', nodes: '' };
+    // The Library is open to Install, Curate or Nodes (railAllows): all
+    // three off, it is shut.
+    state.areas = { ...(was || {}), install: '', curate: '', nodes: '' };
     const off = pageLink('library', 'Library');
-    state.areas = { ...(was || {}), toolchains: 'write' };
+    state.areas = { ...(was || {}), install: 'write' };
     const on = pageLink('library', 'Library');
     state.areas = was;
     return { off, on };
