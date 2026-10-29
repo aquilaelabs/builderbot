@@ -287,7 +287,7 @@ By hand, on a Debian or Ubuntu machine with root (mkosi installs packages,
 and the disk is assembled on a loop device):
 
 ```bash
-pip install mkosi==25.3          # the version build.sh pins
+pip install 'mkosi @ https://github.com/systemd/mkosi/archive/refs/tags/v25.3.tar.gz'   # the version build.sh pins; mkosi is not on PyPI
 sudo apt install squashfs-tools dosfstools e2fsprogs fdisk grub-efi-amd64-bin grub-pc-bin grub-common xz-utils xorriso mtools qemu-utils
 sudo image/build.sh --out image/out
 ```

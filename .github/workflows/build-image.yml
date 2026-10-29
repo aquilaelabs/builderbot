@@ -445,9 +445,10 @@ jobs:
           curl -fsSL -o keyring.deb "https://snapshot.debian.org/archive/debian/${snap}/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb"
           echo "9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac  keyring.deb" | sha256sum -c -
           sudo dpkg -i keyring.deb
-          # The version build.sh pins (MKOSI_PIN), so a config key means the same here as there.
+          # The version build.sh pins (MKOSI_PIN), so a config key means the same here as there,
+          # from its tag on GitHub: mkosi is not published on PyPI.
           pin="$(grep -oE 'MKOSI_PIN:-[0-9.]+' image/build.sh | head -1 | cut -d- -f2)"
-          sudo pip install --break-system-packages "mkosi==${pin}"
+          sudo pip install --break-system-packages "mkosi @ https://github.com/systemd/mkosi/archive/refs/tags/v${pin}.tar.gz"
           mkosi --version
       - name: The weekly rebuild takes yesterday's snapshot
         if: github.event_name == 'schedule'

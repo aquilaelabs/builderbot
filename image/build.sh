@@ -75,7 +75,7 @@ mkdir -p "$OUT"
 # ---- the tree, by mkosi -----------------------------------------------------
 TREE="$FROM_TREE"
 if [ -z "$TREE" ]; then
-    need mkosi "pip install mkosi==${MKOSI_PIN} (what the image workflow pins)"
+    need mkosi "pip install 'mkosi @ https://github.com/systemd/mkosi/archive/refs/tags/v${MKOSI_PIN}.tar.gz' (what the image workflow pins; mkosi is not on PyPI)"
     say "mkosi ${MKOSI_PIN}: Debian trixie from ${MIRROR}"
     # The controller's own packages, from the one list the Dockerfile and a
     # bare-metal install read, as a second packages file beside mkosi.conf.
