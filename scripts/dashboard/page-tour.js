@@ -51,7 +51,12 @@ const TOUR_STEPS = {
   ],
   installed: [
     {say: "Installed is what a node has from the Library: its coding agents, toolchains, tool packs and services, and what each is set to there."},
-    {at: TOUR_MHEAD, say: "The node picked above holds here too. Details on a row opens your sign-in to an agent, a toolchain's system packages, a pack's or a service's Configure, and Remove."},
+    {at: TOUR_MHEAD, say: "The node picked above holds here too. Open on a row, or Configure where it asks for anything, opens that thing's own page: your sign-in to an agent, a toolchain's system packages, a pack's or a service's settings."},
+  ],
+  // An installed thing's own page (R181 step 2), reached from its row.
+  thing: [
+    {say: "One installed thing on one node: what it is there, and what you set for it. Back, at the top, returns to the page you opened it from."},
+    {say: "Its sections are its kind's: an agent's facts, your sign-in and what you added to it; a toolchain's path and system packages; a pack's or a service's Configure, saved with Save."},
   ],
   library: [
     {say: "The Library is everything a BuilderBot installs or runs on a node: the coding agents, the toolchains for builds and tests, the tool packs you add, the apps a NAS runs, and the apps for your own machines."},

@@ -1885,18 +1885,17 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
         body: JSON.stringify({ census: { ...CENSUS, sysdeps: sd, store_dirs: { top: ['flutter', 'node', 'dotnet'], android: [] } },
                                version: shipped.version, digest: shipped.digest }) });
       await held({ family: 'dnf', unmet: { dotnet: ['libicu'] } });
-      // Installed now, so its row is the Installed page's, opened on its detail.
-      const DN = `.doc .installedtab [data-instnode="${minted.id}"] .irow[data-irow="toolchain:dotnet"]`;
-      await page.evaluate(id => { instOpen.add('toolchain:dotnet'); openInstalledOn(id); }, minted.id);
+      // Installed now, so it has a page of its own under Installed (R181 step 2).
+      const DN = `.doc .thingtab [data-instnode="${minted.id}"][data-thing="toolchain:dotnet"]`;
+      await page.evaluate(id => openThing(id, 'toolchain:dotnet'), minted.id);
       await page.waitForFunction(sel => /missing here/.test(document.querySelector(sel + ' .idetail .tcsysd')?.textContent || ''), DN, { timeout: 15000 });
       const row = await page.$eval(`${DN} .idetail .tcsysd`, e => e.textContent.replace(/\s+/g, ' '));
       ok(/1 of its 1 system package missing here \(dnf\), installed by itself: libicu/.test(row),
-         `an installed tool's row on the Installed page says which of its system packages this node lacks (${(row.match(/\d of its[^:]*: \S+/) || ['none'])[0]})`);
+         `an installed tool's page says which of its system packages this node lacks (${(row.match(/\d of its[^:]*: \S+/) || ['none'])[0]})`);
       await held({ family: 'dnf', unmet: {} });
       await page.evaluate(() => loadInstalled());
       await page.waitForFunction(sel => /all installed/.test(document.querySelector(sel + ' .idetail .tcsysd')?.textContent || ''), DN, { timeout: 15000 });
       ok(true, '...and that they are all there once they are');
-      await page.evaluate(() => instOpen.delete('toolchain:dotnet'));
       await fetch(base + '/api/v1/agent/hello', { method: 'POST',
         headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
@@ -1931,11 +1930,16 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       body: JSON.stringify({ sample: { cpu_pct: 1, sessions: [
         { name: `${uid}~claude-alpha`, created: now - 3600, title: '✳ Claude Code' },
         { name: `${uid}~shell-2`, created: now - 10, title: 'bash' }] }, running: 0, wait: 0 }) });
-    await page.evaluate(id => { instOpen.add('toolchain:node'); instOpen.add('toolchain:flutter'); openInstalledOn(id); loadInstalled(); }, minted.id);
-    await page.waitForFunction(id => /reopen/.test(document.querySelector(`.doc .installedtab [data-instnode="${id}"] .irow[data-irow="toolchain:node"] .idetail`)?.textContent || ''),
+    // Each toolchain's own page (R181 step 2), read in turn.
+    const pageText = async key => {
+      await page.evaluate(([id, k]) => { openThing(id, k); loadInstalled(); }, [minted.id, key]);
+      await page.waitForSelector(`.doc .thingtab [data-instnode="${minted.id}"][data-thing="${key}"] .idetail`, { timeout: 15000 });
+      return page.$eval(`.doc .thingtab [data-thing="${key}"]`, e => e.textContent.replace(/\s+/g, ' '));
+    };
+    await page.evaluate(id => { openThing(id, 'toolchain:node'); loadInstalled(); }, minted.id);
+    await page.waitForFunction(id => /reopen/.test(document.querySelector(`.doc .thingtab [data-instnode="${id}"][data-thing="toolchain:node"]`)?.textContent || ''),
                                minted.id, { timeout: 15000 });
-    const rows = await page.$$eval('.doc .installedtab .irow[data-irow^="toolchain:"]', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
-    await page.evaluate(() => { instOpen.delete('toolchain:node'); instOpen.delete('toolchain:flutter'); });
+    const rows = [await pageText('toolchain:node'), await pageText('toolchain:flutter')];
     const nodeRow = rows.find(t => /Node\.js/.test(t)) || '';
     ok(/1 session open here started before this was installed: reopen it to use it/.test(nodeRow),
        `a row that changes PATH counts the sessions that started before it landed, and only those (${
@@ -3421,7 +3425,7 @@ ok(page.errors.length === 0,
     // the card by name, an Install, and the version pick, the recommended
     // branch first; its state in words is the Installed page's row.
     const DRV = '.doc .librarytab .lcard[data-lrow="toolchain:nvidia-driver"]';
-    const IDRV = `.doc .installedtab [data-instnode="${shed.id}"] .irow[data-irow="toolchain:nvidia-driver"]`;
+    const IDRV = `.doc .thingtab [data-instnode="${shed.id}"][data-thing="toolchain:nvidia-driver"]`;
     await page.evaluate(id => { nodesList = null; openLibraryOn(id); }, shed.id);
     await page.waitForSelector(`${DRV} #libDrvSel`, { timeout: 20000 });
     const drawn = await page.$eval(DRV, e => ({ text: e.textContent.replace(/\s+/g, ' ').trim(),
@@ -3434,9 +3438,9 @@ ok(page.errors.length === 0,
     ok(!drawn.dead && drawn.opts.length === 3 && /^595\.91\.07 · recommended for this card$/.test(drawn.opts[0])
        && /^610\.57\.04 · newer than recommended$/.test(drawn.opts[1]) && /^595\.91\.07 · open kernel modules$/.test(drawn.opts[2]),
        `its version pick lists the branches apt offers, the recommended one first (${drawn.opts.join(' | ')})`);
-    await page.evaluate(id => { instOpen.add('toolchain:nvidia-driver'); instOpen.add('toolchain:nvidia-container-toolkit'); openInstalledOn(id); }, shed.id);
-    await page.waitForSelector(`${IDRV}.open .idetail`, { timeout: 20000 });
-    const idrv = await page.$eval(IDRV, e => ({ state: e.querySelector('.acts .state')?.textContent.trim() || '', detail: e.querySelector('.idetail').textContent }));
+    await page.evaluate(id => openThing(id, 'toolchain:nvidia-driver'), shed.id);
+    await page.waitForSelector(`${IDRV} .idetail`, { timeout: 20000 });
+    const idrv = await page.$eval(IDRV, e => ({ state: e.querySelector('.pghead .state')?.textContent.trim() || '', detail: e.querySelector('.idetail').textContent }));
     ok(idrv.state === 'not installed' && /not installed: nouveau has the card/.test(idrv.detail),
        `...and the Installed page's row says where it stands: not installed, nouveau holding the card (${idrv.state})`);
     // Picking a version is kept for Install, which asks once, saying it
@@ -3463,9 +3467,9 @@ ok(page.errors.length === 0,
       val: e.querySelector('#libDrvSel').value, install: !!e.querySelector('[data-libact="install"]') }));
     ok(inst.dead && /remove it first to install another version/.test(inst.why) && inst.val === 'nvidia-driver-595' && !inst.install,
        `installed, its version pick is ghosted on the installed branch and says to remove it first, with no Install (${inst.val}; ${inst.why})`);
-    await page.evaluate(id => openInstalledOn(id), shed.id);
+    await page.evaluate(id => openThing(id, 'toolchain:nvidia-driver'), shed.id);
     await page.waitForFunction(sel => /installed, and running the card/.test(document.querySelector(sel + ' .idetail')?.textContent || ''), IDRV, { timeout: 20000 });
-    ok(await page.$eval(IDRV, e => e.querySelector('.acts .state')?.textContent.trim() === 'running the card' && !!e.querySelector('[data-instact="remove"]')),
+    ok(await page.$eval(IDRV, e => e.querySelector('.pghead .state')?.textContent.trim() === 'running the card' && !!e.querySelector('[data-instact="remove"]')),
        '...and the Installed page\'s row says it is running the card, with Remove');
     const swap = await napi('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-610', node: shed.id });
     ok(/nvidia-driver-595 is installed.*remove it first/.test(swap.error || ''), `...and the server holds the same rule (${swap.error})`);
@@ -3480,7 +3484,7 @@ ok(page.errors.length === 0,
     ok(await page.$eval(`${DRV} [data-libact="install"]`, b => !b.disabled && b.textContent.trim() === 'Update'),
        'a newer version of the installed branch is said on the card, and it offers Update');
     // Remove, on the Installed page's row: asked first, and the removal queued.
-    await page.evaluate(id => openInstalledOn(id), shed.id);
+    await page.evaluate(id => openThing(id, 'toolchain:nvidia-driver'), shed.id);
     await page.waitForSelector(`${IDRV} [data-instact="remove"]`, { timeout: 20000 });
     const nr = page.dialogs.length;
     await page.click(`${IDRV} [data-instact="remove"]`);
@@ -3495,7 +3499,7 @@ ok(page.errors.length === 0,
     {
       const KIT = 'nvidia-container-toolkit';
       const CTK = `.doc .librarytab .lcard[data-lrow="toolchain:${KIT}"]`;
-      const ICTK = `.doc .installedtab [data-instnode="${shed.id}"] .irow[data-irow="toolchain:${KIT}"]`;
+      const ICTK = `.doc .thingtab [data-instnode="${shed.id}"][data-thing="toolchain:${KIT}"]`;
       const kitOf = async id => ((await napi(`/api/toolchains?node=${id}`)).machine || []).find(m => m.name === KIT);
       const running = async () => { for (let i = 0; i < 40; i++){ const d = await napi(`/api/toolchains?node=${shed.id}`); if (d.job?.running) return d.job; await new Promise(res => setTimeout(res, 250)); } return null; };
       const on = { ...apt, installed: '595.91.07', loaded: '595.91.07', bound: 'nvidia',
@@ -3517,9 +3521,9 @@ ok(page.errors.length === 0,
         under: c.previousElementSibling?.dataset.lrow === 'toolchain:nvidia-driver' }));
       ok(kd.under && /NVIDIA container toolkit/.test(kd.text) && /Running containers keep running/.test(kd.text),
          `the Library draws the toolkit's card after the driver's, with Install and what it costs (${kd.text.slice(0, 80)})`);
-      await page.evaluate(id => openInstalledOn(id), shed.id);
+      await page.evaluate(id => openThing(id, 'toolchain:nvidia-container-toolkit'), shed.id);
       await page.waitForFunction(sel => /a container here cannot reserve the card/.test(document.querySelector(sel + ' .idetail')?.textContent || ''), ICTK, { timeout: 20000 });
-      ok(await page.$eval(ICTK, r => r.querySelector('.acts .state')?.textContent.trim() === 'not installed' && !r.querySelector('[data-instact="remove"]')),
+      ok(await page.$eval(ICTK, r => r.querySelector('.pghead .state')?.textContent.trim() === 'not installed' && !r.querySelector('[data-instact="remove"]')),
          '...and the Installed page\'s row says it is not installed, so a container here cannot reserve the card, with nothing to remove');
       await page.evaluate(id => openLibraryOn(id), shed.id);
       await page.waitForSelector(`${CTK} [data-libact="install"]`, { timeout: 20000 });
@@ -3537,11 +3541,12 @@ ok(page.errors.length === 0,
       await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on, gpu_container: { installed: '1.17.8-1', candidate: '1.17.8-1', runtime: true } });
       await page.evaluate(() => loadLibrary());
       await page.waitForFunction(sel => /ready/.test(document.querySelector(sel + ' .pcacts .state')?.textContent || '') && !document.querySelector(sel + ' [data-libact]'), CTK, { timeout: 20000 });
-      await page.evaluate(id => openInstalledOn(id), shed.id);
+      await page.evaluate(id => openThing(id, 'toolchain:nvidia-container-toolkit'), shed.id);
       await page.evaluate(() => loadInstalled());
       await page.waitForFunction(sel => /a compose file reserves the card/.test(document.querySelector(sel + ' .idetail')?.textContent || ''), ICTK, { timeout: 20000 });
-      const ki = await page.$eval(ICTK, r => ({ pill: r.querySelector('.name .pill')?.textContent, rm: !!r.querySelector('[data-instact="remove"]') }));
-      ok(ki.pill === '1.17.8' && ki.rm, `installed, the card offers no Install, and its Installed row has its version and Remove (${ki.pill})`);
+      const ki = await page.$eval(ICTK, r => ({ pill: r.querySelector('.pghead .name .pill')?.textContent, rm: !!r.querySelector('[data-instact="remove"]'),
+        head: r.querySelector('.pghead')?.textContent.replace(/\s+/g, ' ').trim(), ver: (inst?.rows || []).filter(x => x.name === 'nvidia-container-toolkit').map(x => [x.version, !!x.machine]) }));
+      ok(ki.pill === '1.17.8' && ki.rm, `installed, the card offers no Install, and its page has its version and Remove (${JSON.stringify(ki)})`);
       const nk = page.dialogs.length;
       await page.click(`${ICTK} [data-instact="remove"]`);
       const kr = await running();
@@ -3553,7 +3558,7 @@ ok(page.errors.length === 0,
       await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on, gpu_container: { installed: '1.17.8-1', candidate: '1.17.8-1', runtime: false } });
       await page.evaluate(() => loadInstalled());
       const unknown = await page.waitForFunction(sel => /does not list the nvidia runtime/.test(document.querySelector(sel + ' .idetail')?.textContent || '')
-        && /Docker not configured/.test(document.querySelector(sel + ' .acts .state')?.textContent || ''), ICTK, { timeout: 20000 }).then(() => true, () => false);
+        && /Docker not configured/.test(document.querySelector(sel + ' .pghead .state')?.textContent || ''), ICTK, { timeout: 20000 }).then(() => true, () => false);
       await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on, gpu_container: { installed: '1.17.8-1', candidate: '1.18.0-1', runtime: true } });
       await page.evaluate(id => openLibraryOn(id), shed.id);
       await page.evaluate(() => loadLibrary());
@@ -3561,7 +3566,6 @@ ok(page.errors.length === 0,
         return !!c && /1\.18\.0 is out/.test(c.querySelector('.lcmeta').textContent) && c.querySelector('[data-libact="install"]')?.textContent.trim() === 'Update'; },
         CTK, { timeout: 20000 }).then(() => true, () => false);
       ok(unknown && newer, `unknown to Docker the Installed row says so, and with a newer one on offer the card offers Update (${JSON.stringify({ unknown, newer })})`);
-      await page.evaluate(() => { instOpen.delete('toolchain:nvidia-driver'); instOpen.delete('toolchain:nvidia-container-toolkit'); });
       await hello(shed, { sandbox: true, docker: '', gpu_card: card, gpu_driver: on, gpu_container: none });
       ok(await kitOf(shed.id) === undefined, 'a machine with no Docker has no toolkit row');
       await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on, gpu_container: none });
@@ -3722,8 +3726,8 @@ ok(page.errors.length === 0,
   ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !await page.$(`${ROWC} [data-ndag]`),
      'the Nodes page says which coding agents are installed there in one line, with no update of its own (R95) and no button to the coding agents\' page (the operator, 26 Oct)');
   await page.evaluate(id => openInstalledOn(id, 'claude'), en.id);
-  const AGC = `.installedtab [data-instnode="${en.id}"] .irow[data-irow="agent:claude-code"]`;
-  await page.waitForFunction(sel => /update available/.test(document.querySelector(sel + ' .acts .state')?.textContent || ''), AGC, { timeout: 15000 });
+  const AGC = `.thingtab [data-instnode="${en.id}"][data-thing="agent:claude-code"]`;
+  await page.waitForFunction(sel => /update available/.test(document.querySelector(sel + ' .pghead .state')?.textContent || ''), AGC, { timeout: 15000 });
   const tcRowText = await page.$eval(AGC, s => s.textContent.replace(/\s+/g, ' '));
   ok(/Claude Code/.test(tcRowText) && /1\.0\.0/.test(tcRowText) && /1\.2\.0 is out/.test(tcRowText) && /update available: 1\.2\.0/.test(tcRowText),
      `the node's Installed page has a Claude Code row: its version, the update out, and where it stands (${tcRowText.slice(0, 120)})`);
@@ -3853,8 +3857,8 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   });
   ok(inst.label === 'Install Claude' && inst.node === en.id && !inst.start && !inst.note,
      `...its button is Install Claude in place of Start Claude, nothing under it (${JSON.stringify(inst)})`);
-  await page.waitForFunction(id => instNode === id && tabs.some(t => t.kind === 'installed')
-    && !!document.querySelector(`.installedtab [data-instnode="${id}"] .irow.open[data-irow="agent:claude-code"]`), en.id, { timeout: 15000 });
+  await page.waitForFunction(id => instNode === id && tabs.some(t => t.kind === 'thing')
+    && !!document.querySelector(`.thingtab [data-instnode="${id}"][data-thing="agent:claude-code"]`), en.id, { timeout: 15000 });
   ok(true, '...and a press opens the Installed page on that node, Claude Code\'s row open (R95, R172)');
   // ...and the same for whichever agent the project starts first (R95 step
   // 18): ChatGPT's Install where the node lists no Codex, Start where it does.
