@@ -80,6 +80,7 @@ scripts/
   lib/browser.mjs                `bb browser`: Chrome or Firefox with an unpacked extension loaded, on its own port and profile, driven and stopped by one verb
   lib/proc-verbs.py              `bb proc`: this account's processes by a word of their command line, listed, ended or waited for, never the call's own shell
   lib/container-verbs.py         `bb container`: status and new
+  lib/pack-verbs.py              `bb tool search` and `bb tool install`: the vetted catalog looked through, a pack asked for as the project's Install a tool pack setting says (R169 step 5)
   lib/vm-verbs.py                `bb vm`: a project's VMs listed, made, started, stopped, snapshotted and removed (R91)
   lib/phone-verbs.py             `bb phone`: status and run
   lib/root-verbs.py              `bb root`: status and run

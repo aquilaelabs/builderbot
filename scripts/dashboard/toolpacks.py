@@ -45,6 +45,11 @@ _lock = threading.RLock()
 
 MANIFEST = "bbtool.json"
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
+# bb tool's own words (scripts/bb cmd_tool): a pack of somebody's named one
+# would never be reached, so none may be (R169 step 5 added search and
+# install); the official packs behind graphics, diagrams and office are the
+# toolchains those words run.
+BB_TOOL_WORDS = frozenset({"graphics", "diagrams", "docs", "office", "sound", "search", "install"})
 NAME_OFFICIAL = re.compile(r"^[a-z][a-z0-9:-]{1,39}$")
 # A shipped layout may name the pack's own root ("") or a place under the
 # store's root (root:android/...), which a person's pack may not.
@@ -231,6 +236,8 @@ def validate(m, shipped=()):
         errors.append("name is 2 to 40 of a-z, 0-9 and -, starting with a letter")
     elif name in shipped and not official:
         errors.append(f"{name} is a toolchain BuilderBot ships; a pack takes a name of its own")
+    elif name in BB_TOOL_WORDS and not official:
+        errors.append(f"{name} is one of bb tool's own words; a pack takes a name of its own")
     out: dict = {"name": name, "tier": tier,
            "label": str(m.get("label") or name)[:80],
            "about": str(m.get("about") or "")[:400]}

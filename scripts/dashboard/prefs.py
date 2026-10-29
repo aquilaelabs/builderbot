@@ -147,7 +147,7 @@ def configure(*, write_json, state):
 # outputs, its captures and snapshots, its tests' place, its gate on what a
 # session enters into its notebook) stays the repository's.
 GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", "packs_on", "test_node",
-                "agents_off", "agent_default", "agent_slots", "gitpol", "color", "devbuild", "makevms", "vm_caps",
+                "agents_off", "agent_default", "agent_slots", "gitpol", "color", "devbuild", "makevms", "vm_caps", "installpacks",
                 "test_change", "gpu", "report", "sign", "keys", "release", "pc", "log_from", "diag")
 # repos.py's answers, handed over by the server: (project_of, members,
 # is_repos). Unset (bb loading this by path), _rp reads the same from the files.
@@ -492,6 +492,10 @@ def _clean(rec):
             # project's VMs (R91 step 4), read as devbuild is: `deny` by
             # default, `ask` puts each in front of a person, `auto` lets it.
             "makevms": _devbuild(rec.get("makevms")),
+            # Whether a session may add a tool pack from the vetted catalog
+            # (R169 step 5): `ask` by default puts it to a person who may
+            # curate, `auto` adds it at the index's pin, `deny` refuses.
+            "installpacks": rec.get("installpacks") if rec.get("installpacks") in DEVBUILD_MODES else "ask",
             "vm_caps": _vm_caps(rec.get("vm_caps")),
             # Where `bb test` runs the tests, one of TESTS_IN. On the node
             # unless the project says otherwise: an image built to ship
@@ -881,7 +885,7 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None, snapshots_on=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
-              pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None, agents_off=None,
+              pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None, installpacks=None, agents_off=None,
               agent_default=None, agent_slots=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
@@ -997,6 +1001,10 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
             if makevms not in DEVBUILD_MODES:
                 return {"error": f"makevms is one of {', '.join(DEVBUILD_MODES)}, not {makevms}"}
             cur["makevms"] = makevms
+        if installpacks is not None:
+            if installpacks not in DEVBUILD_MODES:
+                return {"error": f"installpacks is one of {', '.join(DEVBUILD_MODES)}, not {installpacks}"}
+            cur["installpacks"] = installpacks
         if vm_caps is not None:
             if not isinstance(vm_caps, dict):
                 return {"error": "vm_caps is {count, vcpus, mem_mb, disk_gb}"}
@@ -1096,7 +1104,7 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
                 or cur["snapshot_days"] != SNAPSHOT_DAYS or not cur["snapshots_on"]
                 or cur["sign"] != "ask" or cur["keys"] != "ask" or cur["release"] != "ask"
-                or cur["pc"] != "deny"
+                or cur["pc"] != "deny" or cur["installpacks"] != "ask"
                 or cur["dev_keep"] != DEV_KEEP
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
@@ -1111,6 +1119,8 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("devbuild", None)
             if cur["makevms"] == "deny":
                 rec.pop("makevms", None)
+            if cur["installpacks"] == "ask":
+                rec.pop("installpacks", None)
             if cur["vm_caps"] == VM_CAPS:
                 rec.pop("vm_caps", None)
             if cur["tests_in"] == "node":
@@ -1289,7 +1299,7 @@ def dialog_save(name, req, uid):
                   test=req.get("test"), outputs=req.get("outputs"),
                   gate=req.get("gate"), gitpol=req.get("gitpol"),
                   devbuild=req.get("devbuild"),
-                  makevms=req.get("makevms"), vm_caps=req.get("vm_caps"),
+                  makevms=req.get("makevms"), vm_caps=req.get("vm_caps"), installpacks=req.get("installpacks"),
                   tests_in=req.get("tests_in"), test_node=req.get("test_node"),
                   test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),

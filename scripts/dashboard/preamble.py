@@ -204,6 +204,7 @@ DIALS = (("Add to roadmap", "gate.roadmap", "auto"), ("File bugs", "gate.bugs", 
          ("Add rules", "gate.rules", "auto"), ("Fill in build and test", "gate.settings", "auto"),
          ("Add to the design", "gate.design", "auto"), ("Write the wiki", "gate.wiki", "auto"),
          ("Run its container", "devbuild", "deny"), ("Make VMs", "makevms", "deny"),
+         ("Install a tool pack", "installpacks", "ask"),
          ("Report BuilderBot bugs", "report", "auto"), ("Sign a build", "sign", "ask"),
          ("Manage signing keys", "keys", "ask"), ("Tag and publish a release", "release", "ask"),
          ("Use a lent PC", "pc", "deny"))
@@ -477,14 +478,22 @@ def _packs_on(project):
 
 def packs_line(project):
     """The tool packs a session here may use, said where it learns its
-    project; "" when the project uses none."""
+    project, and the way to ask for one from the vetted catalog (R169 step
+    5) as the project's Install a tool pack dial says."""
     on = _packs_on(project)
+    try:
+        mode = (prefs_mod.get(project) or {}).get("installpacks") or "ask" if prefs_mod and project else "ask"
+    except Exception:                                                # noqa: BLE001
+        mode = "ask"
+    ask = (f"`bb tool search WORDS` looks through the vetted catalog's packs, and `bb tool install NAME --why \"...\"` "
+           f"asks for one ({'refused here' if mode == 'deny' else 'added at once' if mode == 'auto' else 'a person answers on the bell'}: "
+           f"Install a tool pack is {mode}); a session never installs a pack on a node itself.")
     if not on:
-        return ""
+        return ask
     names = ", ".join(f"{(r.get('label') or n)} (`bb tool {n}`)" for n, r in sorted(on.items()))
     return (f"This project's sessions may use the tool packs {names}: `bb tool NAME` lists a pack's verbs, "
             f"and `bb help tool-NAME` prints what the pack says about using them. A person here added each; "
-            f"none is shipped with BuilderBot.")
+            f"none is shipped with BuilderBot. " + ask)
 
 
 def topic(project, slug):

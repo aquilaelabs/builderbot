@@ -798,6 +798,12 @@ bb capture prune [--days N] [NAME...]
                    controller sweeps them when the Artifacts view draws: name
                    yours here to let them go sooner
 bb tool            the tools toolchains add to a session, each under its own name
+bb tool search [WORDS...]  the vetted catalog's tool packs and apps, each with
+                   its tier and what it is, and whether it is added here
+bb tool install NAME --why "..."  ask for a pack from the vetted catalog, as the
+                   project's Install a tool pack setting says: refused, asked
+                   of a person on the bell, or added now; a person installs
+                   it on a node from the Library
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,
                    annotate, diff, svg2png and optimize, into dist/img/, and

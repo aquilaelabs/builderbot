@@ -6175,6 +6175,11 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
              session, read as Run its container is. Deny by default. -->
         <label class="pick">Make VMs <select id="rnGateVms"
           aria-label="making, starting, stopping, snapshotting and removing this project's VMs, from a session"></select></label>
+        <!-- A pack from the vetted catalog (R169 step 5): bb tool install
+             from a session. Ask by default: a pack joins every node's
+             catalog, so a person who may curate it answers. -->
+        <label class="pick">Install a tool pack <select id="rnGatePacks"
+          aria-label="adding a tool pack from the vetted catalog, from a session"></select></label>
         <!-- bb pc (R270 step 6): the verbs a person's Windows companion
              lends this project (its editor, its game, its build, a picture,
              a log). Deny by default: it is somebody's own machine; Ask puts

@@ -118,6 +118,19 @@ New container with it picked, on the Library's node when that node runs
 Docker (the card says when it does not); from then on New container offers
 it to everyone, and each Create makes another container of it.
 
+### A session asking for one
+
+A session looks through the catalog with `bb tool search WORDS`: each
+entry's name, kind, tier and what it is, and whether it is added here, never
+its address or commit. `bb tool install NAME --why "what it is for"` asks for
+a tool pack from it, and the project's **Install a tool pack** setting,
+under Agents may, says what happens: **deny** refuses, **ask** (the default)
+puts it on the bell for a person who may curate the catalog, whose Allow
+adds it at the commit the signed index pins, its sha256 checked, and
+**auto** adds it at once the same way. A session never installs a pack on a
+node itself: once it is added, a person installs it from the Library. The
+briefing names the two verbs and the setting's value.
+
 ## What a project's sessions can use
 
 Each project's **Settings → Toolchains** lists every toolchain installed on

@@ -67,6 +67,7 @@ container_maker = None
 # A VM's create or action, run on Allow (R91): vms.create or vms.act, as the
 # page runs them, with the asking session's project.
 vm_runner = None
+pack_runner = None         # (project, entry, by) -> a catalog pack added (R169 step 5)
 # signing.start(principal, project, file, route), set by the server: what
 # Allow on a session's `bb sign` runs (R106), queued as the session asked.
 signer = None
@@ -1246,6 +1247,19 @@ def ask_vm(why, project, req, asker_name=""):
                   "claude", "admins", "the administrators", asker_name, extra={"vm": keep})
 
 
+def ask_pack(why, project, entry, asker_name=""):
+    """A session asking for a tool pack from the vetted catalog (R169 step
+    5), its project's Install a tool pack dial at ask: held for the
+    administrators, since a pack joins every node's catalog. Allow keeps it
+    at the commit the signed index pins, as the Library's Install does."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what the pack is for: a person is answering a question you are asking them"}
+    keep = {k: entry.get(k) for k in ("name", "url", "commit", "sha256", "path", "tier")}
+    return _queue("pack", why, ["tool", "install", str(entry.get("name") or "")], "", "", project,
+                  "claude", "admins", "the administrators", asker_name, extra={"pack": keep})
+
+
 def _find(rid):
     for r in _reqs:
         if r["id"] == rid:
@@ -1454,6 +1468,13 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
         with _lock:
             r.update(state="done", code=1 if res.get("error") else 0,
                      out=str(res.get("error") or res.get("job") or "done"))
+        return {"error": res["error"]} if res.get("error") else {"ok": True}
+    if r.get("kind") == "pack":
+        # A catalog pack a session asked for (R169 step 5), kept at its pin.
+        res = pack_runner(r.get("project") or "", r.get("pack") or {}, name or "a person") if pack_runner else \
+            {"error": "no tool pack path is wired up here"}
+        with _lock:
+            r.update(state="done", code=1 if res.get("error") else 0, out=str(res.get("error") or "added"))
         return {"error": res["error"]} if res.get("error") else {"ok": True}
     if r.get("kind") == "phone-use":
         # A lent phone's command, allowed by its owner (R120): run as the

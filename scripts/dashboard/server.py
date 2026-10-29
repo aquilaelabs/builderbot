@@ -4601,6 +4601,18 @@ nodes.on_done("vm", vms.vm_done)
 phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, dict(req, _admin=True), True)
 
 
+def _pack_from_catalog(entry, by):
+    """A pack from the vetted catalog kept at the commit the signed index
+    pins, its sha256 checked (R169 step 5): what the Library's Install keeps,
+    for a session's ask allowed or its dial at auto."""
+    shipped = {r["name"] for r in toolchains.load_toolchains()}
+    return toolpacks.add(entry["url"], entry["commit"], by, shipped, sha256=entry["sha256"],
+                         tier="official" if entry.get("tier") == "official" else "vetted", path=entry.get("path", ""))
+
+
+phone.pack_runner = lambda project, entry, by: _pack_from_catalog(entry, f"session:{project} (allowed by {by})")
+
+
 def _with_vmnets(nid, own):
     """Each project's own reach on a node, with the network its VMs are on
     there (R91 step 8): its sessions reach those and no other project's."""
@@ -5669,7 +5681,7 @@ def _snapshot(who):
         "emulator": {"ready": False, "why": "the node store did not open"} if NODES_OK
                     else emulator.ready(),
         "can": {name: not users.may(who, name) for name in
-                ("terminal", "docker-write", "vms-write", "toolchains-write", "git-auth", "admin",
+                ("terminal", "docker-write", "vms-write", "toolchains-write", "curate", "configure", "git-auth", "admin",
                  # The CI runner tab, a job run and a project's node, by
                  # grant (R137 step 3): the Tools card hides CI runner on it.
                  "runner", "jobs", "node",
@@ -8851,6 +8863,11 @@ class Handler(BaseHTTPRequestHandler):
                 and str(req.get("devbuild")) != prefs.get(name)["devbuild"] \
                 and self._refused("docker-write"):
             return
+        # ...and the tool pack dial (R169 step 5): adding to the catalog every
+        # node shares is Curate's to hand a session.
+        if req.get("installpacks") is not None and str(req.get("installpacks")) != prefs.get(name)["installpacks"] \
+                and self._refused("curate"):
+            return
         # ...and the same of the VM dial and the VMs' limits (R91): a VM is a
         # machine on a node, the VMs area's to hand a session or to raise.
         if ((req.get("makevms") is not None and str(req.get("makevms")) != prefs.get(name)["makevms"])
@@ -11007,7 +11024,28 @@ class Handler(BaseHTTPRequestHandler):
         address, or at one made here from a pasted manifest or an uploaded
         archive (/api/upload-archive's id); add it as it was shown; read a
         pack made here's manifest back for Edit; or remove it (R77).
-        Curate's (R174), since a pack joins every node's catalog."""
+        Curate's (R174), since a pack joins every node's catalog. A session
+        asks for one from the vetted catalog by name (bb tool install, R169
+        step 5), as its project's Install a tool pack dial says."""
+        me = self._who() or {}
+        if me.get("session"):
+            sess = me["session"]
+            if field(req, "action") != "install":
+                return self._json({"error": "a session asks for a pack from the catalog with bb tool install NAME, nothing else"}, 403)
+            name = field(req, "name")
+            entry = next((e for e in (catalogindex.index(settings.get("catalog_url") or None).get("index") or {}).get("packs") or []
+                          if e["name"] == name and e.get("kind", "pack") == "pack" and not e.get("withdrawn")), None)
+            if not entry:
+                return self._json({"error": f"no tool pack called {name or 'nothing'} in the vetted catalog: bb tool search WORDS lists them"}, 400)
+            if name in toolpacks.packs():
+                return self._json({"ok": True, "note": f"{name} is added already: install it on a node from the Library"})
+            mode = prefs.get(sess)["installpacks"]
+            if mode == "deny":
+                return self._json({"error": f"{sess}'s settings say an agent may not add a tool pack (Install a tool pack is deny): "
+                                            "a person adds one from the Library, or changes that in the project's settings"}, 403)
+            if mode == "ask":
+                return self._result(phone.ask_pack(field(req, "why") or f"add the tool pack {name}", sess, entry, asker_name=me.get("name") or ""))
+            return self._result(_pack_from_catalog(entry, f"session:{sess}"))
         if self._refused("curate"):
             return None
         action = req.get("action")
@@ -11509,12 +11547,24 @@ class Handler(BaseHTTPRequestHandler):
         the newest could not be taken. For whoever may install toolchains;
         never a session's."""
         who = self._who() or {}
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        # A search of it (R169 step 5): what bb tool search answers a
+        # session with, and anyone signed in: names, what each is, tier and
+        # platforms, never an address or a commit; each word must be found.
+        if self.path.split("?")[0].rstrip("/") == "/api/catalog/search":
+            idx = catalogindex.index(settings.get("catalog_url") or None)
+            words = [w for w in str((q.get("q") or [""])[0]).lower().split() if w][:8]
+            have = set(toolpacks.packs())
+            rows = [{"name": e["name"], "kind": e.get("kind", "pack"), "tier": e.get("tier"), "about": e.get("about", ""),
+                     "platforms": e.get("platforms") or [], "added": e["name"] in have}
+                    for e in ((idx.get("index") or {}).get("packs") or [])
+                    if not e.get("withdrawn") and all(w in f"{e['name']} {e.get('about', '')}".lower() for w in words)]
+            return self._json({"packs": rows[:50], "more": max(0, len(rows) - 50), "error": idx.get("error", "")})
         if who.get("session"):
             return self._json({"error": "the catalog is a person's to read here; bb tool search is a session's way"}, 403)
         why = users.may(who, "toolchains-write")
         if why:
             return self._json({"error": why}, 403)
-        q = urllib.parse.parse_qs(self.path.partition("?")[2])
         r = catalogindex.index(settings.get("catalog_url") or None, fresh=(q.get("fresh") or [""])[0] == "1")
         return self._json({"index": r.get("index"), "error": r.get("error", ""), "url": settings.get("catalog_url")})
 
