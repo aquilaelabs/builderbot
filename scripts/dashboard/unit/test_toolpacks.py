@@ -125,6 +125,10 @@ class Repository(unittest.TestCase):
         r = toolpacks.add(self.url, commit, "operator", sha256=good, tier="vetted")
         self.assertTrue(r.get("ok"), r)
         self.assertEqual((r["pack"]["tier"], toolpacks.recipes()[0]["pack"]["tier"]), ("vetted", "vetted"))
+        # ...and the node's toolchain rows carry it to the Library (B442).
+        import toolchains
+        row = next(t for t in toolchains.load_toolchains(toolpacks.recipes()) if t["name"] == "hexkit")
+        self.assertEqual((row["pack"]["tier"], row["pack"]["path"]), ("vetted", ""))
         # The tier the index gave is kept, an official one too, and none
         # without the index's sha256 (B440).
         self.assertEqual(toolpacks.add(self.url, commit, "operator", sha256=good, tier="official")["pack"]["tier"], "official")

@@ -161,6 +161,10 @@ def load_toolchains(packs=()):
         if isinstance(pk, dict):
             row["pack"] = {"url": str(pk.get("url") or ""), "commit": str(pk.get("commit") or "")[:40],
                            "by": str(pk.get("by") or ""), "at": int(pk.get("at") or 0), "here": bool(pk.get("here")),
+                           # Its tier and the repository's folder it came
+                           # from, for the Library's card and the catalog's
+                           # newer pin (B442).
+                           "tier": str(pk.get("tier") or "url")[:12], "path": str(pk.get("path") or "")[:200],
                            "verbs": sorted(str(v) for v in (r.get("verbs") or {}))[:40],
                            # What it runs now, for an update to be read as
                            # what changes: each verb's words, and the
