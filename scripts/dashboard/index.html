@@ -4006,17 +4006,26 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 :is(.chips,.dockline,.hscroll).chr:not(.chl){mask-image:linear-gradient(to left,transparent,#000 36px)}
 :is(.chips,.dockline,.hscroll).chl.chr{mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
 @media (pointer:fine){
-  /* The arrow stands on the panel, whole; the fade starts past it. */
-  :is(.chips,.dockline,.hscroll).chl:not(.chr){mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px)}
-  :is(.chips,.dockline,.hscroll).chr:not(.chl){mask-image:linear-gradient(to left,#000 22px,transparent 22px,#000 48px)}
-  :is(.chips,.dockline,.hscroll).chl.chr{mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px,#000 calc(100% - 48px),transparent calc(100% - 22px),#000 calc(100% - 22px))}
+  /* The arrow is a small round press of its own at that end, on the row's
+     middle (the operator, 29 Oct: a box the panel's color read as broken).
+     The row fades to nothing at that end, and the mask keeps only a
+     circle inside the arrow's disc there, its ring drawn inside that
+     circle, so a row whose arrow sits a pixel or two off still shows
+     nothing of what is cut off around it. */
+  :is(.chips,.dockline,.hscroll).chl:not(.chr){mask-image:radial-gradient(circle at 14px 50%,#000 10.5px,transparent 11px),linear-gradient(to right,transparent 30px,#000 64px)}
+  :is(.chips,.dockline,.hscroll).chr:not(.chl){mask-image:radial-gradient(circle at calc(100% - 14px) 50%,#000 10.5px,transparent 11px),linear-gradient(to left,transparent 30px,#000 64px)}
+  :is(.chips,.dockline,.hscroll).chl.chr{mask-image:radial-gradient(circle at 14px 50%,#000 10.5px,transparent 11px),radial-gradient(circle at calc(100% - 14px) 50%,#000 10.5px,transparent 11px),
+    linear-gradient(to right,transparent 30px,#000 64px,#000 calc(100% - 64px),transparent calc(100% - 30px))}
   :is(.chips,.dockline,.hscroll).chl,:is(.chips,.dockline,.hscroll).chr{cursor:grab}
   :is(.chips,.dockline,.hscroll).dragging{cursor:grabbing;user-select:none}
   .chips.dragging .chip,.dockline.dragging .dtab,.hscroll.dragging>button{pointer-events:none}
-  :is(.chips,.dockline,.hscroll).chl::before,:is(.chips,.dockline,.hscroll).chr::after{position:sticky;z-index:1;flex:0 0 22px;display:grid;place-items:center;
-    align-self:stretch;font:600 15px/1 system-ui;color:var(--ink);background:var(--panel);cursor:pointer}
-  :is(.chips,.dockline,.hscroll).chl::before{content:"\2039";left:0;margin-right:-22px;order:-1}
-  :is(.chips,.dockline,.hscroll).chr::after{content:"\203A";right:0;margin-left:-22px;order:99}
+  :is(.chips,.dockline,.hscroll).chl::before,:is(.chips,.dockline,.hscroll).chr::after{position:sticky;z-index:1;flex:0 0 26px;width:26px;height:26px;
+    box-sizing:border-box;align-self:center;display:grid;place-items:center;border-radius:50%;
+    border:0;background:var(--panel);box-shadow:inset 0 0 0 2.5px var(--panel),inset 0 0 0 3.5px var(--line);
+    color:var(--ink);font:600 14px/1 system-ui;cursor:pointer}
+  :is(.chips,.dockline,.hscroll).chl::before{content:"\2039";left:1px;margin-right:-26px;order:-1}
+  :is(.chips,.dockline,.hscroll).chr::after{content:"\203A";right:1px;margin-left:-26px;order:99}
+  :is(.chips,.dockline,.hscroll).chl:hover::before,:is(.chips,.dockline,.hscroll).chr:hover::after{box-shadow:inset 0 0 0 2.5px var(--panel),inset 0 0 0 3.5px var(--dim)}
 }
 /* A list's narrowing band (R254 step 1): its chips at the left and a search
    at the right, the search taking the whole width under them on a phone.
@@ -4027,7 +4036,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    where the width runs out; a group wider than the line scrolls inside it.
    Each keeps the room its fading edge takes, which also sets the groups
    apart. */
-.lfilter .chips{flex:0 1 auto;min-width:0;padding-inline-end:16px}
+.lfilter .chips{flex:0 1 auto;min-width:0;margin-inline-end:16px}
 /* With no chips to draw (one kind of row), the search starts the band. */
 .lfilter .chips:empty{display:none}
 .lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
