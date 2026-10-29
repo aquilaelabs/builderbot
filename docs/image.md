@@ -62,8 +62,23 @@ system runs from memory; `/var` and `/etc`'s changes stay
 on the stick's data partition, apart from both slots, and an update writes
 the other slot as on a disk. `slot status` says when the root is in memory.
 A machine needs the slot's size in memory beside what it runs (about 2 GB).
-The stick's own first run, its backup and the public stick maker are the
-USB edition's later steps.
+
+**The stick is written rarely.** Flash wears with every write, and many
+small synced writes are what make a stick slow, so on a stick boot it keeps
+the configuration and little else. Its data partition is flushed once a
+minute rather than every five seconds. The system's logs (`/var/log`), the
+controller's own logs and the journal are kept in memory, so they start
+again at each boot; the controller's logs go to a pool when Controller
+settings' paths put them there. What writes all day, docker's images and
+containers, the VMs, the toolchains and the projects, lives on a **system
+pool**: picked under This machine's **The stick** from the pools and the
+array the machine has, it is where those folders are bound at every boot,
+and picking it moves what the stick held of them there. Until one is
+picked, docker and the VMs wait, as they wait for the array on other NAS
+systems, and sessions still run, their projects on the stick. **The stick**
+also says what still lives on the stick and how much has been written to it,
+in its life and since this boot. An installed disk has none of this: its
+data partition is the machine's disk.
 
 ## The configuration backed up, and a new stick
 

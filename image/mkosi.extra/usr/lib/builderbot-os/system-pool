@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# The system pool of a BuilderBot OS stick (R161 step 10, the operator,
+# 29 Oct: the stick read once and written rarely, as Unraid's is): what
+# writes all day, docker's and containerd's data, libvirt's, the toolchain
+# store and the projects, lives on a pool, bound over its usual place at
+# every boot, and the stick keeps the configuration alone. Until a pool is
+# named, docker, containerd and libvirt are held (the initramfs's drop-ins
+# wait for /run/builderbot-os/system-pool-ready), as Unraid's Docker and VMs
+# wait for the array.
+#
+#   system-pool apply        at boot (builderbot-os-system-pool.service), and
+#                            again while the pool is not mounted yet: bind
+#                            each folder, then let the held services start
+#   system-pool set PATH     name the pool's mount point: the services
+#                            stopped, what the stick holds of each moved to
+#                            the pool, the name kept, applied, started again
+#   system-pool status       one JSON line for the census
+#
+# On a boot that is not a stick's (an installed disk), apply and status say
+# so and change nothing: there the data partition is the machine's disk.
+set -euo pipefail
+WORK="${BB_OS_WORK:-/var/lib/builderbot-os}"
+FILE="$WORK/system-pool"
+RUN="${BB_OS_RUN:-/run/builderbot-os}"
+READY="$RUN/system-pool-ready"
+CMDLINE="${BB_CMDLINE:-/proc/cmdline}"
+ENVF="${BB_CONTROLLER_ENV:-/etc/builderbot-controller/controller.env}"
+SUB="builderbot-system"
+SERVICES=(containerd docker libvirtd)
+
+envget() { sed -n "s/^$1=//p" "$ENVF" 2>/dev/null | tr -d '"' | tail -1; }
+# name=place, each a folder that writes all day.
+targets() {
+    local sdk ws
+    sdk="$(envget SDK_ROOT)"; ws="$(envget WORKSPACE)"
+    printf '%s\n' "docker=${BB_SP_DOCKER:-/var/lib/docker}" "containerd=${BB_SP_CONTAINERD:-/var/lib/containerd}" \
+        "libvirt=${BB_SP_LIBVIRT:-/var/lib/libvirt}" "toolchains=${sdk:-/var/lib/builderbot-controller/sdk}" \
+        "projects=${ws:-/srv/builderbot/projects}"
+}
+stick() { grep -qw 'bbtoram=1' "$CMDLINE" 2>/dev/null; }
+mounted() { [ -n "${BB_SP_MOUNTED:-}" ] && { [ "$BB_SP_MOUNTED" = 1 ]; return; }; findmnt -rn --target "$1" -o TARGET 2>/dev/null | grep -qx "$1"; }
+pool() { [ -s "$FILE" ] && head -1 "$FILE"; }
+units() { for u in "${SERVICES[@]}"; do systemctl list-unit-files "$u.service" >/dev/null 2>&1 && printf '%s\n' "$u"; done; }
+
+apply() {
+    stick || { echo "system-pool: not a stick boot: the data partition is this machine's disk"; return 0; }
+    local p; p="$(pool || true)"
+    if [ -z "$p" ]; then
+        echo "system-pool: no system pool named yet: docker, containerd and libvirt wait for one (This machine's The stick)"
+        return 0
+    fi
+    if ! mounted "$p"; then
+        echo "system-pool: $p is not mounted yet: tried again in half a minute" >&2
+        return 1
+    fi
+    local line name place src
+    while IFS= read -r line; do
+        name="${line%%=*}"; place="${line#*=}"; src="$p/$SUB/$name"
+        mkdir -p "$src" "$place"
+        if ! findmnt -rn -o TARGET "$place" 2>/dev/null | grep -qx "$place"; then
+            mount --bind "$src" "$place"
+        fi
+    done < <(targets)
+    mkdir -p "$RUN"; : > "$READY"
+    # The held services start now their condition holds; at boot this runs
+    # before them, so systemd starts them in order anyway.
+    [ -n "${BB_SP_NO_SYSTEMCTL:-}" ] || systemctl start --no-block "${SERVICES[@]/%/.service}" 2>/dev/null || true
+    echo "system-pool: on $p: $(targets | cut -d= -f1 | paste -sd, -)"
+}
+
+set_pool() {
+    local p="${1:-}"
+    stick || { echo "system-pool: only a stick boot takes a system pool" >&2; return 2; }
+    case "$p" in /*) ;; *) echo "system-pool: a pool is named by its mount point" >&2; return 2 ;; esac
+    mounted "$p" || { echo "system-pool: $p is not a mounted pool" >&2; return 2; }
+    local var_src p_src
+    var_src="$(findmnt -rn -o SOURCE --target "${BB_SP_VAR:-/var}" 2>/dev/null || true)"
+    p_src="$(findmnt -rn -o SOURCE --target "$p" 2>/dev/null || true)"
+    if [ -n "$var_src" ] && [ "$var_src" = "$p_src" ]; then
+        echo "system-pool: $p is on the stick itself: name a pool on the machine's disks" >&2; return 2
+    fi
+    [ -n "${BB_SP_NO_SYSTEMCTL:-}" ] || systemctl stop "${SERVICES[@]/%/.service}" 2>/dev/null || true
+    local line name place src
+    while IFS= read -r line; do
+        name="${line%%=*}"; place="${line#*=}"; src="$p/$SUB/$name"
+        mkdir -p "$src"
+        if findmnt -rn -o TARGET "$place" 2>/dev/null | grep -qx "$place"; then
+            umount "$place" || true
+        fi
+        # What the stick holds of it goes to the pool once, then off the stick.
+        if [ -d "$place" ] && [ -n "$(ls -A "$place" 2>/dev/null)" ]; then
+            cp -a "$place/." "$src/"
+            find "$place" -mindepth 1 -delete
+        fi
+    done < <(targets)
+    mkdir -p "$WORK"
+    printf '%s\n' "$p" > "$FILE.new"; mv -f "$FILE.new" "$FILE"
+    apply
+}
+
+status() {
+    local p ready=false on_stick=() kb="" since="" dev line name place
+    stick || { echo '{"stick": false}'; return 0; }
+    p="$(pool || true)"
+    [ -e "$READY" ] && ready=true
+    while IFS= read -r line; do
+        name="${line%%=*}"; place="${line#*=}"
+        if ! findmnt -rn -o TARGET "$place" 2>/dev/null | grep -qx "$place" && [ -n "$(ls -A "$place" 2>/dev/null)" ]; then
+            on_stick+=("\"$name\"")
+        fi
+    done < <(targets)
+    dev="$(basename "$(findmnt -rn -o SOURCE --target "${BB_SP_VAR:-/var}" 2>/dev/null || true)")"
+    [ -n "$dev" ] && [ -r "/sys/fs/ext4/$dev/lifetime_write_kbytes" ] && kb="$(cat "/sys/fs/ext4/$dev/lifetime_write_kbytes")"
+    [ -n "$dev" ] && [ -r "/sys/fs/ext4/$dev/session_write_kbytes" ] && since="$(cat "/sys/fs/ext4/$dev/session_write_kbytes")"
+    local IFS=,
+    printf '{"stick": true, "pool": "%s", "ready": %s, "on_stick": [%s], "written_kb": %s, "boot_written_kb": %s}\n' \
+        "${p//\"/}" "$ready" "${on_stick[*]}" "${kb:-null}" "${since:-null}"
+}
+
+case "${1:-}" in
+    apply) apply ;;
+    set) set_pool "${2:-}" ;;
+    status) status ;;
+    *) echo "usage: system-pool apply | set PATH | status" >&2; exit 64 ;;
+esac

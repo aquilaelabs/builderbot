@@ -45,7 +45,7 @@ from .runners import _runner_state, runner_dirs
 from . import storage
 from . import vmhw
 from .disks import disks_now
-from .osimage import os_release
+from .osimage import os_release, stick_status
 from .shares import shares_now
 from .pools import pools_now, snapshots_now
 from .array import array_now
@@ -368,6 +368,9 @@ def census(state):
         "administers": os.geteuid() == 0 and os.access(SANDBOX_BIN, os.X_OK),
         # BuilderBot OS on this machine (R160 step 4): the image, its slot and the next boot's; {} elsewhere.
         "os_image": os_release(),
+        # ...and a stick boot's (R161 step 10): its system pool, what still
+        # lives on the stick and what the stick has been written; {} elsewhere.
+        "os_stick": stick_status(),
         # The machine's disks (R162 step 1): what the Storage page lists
         # for the controller's own machine before anything is written.
         "disks": disks_now(),

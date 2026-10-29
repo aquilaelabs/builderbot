@@ -66,6 +66,7 @@ function renderMachineInto(i){
   const inflight = t => (n.jobs || []).some(j => j.type === t || j.apply === t);
   d.list.innerHTML = machineHead(n)
     + (state?.release?.running !== undefined ? docSection("nodes", "updates", "Updates", state.release.newer ? `${state.release.newer} is out` : state.release.latest ? "up to date" : "", updatesSection()) : "")
+    + stickSection(n)
     + firstbootSection()
     + ndRowHtml(n);
   wireNodesTab(d.el);
@@ -93,6 +94,51 @@ function wireHoldNext(root){
   });
 }
 
+// The stick (R161 step 10, the operator, 29 Oct: read once and written
+// rarely): the system runs from RAM, the stick keeps the configuration, and
+// what writes all day (docker, the VMs, the toolchains, the projects) is on
+// the system pool picked here, or waits for one. What still lives on the
+// stick and what it has written, in the facts voice.
+const STICK_WORDS = {docker: "docker's images", containerd: "containers' layers", libvirt: "the VMs", toolchains: "the toolchains", projects: "the projects"};
+function stickSection(n){
+  const s = n?.reported?.os_stick;
+  if (!s?.stick) return "";
+  const gb = kb => kb === null || kb === undefined ? "" : kb >= 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : `${Math.round(kb / 1024)} MB`;
+  const mounts = [...(n.reported?.pools || []).filter(p => p.mount).map(p => [p.mount, `${p.name} (${p.mount})`]),
+                  ...(n.reported?.array?.mount ? [[n.reported.array.mount, `the array (${n.reported.array.mount})`]] : [])];
+  const busy = (n.jobs || []).some(j => j.apply === "system-pool");
+  const admin = !!state?.can?.admin;
+  const rows = [
+    ["Runs from", "memory: the stick is read at boot"],
+    ["On the stick", (s.on_stick || []).length ? `the configuration, and ${s.on_stick.map(k => STICK_WORDS[k] || k).join(", ")}` : "the configuration alone"],
+    ["Docker and the VMs", s.ready ? `on ${s.pool}` : s.pool ? `waiting for ${s.pool} to mount` : "waiting for a system pool", {cls: s.ready ? "ok" : "warn"}],
+    ["Written to the stick", [gb(s.written_kb) && `${gb(s.written_kb)} in its life`, gb(s.boot_written_kb) && `${gb(s.boot_written_kb)} since this boot`].filter(Boolean).join(", ")],
+  ];
+  const why = !mounts.length ? "No pool or array here yet: make one on the Storage page, then pick it here."
+    : !n.live ? "Its agent is not dialing in." : busy ? "Moving to the pool now: docker and the VMs are stopped until it ends." : "";
+  const pick = admin ? `<div class="actbar"><label class="pick"><span class="pickw">System pool</span><select id="stickPool" aria-label="system pool"${why ? " disabled" : ""}>${
+      optionList([...(s.pool ? [] : [["", "pick a pool"]]), ...mounts], s.pool || "")}</select></label><span class="sp"></span>
+      <button type="button" class="primary" data-stickpool${why ? " disabled" : ""}>${s.pool ? "Move to this pool" : "Use this pool"}</button></div>
+      ${why ? `<div class="sub dim">${esc(why)}</div>` : ""}` : "";
+  return docSection("nodes", "stick", "The stick", s.ready ? "written rarely" : (s.on_stick || []).length ? "writes on the stick" : "waiting for a pool",
+    `<div class="field">${factGrid(rows, "stickfacts")}${pick}<div class="hint">Docker, the VMs, the toolchains and the projects write all day, so they live on a pool, never on the stick; until one is picked, docker and the VMs wait, and the logs and the journal are kept in memory.</div></div>`,
+    {cls: s.ready ? "" : "warn"});
+}
+function wireStick(root){
+  const b = root.querySelector("[data-stickpool]"), sel = root.querySelector("#stickPool");
+  if (!b || !sel) return;
+  b.onclick = () => pressing(b, async () => {
+    const path = sel.value;
+    if (!path) return notify("pick a pool first", true);
+    if (!await askYes(`Put docker, the VMs, the toolchains and the projects on ${path}?\n\nDocker and the VMs stop while what the stick holds of theirs is moved there, and start again on the pool. From then on they write there, and the stick keeps the configuration alone.`,
+        {title: "Use this pool?", verb: "Move"})) return;
+    busy(b, "Moving");
+    const j = await (await postJSON("/api/v1/nodes", {action: "system-pool", id: ownMachine()?.id || "", path})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "moving to the pool: This machine says when it is done", !!j.error);
+    await loadNodes();
+  });
+}
+
 // What a stick's prepared configuration did at the first boot (R161 step 8,
 // firstboot.py): each piece applied, waiting for disks to be adopted, or not
 // applied with why, in the facts voice. Nothing on an install that had none.
@@ -114,4 +160,5 @@ function wireHeld(root){
     await refresh();
   }));
   wireHoldNext(root);
+  wireStick(root);
 }

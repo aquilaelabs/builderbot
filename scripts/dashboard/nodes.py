@@ -1551,6 +1551,15 @@ def _census(c):
                      # On trial, and a fallback said (R161 step 2).
                      "trial": o.get("trial") is True,
                      "fell_back": re.sub(r"[^\w .,:;()'-]", "", str(o.get("fell_back") or ""))[:200]}
+    # A stick boot (R161 step 10): its system pool, whether docker and the
+    # VMs may run yet, what still lives on the stick, what it has written.
+    if isinstance(c.get("os_stick"), dict) and c["os_stick"].get("stick") is True:
+        s = c["os_stick"]
+        kb = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None  # noqa: E731
+        out["os_stick"] = {"stick": True, "pool": str(s.get("pool") or "")[:200] if str(s.get("pool") or "").startswith("/") else "",
+                           "ready": s.get("ready") is True,
+                           "on_stick": [x for x in (s.get("on_stick") or []) if x in ("docker", "containerd", "libvirt", "toolchains", "projects")],
+                           "written_kb": kb(s.get("written_kb")), "boot_written_kb": kb(s.get("boot_written_kb"))}
     # The domains its libvirt has that BuilderBot did not make (R165 step 1):
     # a name, a state and a size, read-only on the VMs page.
     if isinstance(c.get("vms_other"), list):
@@ -3728,6 +3737,39 @@ def node_os_update(principal, node_id, release="", from_dir=""):
                 {"apply": "os-update", "config": ({"release": tag} if tag else {"from": src}), "timeout": 3600})
     if r.get("ok"):
         audit(principal, "os-update", node_id, {"job": r["job"], "release": tag, "from": src})
+    return r
+
+
+def node_system_pool(principal, node_id, path=""):
+    """A stick's system pool (R161 step 10): the pool, by its mount point,
+    where docker, containerd, libvirt, the toolchains and the projects write
+    instead of the stick; a system job on the own machine's node, whose root
+    agent moves them there and binds them at every boot. Refused anywhere
+    but a stick boot, and for a mount point no pool or array of its census has."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    rep = n.get("reported") or {}
+    if not own_machine(n) or not (rep.get("os_stick") or {}).get("stick"):
+        return {"error": "a system pool is a stick's: this machine does not run BuilderBot OS from a stick"}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot move a pool"}
+    path = str(path or "").strip()
+    mounts = {p.get("mount") for p in (rep.get("pools") or []) if isinstance(p, dict) and p.get("mount")}
+    if (rep.get("array") or {}).get("mount"):
+        mounts.add(rep["array"]["mount"])
+    if path not in mounts:
+        return {"error": "name a pool or the array this machine has mounted (the Storage page makes one)"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "system-pool", "config": {"path": path}, "timeout": 6 * 3600})
+    if r.get("ok"):
+        audit(principal, "system-pool", node_id, {"job": r["job"], "path": path})
     return r
 
 
@@ -6770,6 +6812,7 @@ def verb(principal, req):
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
              "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
              "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
+             "system-pool": lambda: node_system_pool(principal, nid, field(req, "path")),
              "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone"), req.get("spindown")),
              "storage-share": lambda: node_storage_share(principal, nid, req),
              "storage-pool": lambda: node_storage_pool(principal, nid, req),

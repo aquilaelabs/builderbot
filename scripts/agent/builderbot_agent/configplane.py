@@ -119,6 +119,9 @@ class ConfigPlaneMixin:
             return self._apply_storage_backup(job, cfg)
         if what == "machine":
             return self._apply_machine(job, cfg)
+        if what == "system-pool":
+            # A stick's system pool (R161 step 10, osimage.py).
+            return self._apply_system_pool(job, cfg)
         if what == "os-update":
             # BuilderBot OS: the next image into the other slot (osimage.py).
             return self._apply_os_update(job, cfg)

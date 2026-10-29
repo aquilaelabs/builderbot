@@ -11,6 +11,7 @@ then, and the slot that runs now is the one to fall back to.
 """
 import contextlib
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -19,6 +20,7 @@ import urllib.request
 
 RELEASE_FILE = "/usr/lib/builderbot-os/release"
 SLOT_TOOL = "/usr/lib/builderbot-os/slot"
+POOL_TOOL = "/usr/lib/builderbot-os/system-pool"
 ESP = "/boot/efi"
 # image/partitions.sh's, held to it by test_osimage.py.
 SLOT_DEV = {"a": "/dev/disk/by-partuuid/6a5c2f3e-0b7d-4b2a-9c1e-b0b1de5b0e0a",
@@ -127,9 +129,46 @@ def _fetch(url, dest, say):
                 say(f"{os.path.basename(dest)}: {said * 10}% of {total >> 20} MB\n")
 
 
+def stick_status():
+    """A stick boot's state (R161 step 10, the system-pool tool's status):
+    {stick, pool, ready, on_stick, written_kb, boot_written_kb}, or {} where
+    the tool is not here (no BuilderBot OS)."""
+    tool = _env("BB_OS_POOL", POOL_TOOL)
+    if not os.path.isfile(tool):
+        return {}
+    try:
+        r = subprocess.run(["bash", tool, "status"], capture_output=True, text=True, timeout=15, check=False)
+        d = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {}
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {}
+    if not isinstance(d, dict) or not d.get("stick"):
+        return {"stick": False}
+    return {"stick": True, "pool": str(d.get("pool") or "")[:200], "ready": d.get("ready") is True,
+            "on_stick": [str(x)[:20] for x in (d.get("on_stick") or [])][:8],
+            "written_kb": d.get("written_kb") if isinstance(d.get("written_kb"), int) else None,
+            "boot_written_kb": d.get("boot_written_kb") if isinstance(d.get("boot_written_kb"), int) else None}
+
+
 class OsImageMixin:
     """Agent's BuilderBot OS update: one of the parts class Agent (agent.py)
     is made of."""
+
+    def _apply_system_pool(self, job, cfg):
+        """A stick's system pool named (R161 step 10): the tool stops docker,
+        containerd and libvirt, moves what the stick holds of theirs, of the
+        toolchains and of the projects to the pool, keeps the name and binds
+        them there at every boot; then a hello says where things are."""
+        tool = _env("BB_OS_POOL", POOL_TOOL)
+        path = str(cfg.get("path") or "")
+        if not os.path.isfile(tool):
+            job.say("refused: this machine does not run BuilderBot OS, so it has no stick\n")
+            return "failed", 77
+        if not path.startswith("/") or ".." in path.split("/"):
+            job.say("refused: a pool is named by its mount point\n")
+            return "failed", 64
+        rc = self._sh(job, ["bash", tool, "set", path], timeout=6 * 3600)
+        self.hello_again("the system pool was set")
+        return ("succeeded", 0) if rc == 0 else ("failed", rc)
 
     def _apply_os_update(self, job, cfg):
         """Write the next image into the slot not in use. `cfg` names a
