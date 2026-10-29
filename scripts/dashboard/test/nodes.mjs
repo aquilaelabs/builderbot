@@ -1847,8 +1847,9 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     // What each tool pulls onto this machine is on its record, named in the
     // node's package manager, before Install rather than in a job log after.
     // The Library's card does not draw it; the read it is drawn from carries it.
-    const dotnetSys = await page.evaluate(() => lib.rows.find(r => r.kind === 'toolchain' && r.name === 'dotnet')?.system || null);
-    ok(dotnetSys?.manager === 'dnf' && (dotnetSys.names || []).includes('libicu') && !lib.rows.find(r => r.name === 'dotnet').installed,
+    const dotnetSys = await page.evaluate(() => { const r = lib.rows.find(x => x.kind === 'toolchain' && x.name === 'dotnet');
+      return r ? { ...(r.system || {}), installed: !!r.installed } : null; });
+    ok(dotnetSys?.manager === 'dnf' && (dotnetSys.names || []).includes('libicu') && !dotnetSys.installed,
        `a toolchain's record names the system packages its tool installs on this node (${JSON.stringify(dotnetSys)})`);
     // Nobody has to press it on a node BuilderBot manages: the census that
     // named them queued the job itself, for exactly those recipes.
