@@ -728,6 +728,49 @@ ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown actio
   await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(c => (toolchains?.items || []).find(i => i.name === 'hexkit')?.pack?.commit === c, newer, { timeout: 20000 });
   ok(true, '...and Update keeps the pack at the newer commit');
+  // From the vetted catalog (R169 step 4): a pack kept at the index's pin
+  // wears vetted, a sha256 the index does not pin is refused (B440), and
+  // when the index pins a newer commit the card offers Catalog update: the
+  // dialog on that pin with what it changes marked, Update keeping it there
+  // with its tier (B442). The catalog's address is a dead one here, so each
+  // read falls back to the index kept in the state.
+  {
+    const { createHash } = await import('node:crypto');
+    const { rmSync } = await import('node:fs');
+    const sha = c => createHash('sha256').update(execFileSync('git', ['-C', repo, 'archive', '--format=tar', c])).digest('hex');
+    const pin = c => writeFileSync(`${DIR}/state/catalog-index.json`, JSON.stringify({ fetched_at: 0, packs: [{ name: 'hexkit',
+      url: `file://${repo}`, commit: c, sha256: sha(c), tier: 'vetted', path: '', about: 'Looks inside binaries.', platforms: ['linux/amd64'] }] }));
+    await api('/api/settings', { set: { catalog_url: 'http://127.0.0.1:9/' } });
+    pin(newer);
+    const forged = await api('/api/toolpacks', { action: 'add', url: `file://${repo}`, commit: newer, sha256: '0'.repeat(64) });
+    ok(/not the one the vetted catalog pins/.test(forged.error || ''), `a sha256 the index does not pin keeps nothing as vetted (${forged.error})`);
+    const kept = await api('/api/toolpacks', { action: 'add', url: `file://${repo}`, commit: newer, sha256: sha(newer) });
+    ok(kept.pack?.tier === 'vetted', `the index's own pin is kept as vetted (${kept.pack?.tier || kept.error})`);
+    writeFileSync(`${repo}/bbtool.json`, JSON.stringify({ name: 'hexkit', label: 'Hex kit', about: 'Looks inside binaries.',
+      platforms: ['linux/amd64', 'linux/arm64'], layout: { bin: ['bin'], tool: 'bin/hexkit' }, guidance: 'GUIDE.md',
+      verbs: { dump: { about: 'A file as hex.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'dump', '--wide', '{args}'] },
+               strings: { about: 'Its strings.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'strings', '-a', '{args}'] } } }));
+    g('commit', '-qam', 'vetted again');
+    const next = g('rev-parse', 'HEAD');
+    pin(next);
+    const REPIN = `.doc.on .librarytab .lcard[data-lrow="pack:hexkit"] [data-libact="repin"]`;
+    await page.evaluate(() => { loadToolchains(); loadLibrary(); });
+    await page.waitForSelector(REPIN, { timeout: 20000 });
+    const vcard = await page.evaluate(() => [...document.querySelectorAll('.doc .librarytab .lcard[data-lrow="pack:hexkit"] .lcmeta .pill')].map(p => p.textContent.trim()));
+    ok(vcard.includes('vetted'), `the kept pack's card wears vetted (${vcard.join(', ')})`);
+    await page.click(REPIN);
+    await page.waitForSelector('#tpmodal:not([hidden]) .tpseen', { timeout: 20000 });
+    const upd = await page.$eval('#tpmodal', e => e.textContent.replace(/\s+/g, ' '));
+    ok(/strings -a \{args\} changed was \{dir\}\/bin\/hexkit strings \{args\}/.test(upd) && /the vetted catalog's newer pin/.test(upd)
+       && upd.includes(next.slice(0, 12)),
+       `Catalog update opens the dialog on the index's newer pin, what it changes marked (${upd.slice(0, 240)})`);
+    await page.click('#tpmodal [data-tpadd]');
+    await page.waitForFunction(c => (toolchains?.items || []).find(i => i.name === 'hexkit')?.pack?.commit === c, next, { timeout: 20000 });
+    const after = await page.evaluate(() => (toolchains.items || []).find(i => i.name === 'hexkit').pack.tier);
+    ok(after === 'vetted', `...and Update keeps it at that pin, still vetted (${after})`);
+    await api('/api/settings', { set: { catalog_url: 'https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/' } });
+    rmSync(`${DIR}/state/catalog-index.json`, { force: true });
+  }
   const bad = await api('/api/toolpacks', { action: 'preview', url: `file://${DIR}/nowhere` });
   ok(/could not fetch/.test(bad.error || ''), `a repository that is not there is said so (${bad.error})`);
   // B84: installed on a node, Remove is refused on the form, saying where,

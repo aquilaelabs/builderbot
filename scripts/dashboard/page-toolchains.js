@@ -304,7 +304,7 @@ function tpFromHtml(f, here){
 
 function tpModalHtml(){
   const p = tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit && i.pack) : null;
-  const f = tpForm, fresh = !p, seen = f.seen, here = !!p?.pack?.here;
+  const f = tpForm, fresh = !p, seen = f.seen, here = !!p?.pack?.here && !f.catalog;
   // An app of the person's own: its own form, look and foot (R170 step 3).
   if (fresh && f.what === "app"){
     const ed = !!f.app.editing;
@@ -335,8 +335,8 @@ function tpModalHtml(){
     ${seen ? `<div class="field">${tpSeen(seen, p ? p.pack : null, offer)}</div>` : ""}
     ${f.error ? `<div class="field"><div class="hint bad">${esc(f.error)}</div></div>` : ""}
     ${p && !here && f.busy === "look" ? `<div class="field"><div class="hint">Looking for a newer commit…</div></div>` : ""}
-    ${p && !here && seen && !newer ? `<div class="field"><div class="hint">No newer commit: the repository's head is the one added.</div></div>` : ""}
-    ${newer ? `<div class="field"><div class="hint">${esc(seen.commit.slice(0, 12))} is newer: Update keeps it, with the changes marked above.</div></div>` : ""}
+    ${p && !here && seen && !newer ? `<div class="field"><div class="hint">${f.catalog ? "No newer pin: the vetted catalog pins the commit added." : "No newer commit: the repository's head is the one added."}</div></div>` : ""}
+    ${newer ? `<div class="field"><div class="hint">${esc(seen.commit.slice(0, 12))} is ${f.catalog ? "the vetted catalog's newer pin: Update keeps it, its archive checked against the catalog's sha256," : "newer: Update keeps it,"} with the changes marked above.</div></div>` : ""}
     ${dlgFoot(`<button type="button" data-tpcancel>${fresh || offer ? "Cancel" : "Close"}</button>`, `${look}${add}`, rm)}</div>`;
 }
 
@@ -396,14 +396,27 @@ function tpWire(el){
   if (tpCatalog === null) loadCatalog(false);
 }
 
-function tpOpen(name){
+// A pack kept from the vetted catalog (R169 step 4) looks at the index's
+// pin, never at its repository's head: the newer pin `pin` when the Library
+// offers one, else the index's own pin for it, read first if not yet read.
+// Update then keeps it at that pin with the index's sha256, its tier kept.
+async function tpOpen(name, pin){
+  const pack = name ? (toolchains?.items || []).find(i => i.name === name)?.pack : null;
+  const vetted = pack && (pack.tier === "vetted" || pack.tier === "official");
+  if (vetted && !pin && !tpCatalog?.index) await loadCatalog(false);
+  pin = pin || (vetted ? tpPinOf(name, pack) : null);
   tpEdit = name || "";
   tpForm = TP_BLANK();
-  const here = !!(toolchains?.items || []).find(i => i.name === tpEdit)?.pack?.here;
+  if (pin) tpForm.catalog = {...pin, name};
+  const here = !!pack?.here && !pin;
   if (here) tpForm.from = "paste";
   tpDraw(true);
   if (here) tpSource();
   else if (tpEdit) tpLook();
+}
+function tpPinOf(name, pack){
+  const e = (tpCatalog?.index?.packs || []).find(x => x.name === name && x.url === pack.url && (x.path || "") === (pack.path || "") && !x.withdrawn);
+  return e ? {url: e.url, commit: e.commit, sha256: e.sha256, path: e.path || ""} : null;
 }
 
 // A pack made here opens on its bbtool.json as kept, to change in place.
@@ -423,7 +436,8 @@ async function tpLook(){
   const pack = name ? (toolchains?.items || []).find(i => i.name === name)?.pack : null;
   f.busy = "look"; f.error = ""; tpDraw();
   let body;
-  if (pack && !pack.here) body = {action: "preview", url: pack.url};
+  if (pack && f.catalog) body = {action: "preview", url: f.catalog.url, commit: f.catalog.commit, sha256: f.catalog.sha256, path: f.catalog.path || ""};
+  else if (pack && !pack.here) body = {action: "preview", url: pack.url};
   else if (!pack && f.catalog) body = {action: "preview", url: f.catalog.url, commit: f.catalog.commit, sha256: f.catalog.sha256, path: f.catalog.path || ""};
   else if (!pack && f.from === "repo") body = {action: "preview", url: f.url.trim()};
   else if (f.file){

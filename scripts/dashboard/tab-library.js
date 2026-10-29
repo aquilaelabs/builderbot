@@ -179,7 +179,10 @@ function libActs(r, may){
   const verb = r.update ? a("install", "Update", "primary", libHold) : again ? a("install", "Install again", "", libHold)
     : r.installed ? "" : a("install", "Install", r.kind === "agent" && r.agent === "claude" ? "primary" : "", libHold);
   const edit = r.kind === "pack" && r.pack ? a("edit", "Edit") : "";
-  return `${verb}${edit}`;
+  // The catalog pins a newer commit of a pack kept from it (R169 step 4):
+  // the dialog on that pin, its changes marked, before anything is kept.
+  const repin = r.repin && may.packs ? a("repin", "Catalog update") : "";
+  return `${verb}${repin}${edit}`;
 }
 
 // The whole description, on the open row (rows-you-open): what it fetches
@@ -213,6 +216,7 @@ function libDetail(r){
     if (r.machine) lines.push(`<span class="sub">${r.name === TC_DRIVER ? "Built for the machine's kernel, installed as root, taking the card at the next restart." : "From NVIDIA's own package source, which installing adds and removing takes away."} Its state and Remove are on the Installed page.</span>`);
     if (r.pack) lines.push(`<span class="sub">${r.pack.here ? "Made here" : `From <code>${esc(r.pack.url)}</code>${r.pack.path ? ` (${esc(r.pack.path)})` : ""} at ${esc((r.pack.commit || "").slice(0, 12))}`}${r.pack.by ? `, added by ${esc(r.pack.by)}` : ""}. A session has <code>bb tool ${esc(r.name)}</code>.</span>`);
     if (r.catalog) lines.push(`<span class="sub">From <code>${esc(r.catalog.url)}</code>${r.catalog.path ? ` (${esc(r.catalog.path)})` : ""} at ${esc((r.catalog.commit || "").slice(0, 12))}, its archive's sha256 checked on the way in. Install opens the Add tool pack dialog on that commit, and Add keeps exactly that.</span>`);
+    if (r.repin) lines.push(`<span class="sub warn">The vetted catalog pins a newer commit, ${esc(r.repin.commit.slice(0, 12))}: Catalog update shows what it changes before it is kept.</span>`);
     if (r.config?.length) lines.push(`<span class="sub">Asks for ${esc(r.config.map(f => f.label).join(", "))} on each node, set on the Installed page once it is there.</span>`);
     if (r.wrong_platform) lines.push(`<span class="sub warn">${esc(r.wrong_platform)}</span>`);
     if (r.pack && !r.pack.here || r.catalog){
@@ -225,6 +229,7 @@ function libDetail(r){
   }
   if (r.kind === "service"){
     lines.push(`<span class="sub">Deployed on the node as a written container; configured, read and removed on the Installed page under Machines.</span>`);
+    if (r.repin) lines.push(`<span class="sub warn">The vetted catalog pins a newer commit, ${esc(r.repin.commit.slice(0, 12))}: Catalog update shows what it changes before it is kept.</span>`);
     if (r.config?.length) lines.push(`<span class="sub">Asks for ${esc(r.config.map(f => f.label).join(", "))}.</span>`);
   }
   if (r.kind === "agent"){
@@ -497,6 +502,7 @@ async function libAct(b, act, kind, name){
   }
   if (act === "add"){ libWithToolchains(() => tpOpenCatalog({...r.catalog, name: r.name, tier: r.tier, about: r.about, platforms: r.platforms})); return; }
   if (act === "edit"){ libWithToolchains(() => tpOpen(r.name)); return; }
+  if (act === "repin"){ libWithToolchains(() => tpOpen(r.name, r.repin)); return; }
   // Install or update a toolchain or an added pack: the Toolchains job,
   // with its agreements asked the way that page asks them.
   busy(b, r.installed ? "Updating" : "Installing");

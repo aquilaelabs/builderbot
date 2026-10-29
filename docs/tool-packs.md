@@ -105,6 +105,16 @@ the catalog withdrew is not offered, one already added is its own card,
 and an official entry is the shipped row it names. The catalog's trouble,
 when it cannot be read, is said over the cards.
 
+A pack kept from the catalog stays at the commit it was kept at. When a
+later index pins a newer commit of it (the same repository and folder), its
+card says so and offers **Catalog update**, which opens the dialog on the
+new pin with what it changes marked verb by verb, as Edit does for a pack
+added by address; **Update** keeps it at that pin with the index's sha256
+checked, its tier kept. Edit on a pack kept from the catalog looks at the
+index's pin too, never at the repository's head. A pack is kept as vetted or
+official only at a commit and sha256 the signed index pins; anything else
+is a pack by address.
+
 ### Docker apps in the catalog
 
 An entry of `"kind": "app"` is a Docker app: its folder holds `bbapp.json`
