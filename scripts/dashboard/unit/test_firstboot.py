@@ -57,6 +57,29 @@ class Take(unittest.TestCase):
             self.assertFalse(run.exists())
 
 
+    def test_the_sticks_mirror_is_handed_over_at_every_boot(self):
+        # R169 step 6: a filled catalog-mirror.bin is copied out for the
+        # controller, the stick left as it is; a blank one hands nothing.
+        with tempfile.TemporaryDirectory() as d:
+            esp = Path(d, "esp", "builderbot"); esp.mkdir(parents=True)
+            data = b"\x1f\x8b mirror bytes"
+            f = esp / "catalog-mirror.bin"
+            head = b"BB-MIRROR-1\n" + f"{len(data):012d}\n".encode()
+            f.write_bytes(head + data + b" " * 100 + b"\n")
+            run = Path(d, "run")
+            env = dict(os.environ, BB_ESP=str(Path(d, "esp")), BB_OS_RUN=str(run), BB_CONTROLLER_ENV=str(Path(d, "none")), PATH=d)
+            r = subprocess.run([sys.executable, TAKE], capture_output=True, text=True, check=False, env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            got = run / "firstboot" / "catalog-mirror.tar.gz"
+            self.assertEqual(got.read_bytes(), data)
+            self.assertEqual(oct(got.stat().st_mode & 0o777), "0o600")
+            self.assertTrue(f.read_bytes().startswith(head + data), "the stick keeps it")
+            shutil.rmtree(run)
+            f.write_bytes(b"BB-MIRROR-1\n000000000000\n" + b" " * 100 + b"\n")
+            subprocess.run([sys.executable, TAKE], env=env, check=False, capture_output=True)
+            self.assertFalse((run / "firstboot" / "catalog-mirror.tar.gz").exists())
+
+
 class Apply(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())

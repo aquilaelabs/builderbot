@@ -5253,6 +5253,16 @@ if BARE_METAL:
                   f"{len(_fb['waiting'])} waiting, {len(_fb['failed'])} not applied (This machine says which)", flush=True)
     except Exception as e:                                # noqa: BLE001 (a start must not fail on this)
         print(f"dashboard: the stick's prepared configuration was not applied: {e}", flush=True)
+    # The catalog's mirror the stick carries (R169 step 6), handed over by
+    # the boot: imported once per mirror, as Import under Controller settings.
+    _cm = os.path.join(os.environ.get("BB_OS_RUN", "/run/builderbot-os"), "firstboot", "catalog-mirror.tar.gz")
+    if os.path.isfile(_cm):
+        try:
+            _r = catalogmirror.take_file(_cm, time.time())
+            if not _r.get("same"):
+                print(f"dashboard: the stick's catalog mirror: {_r.get('error') or 'imported, ' + str(_r.get('packs')) + ' entries'}", flush=True)
+        except Exception as e:                            # noqa: BLE001 (a start must not fail on this)
+            print(f"dashboard: the stick's catalog mirror was not imported: {e}", flush=True)
 import backup                                                    # noqa: E402
 # Moving this controller to another home (R90 step 12, move.py): the bundle
 # and its token, the nodes told, the knock answered once restored here.

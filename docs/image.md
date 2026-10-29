@@ -118,6 +118,14 @@ nothing writes a FAT partition by hand on any system; with the stick in
 another machine it is a plain file to edit, and `verify` takes the same
 `--set` to read such a stick back.
 
+`--mirror FILE` writes a mirror of the vetted catalog (the archive
+`tools/catalog-mirror.py` makes, up to 64 MiB) into the stick's
+`builderbot/catalog-mirror.bin`, laid and filled the same way. Each boot
+hands it to the controller, which imports it as it starts, once per mirror,
+so a machine with no network installs tool packs from the Library (Tool
+packs' Without the network says how the mirror is used). The stick keeps
+it; it holds nothing secret.
+
 `--config FILE` writes a prepared configuration into the stick's
 `builderbot/firstboot.json` (64 KiB, laid and filled the same way), which the
 first boot applies before anyone signs in. It is a JSON object:

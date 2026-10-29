@@ -4,7 +4,7 @@ and Linux, nothing but Python's own library, that writes a release's stick
 image onto a USB stick and checks it.
 
     builderbot-stick.py list                      the removable disks here
-    builderbot-stick.py write DISK [--image FILE | --release vX.Y.Z | --latest] [--set KEY=VALUE ...] [--config FILE] [--yes]
+    builderbot-stick.py write DISK [--image FILE | --release vX.Y.Z | --latest] [--set KEY=VALUE ...] [--config FILE] [--mirror FILE] [--yes]
     builderbot-stick.py verify DISK --image FILE  the stick read back against the image
 
 DISK is /dev/sdX on Linux, /dev/diskN on a Mac, \\\\.\\PhysicalDriveN or its
@@ -13,7 +13,10 @@ release (its sha256 beside it is fetched and checked), the newest one when
 nothing else is named, or a file you have. --set KEY=VALUE, as often as
 needed, writes a line into the stick's builderbot.env, which each boot reads:
 TZ (the machine's time zone, Europe/Berlin) and BB_RELEASE_LINE (the release
-line updates follow, 0.9) are the ones it takes.
+line updates follow, 0.9) are the ones it takes. --mirror FILE puts a
+mirror of the vetted catalog (tools/catalog-mirror.py's archive, up to
+64 MiB) on the stick, which the controller imports as it starts, so a
+machine with no network installs tool packs from it.
 Everything on the stick is lost; the tool says so and takes --yes or a typed
 yes. It runs as root (sudo) on Linux and a Mac, and as an administrator on
 Windows, since a disk is written whole. A stick made this way boots the
@@ -43,6 +46,10 @@ ENV_SIZE = 4096
 # ...and its builderbot/firstboot.json, a prepared configuration: 64 KiB.
 BOOT_MARK = b"BB-FIRSTBOOT-1\n"
 BOOT_SIZE = 65536
+# ...and its builderbot/catalog-mirror.bin, a mirror of the vetted catalog
+# (R169 step 6): 64 MiB, the archive's length on the line after the marker.
+MIRROR_MARK = b"BB-MIRROR-1\n"
+MIRROR_SIZE = 64 << 20
 
 
 def say(s):
@@ -193,14 +200,33 @@ def boot_block(path):
     return body + b" " * (BOOT_SIZE - 1 - len(body)) + b"\n"
 
 
-def patched(src, block, boot=None):
+def mirror_block(path):
+    """The 64 MiB catalog-mirror.bin is, holding the archive at path: the
+    marker line, its length in twelve digits on a line, the archive, blank
+    padding. Read as a gzip tar holding the mirror's index first."""
+    import tarfile  # noqa: PLC0415
+    try:
+        with tarfile.open(path, "r:gz") as t:
+            if not any(m.name.rstrip("/").endswith("catalog-mirror/index.json") for m in t.getmembers()):
+                die(f"--mirror {path}: not a mirror of the catalog (tools/catalog-mirror.py makes one)")
+        with open(path, "rb") as f:
+            data = f.read()
+    except (OSError, tarfile.TarError) as e:
+        die(f"--mirror {path}: {e}")
+    head = MIRROR_MARK + f"{len(data):012d}\n".encode()
+    if len(head) + len(data) > MIRROR_SIZE - 1:
+        die(f"--mirror {path}: {len(data) >> 20} MiB, and the stick holds {MIRROR_SIZE >> 20} MiB of mirror")
+    return head + data + b" " * (MIRROR_SIZE - 1 - len(head) - len(data)) + b"\n"
+
+
+def patched(src, block, boot=None, mirror=None):
     """The image's bytes in CHUNKs, builderbot.env's 4 KiB and firstboot.json's
     64 KiB put in place where their markers are. A chunk is held until the
     next is read, so a file across the line between two is found and written
     whole. A block of None passes its file as it is; a block with no marker
     in the image stops the write before the end (an image older than the
     file)."""
-    want = [(m, n, b) for m, n, b in ((ENV_MARK, ENV_SIZE, block), (BOOT_MARK, BOOT_SIZE, boot)) if b is not None]
+    want = [(m, n, b) for m, n, b in ((ENV_MARK, ENV_SIZE, block), (BOOT_MARK, BOOT_SIZE, boot), (MIRROR_MARK, MIRROR_SIZE, mirror)) if b is not None]
     hold = max((n + len(m) for m, n, _ in want), default=0)
     held = b""
     for chunk in iter(lambda: src.read(CHUNK), b""):
@@ -216,7 +242,8 @@ def patched(src, block, boot=None):
         if out:
             yield out
     if want:
-        what = " and ".join("builderbot.env to write --set into" if m == ENV_MARK else "firstboot.json to write --config into" for m, _, _ in want)
+        what = " and ".join({ENV_MARK: "builderbot.env to write --set into", BOOT_MARK: "firstboot.json to write --config into",
+                             MIRROR_MARK: "catalog-mirror.bin to write --mirror into"}[m] for m, _, _ in want)
         die(f"this image has no {what} (made before 0.9.0): nothing past the start of the stick is right, so write it again without them or with a newer image")
     if held:
         yield held
@@ -259,15 +286,16 @@ def open_disk(dev):
     return open(dev, "r+b", buffering=0)
 
 
-def write_image(image, dev, verify_after=True, sets=(), config=None):
+def write_image(image, dev, verify_after=True, sets=(), config=None, mirror=None):
     size_xz = os.path.getsize(image)
     say(f"writing {os.path.basename(image)} ({size_xz / GB:.1f} GB compressed) to {dev}")
     block = env_block(sets) if sets else None
     boot = boot_block(config) if config else None
+    held = mirror_block(mirror) if mirror else None
     h = hashlib.sha256()
     written = 0
     with lzma.open(image, "rb") as src, open_disk(dev) as dst:
-        for chunk in patched(src, block, boot):
+        for chunk in patched(src, block, boot, held):
             dst.write(chunk)
             h.update(chunk)
             written += len(chunk)
@@ -328,7 +356,7 @@ def cmd_write(a):
     if not a.yes:
         if input("Type yes to write it: ").strip().lower() != "yes":
             die("nothing written")
-    write_image(image, d["id"], verify_after=not a.no_verify, sets=a.set or (), config=a.config)
+    write_image(image, d["id"], verify_after=not a.no_verify, sets=a.set or (), config=a.config, mirror=a.mirror)
     say("Done. Boot the machine from the stick: it comes up as its own controller, and the dashboard's first page, at http://ITS-ADDRESS:7680 on the LAN, makes the owner or restores a saved configuration.")
 
 
@@ -337,7 +365,8 @@ def cmd_verify(a):
     h = hashlib.sha256()
     n = 0
     with lzma.open(a.image, "rb") as src:
-        for chunk in patched(src, env_block(a.set) if a.set else None, boot_block(a.config) if a.config else None):
+        for chunk in patched(src, env_block(a.set) if a.set else None, boot_block(a.config) if a.config else None,
+                             mirror_block(a.mirror) if a.mirror else None):
             h.update(chunk)
             n += len(chunk)
     verify(d["id"], n, h.hexdigest())
@@ -354,6 +383,7 @@ def main(argv=None):
     w.add_argument("--latest", action="store_true", help="fetch the newest release's image (what it does when nothing else is named)")
     w.add_argument("--set", action="append", metavar="KEY=VALUE", help="a line for the stick's builderbot.env: TZ=Region/City, BB_RELEASE_LINE=X.Y")
     w.add_argument("--config", metavar="FILE", help="a prepared configuration (JSON, docs/image.md) the stick's first boot applies, skipping the first-run page where it says so")
+    w.add_argument("--mirror", metavar="FILE", help="a mirror of the vetted catalog (tools/catalog-mirror.py) for a machine with no network, imported as the controller starts")
     w.add_argument("--channel", choices=["normal", "dev"], default="normal", help=argparse.SUPPRESS)
     w.add_argument("--yes", action="store_true", help="do not ask")
     w.add_argument("--no-verify", action="store_true", help="skip reading the stick back")
@@ -363,6 +393,7 @@ def main(argv=None):
     v.add_argument("--image", required=True)
     v.add_argument("--set", action="append", metavar="KEY=VALUE", help="the lines the stick was written with")
     v.add_argument("--config", metavar="FILE", help="the prepared configuration it was written with")
+    v.add_argument("--mirror", metavar="FILE", help="the catalog's mirror it was written with")
     v.set_defaults(fn=cmd_verify)
     a = ap.parse_args(argv)
     a.fn(a)

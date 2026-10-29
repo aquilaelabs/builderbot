@@ -47,7 +47,43 @@ def run(*argv):
         return str(e)
 
 
+MIRROR = b"BB-MIRROR-1\n"
+
+
+def mirror(pw):
+    """The catalog's mirror a stick maker's --mirror wrote (R169 step 6):
+    handed to the controller at every boot while the stick holds one, which
+    imports it once per mirror. The stick keeps it: it holds nothing secret."""
+    path = os.path.join(ESP, "builderbot", "catalog-mirror.bin")
+    try:
+        with open(path, "rb") as f:
+            head = f.read(len(MIRROR) + 13)
+            if not head.startswith(MIRROR) or not head[len(MIRROR):len(MIRROR) + 12].isdigit():
+                return ""
+            n = int(head[len(MIRROR):len(MIRROR) + 12])
+            if n <= 0:
+                return ""
+            data = f.read(n)
+    except OSError:
+        return ""
+    if len(data) != n:
+        return "the stick's mirror is cut short"
+    os.makedirs(RUN, mode=0o700, exist_ok=True)
+    if pw:
+        os.chown(RUN, pw.pw_uid, pw.pw_gid)
+    out = os.path.join(RUN, "catalog-mirror.tar.gz")
+    with open(os.open(out + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as f:
+        f.write(data)
+    if pw:
+        os.chown(out + ".new", pw.pw_uid, pw.pw_gid)
+    os.replace(out + ".new", out)
+    return f"a mirror of the catalog ({n >> 10} KiB) handed to the controller"
+
+
 def main():
+    said = mirror(account())
+    if said:
+        print(f"firstboot-take: {said}")
     path = os.path.join(ESP, "builderbot", "firstboot.json")
     try:
         with open(path, "rb") as f:

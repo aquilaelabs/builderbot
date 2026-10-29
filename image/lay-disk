@@ -89,6 +89,13 @@ install -m 0644 "$RELEASE" "$MNT/builderbot/a/release"
 { { printf 'BB-FIRSTBOOT-1\n'; head -c 65536 /dev/zero | tr '\0' ' '; } | head -c 65535; printf '\n'
 } > "$MNT/builderbot/firstboot.json"
 [ "$(stat -c %s "$MNT/builderbot/firstboot.json")" = 65536 ] || die "firstboot.json is not its 64 KiB"
+# builderbot/catalog-mirror.bin (R169 step 6): a mirror of the vetted
+# catalog for a machine with no network, 64 MiB behind its marker line and
+# a length line of zeros here: a stick maker's --mirror writes the archive
+# into these bytes, and each boot hands a filled one to the controller.
+{ { printf 'BB-MIRROR-1\n000000000000\n'; head -c 67108864 /dev/zero | tr '\0' ' '; } | head -c 67108863; printf '\n'
+} > "$MNT/builderbot/catalog-mirror.bin"
+[ "$(stat -c %s "$MNT/builderbot/catalog-mirror.bin")" = 67108864 ] || die "catalog-mirror.bin is not its 64 MiB"
 umount "$MNT"
 
 # ---- slot A, and the data partition ----------------------------------------

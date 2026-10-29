@@ -132,7 +132,9 @@ does not answer, and a pack or app the mirror holds is fetched from its
 bundle with nothing going to the network. A pack kept this way is kept as a
 pack made here, so the nodes take it from the controller too. **Forget**
 drops the mirror; what was kept from it stays. The same group holds the
-catalog's address.
+catalog's address. A USB stick can carry one from the start: the stick
+maker's `--mirror FILE` writes it onto the stick, and the controller imports
+it as it starts (docs/image.md).
 
 ### Docker apps in the catalog
 

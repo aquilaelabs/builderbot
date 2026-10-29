@@ -356,6 +356,9 @@ class Workflow(unittest.TestCase):
         # the stick by a root step before the controller starts.
         self.assertIn('"$MNT/builderbot/firstboot.json"', lay)
         self.assertIn("BB-FIRSTBOOT-1", lay)
+        # ...and the catalog's mirror's 64 MiB (R169 step 6).
+        self.assertIn('"$MNT/builderbot/catalog-mirror.bin"', lay)
+        self.assertIn("BB-MIRROR-1", lay)
         self.assertIn("ExecStart=-/usr/lib/builderbot-os/firstboot-take",
                       read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-env.service"))
         self.assertTrue(os.access(os.path.join(EXTRA, "usr", "lib", "builderbot-os", "firstboot-take"), os.X_OK))

@@ -145,6 +145,42 @@ class Stick(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.m.boot_block(cfg)
 
+    def test_mirror_writes_the_catalogs_mirror_into_its_slot(self):
+        # R169 step 6: catalog-mirror.bin's 64 MiB behind its marker, the
+        # archive's length on the next line; held smaller here, the slot's
+        # shape the same.
+        import io
+        import tarfile
+        arc = os.path.join(self.d, "m.tar.gz")
+        with tarfile.open(arc, "w:gz") as t:
+            body = b'{"version": 1, "packs": []}'
+            ti = tarfile.TarInfo("catalog-mirror/index.json")
+            ti.size = len(body)
+            t.addfile(ti, io.BytesIO(body))
+        size = 1 << 20
+        slot = self.m.MIRROR_MARK + b"000000000000\n"
+        slot += b" " * (size - 1 - len(slot)) + b"\n"
+        a = (3 << 20) - 100
+        raw = os.urandom(a) + slot + os.urandom(1 << 20)
+        img = os.path.join(self.d, "m.stick.raw.xz")
+        with lzma.open(img, "wb") as f:
+            f.write(raw)
+        dev = os.path.join(self.d, "stick-m.img")
+        open(dev, "wb").write(b"\xff" * len(raw))
+        with mock.patch.object(self.m, "CHUNK", 1 << 20), mock.patch.object(self.m, "MIRROR_SIZE", size), \
+                mock.patch.object(self.m, "open_disk", side_effect=lambda d: open(d, "r+b", buffering=0)):
+            self.m.write_image(img, dev, mirror=arc)
+        got = open(dev, "rb").read()
+        self.assertEqual(len(got), len(raw))
+        head = got[a:a + len(self.m.MIRROR_MARK) + 13]
+        n = int(head[len(self.m.MIRROR_MARK):-1])
+        self.assertEqual(n, os.path.getsize(arc))
+        self.assertEqual(got[a + len(head):a + len(head) + n], open(arc, "rb").read())
+        self.assertEqual(got[a + size:], raw[a + size:])
+        open(os.path.join(self.d, "not.tar.gz"), "wb").write(b"nope")
+        with self.assertRaises(SystemExit):
+            self.m.mirror_block(os.path.join(self.d, "not.tar.gz"))
+
     def test_set_is_refused_on_a_bad_line_and_on_an_image_with_no_env_file(self):
         with self.assertRaises(SystemExit):
             self.m.env_block(["tz=Europe/Berlin"])
