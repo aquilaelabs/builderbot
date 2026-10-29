@@ -167,6 +167,8 @@ def load_toolchains(packs=()):
                            "tier": str(pk.get("tier") or "url")[:12], "path": str(pk.get("path") or "")[:200],
                            # Whether it brings a coding agent (R169 step 9).
                            "agent": bool(pk.get("agent")),
+                           # ...and an icon of its own (R182).
+                           "icon": bool(pk.get("icon")),
                            "verbs": sorted(str(v) for v in (r.get("verbs") or {}))[:40],
                            # What it runs now, for an update to be read as
                            # what changes: each verb's words, and the

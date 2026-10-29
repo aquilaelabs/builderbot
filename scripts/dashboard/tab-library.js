@@ -301,7 +301,7 @@ function libRow(r, may){
   const key = `${r.kind}:${r.name}`, open = libOpen.has(key);
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && lib?.job?.errors?.[r.name] ? `<div class="sub bad">${esc(lib.job.errors[r.name])}</div>` : "";
   return `<div class="lcard${open ? " open" : ""}${r.running ? " busy" : ""}" data-lrow="${esc(key)}">
-    <div class="lchead"><span class="lcicon">${(LIB_ICONS[libGroup(r)] || LIB_ICONS.toolchain)()}</span>
+    <div class="lchead">${libIcon(r)}
       <div class="lctitle"><div class="name">${esc(r.label)} <button type="button" class="link lmore" data-libmore="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "Details"}</button></div><div class="lcmeta">${libPills(r)}</div></div></div>
     <div class="lcabout">${esc(r.about)}</div>
     ${r.machine && r.name === TC_DRIVER ? libDriverPick(r.machine) : ""}
@@ -421,7 +421,20 @@ function renderLibraryInto(i){
   wireLibrary(d.el);
 }
 
+// A card's glyph, or the pack's or app's own icon in its square (R182), drawn
+// as an image alone; one that does not load shows the kind's glyph instead.
+function libIcon(r){
+  const glyph = (LIB_ICONS[libGroup(r)] || LIB_ICONS.toolchain)();
+  return r.icon && /^\/api\/pack-icon\?/.test(r.icon)
+    ? `<span class="lcicon own"><img src="${esc(r.icon)}" alt="" loading="lazy" decoding="async" width="36" height="36">${glyph}</span>`
+    : `<span class="lcicon">${glyph}</span>`;
+}
+
 function wireLibrary(root){
+  root.querySelectorAll(".lcicon.own img").forEach(i => {
+    const broke = () => i.parentElement.classList.add("broken");
+    if (i.complete && !i.naturalWidth) broke(); else i.onerror = broke;
+  });
   wireSections(root);
   if (typeof wireSignin === "function") wireSignin(root);
   const q = root.querySelector("#libFind");

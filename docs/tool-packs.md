@@ -186,7 +186,9 @@ it as it starts (docs/image.md).
 ### Docker apps in the catalog
 
 An entry of `"kind": "app"` is a Docker app: its folder holds `bbapp.json`
-(`name`, `label`, `about`, `port`, `media`, `platforms`, `license`) and
+(`name`, `label`, `about`, `port`, `media`, `platforms`, `license`, and an
+optional `icon`, a PNG, WebP or SVG file in the folder held to a pack's
+rules) and
 `compose.yml` beside it, the compose held to what an app of your own is held
 to (every image pinned to a tag that is not latest, never built or
 privileged, only the blanks New container fills). The Library lists it as
@@ -264,6 +266,7 @@ the scripts it runs:
 | `touches` | What it touches: `hosts`, up to 16 host names its install fetches from, and `root`, true when it needs root on the node to install. Look shows both before it is added, and a pack that needs root is added by an administrator alone (R169 step 4). |
 | `config` | What it asks for on each node (R172): a list of fields, each `{name, label, kind, help, required, env, scope}`, the kind one of `secret`, `text`, `choice` (with `choices`), `list` (with `fields`, rows of them), `switch` or `projects`. The Installed page draws them as Configure on the pack's row for the node picked; the answers are kept on the controller, a secret sealed and never shown again, and handed to the node, where a field with `env` reaches the pack's verbs as that environment variable (a switch as `1` or empty, a list as JSON). `scope` is `node` (the default: one answer for everybody on that node, set by whoever may Configure there) or `person`: each person's own, set under **Yours** on the same row by anyone who works on that node's projects, a secret sealed under their own key, written into their home on the node and read by their sessions' verbs over the node's answer. |
 | `guidance` | A Markdown file in the repository telling a session, whichever coding agent runs it, when and how to use the pack. It reads it with `bb help tool-NAME`. |
+| `icon` | Optional: a PNG, WebP or SVG file in the repository, at most 64 KB, which its Library card shows in place of its kind's glyph. It is read at the commit the pack is kept at, and refused with the pack when it is not the image its name says. It is shown as an image and nothing else, so an SVG's scripts never run. A pack without one keeps its kind's glyph. |
 
 ### Verbs
 

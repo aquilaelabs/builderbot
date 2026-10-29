@@ -5849,6 +5849,7 @@ GET_ROUTES = (
     ("exact", "/api/nasapps", "_get_nasapps"),
     ("prefix", "/api/catalog", "_get_catalog"),
     ("prefix", "/api/library", "_get_library"),
+    ("prefix", "/api/pack-icon", "_get_pack_icon"),
     ("exact", "/api/storebackups", "_get_storebackups"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
@@ -11135,6 +11136,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(r, 400)
         if action not in ("preview", "source"):
             toolchains.refresh_packs()
+        # The icon's own bytes are the kept file's (R182), never an answer's:
+        # what Look says of it is its type and its size.
+        if isinstance(r, dict) and r.get("icon_bytes"):
+            raw, ext = r.pop("icon_bytes")
+            r["icon_said"] = {"type": ext, "bytes": len(raw)}
         return self._json(r)
 
     def _emulator(self, req):
@@ -11458,6 +11464,32 @@ class Handler(BaseHTTPRequestHandler):
         if not r.get("error"):
             db.audit(by, "storebackup-" + act, field(req, "id") or (r.get("backup") or {}).get("id", ""), {"name": (r.get("backup") or {}).get("name", "")})
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _get_pack_icon(self):
+        """GET /api/pack-icon?name=PACK or ?app=ID (R182): a pack's or an
+        app's own icon, as the image its file is and nothing else: its type
+        set here and never sniffed, and a policy that runs no script and
+        sandboxes it, so an SVG opened by its address is still only a
+        picture. A person's to read, never a session's; ?v= is the pin, so
+        an update is a new address and the old one may be kept."""
+        who = self._who() or {}
+        if not who or who.get("session"):
+            return self._json({"error": "a person's to read"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        got = nasapps.icon_of(q.get("app", [""])[0]) if q.get("app") else toolpacks.icon_of(q.get("name", [""])[0])
+        if not got:
+            return self._json({"error": "no icon"}, 404)
+        body, ctype = got
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "private, max-age=86400")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+        self.send_header("Content-Disposition", "inline")
+        self.end_headers()
+        self.wfile.write(body)
+        return None
 
     def _get_library(self):
         """GET /api/library?node=ID (R170): everything a BuilderBot installs

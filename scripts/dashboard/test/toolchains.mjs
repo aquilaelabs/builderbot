@@ -768,6 +768,29 @@ ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown actio
     await page.waitForFunction(c => (toolchains?.items || []).find(i => i.name === 'hexkit')?.pack?.commit === c, next, { timeout: 20000 });
     const after = await page.evaluate(() => (toolchains.items || []).find(i => i.name === 'hexkit').pack.tier);
     ok(after === 'vetted', `...and Update keeps it at that pin, still vetted (${after})`);
+    // Its own icon (R182): named in its manifest, read at the commit it is
+    // kept at, drawn on its card as an image, and served as one alone: an SVG
+    // that carries a script is still a picture, its address sandboxed.
+    writeFileSync(`${repo}/icon.svg`, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><script>parent.iconRan = 1</script><rect width="16" height="16" fill="#2a7"/></svg>');
+    writeFileSync(`${repo}/bbtool.json`, JSON.stringify({ ...JSON.parse(readFileSync(`${repo}/bbtool.json`, 'utf8')), icon: 'icon.svg' }));
+    g('add', 'icon.svg');
+    g('commit', '-qam', 'an icon');
+    const iconAt = g('rev-parse', 'HEAD');
+    const withIcon = await api('/api/toolpacks', { action: 'add', url: `file://${repo}`, commit: iconAt });
+    ok(withIcon.pack?.icon === 'svg', `a pack naming its icon keeps it (${withIcon.pack?.icon ?? withIcon.error})`);
+    const ICON = `.doc.on .librarytab .lcard[data-lrow="pack:hexkit"] .lcicon.own img`;
+    await page.evaluate(() => { loadToolchains(); loadLibrary(); });
+    await page.waitForSelector(ICON, { timeout: 20000 });
+    const served = await page.evaluate(async s => {
+      const img = document.querySelector(s);
+      await new Promise(r => (img.complete ? r() : img.addEventListener('load', r, { once: true })));
+      const r = await fetch(img.getAttribute('src'));
+      return { src: img.getAttribute('src'), w: img.naturalWidth, type: r.headers.get('content-type'), csp: r.headers.get('content-security-policy') || '',
+               sniff: r.headers.get('x-content-type-options'), ran: !!window.iconRan };
+    }, ICON);
+    ok(served.src.includes(iconAt.slice(0, 12)) && served.w > 0 && served.type === 'image/svg+xml' && /sandbox/.test(served.csp)
+       && /default-src 'none'/.test(served.csp) && served.sniff === 'nosniff' && !served.ran,
+       `its card draws the icon from the pack's own address at its pin, served as an image with no script run (${JSON.stringify(served)})`);
     await api('/api/settings', { set: { catalog_url: 'https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/' } });
     rmSync(`${DIR}/state/catalog-index.json`, { force: true });
   }

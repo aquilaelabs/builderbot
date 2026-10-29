@@ -260,10 +260,52 @@ def _all():
 
 def catalog():
     """The list the dialog and the Library show: [{id, name, what, port,
-    media, secrets, tier, by, at}]."""
+    media, secrets, tier, by, at, icon}], `icon` the address of its own
+    picture when it has one (R182)."""
     return [{"id": k, "name": v["name"], "what": v["what"], "port": v["port"], "media": v.get("media", False), "secrets": v.get("secrets", []),
-             "tier": v.get("tier", "official"), "by": v.get("by", ""), "at": v.get("at", 0)}
+             "tier": v.get("tier", "official"), "by": v.get("by", ""), "at": v.get("at", 0),
+             "icon": f"/api/pack-icon?app={k}&v={v.get('at', 0)}" if icon_of(k) else ""}
             for k, v in _all().items()]
+
+
+# An app's own icon (R182): the file bbapp.json names in the catalog's
+# folder, checked as a pack's is (toolpacks.icon_refused), kept under the
+# state by the app's id and served as an image alone.
+def _icon_dir():
+    return Path(FILE).parent / "app-icons" if FILE else None
+
+
+def keep_icon(app, raw=None, ext=""):
+    """The app's icon kept, or taken away with no bytes: its type, or ""."""
+    import toolpacks  # noqa: PLC0415
+    d = _icon_dir()
+    if not d or not ID_RE.fullmatch(str(app or "")):
+        return ""
+    for e in toolpacks.ICON_TYPES:
+        (d / f"{app}.{e}").unlink(missing_ok=True)
+    if not raw or ext not in toolpacks.ICON_TYPES or toolpacks.icon_refused(raw, ext):
+        return ""
+    d.mkdir(parents=True, exist_ok=True)
+    tmp = d / f".{app}.{ext}.new"
+    tmp.write_bytes(raw)
+    tmp.replace(d / f"{app}.{ext}")
+    return ext
+
+
+def icon_of(app):
+    """(bytes, content type) of an app's kept icon, or None."""
+    import toolpacks  # noqa: PLC0415
+    d = _icon_dir()
+    if not d or not ID_RE.fullmatch(str(app or "")):
+        return None
+    for e, ct in toolpacks.ICON_TYPES.items():
+        f = d / f"{app}.{e}"
+        if f.is_file():
+            try:
+                return f.read_bytes(), ct
+            except OSError:
+                return None
+    return None
 
 
 def source(app):
@@ -373,6 +415,24 @@ def add_catalog(entry, by="", fetch=None):
         port = int(meta.get("port"))
     except (TypeError, ValueError):
         return {"error": f"{app}'s bbapp.json names no port"}
+    # Its own icon, when bbapp.json names one in its folder (R182): read at
+    # the same pin and under the same sha256, refused whole when it is not
+    # the image its name says.
+    import toolpacks  # noqa: PLC0415
+    ic = str(meta.get("icon") or "")
+    if ic:
+        ext = ic.rsplit(".", 1)[-1].lower()
+        if not (toolpacks.REL.fullmatch(ic) and ext in toolpacks.ICON_TYPES):
+            return {"error": f"{app}'s bbapp.json names {ic} as its icon: a PNG, WebP or SVG file in its folder"}
+        g = fetch(entry["url"], entry["commit"], entry["sha256"], entry.get("path", ""), (ic,), cap=toolpacks.ICON_MAX)
+        if g.get("error"):
+            return {"error": f"{app}'s icon: {g['error']}"}
+        why = toolpacks.icon_refused(g["files"][ic], ext)
+        if why:
+            return {"error": f"{app}'s icon {ic}: {why}"}
+        keep_icon(app, g["files"][ic], ext)
+    else:
+        keep_icon(app)
     apps = _load()
     apps[app] = {"name": str(meta.get("label") or app)[:60], "what": str(meta.get("about") or entry.get("about") or "")[:200], "port": port,
                  "media": seen["media"], "compose": compose, "secrets": [], "by": str(by or ""), "at": int(time.time()),
@@ -390,6 +450,7 @@ def remove(app):
         return {"error": f"no app called {app or 'nothing'} was added here"}
     del apps[app]
     _save(apps)
+    keep_icon(app)
     return {"ok": True}
 
 

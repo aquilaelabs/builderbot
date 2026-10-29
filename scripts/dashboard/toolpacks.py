@@ -63,6 +63,11 @@ PLATFORM = re.compile(r"^(linux|darwin)/(amd64|arm64|\*)$")
 PLACEHOLDERS = ("{dir}", "{dist}", "{project}", "{args}")
 GUIDANCE_MAX = 16 * 1024
 MANIFEST_MAX = 64 * 1024
+# A pack's own icon on its Library card (R182): a file in the pack, PNG, WebP
+# or SVG, kept under the state and served as an image alone (server.py's
+# /api/pack-icon), never drawn into the page as markup.
+ICON_MAX = 64 * 1024
+ICON_TYPES = {"png": "image/png", "webp": "image/webp", "svg": "image/svg+xml"}
 # http too, for a git host on the LAN: what is installed is the commit an
 # administrator approved, and git checks every object against its hash, so a
 # fetch altered on the way is refused rather than installed.
@@ -518,6 +523,11 @@ def validate(m, shipped=()):
         errors.append("guidance names a Markdown file inside the pack")
         g = ""
     out["guidance_file"] = g
+    ic = m.get("icon") or ""
+    if ic and not (isinstance(ic, str) and REL.fullmatch(ic) and ic.rsplit(".", 1)[-1].lower() in ICON_TYPES):
+        errors.append("icon names a PNG, WebP or SVG file inside the pack")
+        ic = ""
+    out["icon"] = ic
     return (out if not errors else None), errors
 
 
@@ -663,7 +673,73 @@ def _examine(read, shipped, missing):
         if g is None:
             return {"error": f"{MANIFEST} names {clean['guidance_file']} as its guidance, and it is not there"}
         guidance = g[:GUIDANCE_MAX].decode("utf-8", "replace")
-    return {"manifest": clean, "guidance": guidance}
+    icon = None
+    if clean.get("icon"):
+        raw = read(clean["icon"], ICON_MAX)
+        if raw is None:
+            return {"error": f"{MANIFEST} names {clean['icon']} as its icon, and it is not there"}
+        ext = clean["icon"].rsplit(".", 1)[-1].lower()
+        why = icon_refused(raw, ext)
+        if why:
+            return {"error": f"{clean['icon']}: {why}"}
+        icon = (raw, ext)
+    return {"manifest": clean, "guidance": guidance, **({"icon_bytes": icon} if icon else {})}
+
+
+def icon_refused(raw, ext):
+    """Why an icon's bytes are not the image its name says, or "": a PNG's
+    and a WebP's signature, an SVG that is a document with an svg element,
+    and the size cap."""
+    if len(raw) > ICON_MAX:
+        return f"an icon is {ICON_MAX // 1024} KB at most"
+    if ext == "png" and not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "not a PNG image"
+    if ext == "webp" and not (raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"):
+        return "not a WebP image"
+    if ext == "svg":
+        head = raw[:4096].decode("utf-8", "replace").lower()
+        if "<svg" not in head:
+            return "not an SVG image"
+    return ""
+
+
+def icon_dir():
+    return Path(FILE).parent / "pack-icons" if FILE else None
+
+
+def _keep_icon(name, got):
+    """The icon a pack's files carry, kept under the state by the pack's name
+    (one file, any older one of another type gone); its type, or "" for
+    none."""
+    d = icon_dir()
+    if not d or not NAME.fullmatch(name):
+        return ""
+    for e in ICON_TYPES:
+        (d / f"{name}.{e}").unlink(missing_ok=True)
+    ic = got.get("icon_bytes")
+    if not ic:
+        return ""
+    raw, ext = ic
+    d.mkdir(parents=True, exist_ok=True)
+    tmp = d / f".{name}.{ext}.new"
+    tmp.write_bytes(raw)
+    tmp.replace(d / f"{name}.{ext}")
+    return ext
+
+
+def icon_of(name):
+    """(bytes, content type) of a kept pack's icon, or None."""
+    d = icon_dir()
+    if not d or not NAME.fullmatch(str(name or "")):
+        return None
+    for e, ct in ICON_TYPES.items():
+        f = d / f"{name}.{e}"
+        if f.is_file():
+            try:
+                return f.read_bytes(), ct
+            except OSError:
+                return None
+    return None
 
 
 # ---- a pack made here ------------------------------------------------------
@@ -799,7 +875,7 @@ def add_staged(staged, by, shipped=(), may_root=False):
             if r.returncode != 0:
                 return {"error": f"could not write {name}'s bundle: {(r.stderr or '').strip()}"}
             rec = {"name": name, "url": HERE + name, "hosted": True, "commit": commit, "manifest": m,
-                   "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time())}
+                   "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time()), "icon": _keep_icon(name, got)}
             data["packs"][name] = rec
             write_json(FILE, data)
         return {"ok": True, "pack": rec, "replaced": bool(was), "unchanged": bool(same)}
@@ -908,6 +984,7 @@ def add(url, commit, by, shipped=(), sha256="", tier="url", path="", may_root=Fa
         was = d["packs"].get(m["name"])
         if was and was.get("url") != url:
             return {"error": f"a pack called {m['name']} is already here from {was.get('url')}; remove it first"}
+        rec["icon"] = _keep_icon(m["name"], got)
         d["packs"][m["name"]] = rec
         write_json(FILE, d)
     return {"ok": True, "pack": rec, "replaced": bool(was)}
@@ -983,6 +1060,7 @@ def remove(name, where=()):
             return {"error": f"no tool pack called {name}"}
         rec = d["packs"].pop(name)
         write_json(FILE, d)
+        _keep_icon(name, {})
         if rec.get("hosted") and HOSTED and NAME.fullmatch(name):
             shutil.rmtree(HOSTED / f"{name}.git", ignore_errors=True)
             (HOSTED / f"{name}.bundle").unlink(missing_ok=True)
@@ -1020,7 +1098,9 @@ def recipe(rec):
            "verbs": m["verbs"],
            "pack": {"url": rec["url"], "commit": rec["commit"], "path": rec.get("path", ""), "by": rec.get("by", ""), "at": rec.get("at", 0),
                     "tier": rec.get("tier") or ("here" if rec.get("hosted") else "url"),
-                    "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted")), "agent": bool(offers_agent(rec))}}
+                    "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted")), "agent": bool(offers_agent(rec)),
+                    # Whether it carries an icon of its own (R182).
+                    "icon": bool(rec.get("icon"))}}
     # A coding agent it offers, for bb-tty and bb-agent-hook on the node,
     # which read it from the bundle's config/toolpacks.json (R169 step 10).
     if offers_agent(rec):

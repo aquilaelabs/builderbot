@@ -121,6 +121,8 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
                     # A pack that brings a coding agent is its card under Coding
                     # agents (R169 step 9), installed and updated as a pack.
                     **({"group": "agent"} if pack and pack.get("agent") else {}),
+                    # Its own icon's address, the pin in it so an update is a new one (R182).
+                    "icon": f"/api/pack-icon?name={i['name']}&v={str(pack.get('commit') or '')[:12]}" if pack and pack.get("icon") else "",
                     "verb": "update" if i.get("state") == "update" else ("" if i.get("installed") else "install")})
     for s in services or []:
         m, st = s.get("manifest") or {}, s.get("status") or {}
@@ -139,6 +141,7 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
                     "port": a.get("port"), "media": bool(a.get("media")), "secrets": a.get("secrets") or [],
                     # Its compose file as the catalog holds it, and the blanks New container fills (step 2).
                     "compose": a.get("compose") or "", "blanks": sorted(set(re.findall(r"\$\{([A-Z_]+)\}", a.get("compose") or ""))),
+                    "icon": a.get("icon") or "",
                     "installed": False, "version": "", "latest": "", "update": False, "running": False, "verb": "install"})
     # The shipped rows by the names the catalog gives them (a toolchain's
     # colon as a hyphen, an agent by its id): an official entry naming one is

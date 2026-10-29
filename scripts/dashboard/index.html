@@ -2054,6 +2054,14 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
   background:var(--panel2,var(--panel));border:var(--hair) solid var(--line);border-radius:var(--r-s,4px);white-space:pre}
 .librarytab .lcard .tpseen{display:flex;flex-direction:column;gap:3px}
 .librarytab .lcard.skcard .lcicon{background:var(--line)}
+/* A pack's or an app's own icon (R182): its picture fills the square, the
+   kind's glyph kept under it for one that does not load. */
+.librarytab .lcicon.own{overflow:hidden;background:none}
+.librarytab .lcicon.own img{width:100%;height:100%;object-fit:contain;display:block}
+.librarytab .lcicon.own>svg{display:none}
+.librarytab .lcicon.own.broken{background:color-mix(in srgb, var(--accent) 14%, var(--panel))}
+.librarytab .lcicon.own.broken img{display:none}
+.librarytab .lcicon.own.broken>svg{display:block}
 /* The Installed page (tab-installed.js, R172): a row a fold (rows-you-open),
    what it is one ellipsized line until Details opens it on the node's
    side of it and its Configure. */
