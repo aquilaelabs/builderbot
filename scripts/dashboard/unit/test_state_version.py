@@ -144,6 +144,21 @@ class Gate(unittest.TestCase):
         self.assertEqual(sv.main(["check", str(self.state)]), 0)
 
 
+class ClaimFromAShell(unittest.TestCase):
+    """B436: the owner made from a shell on a new install, before its first
+    start, leaves a stamped store, which that start takes as its own."""
+    def test_a_claim_on_a_fresh_store_stamps_it(self):
+        import subprocess
+        here = Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, DASHBOARD_STATE=d, BB_USERS_PW="longenough1")
+            r = subprocess.run([sys.executable, str(here.parent / "lib" / "users-verbs.py"), "claim", str(here / "users.py"), "owner1"],
+                               env=env, capture_output=True, text=True, check=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(sv.read(d)[0], sv.current())
+            self.assertEqual(sv.refusal(d, "0.9.0"), "")
+
+
 class Migrate(unittest.TestCase):
     """The runner, over a directory of migrations of the test's own."""
     def setUp(self):
