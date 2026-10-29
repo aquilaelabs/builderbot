@@ -159,7 +159,7 @@ function phonePanel(n){
     : "";
   // A word and an animated ellipsis, never a bar: nothing here knows a
   // percentage, and inventing one would be a lie about progress.
-  const state = phBusy
+  const pill = phBusy
     ? `<span class="pill go">${esc(phBusy)}<span class="dots"></span></span>`
     : dev ? `<span class="pill ok">${esc(dev.model || "phone")}</span>`
           : `<span class="pill">not connected</span>`;
@@ -168,7 +168,7 @@ function phonePanel(n){
   // remembers, and at the foot how a session reaches it.
   const rows = [
     `<div class="row toolstate">
-       <div class="grow"><div class="name">Phone ${state}${
+       <div class="grow"><div class="name">Phone ${pill}${
            n.owner ? ` <span class="dim">· connected by ${esc(n.owner.name)}${n.mine ? " (you)" : ""}</span>` : ""}</div>
          <div class="sub">${!n.live
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
