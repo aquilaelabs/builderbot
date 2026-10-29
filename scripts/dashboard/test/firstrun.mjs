@@ -252,7 +252,7 @@ await firstRun(false);
       const n = ownMachine();
       n.reported = { ...n.reported, os_stick: { stick: true, pool: '', ready: false, on_stick: ['projects'], written_kb: 3145728, boot_written_kb: 20480 },
                      pools: [{ name: 'fast', mount: '/mnt/pools/fast' }] };
-      drawPanes();
+      nodesRev++; drawPanes();
       const sect = document.querySelector('.machinetab details[data-sect="nodes:stick"]');
       return { there: !!sect, text: sect?.textContent.replace(/\s+/g, ' ') || '', pick: [...(sect?.querySelectorAll('#stickPool option') || [])].map(o => o.value) };
     });

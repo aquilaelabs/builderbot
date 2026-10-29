@@ -348,7 +348,9 @@ const TABKINDS = {
               open: () => loadNodes() },
   machine:  { multi: false, label: () => "This machine",
               icon: TOOL_ICONS.machine,
-              render: (i) => renderMachineInto(i), live: () => nodesRev,
+              // ...and on the held start and the stick's report, which ride the
+              // status poll: Start and the hold-next box show what they did.
+              render: (i) => renderMachineInto(i), live: () => `${nodesRev}/${JSON.stringify(state?.held || {})}/${state?.firstboot?.at || 0}`,
               open: () => loadNodes() },
   settings: { multi: false, label: () => "Controller settings",
               render: (i) => renderSettingsInto(i), live: settingsLive,
