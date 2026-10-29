@@ -179,7 +179,7 @@ bb version unbump      take the last unreleased bump or set back; its
                    stays. Once: the bump before it is not taken back too.
                    A section dated under the wrong number is fixed with
                    unbump, then set to the number meant
-bb version release --why "..." [--without-apk]
+bb version release --why "..." [--without-apk] [--dev]
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
                    credentials. The project's settings say whether an agent may
@@ -187,7 +187,9 @@ bb version release --why "..." [--without-apk]
                    the project's owner, with --why as the reason. A release
                    whose Android APK could not be signed is refused before the
                    tag, saying why; --without-apk goes on, and bb sign release
-                   signs it once that is put right
+                   signs it once that is put right. --dev tags the dev
+                   build instead (vX.Y.Z-dev.N, no bump, no changelog section),
+                   which CI publishes as a pre-release on the dev channel
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
                    change the published release under the same setting, each
                    edit its own ask: the notes replaced whole (- reads stdin),
