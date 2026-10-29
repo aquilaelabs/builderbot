@@ -137,14 +137,23 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
     # colon as a hyphen, an agent by its id): an official entry naming one is
     # that row, listed once (R170 step 6).
     shipped = {i["name"].replace(":", "-") for i in tc.get("items") or []} | {r.get("agent", "") for r in agent_rows or []}
+    app_ids = {a["id"] for a in apps or []}
     for e in (catalog_index or {}).get("packs") or []:
         # One added already is among the items with its pack; one the catalog
         # withdrew is not offered (the bell says so to an install that holds it).
         if e["name"] in packs_here or e.get("withdrawn") or (e.get("tier") == "official" and e["name"] in shipped):
             continue
-        # A Docker app in the catalog is R170 step 7's card, and a service is
-        # its own row (R172); neither is a pack to offer.
-        if e.get("kind") in ("app", "service"):
+        # A Docker app in the catalog (R170 step 7): an Apps card until it is
+        # kept here, its Install keeping it and opening New container; a
+        # service is its own row (R172).
+        if e.get("kind") == "app":
+            if e["name"] not in app_ids:
+                out.append({"kind": "app", "tier": _tier(e.get("tier")), "name": e["name"], "label": e["name"], "about": e.get("about") or "",
+                            "platforms": e.get("platforms") or [], "installed": False, "version": "", "latest": e.get("commit", "")[:12],
+                            "update": False, "running": False, "compose": "", "blanks": [],
+                            "catalog": {"url": e["url"], "commit": e["commit"], "sha256": e["sha256"], "path": e.get("path", "")}, "verb": "install"})
+            continue
+        if e.get("kind") == "service":
             continue
         out.append({"kind": "pack", "tier": _tier(e.get("tier")), "name": e["name"], "label": e["name"], "about": e.get("about") or "",
                     "platforms": e.get("platforms") or [], "installed": False, "version": "", "latest": e.get("commit", "")[:12], "update": False,

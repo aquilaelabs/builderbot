@@ -1447,8 +1447,10 @@ let cApps = null;
 let cAppWant = "";       // the app the Library asked New container to open on (R170)
 // The Library's Install on an app (R170): New container with that app
 // picked and its blanks shown, as if the person had chosen it in the list.
-function openNewContainerApp(id){
+function openNewContainerApp(id, node = ""){
   cAppWant = id;
+  // ...on the Library's node when it runs Docker (R170 step 7).
+  if (node) dockerNode = node;
   openNewContainer();
 }
 async function loadNasApps(){

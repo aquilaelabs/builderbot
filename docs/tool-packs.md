@@ -105,6 +105,19 @@ the catalog withdrew is not offered, one already added is its own card,
 and an official entry is the shipped row it names. The catalog's trouble,
 when it cannot be read, is said over the cards.
 
+### Docker apps in the catalog
+
+An entry of `"kind": "app"` is a Docker app: its folder holds `bbapp.json`
+(`name`, `label`, `about`, `port`, `media`, `platforms`, `license`) and
+`compose.yml` beside it, the compose held to what an app of your own is held
+to (every image pinned to a tag that is not latest, never built or
+privileged, only the blanks New container fills). The Library lists it as
+an **Apps** card with its tier. **Install** fetches the folder at the commit
+the signed index pins, checks its archive's sha256, keeps the app and opens
+New container with it picked, on the Library's node when that node runs
+Docker (the card says when it does not); from then on New container offers
+it to everyone, and each Create makes another container of it.
+
 ## What a project's sessions can use
 
 Each project's **Settings → Toolchains** lists every toolchain installed on

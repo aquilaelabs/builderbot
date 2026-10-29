@@ -149,8 +149,8 @@ whatever state it was in.
 
 **From the catalog** (R164): New container opens on a pick of ready apps
 (Jellyfin, Plex, the arr stack, qBittorrent, Immich, Nextcloud, Home
-Assistant, Syncthing, and any an administrator added from the Library's Add
-your own, R170), each a compose file pinned to a tag with its blanks
+Assistant, Syncthing, any an administrator added from the Library's Add
+your own, and any kept from the vetted catalog's apps, R170), each a compose file pinned to a tag with its blanks
 in the environment: where its data goes and which share's folder it serves
 or syncs (folders under a pool, the array or a share), the user it runs as
 (the one that owns those folders), the time zone and its port, with a

@@ -407,6 +407,48 @@ def fetch(url, commit="", shipped=(), sha256="", path=""):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def fetch_folder(url, commit, sha256, path, files, cap=256 << 10):
+    """A catalog entry's folder at the commit it pins (R170 step 7: an app's
+    bbapp.json and compose.yml), its archive's sha256 checked as a pack's
+    is: {files: {name: bytes}} or {error}. Only the files named are read."""
+    url = str(url or "").strip()
+    local = os.environ.get("BB_TOOLPACKS_FILE_URLS") == "1" and url.startswith("file:///")
+    if not (URL.fullmatch(url) or local):
+        return {"error": "a catalog entry is a git repository's address: https://host/owner/repo"}
+    if not re.fullmatch(r"[0-9a-f]{40}", str(commit or "")) or not re.fullmatch(r"[0-9a-f]{64}", str(sha256 or "")):
+        return {"error": "a catalog entry pins a full commit and its archive's sha256"}
+    path = str(path or "").strip("/")
+    if not path or not PATH_IN.fullmatch(path) or ".." in path.split("/"):
+        return {"error": "a catalog entry's folder is a plain relative path inside the repository"}
+    tmp = tempfile.mkdtemp(prefix="catalog-")
+    try:
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", "--depth", "1", url, commit]):
+            try:
+                r = _git(args)
+            except subprocess.TimeoutExpired:
+                return {"error": f"{url} did not answer within {FETCH_TIMEOUT}s"}
+            if r.returncode != 0:
+                said = (r.stderr or r.stdout).strip().splitlines()
+                return {"error": f"could not fetch {url}: {said[-1] if said else 'git failed'}"}
+        if _git(["-C", tmp, "rev-parse", "FETCH_HEAD"]).stdout.strip() != commit:
+            return {"error": f"{url} did not answer with {commit[:12]}"}
+        import hashlib  # noqa: PLC0415
+        r = subprocess.run(["git", "-C", tmp, "archive", "--format=tar", "FETCH_HEAD", path], capture_output=True, timeout=120, check=False)
+        if r.returncode != 0 or hashlib.sha256(r.stdout).hexdigest() != sha256:
+            return {"error": f"{url} at {commit[:12]} is not what the catalog vetted: its archive's sha256 differs, so it is refused"}
+        out = {}
+        for name in files:
+            g = subprocess.run(["git", "-C", tmp, "show", f"FETCH_HEAD:{path}/{name}"], capture_output=True, timeout=30, check=False)
+            if g.returncode != 0:
+                return {"error": f"{url} has no {name} in {path}"}
+            if len(g.stdout) > cap:
+                return {"error": f"{path}/{name} is over {cap // 1024} KB"}
+            out[name] = g.stdout
+        return {"files": out}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _examine(read, shipped, missing):
     """The manifest and guidance a pack's files hold, read through `read(rel,
     cap)`: {manifest, guidance} validated, or {error}. One reading for a

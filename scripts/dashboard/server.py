@@ -11387,7 +11387,7 @@ class Handler(BaseHTTPRequestHandler):
         n = nodes.node(nid) if on_node else None
         may_install = not users.may(who, "toolchains-write")
         may_apps = not users.may(who, "docker-write")
-        cat = catalogindex.index(settings.get("catalog_url") or None) if may_install else {}
+        cat = catalogindex.index(settings.get("catalog_url") or None) if may_install or may_apps else {}
         # An app's row opens on its compose file (step 2), so it rides along.
         napps = [{**a, "compose": nasapps._all().get(a["id"], {}).get("compose", "")} for a in nasapps.catalog()] if may_apps else []
         # ...and an agent's on what this person added to it there (the Installed page's Yours).
@@ -11409,6 +11409,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"node": nid, "name": tc.get("name") or (n or {}).get("name") or "", "live": bool(tc.get("live", (n or {}).get("live"))),
                            "rows": library.rows(tc, agentcode.rows(n) if n else [], napps, cat.get("index"), apps.view(), services, pack_values, pack_mine),
                            "job": tc.get("job") or {"running": False}, "catalog_error": cat.get("error", ""),
+                           # Whether this node runs Docker, for an app's card (R170 step 7).
+                           "docker": bool(((n or {}).get("reported") or {}).get("docker")),
                            "may": {"install": may_install, "apps": may_apps, "packs": not users.may(who, "curate"),
                                    "configure": bool(n) and not users.may_node(who, "configure", nid), "yours": yours_ok},
                            "store": {"root": tc.get("root", ""), "free_mb": tc.get("free_mb"), "checked": tc.get("checked") or 0},
@@ -11544,6 +11546,14 @@ class Handler(BaseHTTPRequestHandler):
         # administrator's, as a tool pack is, since every person's New
         # container then offers it.
         action = field(req, "action")
+        # An app the vetted catalog offers (R170 step 7): kept from its pin
+        # in the signed index, never from what the page sends, so whoever
+        # may make containers takes it; New container then offers it.
+        if action == "add-catalog":
+            entry = next((e for e in (catalogindex.index(settings.get("catalog_url") or None).get("index") or {}).get("packs") or []
+                          if e.get("kind") == "app" and e["name"] == field(req, "app") and not e.get("withdrawn")), None)
+            r = nasapps.add_catalog(entry, by=who.get("name") or "", fetch=toolpacks.fetch_folder)
+            return self._json(r, 400 if r.get("error") else 200)
         if action in ("preview", "add", "source", "remove"):
             if (why := users.may(who, "curate")):
                 return self._json({"error": why}, 403)

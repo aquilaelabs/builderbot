@@ -129,7 +129,8 @@ function libPills(r){
 function libState(r){
   const w = (t, cls = "") => `<span class="state${cls ? " " + cls : ""}">${t}</span>`;
   if (r.running) return w(`${esc(r.doing === "remove" ? "removing" : r.doing === "check" ? "checking" : r.kind === "agent" && r.installed ? "updating" : "installing")}<span class="dots"></span>`);
-  if (r.kind === "app") return w("");
+  // An app runs where Docker does (R170 step 7): said when this node has none.
+  if (r.kind === "app") return lib && !lib.docker ? w("this node runs no Docker: New container picks another", "warn") : w("");
   if (r.kind === "service") return r.installed ? w("deployed", "ok") : r.ready ? w(esc(r.ready), "warn") : w("");
   if (r.kind === "companion") return r.download ? w(esc(r.version ? `held, ${r.version}` : "held")) : w(esc(r.absent ? `not in ${r.absent}` : "not fetched yet"), "warn");
   if (r.wrong_platform) return w(esc(r.wrong_platform), "warn");
@@ -464,7 +465,18 @@ async function libAct(b, act, kind, name){
   if (!r) return;
   const n = (nodesList || []).find(x => x.id === libNode), where = n?.name || "this node";
   if (kind === "app"){
-    if (act === "edit") tpOpenApp(name); else openNewContainerApp(name);
+    if (act === "edit"){ tpOpenApp(name); return; }
+    // One the vetted catalog offers is kept first, from its pin in the
+    // signed index (R170 step 7); then New container, on this node when it
+    // runs Docker.
+    if (r.catalog){
+      busy(b, "Taking");
+      const j = await (await postJSON("/api/nasapps", {action: "add-catalog", app: name})).json().catch(() => ({error: "no answer"}));
+      if (j.error){ notify(j.error, true); await loadLibrary(); return; }
+      if (typeof cApps !== "undefined") cApps = null;
+      await loadLibrary();
+    }
+    openNewContainerApp(name, lib?.docker ? libNode : "");
     return;
   }
   if (kind === "service"){
