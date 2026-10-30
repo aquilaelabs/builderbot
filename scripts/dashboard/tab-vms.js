@@ -143,7 +143,7 @@ function vmRow(v){
       </div>
       ${snaps.length ? `<div class="vmsnaps"><span class="vmsnaplbl">Snapshots</span>${snaps.map(s => `<div class="vmsnap"><code>${esc(s)}</code>${may && !busy ? `
         <button type="button" data-vm="revert" data-snap="${esc(s)}" title="back to ${esc(s)}: what changed since is lost">Revert</button>
-        <button type="button" data-vm="snapshot-rm" data-snap="${esc(s)}" title="delete this snapshot">Delete</button>` : ""}</div>`).join("")}</div>` : ""}
+        <button type="button" class="danger" data-vm="snapshot-rm" data-snap="${esc(s)}" title="delete this snapshot">Delete</button>` : ""}</div>`).join("")}</div>` : ""}
     </div>`;
   if (vmView !== "list") return `<div class="row stack2" data-vm-key="${esc(v.key)}">${inner}</div>`;
   return `<details class="row stack2 dmline" data-vm-key="${esc(v.key)}"${sectAttr(`vms:line:${v.key}`)}>

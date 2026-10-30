@@ -424,7 +424,7 @@ function renderRolesInto(i){
     // are the page's own; who holds what is on its way.
     const split = detail => `<div class="rsplit"><div class="rlist">${skRows(4)}</div><div class="rdetail">${detail}</div></div>`;
     const field = skField;
-    d.list.innerHTML = skTpl(split(field("Kind", 12) + skTable(ROLE_AREA_COLS, 4, "rareas")));
+    d.list.innerHTML = skTpl(pageHead({facts: [["Roles", GHOST], ["For projects", GHOST]]}) + split(field("Kind", 12) + skTable(ROLE_AREA_COLS, 4, "rareas")));
     loadRoles();
     return;
   }
@@ -433,8 +433,12 @@ function renderRolesInto(i){
     return;
   }
   const ro = rolesRoleBody();
+  // The page's head (the operator, 29 Oct): how many roles, and how many
+  // of them are a project's.
+  const all = Object.values(rolesData.roles || {});
   d.list.innerHTML = `
     ${rolesErr ? `<div class="row bad"><div class="grow">${esc(rolesErr)}</div></div>` : ""}
+    ${pageHead({facts: [["Roles", String(all.length)], ["For projects", String(all.filter(r => r.scope === "projects").length)]]})}
     <div class="rsplit${rolesPhoneOpen ? " open" : ""}">
       <div class="rlist">${ro.list}</div>
       <div class="rdetail">${ro.detail}</div>

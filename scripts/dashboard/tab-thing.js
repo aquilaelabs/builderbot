@@ -82,7 +82,10 @@ function renderThingInto(i){
   const pills = `${ver ? `<span class="pill" title="installed">${esc(ver)}</span>` : ""}${r.update && r.latest ? ` <span class="pill warn">${esc(r.latest)} is out</span>` : ""}`;
   const head = pageHead({title: r.label, pills, facts: [
     ["Node", inst.name || ""],
-  ], actions: `<span class="irow" data-irow="${esc(thingKey)}" data-style="display:contents">${instState(r)}${instActs(r, may)}</span>`});
+  ], actions: `<span class="irow" data-irow="${esc(thingKey)}" data-style="display:contents">${instState(r)}${instActs(r, may)}</span>`})
+    // Its glyph or its own icon beside its name, as a Library entry's page
+    // draws it (the operator, 29 Oct: the two pressed pages one shape).
+    .replace('<div class="name">', `<div class="name">${libIcon(r)}`);
   const err = !r.running && (r.kind === "toolchain" || r.kind === "pack") && inst?.job?.errors?.[r.name] ? `<div class="field"><div class="sub bad">${esc(inst.job.errors[r.name])}</div></div>` : "";
   const sects = (THING_SECTS[r.kind] || THING_SECTS.toolchain).map(([k, title, body]) => {
     const html = body(r);

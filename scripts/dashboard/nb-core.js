@@ -45,7 +45,13 @@ function getNotebook(project){
 
 function openNotebook(name, view){
   openTab({kind: "notebook", arg: name, label: "Notebook: " + projLabel(name)});
-  if (view) getNotebook(name).view(view);
+  // Overview is the Briefing view under the name it is shown by, as the
+  // address has it; a view the notebook has no pane for opens on its first
+  // rather than on nothing (seen 29 Oct: a blank notebook).
+  if (view === "overview") view = "briefing";
+  const nb = getNotebook(name);
+  if (view && !nb.root?.querySelector(`.nbview[data-view="${CSS.escape(view)}"]`)) view = "briefing";
+  if (view) nb.view(view);
 }
 
 // ---- a project's notebook: one closure each -----------------------------

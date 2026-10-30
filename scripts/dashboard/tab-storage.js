@@ -776,16 +776,20 @@ function storageBody(n, where){
   if (!n) return `${pageHead({cls: "toolstate", facts: [["Measured", GHOST], ["Walk", GHOST], ...setOn], actions: storageMeasureBtn(GHOST)})}${skRows(2)}${byProject("", skRows(3))}`;
   const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
-  const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
+  // A state is a pill (the voices rule); when it was measured is a fact.
+  const pill = n.measured ? "" : `<span class="pill stat warn">not measured</span>`;
   // The walk as a head's facts (R218 step 27; the operator, 25 Oct), and
   // the memory BuilderBot's work is kept to there (R110 step 4).
-  const fence = !("fence" in n) ? "" : n.fence ? `${humanBytes(n.fence[0] * 1048576)}, ${humanBytes(n.fence[1] * 1048576)} in use`
-    : "not fenced from the system's memory: run its setup again";
+  const fence = !("fence" in n) || !n.fence ? "" : `${humanBytes(n.fence[0] * 1048576)}, ${humanBytes(n.fence[1] * 1048576)} in use`;
+  // Not fenced is a warning, said as one over the head, not as a fact.
+  const unfenced = "fence" in n && !n.fence
+    ? `<div class="field"><div class="notice warn">BuilderBot's work on ${esc(n.name || "this node")} is not fenced from the system's memory: run its setup again.</div></div>` : "";
   const head = pageHead({pills: pill, cls: "toolstate", facts: [
+    ["Measured", n.measured ? age.replace(/^measured /, "") : ""],
     ["Walk", n.measured ? `${n.took_s ? `took ${n.took_s}s, ` : ""}every hour` : "an hour after the agent starts, then every hour"],
     ["Its work's memory", fence], ...setOn], actions: storageMeasureBtn(n)});
   return `<div data-stnode="${esc(n.node)}">
-    ${head}
+    ${unfenced}${head}
     ${storageMachineDisks(n)}
     ${storagePools(n)}
     ${storageArray(n)}

@@ -161,8 +161,8 @@ function phonePanel(n){
   // percentage, and inventing one would be a lie about progress.
   const pill = phBusy
     ? `<span class="pill go">${esc(phBusy)}<span class="dots"></span></span>`
-    : dev ? `<span class="pill ok">${esc(dev.model || "phone")}</span>`
-          : `<span class="pill">not connected</span>`;
+    : dev ? `<span class="pill stat ok">connected</span> <span class="pill">${esc(dev.model || "phone")}</span>`
+          : `<span class="pill stat">not connected</span>`;
   // The node-scoped tool's shape, the CI runner tab's too (R121 step 5):
   // the state row first, then the ways in, what it is lent to and what it
   // remembers, and at the foot how a session reaches it.

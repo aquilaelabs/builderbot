@@ -576,7 +576,7 @@ function groupHeader(t, g){
 // feature off (the reason is on the Nodes page) and until the node list lands.
 function machinesActions(){
   const dead = nodesList === null || featureOff("enroll") ? " disabled" : "";
-  return `<span class="actbar"><button type="button" id="ndVm"${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
+  return `<span class="actbar"><button type="button" id="ndVm"${dead}>${"New VM"}</button>
     <button type="button" class="primary" id="ndEnroll"${dead}>${barSaid("Enroll node", "Enroll")}</button></span>`;
 }
 function wireGroupHeader(bar){

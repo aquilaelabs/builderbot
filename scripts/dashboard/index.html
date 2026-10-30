@@ -1682,6 +1682,14 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 .modal.inline .box{width:auto;max-width:var(--doc-w);max-height:none;overflow:visible;
   border:0;border-radius:0;box-shadow:none;background:none}
 .modal.inline .box > h3{display:none}
+/* The Permissions view's Agents may, lent from the settings dialog, is a
+   section of the view like the two under it (the operator, 29 Oct: it ran
+   wider than the reading column as a band): a card at a desk on the
+   page's margin, a band on a phone. */
+@media(min-width:901px){
+  .nbview .permdials>.box>details.sect{margin:var(--card-gap) var(--row-x) 0;border:var(--hair) solid var(--line);
+    border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
+}
 /* A dialog's box takes the focus as it opens (modalKeys), for a screen
    reader and for Tab to start from; it is not a control, so no ring. */
 .modal>.box:focus{outline:none}
@@ -2036,9 +2044,9 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
   border:var(--hair) solid var(--line);border-radius:var(--r-surface);min-width:0}
 .librarytab .lcard.open{grid-column:1/-1}
 .librarytab .lchead{display:flex;gap:10px;align-items:flex-start;min-width:0}
-.librarytab .lcicon,.entrytab .lcicon{flex:none;width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--accent);
+.librarytab .lcicon,:is(.entrytab,.thingtab) .lcicon{flex:none;width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--accent);
   background:color-mix(in srgb, var(--accent) 14%, var(--panel))}
-.librarytab .lcicon svg,.entrytab .lcicon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.librarytab .lcicon svg,:is(.entrytab,.thingtab) .lcicon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
 .librarytab .lctitle{min-width:0;display:flex;flex-direction:column;gap:3px}
 .librarytab .lcard .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);overflow-wrap:anywhere}
 .librarytab .lcmeta{display:flex;gap:4px;flex-wrap:wrap}
@@ -2061,11 +2069,11 @@ button.danger[disabled]{background:color-mix(in srgb, var(--bad) 8%, var(--panel
 .librarytab .lcard.skcard .lcicon{background:var(--line)}
 /* A pack's or an app's own icon (R182): its picture fills the square, the
    kind's glyph kept under it for one that does not load. */
-.librarytab .lcicon.own,.entrytab .lcicon.own{overflow:hidden;background:none}
-.librarytab .lcicon.own img,.entrytab .lcicon.own img{width:100%;height:100%;object-fit:contain;display:block}
-.librarytab .lcicon.own>svg,.entrytab .lcicon.own>svg{display:none}
-.librarytab .lcicon.own.broken,.entrytab .lcicon.own.broken{background:color-mix(in srgb, var(--accent) 14%, var(--panel))}
-.librarytab .lcicon.own.broken img,.entrytab .lcicon.own.broken img{display:none}
+.librarytab .lcicon.own,:is(.entrytab,.thingtab) .lcicon.own{overflow:hidden;background:none}
+.librarytab .lcicon.own img,:is(.entrytab,.thingtab) .lcicon.own img{width:100%;height:100%;object-fit:contain;display:block}
+.librarytab .lcicon.own>svg,:is(.entrytab,.thingtab) .lcicon.own>svg{display:none}
+.librarytab .lcicon.own.broken,:is(.entrytab,.thingtab) .lcicon.own.broken{background:color-mix(in srgb, var(--accent) 14%, var(--panel))}
+.librarytab .lcicon.own.broken img,:is(.entrytab,.thingtab) .lcicon.own.broken img{display:none}
 .librarytab .lcicon.own.broken>svg,.entrytab .lcicon.own.broken>svg{display:block}
 /* The Installed page (tab-installed.js, R172): a row a fold (rows-you-open),
    what it is one ellipsized line until Details opens it on the node's
@@ -3031,9 +3039,6 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .nb .nbhead>.actbar{align-items:center}
 .nb .nbhead>.actbar>button{flex:0 0 auto;white-space:nowrap}
 .nb .nbhead>.actbar:empty{display:none}
-/* A glance's tiles keep a tile's width at a desk rather than one or two
-   stretching across the reading width. */
-@media(min-width:901px){ .nbglance .tiles{grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))} }
 /* The Roadmap's status line is its bar: what is staged, then the session. */
 .nbsaid .stg:not(:empty)::after{content:" · "}
 .nbsaid .stg{color:var(--ink)}
@@ -3360,7 +3365,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   /* The Toolchains and Emulator pages: a head line floats, and a list of
      their rows (the machine's own, the images to add, the images held) is
      a card of its own. */
-  .doctab .tchead{border-bottom:0}
+  .doctab .tchead:not(.pghead){border-bottom:0}   /* never a head card, which keeps its edge (Emulator) */
   .doctab>.doclist>.tcs:not(.tbl):has(> .tc),.doctab>.doclist>.skt>.tcs:has(> .sk-row){margin:var(--card-gap) var(--row-x) 0;border:var(--hair) solid var(--line);
     border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
   .doctab>.doclist>.tcs:not(.tbl)>:last-child{border-bottom:0}
@@ -3809,6 +3814,10 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    knows as labels and values; a chip narrows a list. Each is held by the
    design's rule of the same name and measured by test/uniform.mjs. */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:var(--field-gap)}
+/* One grid on a page and a notebook view alike (the operator, 29 Oct):
+   the tiles share the width, and a lone one keeps a tile's width rather
+   than a band across the page. */
+@media(min-width:901px){ .tiles:has(>.tile:only-child){grid-template-columns:minmax(0,14rem)} }
 @media(max-width:900px){ .tiles{grid-template-columns:repeat(2,1fr)} }
 .tile{background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control);
   padding:12px 16px;min-width:0;display:flex;flex-direction:column;gap:4px}
@@ -6044,7 +6053,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          form and one set of handlers. .modal.inline lets every dialog rule
          style it where it is. -->
     <div class="nbview" data-view="settings" hidden>
-      <div class="field nbhead vbar docbarrow"><span class="nbsum">how this project runs</span><span class="sp"></span></div>
       <div class="modal inline nbsettings"></div>
     </div>
     <!-- Your own conversations on this project (the operator, 22 Oct: out
@@ -6058,7 +6066,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          the settings form's Agents may section, lent while this view is on
          screen (nb-permissions.js), and what it may push. -->
     <div class="nbview" data-view="permissions" hidden>
-      <div class="field nbhead vbar docbarrow"><span class="nbsum">what a session may do here on its own, asks first, or may not</span><span class="sp"></span></div>
       <div class="nbglance" id="permHint" data-tiles="3" data-said></div>
       <div class="modal inline permdials"><div class="box"></div></div>
       <div class="permgit"></div>

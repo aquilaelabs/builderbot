@@ -74,8 +74,11 @@ function renderNetworkInto(i){
   const stamp = settingsLive();
   const dial = d.list.querySelector('details[data-sect="network:dial"]');
   if (d.el.dataset.netstamp === stamp && dial){
-    const head = d.list.querySelector(":scope > .pghead");
-    if (head) paint(head, networkReach(), true);
+    // The head replaced whole, never painted inside itself: its markup is
+    // a .pghead of its own, and painting it into the old one nested a
+    // second box in the first (seen at a desk, 29 Oct).
+    const head = d.list.querySelector(":scope > .pghead"), was = head?.dataset.drawn, now = networkReach();
+    if (head && was !== now){ head.outerHTML = now; d.list.querySelector(":scope > .pghead")?.setAttribute("data-drawn", now); }
     paint(dial.querySelector(":scope > .body"), networkDial(), true);
     const st = dial.querySelector(":scope > summary .sst"), says = networkDialStatus();
     if (st) st.textContent = says;

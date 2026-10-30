@@ -394,7 +394,7 @@ function renderLibraryInto(i){
     ? `${busy ? abortBtn('data-libabort', job.aborting) : ""}
        <button type="button" data-libcheck${busy || stale ? " disabled" : ""} title="ask each upstream what it has now">${
          busy && job.action === "check" ? `${barSaid("Checking for updates", "Checking")}<span class="dots"></span>`
-         : (lib.rows || []).some(r => r.latest) ? barSaid("Re-check for updates", "Re-check") : barSaid("Check for updates", "Check")}</button>${
+         : barSaid("Check for updates", "Check")}</button>${
         may.packs ? `<button type="button" class="primary" data-libadd>${barSaid("Add your own", "Add")}</button>` : ""}${
         clean.length ? `<button type="button" class="danger" data-libclean${busy ? " disabled" : ""}>Remove</button>` : ""}` : "";
   if (lib.error){

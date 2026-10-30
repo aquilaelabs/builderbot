@@ -201,7 +201,7 @@ function bootPage(hash){
   // placeholder, the facts' shimmer, the Machines group's two actions dead.
   bar = ["machines", "build", "containers"].includes(key)
     ? `<div class="bar page grouped${key === "machines" ? " machines" : ""}"><span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>
-        <span class="subrow">${seg(g.tools, tool)}<span class="sp"></span>${key === "machines" ? `<span class="actbar"><button type="button" disabled>${barSaid("Create sandbox VM", "New VM")}</button><button type="button" class="primary" disabled>${barSaid("Enroll node", "Enroll")}</button></span>` : ""}</span></div>`
+        <span class="subrow">${seg(g.tools, tool)}<span class="sp"></span>${key === "machines" ? `<span class="actbar"><button type="button" disabled>${"New VM"}</button><button type="button" class="primary" disabled>${barSaid("Enroll node", "Enroll")}</button></span>` : ""}</span></div>`
     : `<div class="bar page">${seg(g.tools, tool)}</div>`;
   if (key === "home")
     // Home's own order: the tiles, Attention and Last jobs, the projects at

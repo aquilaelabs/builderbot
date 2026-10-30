@@ -295,7 +295,7 @@ function nginxUndeployed(n){
   // Deploy brings, and Deploy at its right (R178: the bar holds no picker and
   // no button, so the page is one shape on every node).
   return `<div data-ngnode="${esc(n.node)}">
-    ${pageHead({cls: "toolstate", pills: `<span class="pill">not deployed</span>`,
+    ${pageHead({cls: "toolstate", pills: `<span class="pill stat">not deployed</span>`,
       actions: `<button type="button" class="primary" data-ngdeploy>Deploy</button>`, facts: [
       ["Deploy brings", count || certs ? `${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
                                        : "nginx alone: its routes and certificates are set here once it is there"]]})}
@@ -317,9 +317,9 @@ function nginxBody(n){
   // Down only when nothing is bringing it back: a Save rebuilds it, and the
   // read right after one caught it between down and up and said "down"
   // while the build was on its way to running it (B65).
-  const pill = n.state?.job?.running ? `<span class="pill">deployed, rebuilding</span>`
-    : n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
-    : `<span class="pill ok">deployed</span>`;
+  const pill = n.state?.job?.running ? `<span class="pill stat note">deployed, rebuilding</span>`
+    : n.state?.running === false ? `<span class="pill stat warn">deployed, down</span>`
+    : `<span class="pill stat ok">deployed</span>`;
   const facts = [["Container", `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the ${pageLink("docker", "Containers page")}`, {html: true}],
                  ["Routes", `${count} route${count === 1 ? "" : "s"}`],
                  ["Node", n.host_only ? "hosting-only" : ""]];
@@ -343,7 +343,7 @@ function nginxBody(n){
       <div class="sub ngimage">${esc(pinned)}</div>
       <div class="hint${n.behind ? " warn" : ""}">${esc(news)}.${helpIcon("The registry is read once a week by itself; a node is pinned to a digest when it is deployed or updated, so a Save never moves it.")}</div>
       <div class="actbar ngimgbar"><span class="state">${esc(checked)}${lt.error ? ` · ${esc(lt.error)}` : ""}</span><span class="sp"></span>
-        <button type="button" data-ngcheck>Check now</button>
+        <button type="button" data-ngcheck>Check for updates</button>
         ${n.behind ? `<button type="button" class="primary" data-ngupdate>${rebuild ? "Update to the newer build" : `Update to ${esc(n.behind)}`}</button>` : ""}</div>
     </div>`, {cls: n.behind ? "warn" : ""});
   const clash = (n.clash || []).length

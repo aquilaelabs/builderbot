@@ -124,7 +124,7 @@ function scannersUncovered(rows){
 
 function scannersBar(d){
   const undeployed = d ? (d.nodes || []).filter(n => !n.deployed && !n.host_only && (n.projects || []).length).length : 0;
-  return `<span class="sp"></span><span class="actbar"><button type="button" data-scancheck${d ? "" : " disabled"}>Check versions</button>${
+  return `<span class="sp"></span><span class="actbar"><button type="button" data-scancheck${d ? "" : " disabled"}>Check for updates</button>${
     undeployed ? `<button type="button" class="primary" data-scandeployall>Deploy on ${undeployed === 1 ? "the node" : `${undeployed} nodes`}</button>` : ""}</span>`;
 }
 
