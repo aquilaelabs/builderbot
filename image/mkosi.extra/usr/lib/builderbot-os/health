@@ -13,7 +13,9 @@ if [ "$(bash "$SLOT" fell-back 2>/dev/null)" = yes ]; then
     mkdir -p "$WORK"
     echo "the slot written by the last update did not come up healthy twice, so this boot is back on slot $(bash "$SLOT" current 2>/dev/null || echo '?') as it was" > "$WORK/fell-back"
 fi
-PORT="$(sed -n 's/^DASHBOARD_PORT=//p' /etc/builderbot-controller/controller.env 2>/dev/null | head -1)"
+# || true: under pipefail a missing file ended the check here, silently,
+# and no slot was ever marked good.
+PORT="$(sed -n 's/^DASHBOARD_PORT=//p' /etc/builderbot-controller/controller.env 2>/dev/null | head -1 || true)"
 PORT="${PORT:-7680}"
 # Healthy is the dashboard answering as it does when it works (a page or
 # its redirect to the sign-in), never an error: a 500 or a 502 was taken
