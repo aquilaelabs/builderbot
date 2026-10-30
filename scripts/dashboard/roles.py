@@ -72,7 +72,7 @@ AREAS = (
     ("settings", "Project settings", "project", "the settings", "change them, lock, rename and delete"),
     ("releases", "Releases and versions", "project", "versions and releases", "move the version and release"),
     ("gitauth", "Git authentication", "project", "how it authenticates", "change the credential"),
-    ("files", "File access", "project", "read the files over FTP or in an editor", "save, upload, rename and delete them"),
+    ("files", "File access", "project", "the files over FTP or in an editor", "save, upload, rename and delete them"),
     ("containers", "Containers", "project", "its containers and their logs", "start, stop and rebuild them"),
     # A project's VMs (R91): Read sees them on the VMs page, Write makes,
     # starts, stops, snapshots and removes them.
