@@ -287,7 +287,11 @@ async function measure(kind){
     // (the operator, 26 Oct), so it stands at the page's x, not the column's.
     const inCol = e => !!e.closest('.ssplit') && !e.closest('.snav') && !(innerWidth > 900 && e.closest('.ssplit > .pghead'));
     const colLefts = [...new Set(bands.filter(inCol).map(leftOf))];
-    const lefts = [...new Set(bands.filter(e => !inCol(e)).map(leftOf))];
+    // A view's lone button beside its tiles shares the glance's line (the
+    // operator, 29 Oct): not a band of its own.
+    const besideGlance = e => e.matches('.nbhead') && [...e.parentElement.children].some(o => o.matches('.nbglance')
+      && o.getBoundingClientRect().top < e.getBoundingClientRect().bottom - 2 && o.getBoundingClientRect().bottom > e.getBoundingClientRect().top + 2);
+    const lefts = [...new Set(bands.filter(e => !inCol(e) && !besideGlance(e)).map(leftOf))];
     // Which band sits at each x, for the failure: three numbers say a view is
     // ragged and nothing about where, and the fix is in one band's CSS.
     const who = {};

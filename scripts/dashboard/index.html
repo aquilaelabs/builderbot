@@ -3043,7 +3043,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    line, at their right (the operator, 29 Oct: never a button on a line of
    its own): the glance takes the room, the button what it needs. */
 .nb .nbview>.nbglance{flex:1 1 0;min-width:min(100%, 18rem)}
-.nb .nbview>.nbhead:not(:has(input:not([hidden]),select,.pseg,.nbsaidslot:not(:empty))):has(>.actbar>button:only-child){flex:0 0 auto;order:0;align-self:center}
+.nb .nbview>.nbhead:not(:has(input:not([hidden]),select,.pseg,.nbsaidslot:not(:empty),>button:not([hidden]))):has(>.actbar>button:only-child){flex:0 0 auto;order:0;align-self:center}
 .nb .nbhead>.actbar{align-items:center}
 .nb .nbhead>.actbar>button{flex:0 0 auto;white-space:nowrap}
 .nb .nbhead>.actbar:empty{display:none}
@@ -5981,7 +5981,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div id="sgBox" data-skel="rows"></div>
     </div>
     <div class="nbview dkview" data-view="docker" hidden>
-      <div class="field nbhead vbar docbarrow"><span id="dkSeg"></span><span class="sp"></span>
+      <div class="field nbhead vbar docbarrow"><span id="dkSeg"></span><span class="nbsaidslot"></span><span class="sp"></span>
         <span class="actbar"><button type="button" id="dkCheck" hidden>Check<span class="lng"> for updates</span></button><button type="button" id="dkOpen">Containers<span class="lng"> page</span></button></span></div>
       <!-- The glance (R109): the Containers page's tiles for the project, and
            its node and when the images were checked on the line under them. -->
