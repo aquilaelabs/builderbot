@@ -1,0 +1,16 @@
+[Unit]
+Description=BuilderBot OS: the configuration put back for the slot a failed update fell back to
+# Before the controller, whose state gate would refuse a configuration the
+# newer slot moved on (B472); only on a BuilderBot OS boot.
+ConditionKernelCommandLine=bbslot
+DefaultDependencies=yes
+After=local-fs.target
+Before=builderbot-controller.service builderbot-os-health.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/builderbot-os/restore-before
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

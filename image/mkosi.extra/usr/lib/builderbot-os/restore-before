@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# A boot GRUB brought back to the slot before (B472): the controller's
+# configuration put back to the copy the update took under this slot
+# (osimage.keep_state_before, before/VERSION.tar.gz), when the newer slot
+# moved it on so far that this build's state gate refuses it. Run before the
+# controller starts. What the configuration held is moved aside, never
+# deleted. Says nothing on a boot that did not fall back, or when this build
+# reads the configuration as it is.
+set -euo pipefail
+SLOT="${BB_OS_SLOT:-/usr/lib/builderbot-os/slot}"
+WORK="${BB_OS_WORK:-/var/lib/builderbot-os}"
+STATE="${BB_OS_STATE:-/var/lib/builderbot-controller/config}"
+OPT="${BB_OS_OPT:-/opt/builderbot}"
+RELEASE="${BB_OS_RELEASE:-/usr/lib/builderbot-os/release}"
+
+# The mark is read and left for the health check, which says it.
+[ "$(bash "$SLOT" fell-back keep 2>/dev/null)" = yes ] || exit 0
+[ -d "$STATE" ] || exit 0
+ver="$(sed -n "s/^BUILDERBOT_OS_VERSION=//p" "$RELEASE" 2>/dev/null | head -1 || true)"
+bbver="$(sed -n "s/^BB_VERSION=//p" "$OPT/build.env" 2>/dev/null | head -1 || true)"
+if BB_VERSION="$bbver" python3 "$OPT/scripts/dashboard/stateversion.py" check "$STATE" >/dev/null 2>&1; then
+    echo "restore-before: this slot reads the configuration as it is: nothing put back"
+    exit 0
+fi
+copy="$WORK/before/${ver:-unknown}.tar.gz"
+if [ ! -f "$copy" ]; then
+    echo "restore-before: the configuration is newer than this slot reads, and there is no copy from before the update ($copy): the controller will say why it does not start" >&2
+    exit 0
+fi
+aside="$WORK/rolled-back-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$aside"
+chmod 0700 "$aside"
+tmp="$(dirname "$STATE")/.restore-$$"
+rm -rf "${tmp:?}"
+mkdir -p "$tmp"
+if ! tar -xzf "$copy" -C "$tmp"; then
+    rm -rf "${tmp:?}"
+    echo "restore-before: $copy did not unpack: nothing put back" >&2
+    exit 0
+fi
+name="$(basename "$STATE")"
+[ -d "$tmp/$name" ] || { rm -rf "${tmp:?}"; echo "restore-before: $copy holds no $name: nothing put back" >&2; exit 0; }
+# What the copy leaves out (the logs, the jobs) stays with the configuration.
+for keep in logs jobs; do
+    [ -e "$STATE/$keep" ] && [ ! -e "$tmp/$name/$keep" ] && mv "$STATE/$keep" "$tmp/$name/$keep"
+done
+mv "$STATE" "$aside/$name"
+mv "$tmp/$name" "$STATE"
+rm -rf "${tmp:?}"
+echo "restore-before: the configuration is back to the copy from before the update ($copy); what it held is in $aside/$name"

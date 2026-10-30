@@ -28,7 +28,7 @@ mkosi-chroot systemctl enable systemd-networkd systemd-resolved systemd-timesync
 # tree (a symlink in the repository does not travel with the tree, B417):
 # the first boot, the installer, which its condition keeps to the ISO, and
 # the health check that marks a trial slot good.
-mkosi-chroot systemctl enable builderbot-os-firstboot.service builderbot-os-installer.service builderbot-os-health.service builderbot-os-env.service builderbot-os-system-pool.service
+mkosi-chroot systemctl enable builderbot-os-firstboot.service builderbot-os-installer.service builderbot-os-health.service builderbot-os-env.service builderbot-os-system-pool.service builderbot-os-restore.service
 # Every interface takes DHCP until the Network page says otherwise (R165
 # step 4's bare-metal half).
 mkosi-chroot install -d -m 0755 /etc/systemd/network

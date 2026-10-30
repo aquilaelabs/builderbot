@@ -377,6 +377,47 @@ class Workflow(unittest.TestCase):
             self.assertEqual(sh(f"bash {tool} fell-back", env).stdout.strip(), "yes")
             self.assertEqual(sh(f"bash {tool} fell-back", env).stdout.strip(), "no", "read once, then cleared")
 
+    def test_a_slot_fallen_back_to_gets_the_configuration_it_reads(self):
+        # B472: the newer slot migrated the configuration and failed; the
+        # slot before refuses it, so the copy the update took is put back,
+        # what it held moved aside with the logs kept.
+        import tarfile
+        tool = os.path.join(EXTRA, "usr", "lib", "builderbot-os", "restore-before")
+        unit = read(EXTRA, "usr", "lib", "systemd", "system", "builderbot-os-restore.service")
+        self.assertIn("Before=builderbot-controller.service", unit)
+        self.assertIn("builderbot-os-restore.service", read(IMG, "mkosi.postinst"))
+        with tempfile.TemporaryDirectory() as d:
+            slot = os.path.join(d, "slot")
+            open(slot, "w").write('#!/bin/sh\n[ "$1 $2" = "fell-back keep" ] && cat "$(dirname "$0")/fb"\n')
+            open(os.path.join(d, "fb"), "w").write("yes\n")
+            opt = os.path.join(d, "opt")
+            os.makedirs(os.path.join(opt, "scripts", "dashboard"))
+            gate = os.path.join(opt, "scripts", "dashboard", "stateversion.py")
+            open(gate, "w").write("import sys, os\nsys.exit(int(os.environ.get('GATE', '78')))\n")
+            rel = os.path.join(d, "release"); open(rel, "w").write("BUILDERBOT_OS_VERSION=0.9.0\n")
+            state = os.path.join(d, "var", "config"); os.makedirs(os.path.join(state, "logs"))
+            open(os.path.join(state, "state.json"), "w").write('{"v": "newer"}')
+            open(os.path.join(state, "logs", "today.log"), "w").write("kept")
+            os.makedirs(os.path.join(d, "old", "config"))
+            open(os.path.join(d, "old", "config", "state.json"), "w").write('{"v": "older"}')
+            os.makedirs(os.path.join(d, "work", "before"))
+            with tarfile.open(os.path.join(d, "work", "before", "0.9.0.tar.gz"), "w:gz") as t:
+                t.add(os.path.join(d, "old", "config"), arcname="config")
+            env = {"BB_OS_SLOT": slot, "BB_OS_WORK": os.path.join(d, "work"), "BB_OS_STATE": state, "BB_OS_OPT": opt,
+                   "BB_OS_RELEASE": rel}
+            r = sh(f"GATE=0 bash {tool}", env)
+            self.assertIn("nothing put back", r.stdout, r.stderr)
+            self.assertIn("newer", open(os.path.join(state, "state.json")).read())
+            r = sh(f"bash {tool}", env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("older", open(os.path.join(state, "state.json")).read(), r.stdout + r.stderr)
+            self.assertEqual(open(os.path.join(state, "logs", "today.log")).read(), "kept")
+            aside = [x for x in os.listdir(os.path.join(d, "work")) if x.startswith("rolled-back-")]
+            self.assertEqual(len(aside), 1)
+            self.assertIn("newer", open(os.path.join(d, "work", aside[0], "config", "state.json")).read())
+            open(os.path.join(d, "fb"), "w").write("no\n")
+            self.assertEqual(sh(f"bash {tool}", env).stdout, "", "a boot that did not fall back says nothing")
+
     def test_the_boots_own_settings_reach_the_controller_from_the_esp_and_the_command_line(self):
         # R161 step 6: builderbot.env on the ESP and builderbot.debug=1 on
         # the command line land in /run/builderbot-os/env, a short list of
