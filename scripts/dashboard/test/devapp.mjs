@@ -3396,8 +3396,9 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   });
   ok(!narrow.fold, `on a phone the row's detail and its Project picker are on the row, no fold (${JSON.stringify(narrow)})`);
   ok(!narrow.sideways && narrow.actsVisible, '...nothing scrolls sideways, and the row keeps its buttons');
-  // At 360 and 344 the bar's controls stay on one line (the search giving up
-  // width, R178: the node is picked in the group's header), and the running
+  // At 360 and 344 the bar's buttons stay on one line with nothing past the
+  // screen's edge (the search takes the row's first line and the buttons go
+  // under it on a phone: the operator, 29 Oct, d5dff08), and the running
   // tile's words fit (B29).
   for (const w of [360, 344]){
     await page.setViewportSize({ width: w, height: 780 });
@@ -3406,9 +3407,8 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
     const bar = await page.evaluate(() => {
       const b = document.querySelector('.pane .doc.on .docbarrow.dmpick');
       const top = e => Math.round(e.getBoundingClientRect().top);
-      // The search has a line of its own under 440px (the stylesheet's .dmpick
-      // rule); the views and the buttons share theirs.
-      const tops = [b.querySelector('.pseg'), ...b.querySelectorAll('.actbar > button')]
+      // The buttons share one line.
+      const tops = [...b.querySelectorAll('.actbar > button')]
         .filter(e => e && e.offsetHeight).map(top);
       const tile = [...document.querySelectorAll('.pane .doc.on .tiles .tile .ts')][0];
       return { tops, right: Math.max(...[...b.querySelectorAll('button, select, input')].map(e => e.getBoundingClientRect().right)),
@@ -3416,7 +3416,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
                  return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; })() : 1 };
     });
     ok(new Set(bar.tops).size === 1 && bar.right <= w && bar.tileLines <= 1,
-       `at ${w}px the Containers bar keeps its views, Check and New on one line, the search on its own, and the tile on one line (${JSON.stringify(bar)})`);
+       `at ${w}px the Containers bar keeps Check and New on one line inside the screen, and the tile on one line (${JSON.stringify(bar)})`);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
@@ -4736,7 +4736,9 @@ print(json.dumps(out))
                                    && document.querySelector('.pane .nb #dkList .row[data-ctr="someone-elses"]'),
                              null, { timeout: 20000 });
   const view = await page.$eval('.pane .nb [data-view="docker"]', v => ({
-    hint: v.querySelector('#dkHint').textContent,
+    // The tiles, and the status line, which sits in the control row's slot
+    // where the view's row holds only buttons (viewGlance, the operator 29 Oct).
+    hint: v.querySelector('#dkHint').textContent + ' ' + (v.querySelector(':scope > .nbhead > .nbsaidslot')?.textContent || ''),
     rows: [...v.querySelectorAll('#dkList .row[data-inst], #dkList .row[data-ctr]')].map(r => r.dataset.inst || r.dataset.ctr),
     buttons: [...v.querySelectorAll('#dkList .row[data-inst="helper-for-eps|main"] [data-dm]')].map(b => b.dataset.dm),
     cards: [...v.querySelectorAll('#dkList > .dmcard')].map(c => c.querySelector('.dmgroup b')?.textContent),
