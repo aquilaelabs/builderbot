@@ -85,6 +85,7 @@ release_editor = None
 # (project, plan, asker_name, principal) -> (payload, status): files taken
 # off a published release, its own ask (the operator, 5 Oct).
 release_remover = None
+release_withdrawer = None
 # (project) -> (payload, status): a release's APK looked for and signed
 # again (releasesign.check, R134), what Allow on a session's ask runs.
 release_signer = None
@@ -731,6 +732,8 @@ def _req_public(r):
     if r.get("kind") == "release-remove":
         out["tag"] = r.get("tag") or ""
         out["files"] = [{"name": x["name"], "size": x["size"]} for x in r.get("files") or []]
+    if r.get("kind") == "release-withdraw":
+        out["tag"] = r.get("tag") or ""
     if r.get("kind") == "rebuild":
         out["create"] = bool(r.get("create"))
         out["ctl"] = r.get("ctl") or ""
@@ -767,7 +770,8 @@ def _for(r, uid, admin):
         return False
     # A signing, or a key change, waits on the project's owner, whatever
     # their role.
-    if r.get("kind") in ("sign", "sign-key", "release", "release-edit", "release-remove", "release-sign"):
+    if r.get("kind") in ("sign", "sign-key", "release", "release-edit", "release-remove", "release-withdraw",
+                         "release-sign"):
         return r["to"] == uid
     # A held push (R219) is the asking account's to answer, and an
     # administrator's, since what it would send is the project's.
@@ -1033,7 +1037,8 @@ def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", princi
         return {"error": "say what it is for: --why \"...\" (0.5.4 for testers, the store upload ...)"}
     if not to_uid:
         return {"error": f"{project} has no owner to ask"}
-    cmd = ["version", "release", f"{plan['tag']} on {plan['sha']}"] + (["--for", comp] if comp else [])
+    cmd = ["version", "release", f"{plan['tag']} on {plan['sha']}"] + (["--for", comp] if comp else []) + (
+        [f"({plan['channel']})"] if plan.get("channel") else [])
     return _queue("release", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
                   extra={"comp": str(comp or ""), "tag": plan["tag"], "sha": plan["sha"],
                          "principal": principal, "asker_name": str(asker_name or ""), "dev": bool(dev)})
@@ -1073,6 +1078,24 @@ def ask_release_remove(why, project, plan, to_uid, to_name, asker_name="", princ
     return _queue("release-remove", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
                   extra={"tag": plan["tag"], "files": plan.get("files") or [],
                          "principal": principal, "asker_name": str(asker_name or "")})
+
+
+def ask_release_withdraw(why, project, plan, to_uid, to_name, asker_name="", principal=""):
+    """A session asking to take a published release back, its tag with it
+    (R190 step 3): always an ask, whatever the dial, since nothing undoes
+    it. The person reads which tag, whether it is a pre-release and how
+    many files go with it."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say why it is withdrawn: --why \"...\" (cut by mistake, a stable one meant as dev ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    what = (("the pre-release" if plan.get("prerelease") else "the release")
+            + f" with its {plan.get('files', 0)} files" if plan.get("release") else "no release, already deleted")
+    cmd = ["version", "release", "--withdraw", plan["tag"], f"({what}, and the tag"
+           + ("" if plan.get("tagged") else ", already gone") + f", on {plan.get('forge')})"]
+    return _queue("release-withdraw", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
+                  extra={"tag": plan["tag"], "principal": principal, "asker_name": str(asker_name or "")})
 
 
 def ask_release_sign(why, project, to_uid, to_name, asker_name=""):
@@ -1416,6 +1439,15 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
         with _lock:
             r.update(state="done", code=1 if got.get("error") else 0,
                      out=str(got.get("error") or got.get("said") or "removed"))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "release-withdraw":
+        res = (release_withdrawer(r["project"], {"tag": r.get("tag") or ""}, r.get("asker_name") or "",
+                                  r.get("principal") or "")
+               if release_withdrawer is not None else ({"error": "nothing here withdraws a release"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or got.get("said") or "withdrawn"))
         return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "release-edit":
         plan = {"tag": r.get("tag") or "", "notes": r.get("notes"), "files": r.get("files") or []}

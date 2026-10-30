@@ -1,0 +1,19 @@
+# The files every release of BuilderBot carries, one a line, @VER@ the
+# release's version (0.9.0, 0.9.0-dev.4501) and * as a shell pattern. The
+# controller checks each release against the list at its own tag once CI
+# has had three hours, and says on the bell what is missing and why
+# (releasefiles.py); the release rehearsal lists it (release-rehearsal.yml).
+builderbot-controller-@VER@.tar.gz
+builderbot-controller-@VER@.tar.gz.sha256
+builderbot-companion-@VER@.exe
+builderbot-companion-@VER@.exe.sha256
+builderbot-companion-@VER@.pyz
+builderbot-companion-@VER@.pyz.sha256
+builderbot-vscode-@VER@.vsix
+builderbot-vscode-@VER@.vsix.sha256
+builderbot-app-@VER@.apk
+builderbot-app-@VER@.apk.sha256
+builderbot-os-@VER@.iso
+builderbot-os-@VER@.iso.sha256
+builderbot-os-@VER@.stick.raw.xz
+builderbot-os-@VER@.stick.raw.xz.sha256

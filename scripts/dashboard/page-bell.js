@@ -238,6 +238,17 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bsign="${esc(a.project)}">Signing view</a></span></div></div>`;
   }
+  // A release short of a file its project lists in .release-files (R190):
+  // each file and why, and the release's page.
+  if (a.kind === "release-files"){
+    const n = (a.files || []).length;
+    return `<div class="bnote att bad">
+      <div class="bt">${esc(a.tag)} of ${esc(projLabel(a.project))} is missing ${n ? `${n} file${n === 1 ? "" : "s"}` : "its files"}</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : "after the release"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          ${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">The release</a>` : ""}</span></div></div>`;
+  }
   // A project whose git access was linked to an account's token, gone with
   // that account's key store (R154): its settings, to give it another.
   if (a.kind === "git-unlinked"){
@@ -477,6 +488,7 @@ function askTag(a){
           : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : a.kind === "release-sign" ? `sign the release APKs of ${esc(a.project ? projLabel(a.project) : "a project")} again: needs your answer`
           : a.kind === "release-remove" ? `remove files from the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
+          : a.kind === "release-withdraw" ? `withdraw the ${esc(a.tag || "")} release of ${esc(a.project ? projLabel(a.project) : "a project")} and its tag: needs your answer`
           : a.kind === "phone-use" ? `your phone, from ${esc(a.project ? projLabel(a.project) : "a project")}: needs your answer`
           : a.kind === "push" ? `a push from ${esc(a.project ? projLabel(a.project) : "a project")} looks sensitive: needs your answer`
           : "needs your answer");
@@ -486,7 +498,7 @@ function askTag(a){
 // verbs, adb's for a phone.
 function askCmd(a){
   const pre = a.kind === "root" ? "# " : a.kind === "phone-use" ? ""
-    : ["rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "release-sign", "push"].includes(a.kind) ? "bb " : "adb ";
+    : ["rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "release-withdraw", "release-sign", "push"].includes(a.kind) ? "bb " : "adb ";
   return pre + esc((a.cmd || []).join(" "));
 }
 
@@ -603,7 +615,7 @@ function drawBell(){
     // machine, and that it is root there. `#` is the prompt root gets.
     // A removal from a release takes something away from the people
     // downloading, so it wears the destructive color, as root does.
-    ...asks.map(a => `<div class="bnote ask${a.kind === "root" || a.kind === "release-remove" ? " bad" : ""}">
+    ...asks.map(a => `<div class="bnote ask${a.kind === "root" || a.kind === "release-remove" || a.kind === "release-withdraw" ? " bad" : ""}">
         <div class="btag">${askTag(a)}</div>
         <div class="bwhy">${esc(a.why)}</div>
         <div class="bcmd">${askCmd(a)}</div>${

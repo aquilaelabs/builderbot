@@ -60,7 +60,7 @@ function noticesAskRows(){
     : a.kind === "release-edit" ? ["the new notes", a.detail] : ["", ""];
   return asks.map(a => {
     const [what, body] = long(a);
-    return `<div class="row stack2 ntask${a.kind === "root" || a.kind === "release-remove" ? " bad" : ""}" data-ask="${a.id}">
+    return `<div class="row stack2 ntask${a.kind === "root" || a.kind === "release-remove" || a.kind === "release-withdraw" ? " bad" : ""}" data-ask="${a.id}">
       <div class="grow">
         <div class="name">${askTag(a)}</div>
         <div class="sub">${esc(a.why || "")}</div>

@@ -1669,6 +1669,9 @@ def _att_words(a):
         return (f"Copying or moving {a.get('name', '')} did not happen", a.get("why", ""))
     if k == "release-sign":
         return (f"{a.get('tag', '')}'s APK in {label} is not signed" if a.get("bad") else f"Signing in {label}", a.get("why", ""))
+    if k == "release-files":
+        return (f"{a.get('tag', '')} of {label} is missing {len(a.get('files') or []) or 'its'} file"
+                + ("" if len(a.get("files") or []) == 1 else "s"), a.get("why", ""))
     if k == "git-unlinked":
         return (f"{label} has no git access", a.get("why", ""))
     if k == "project-leftover":
@@ -1705,6 +1708,7 @@ def _ask_words(a):
             "sign-key": f"a signing key change in {label}", "release": f"release {label} {a.get('tag') or ''}",
             "release-edit": f"edit the {a.get('tag') or ''} release of {label}", "release-sign": f"sign the release APKs of {label} again",
             "release-remove": f"remove files from the {a.get('tag') or ''} release of {label}",
+            "release-withdraw": f"withdraw the {a.get('tag') or ''} release of {label} and its tag",
             "phone-use": f"your phone, from {label}", "push": f"a push from {label} looks sensitive"}.get(k, "a session") + ": needs your answer"
 
 
@@ -2042,6 +2046,9 @@ def _attention(who):
     # to (releasesign.attention, R106), for whoever sees the project: said
     # before the release, not after it went out without one.
     signs = releasesign.attention([p for p in releasesign.projects_fn() if users.may_see(who, p)])
+    # ...and a release short of a file its project says it carries (R190
+    # step 4), for whoever sees the project.
+    signs += releasefiles.attention([p for p in releasesign.projects_fn() if users.may_see(who, p)])
     # ...and a project whose git access went with an account's key store
     # (R154), for whoever sees it.
     signs += gitcreds.gone_rows([p for p in gitcreds.gone_projects() if users.may_see(who, p)])
@@ -4756,6 +4763,24 @@ def _release_remover(project, plan, asker_name="", principal=""):
 phone.release_remover = _release_remover
 
 
+def _release_withdrawer(project, plan, asker_name="", principal=""):
+    """A release and its tag deleted on the forge with the project's own
+    token (R190 step 3), and the tag taken out of the controller's copy
+    too, so the number can be released again from a fixed commit."""
+    r = forgerelease.withdraw(project, plan["tag"])
+    if r.get("tagged") or not r.get("error"):
+        version._git(project, "tag", "-d", plan["tag"])
+    if not NODES_OK:
+        db.audit(principal, "version-release-withdraw", project,
+                 {"tag": plan.get("tag"), "release": bool(r.get("release")), "tagged": bool(r.get("tagged")),
+                  "error": r.get("error") or ""})
+    said = forgerelease.withdraw_said(r)
+    return ({"error": said}, 400) if r.get("error") else ({"withdrawn": r, "said": said}, 200)
+
+
+phone.release_withdrawer = _release_withdrawer
+
+
 def _keymaker(action, project, args, by=""):
     """A new generated key or a package's key, for a session's auto dial and
     for Allow on its ask (R106 step 6)."""
@@ -4809,11 +4834,19 @@ releasesign.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json
                                               if d.is_dir() and not d.name.startswith(".")))
 
 
+# The files a release must carry (R190 step 4), checked once CI has had its
+# time, a release short of one said on the bell.
+import releasefiles                                              # noqa: E402
+releasefiles.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json)
+
+
 def _release_made(project, tag):
     """A release's tag pushed, dev or stable: its unsigned APK expected for
-    signing (releasesign.expect). A dev release's page is CI's, so this
-    is not the forge's half, which a dev release never reached (B469)."""
+    signing (releasesign.expect) and its files checked later
+    (releasefiles.expect). A dev release's page is CI's, so this is not the
+    forge's half, which a dev release never reached (B469)."""
     releasesign.expect(project, tag)
+    releasefiles.expect(project, tag)
 
 
 # The briefing says what a session may move the version by, with the rest
@@ -9943,10 +9976,10 @@ class Handler(BaseHTTPRequestHandler):
                                             "Tag and publish a release); a person cuts it with Release on "
                                             "the Artifacts view"}, 403)
             comp = field(req, "component") or ""
-            dev = req.get("dev") is True
-            plan = version.release_plan(name, comp, dev=dev)
+            plan = version.release_plan(name, comp, dev=req.get("dev") is True, stable=req.get("stable") is True)
             if plan.get("error"):
                 return self._json(plan, 400)
+            dev = plan["dev"]
             # Said before the tag, not after it (R134 step 4): 0.7.0 was
             # tagged with no sideload key and its APK never attached.
             rs = releasesign.readiness(name, fresh=True)
@@ -9958,11 +9991,12 @@ class Handler(BaseHTTPRequestHandler):
                                    "unsigned": rs["why"]}, 409)
             acct = users.account_of(who) or {}
             if mode == "auto":
-                return self._json(*_releaser(name, comp, str(acct.get("name") or ""), self._principal(), dev=dev))
+                got, code = _releaser(name, comp, str(acct.get("name") or ""), self._principal(), dev=dev)
+                return self._json({**got, "channel": plan["channel"]} if isinstance(got, dict) else got, code)
             r = phone.ask_release(field(req, "why"), name, comp, plan, membership.owner_of(name),
                                   membership.owner_name(name) or "the project's owner",
                                   asker_name=str(acct.get("name") or ""), principal=self._principal(), dev=dev)
-            return self._json(r, 400 if r.get("error") else 200)
+            return self._json({**r, "channel": plan["channel"]}, 400 if r.get("error") else 200)
         if act == "release-remove":
             # Files off a published release: its own ask, never part of an
             # edit, under the release's dial (the operator, 5 Oct).
@@ -9991,6 +10025,28 @@ class Handler(BaseHTTPRequestHandler):
             r = phone.ask_release_remove(field(req, "why"), name, plan, membership.owner_of(name),
                                          membership.owner_name(name) or "the project's owner",
                                          asker_name=str(acct.get("name") or ""), principal=self._principal())
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "release-withdraw":
+            # A release and its tag taken back together (R190 step 3):
+            # always a person's answer, whatever the dial, since nothing
+            # undoes it; a session asks, a person at the panel does it.
+            if who.get("session") and name != who["session"]:
+                return self._json({"error": "a session withdraws its own project's release and no other"}, 403)
+            if not who.get("session") and self._refused("version", name):
+                return None
+            if who.get("session") and ((prefs.get(name) or {}).get("release") or "ask") == "deny":
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Agents may: "
+                                            "Tag and publish a release), which withdrawing one is part of; "
+                                            "a person deletes it on the forge"}, 403)
+            plan = forgerelease.withdraw_plan(name, field(req, "tag"))
+            if plan.get("error"):
+                return self._json(plan, 400)
+            acct = users.account_of(who) or {}
+            if not who.get("session"):
+                return self._json(*_release_withdrawer(name, plan, str(acct.get("name") or ""), self._principal()))
+            r = phone.ask_release_withdraw(field(req, "why"), name, plan, membership.owner_of(name),
+                                           membership.owner_name(name) or "the project's owner",
+                                           asker_name=str(acct.get("name") or ""), principal=self._principal())
             return self._json(r, 400 if r.get("error") else 200)
         if act == "release-edit":
             # bb version release --edit (R139): the published release's
@@ -13140,6 +13196,7 @@ def main():
     threading.Thread(target=_move_loop, name="move", daemon=True).start()
     ciwatch.start()           # a project's CI, once a day (R117)
     releasesign.start()       # a release's unsigned APK, signed on its node (R106)
+    releasefiles.start()      # a release's files checked against its list (R190)
     if "tunnel" not in featuresoff.off():
         tunnel.apply()        # the home tunnel, where the settings say so (R176)
         # ...and the dashboard's own TLS as the settings say (R158 step 2),

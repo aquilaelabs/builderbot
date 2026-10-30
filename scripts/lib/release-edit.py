@@ -38,6 +38,15 @@ for word in ("release", "--edit"):
     if word in rest:
         rest.remove(word)
 why, tag, notes, attach, remove = "", "", None, [], []
+# --withdraw TAG (R190 step 3): the release and its tag taken back, always
+# a person's answer.
+withdraw = ""
+if "--withdraw" in rest:
+    i = rest.index("--withdraw")
+    if i + 1 >= len(rest):
+        fail("--withdraw needs the release's tag: bb version release --withdraw v1.2.3-dev.45 --why \"...\"")
+    withdraw = rest[i + 1]
+    del rest[i:i + 2]
 root = os.path.realpath(os.path.join(os.environ.get("BB_WORKSPACE", "/workspace"), proj))
 while rest:
     flag = rest.pop(0)
@@ -68,7 +77,11 @@ auth = os.environ.get("BB_VERSION_AUTH", "")
 # 5 Oct): the person reading it sees a removal and nothing else.
 if remove and (notes is not None or attach):
     fail("a removal is its own ask: run --remove without --notes and --attach, and the edit after it")
-if remove:
+if withdraw and (remove or notes is not None or attach or tag):
+    fail("a withdrawal is its own ask: --withdraw TAG --why \"...\" and nothing else")
+if withdraw:
+    body = {"action": "release-withdraw", "project": proj, "component": comp, "why": why, "tag": withdraw}
+elif remove:
     body = {"action": "release-remove", "project": proj, "component": comp, "why": why, "tag": tag, "remove": remove}
 else:
     body = {"action": "release-edit", "project": proj, "component": comp, "why": why,
@@ -82,8 +95,8 @@ if attach:
 r = bbapi.call("/api/version", body, auth=auth, timeout=600)
 if r.get("error"):
     fail(f"[builderbot] ERROR: {r['error']}")
-what = "take files off the release" if remove else "edit the release"
-if r.get("id") and not (r.get("edited") or r.get("removed")):
+what = f"withdraw {withdraw} and its tag" if withdraw else "take files off the release" if remove else "edit the release"
+if r.get("id") and not (r.get("edited") or r.get("removed") or r.get("withdrawn")):
     print(f"[builderbot] asked {r.get('to') or 'the project owner'} (#{r['id']}) to {what}, "
           "waiting up to 15 minutes for Approve in their bell", file=sys.stderr)
     o = waits.outcome(auth, r["id"], f"it was not allowed to {what}")

@@ -179,7 +179,7 @@ bb version unbump      take the last unreleased bump or set back; its
                    stays. Once: the bump before it is not taken back too.
                    A section dated under the wrong number is fixed with
                    unbump, then set to the number meant
-bb version release --why "..." [--without-apk] [--dev]
+bb version release --why "..." [--without-apk] [--dev|--stable]
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
                    credentials. The project's settings say whether an agent may
@@ -189,7 +189,10 @@ bb version release --why "..." [--without-apk] [--dev]
                    tag, saying why; --without-apk goes on, and bb sign release
                    signs it once that is put right. --dev tags the dev
                    build instead (vX.Y.Z-dev.N, no bump, no changelog section),
-                   which CI publishes as a pre-release on the dev channel
+                   which CI publishes as a pre-release on the dev channel.
+                   From a branch other than the one builds ship from it is a
+                   dev release unless --stable says otherwise; the first line
+                   printed names the channel it lands on
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
                    change the published release under the same setting, each
                    edit its own ask: the notes replaced whole (- reads stdin),
@@ -202,6 +205,16 @@ bb version release --remove NAME [--remove NAME]... --why "..." [--tag TAG]
                    take files off the published release, named as the forge
                    lists them: its own ask under the same setting, never part
                    of an edit, the names checked against the release first
+bb version release --withdraw TAG --why "..."
+                   delete a published release and its tag together on the
+                   forge, and the tag here, so the number can be cut again:
+                   always the project owner's answer, whatever the setting
+                   (deny refuses); a tag whose release is already gone goes
+                   alone
+bb version rehearse  run every build a release's tag runs on this branch as it
+                   is pushed (.github/workflows/release-rehearsal.yml),
+                   publishing nothing; its summary lists what the release
+                   would carry (.release-files). Tag once it is green
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
 bb version line [X.Y.Z|none]   the release this branch works toward: a branch
@@ -437,7 +450,9 @@ bb sign status [TAG]
 bb sign release --why "..."
                    look for unsigned release APKs now and sign a failed one
                    again, as the Signing view's Look for unsigned APKs now,
-                   under Sign a build: auto starts it, ask waits for the owner
+                   under Sign a build: auto starts it, ask waits for the owner;
+                   then waits for the look and says what it found, run by run,
+                   or why it found nothing
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/

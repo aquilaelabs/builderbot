@@ -404,6 +404,12 @@ FILE] [--attach FILE]...` (the notes replaced whole, a build from dist/ or a
 committed file attached, `(asset:NAME)` in the notes naming an attached
 file: `![The keyboard](asset:shot.png)`), and a file comes off one only with
 `bb version release --remove NAME --why "..."`; each is its own ask.
+From a branch other than main a release is a dev pre-release unless
+`--stable` is said, and its first line names the channel. `bb version
+rehearse` runs every build a tag would on the pushed branch and publishes
+nothing: rehearse until it is green, then tag once. A release cut by
+mistake goes with `bb version release --withdraw TAG --why "..."`, its tag
+with it, always the owner's answer.
 Shippable build output goes in this project's dist/, named with `bb version
 --file` and gitignored (`bb build` names it so), and the Artifacts view lists
 it; nothing else goes there. dist/ keeps each product's newest few builds (3

@@ -791,3 +791,85 @@ def remove_said(r):
         return f"nothing removed: {r['error']}"
     return (f"removed from the release on {r.get('forge')}: {', '.join(r.get('removed') or []) or 'nothing'}"
             + (f"; not done: {'; '.join(r['skipped'])}" if r.get("skipped") else "") + f"; {r.get('url')}")
+
+
+# ---- withdrawing a release, its tag with it --------------------------------
+# A release taken back takes its tag too (R190 step 3): the forge keeps a
+# tag while its release exists, a session may not push a deletion, and the
+# 0.9.0 dev release left three to be deleted by hand, one of them a tag with
+# no release (the operator, 30 Oct). Always a person's answer, whatever the
+# dial: it is the one change here nothing undoes.
+
+def _paths(kind, ctx, tag):
+    """The API paths for `tag` on this forge, and the caller for them:
+    {rel: the release by tag, ref: the tag read, unref: the tag deleted,
+    by_id: a release by its id ("" where the tag names it), call}."""
+    t = urllib.parse.quote(tag, safe="")
+    if kind == "github":
+        repo, token = ctx
+        # git/ref/ reads one ref exactly; git/refs/ would list every tag
+        # the name begins (v0.9.0-dev.45 reading v0.9.0-dev.4500).
+        return {"rel": f"{API}/repos/{repo}/releases/tags/{t}", "ref": f"{API}/repos/{repo}/git/ref/tags/{t}",
+                "unref": f"{API}/repos/{repo}/git/refs/tags/{t}", "by_id": f"{API}/repos/{repo}/releases/",
+                "call": lambda m, u: _req(m, u, token)}
+    f, at = ctx
+    if kind == "gitlab":
+        pid = urllib.parse.quote(at["path"], safe="")
+        return {"rel": f"/projects/{pid}/releases/{t}", "ref": f"/projects/{pid}/repository/tags/{t}",
+                "unref": f"/projects/{pid}/repository/tags/{t}", "by_id": "", "call": f.ask}
+    owner, _, repo = at["path"].partition("/")
+    base = f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}"
+    return {"rel": f"{base}/releases/tags/{t}", "ref": f"{base}/tags/{t}", "unref": f"{base}/tags/{t}",
+            "by_id": f"{base}/releases/", "call": f.ask}
+
+
+def withdraw_plan(project, tag):
+    """What withdrawing `tag` would take away, read from the forge before
+    anybody is asked: {tag, forge, release, tagged, prerelease, files, url}
+    or {error}. A tag whose release is already gone is withdrawn alone."""
+    if not tag or not TAG.fullmatch(tag) or ".." in tag:
+        return {"error": f"not a tag: {tag or '(none)'}"}
+    try:
+        kind, name, ctx = _handle(project)
+        p = _paths(kind, ctx, tag)
+        rel, ref = p["call"]("GET", p["rel"]), p["call"]("GET", p["ref"])
+    except Refused as e:
+        return {"error": str(e)}
+    if not rel and not ref:
+        return {"error": f"{name} has neither a release nor a tag called {tag}"}
+    rel = rel or {}
+    files = (rel.get("assets") or {}).get("links") or [] if kind == "gitlab" else rel.get("assets") or []
+    return {"tag": tag, "forge": name, "release": bool(rel), "tagged": bool(ref),
+            "prerelease": bool(rel.get("prerelease")), "files": len(files),
+            "url": rel.get("html_url") or (rel.get("_links") or {}).get("self") or ""}
+
+
+def withdraw(project, tag):
+    """Delete the release for `tag`, then the tag, each looked up again at
+    the Allow: {forge, tag, release, tagged} saying what went, or
+    {error, forge}."""
+    try:
+        kind, name, ctx = _handle(project)
+    except Refused as e:
+        return {"error": str(e), "forge": ""}
+    p, out = _paths(kind, ctx, tag), {"forge": name, "tag": tag, "release": False, "tagged": False}
+    try:
+        rel = p["call"]("GET", p["rel"])
+        if rel:
+            p["call"]("DELETE", p["by_id"] + str(int(rel["id"])) if p["by_id"] else p["rel"])
+            out["release"] = True
+        if p["call"]("GET", p["ref"]):
+            p["call"]("DELETE", p["unref"])
+            out["tagged"] = True
+    except Refused as e:
+        return {**out, "error": str(e)}
+    return out
+
+
+def withdraw_said(r):
+    went = [w for w, on in (("its release", r.get("release")), ("its tag", r.get("tagged"))) if on]
+    if r.get("error"):
+        return (f"{r.get('tag') or 'the release'} not withdrawn" + (" (" + " and ".join(went) + " already deleted)" if went else "")
+                + f": {r['error']}")
+    return (f"{r.get('tag')} withdrawn from {r.get('forge')}: " + " and ".join(went) + " deleted") if went \
+        else f"{r.get('tag')} had nothing left on {r.get('forge')} to withdraw"

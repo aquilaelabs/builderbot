@@ -871,7 +871,20 @@ def current_tag(project, comp=""):
     return name, ""
 
 
-def release_plan(project, comp="", dev=False):
+def channel_of(project, dev=False, stable=False):
+    """(dev, words): whether a session's release is the dev build's, and
+    the channel it lands on said for the person (R190 step 1). Asked for
+    neither, a release from a branch other than the one builds ship from
+    is a dev pre-release: a stable one from claude/0.9.0 had to be pulled
+    (the operator, 30 Oct). --stable says otherwise in so many words."""
+    f = _branch_facts(project) if not (dev or stable) else None
+    if f and f["branch"] and f["branch"] != f["base"]:
+        dev = True
+    return dev, ("a dev pre-release: the dev channel takes it and Latest stays where it is" if dev
+                 else "a stable release: it becomes Latest, and every install on the stable channel is offered it")
+
+
+def release_plan(project, comp="", dev=False, stable=False):
     """What a release here would tag, without doing it: {tag, sha, target}
     or {error}, from the same refusals release() makes first. A session's
     ask is made from this (bb version release, R138), so the person asked
@@ -879,6 +892,9 @@ def release_plan(project, comp="", dev=False):
     refused before anybody is asked. With `dev` the tag is the dev build's
     (R179), as release() names it; planned as the plain one, a dev release
     was refused because the last release's tag already existed."""
+    if dev and stable:
+        return {"error": "a release is --dev or --stable, not both"}
+    dev, channel = channel_of(project, dev, stable)
     tgt, err = target(project, comp)
     if err:
         return {"error": err}
@@ -904,7 +920,7 @@ def release_plan(project, comp="", dev=False):
         # what is left is its page on the forge (B399).
         on = _git(project, "rev-list", "-n", "1", "--abbrev-commit", name) or ""
         if on and (sha.startswith(on) or on.startswith(sha)):
-            return {"tag": name, "sha": sha, "target": tgt, "finish": True}
+            return {"tag": name, "sha": sha, "target": tgt, "finish": True, "dev": dev, "channel": channel}
         return {"error": f"{name} already exists: bump to the next number first"}
     if (_git(project, "status", "--porcelain") or "").strip():
         return {"error": "there are uncommitted changes in the project directory: commit or "
@@ -913,7 +929,7 @@ def release_plan(project, comp="", dev=False):
     # snapshot, as release() has it; planned with one, it was refused.
     if not dev and (why := no_upgrade_snapshot(project, comp, tgt)):
         return {"error": why}
-    return {"tag": name, "sha": sha, "target": tgt}
+    return {"tag": name, "sha": sha, "target": tgt, "dev": dev, "channel": channel}
 
 
 # A tree that keeps a /config snapshot per release (BuilderBot's own, R79)

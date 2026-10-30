@@ -23,12 +23,21 @@ on:
       tag:
         description: "the release to attach the .exe to"
         required: true
+  # A release rehearsed (release-rehearsal.yml, R190 step 2): built with no
+  # tag, named for the branch's version, and attached to nothing.
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        default: ""
 
 permissions:
   contents: write
 
+# One group per release, and one per branch for a push or a rehearsal: a
+# rehearsal must never cancel a release's own build.
 concurrency:
-  group: companion-app
+  group: companion-app-${{ github.event.release.tag_name || inputs.tag || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -40,15 +49,18 @@ jobs:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1, pinned by commit (B274)
+        with:
+          fetch-depth: 0   # a rehearsal's name is bb version's, which counts commits
 
       - name: Build the .pyz and the .vsix
         run: |
           set -eo pipefail
-          v="${TAG#v}"
+          v="${TAG#v}"; [ -n "$v" ] || v="$(BB_RELAYED=1 bash scripts/bb version --file)"
           python3 tools/companion-build.py --version "$v" --out "dist/builderbot-companion-$v.pyz"
           python3 tools/vscode-vsix.py --version "$v" --out "dist/builderbot-vscode-$v.vsix"
 
       - name: Attach them to the release with their sha256
+        if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -76,7 +88,7 @@ jobs:
         run: |
           set -eo pipefail
           python -m pip install --disable-pip-version-check --quiet pyinstaller
-          v="${TAG#v}"
+          v="${TAG#v}"; [ -n "$v" ] || v="$(BB_RELAYED=1 bash scripts/bb version --file)"
           printf '%s\n' "$v" > apps/windows/bbcompanion/VERSION
           printf 'from bbcompanion.__main__ import entry\nentry()\n' > "$RUNNER_TEMP/companion.py"
           python -m PyInstaller --noconfirm --onefile --windowed --name "builderbot-companion-$v" \
@@ -103,6 +115,7 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.pfx"
 
       - name: Attach it to the release with its sha256
+        if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

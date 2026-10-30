@@ -159,6 +159,8 @@ if argv and argv[0] == "release":
               "    sign status) is refused before the tag; --without-apk releases it anyway, to be\n"
               "    signed after with bb sign release. --dev cuts the dev build's tag instead (vX.Y.Z-dev.N):\n"
               "    no bump, no changelog section; CI publishes it as a pre-release for the dev channel.\n"
+              "    From any branch but the one builds ship from, a release is a dev one unless --stable\n"
+              "    says otherwise; the first line printed names the channel it lands on.\n"
               'bb version [--for DIR] release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...\n'
               "    change the published release: its notes replaced whole (- reads stdin), a file from\n"
               "    dist/ or the committed tree attached (one of the same name replaced), (asset:NAME) in\n"
@@ -182,14 +184,19 @@ if argv and argv[0] == "release":
     # A dev pre-release (R179): the dev build's tag, vX.Y.Z-dev.N, on the
     # dev channel, its release page CI's.
     dev = "--dev" in rest
-    rest = [x for x in rest if x not in ("--without-apk", "--dev")]
+    # ...and a stable one from a branch other than main is said in so many
+    # words (R190 step 1): without it, it is a dev one.
+    stable = "--stable" in rest
+    rest = [x for x in rest if x not in ("--without-apk", "--dev", "--stable")]
     if rest:
-        fail(f"bb version release takes --why \"...\" [--without-apk] [--dev] and nothing else, not {rest[0]}")
+        fail(f"bb version release takes --why \"...\" [--without-apk] [--dev|--stable] and nothing else, not {rest[0]}")
     auth = os.environ.get("BB_VERSION_AUTH", "")
     r = bbapi.call("/api/version", {"action": "release", "project": proj, "component": comp, "why": why, "dev": dev,
-                                    "unsigned": unsigned}, auth=auth, timeout=240)
+                                    "stable": stable, "unsigned": unsigned}, auth=auth, timeout=240)
     if r.get("error"):
         fail(f"[builderbot] ERROR: {r['error']}")
+    if r.get("channel"):
+        print(f"[builderbot] {r['channel']}", file=sys.stderr)
     if r.get("id") and not r.get("released"):
         print(f"[builderbot] asked {r.get('to') or 'the project owner'} (#{r['id']}) to release, waiting up "
               "to 15 minutes for Approve in their bell", file=sys.stderr)
@@ -206,6 +213,38 @@ if argv and argv[0] == "release":
         print(f"the release: {forge['url']}")
     elif forge.get("error"):
         print(f"no release on the forge: {forge['error']}")
+    raise SystemExit(0)
+
+if argv and argv[0] == "rehearse":
+    # A release rehearsed (R190 step 2): the project's release-rehearsal
+    # workflow started on this branch through the controller, which holds
+    # the forge's token. It builds what a tag would and publishes nothing.
+    import bbapi
+    if any(x in ("-h", "--help") for x in argv[1:]):
+        print("bb version rehearse   run every build a release's tag runs on this branch, as it is pushed,\n"
+              "    publishing nothing (.github/workflows/release-rehearsal.yml); tag once it is green.\n"
+              "    The run's summary lists the files the release would carry (.release-files).")
+        raise SystemExit(0)
+    if argv[1:]:
+        fail(f"bb version rehearse takes nothing more, not {argv[1]}")
+    wf = "release-rehearsal.yml"
+    if not (version.root(proj) / ".github/workflows" / wf).is_file():
+        fail(f"{proj} has no .github/workflows/{wf} to rehearse a release with")
+    branch = version.branch_of(proj)
+    if not branch:
+        fail("HEAD is not on a branch: a rehearsal runs a pushed branch")
+    here = version._git(proj, "rev-parse", "HEAD") or ""
+    there = version._git(proj, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}") or ""
+    if here.strip() != there.strip():
+        fail(f"{branch} here is not what was last pushed: bb git push it first, since the rehearsal builds "
+             "the remote's branch")
+    r = bbapi.call("/api/forge", {"project": proj, "verb": "run dispatch",
+                                  "args": {"pos": [wf], "flags": {"ref": branch}}},
+                   auth=os.environ.get("BB_VERSION_AUTH", ""), timeout=120)
+    if isinstance(r, dict) and r.get("error"):
+        fail(f"[builderbot] ERROR: {r['error']}")
+    print(f"the release rehearsal is started on {branch} at {here.strip()[:7]}: bb forge run list shows it, "
+          "bb ci-log reads it, and its summary lists what a release from here would carry")
     raise SystemExit(0)
 
 if argv and argv[0] == "line":

@@ -39,13 +39,22 @@ on:
         description: "a release to build from its tag and hand to the controller to sign (empty: a plain build)"
         required: false
         default: ""
+  # A release rehearsed (release-rehearsal.yml, R190 step 2): a plain build
+  # of the branch, handed to nobody.
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        default: ""
 
 # Read only: the controller attaches the signed APK with its own token.
 permissions:
   contents: read
 
+# One group per release, and one per branch for a push or a rehearsal: a
+# rehearsal must never cancel a release's own build.
 concurrency:
-  group: android-app
+  group: android-app-${{ github.event.release.tag_name || inputs.tag || github.ref }}
   cancel-in-progress: true
 
 jobs:

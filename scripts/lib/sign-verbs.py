@@ -62,6 +62,10 @@ def status_verb(rest):
 def release_verb(why):
     """bb sign release --why (R134 step 5): the Signing view's Look for
     unsigned APKs now, under the Sign a build dial."""
+    # The look before this one, so its end is told by the controller's own
+    # clock, never this machine's.
+    before = int(((bbapi.call("/api/signing", {"action": "release", "project": project}, auth=auth)
+                   .get("release") or {}).get("last") or {}).get("at") or 0)
     r = bbapi.call("/api/signing", {"action": "release-sign", "project": project, "why": why}, auth=auth)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
@@ -71,8 +75,37 @@ def release_verb(why):
         o = waits.outcome(auth, r["id"], "the look was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it was not started'}")
-    print("[builderbot] looking for unsigned release APKs: bb sign status says how it went "
-          "(a minute or two)", file=sys.stderr)
+    # The look is waited for and what it found said run by run (R190
+    # step 5): "looking" alone left v0.9.0-dev.4501's missing APK
+    # unexplained.
+    print("[builderbot] looking for unsigned release APKs, waiting for what the look finds", file=sys.stderr)
+    t0 = time.time()
+    while time.time() - t0 < 900:
+        time.sleep(5)
+        d = bbapi.call("/api/signing", {"action": "release", "project": project}, auth=auth)
+        rel = d.get("release") or {}
+        last = rel.get("last") or {}
+        if not rel.get("looking") and int(last.get("at") or 0) > before:
+            break
+    else:
+        sys.exit("[builderbot] ERROR: the look is still going after fifteen minutes: bb sign status says how it went")
+    said_look(last, rel.get("expect") or [])
+
+
+def said_look(last, expect):
+    """What one look found, in a line per run, and why it found nothing."""
+    if last.get("error"):
+        print(f"  the look could not finish: {last['error']}")
+    for x in last.get("runs") or []:
+        print(f"  run {x.get('run')} for {x.get('tag')}: {x.get('state')}"
+              + (f": {x['why']}" if x.get("why") else "") + (f"  {x['url']}" if x.get("url") else ""))
+    if not last.get("runs") and not last.get("error"):
+        print(f"  no unsigned APK waiting: {last.get('asked', 0)} recent run(s) that passed were asked and "
+              f"none handed one over, {last.get('known_bare', 0)} more are known to hand over none")
+        print("  the Android workflow's run for the release may still be going, or it failed: "
+              "bb forge run list says which")
+    if expect:
+        print(f"  still expected: {', '.join(expect)}, looked for every few minutes for twelve hours")
 
 
 def keys_verb(sub, route, why, rest):

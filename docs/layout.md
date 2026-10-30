@@ -216,6 +216,7 @@ scripts/
     artifacts.py                 what a project built: dist/, and what a row may offer
     signing.py                   a project's Android signing keys, kept by the controller, never a session's, and the sign-key jobs that work on them on the project's node (R106)
     releasesign.py               a release's unsigned APK from CI, signed on the project's node with its sideload key and attached (R106)
+    releasefiles.py              a release checked against the files its project lists in .release-files, a short one said on the bell (R190)
     membership.py                a project's owner, whether it is invite only, and the invitations to it
     registry.py                  projects by id (R154): each directory's permanent number and the name it is shown under, in projects.json; a directory is never handed out twice
     repos.py                     projects and their repositories (R138): which project each repository is in, in project-repos.json; create, add, move, detach for the trash, delete an empty one, and place one in no project
@@ -449,6 +450,7 @@ docs/users.md                    design: accounts, roles, and what each one may 
 docs/design-language.md          what the dashboard's surfaces owe each other: held by the
                                  house rule `design` and measured by test/uniform.mjs
 .hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint
+.release-files                   the files every release carries, which the controller checks each release against
 .github/actionlint.yaml          this runner's labels, for workflow linting
 .github/workflows/
   build-image.yml                GHCR publish: hosted, cached from :latest, on a push to main that touches the image's inputs
@@ -457,5 +459,6 @@ docs/design-language.md          what the dashboard's surfaces owe each other: h
   dashboard.yml                  the dashboard's browser suite, on a pull request that changes it, on this runner
   android-app.yml                the companion app's build
   companion-app.yml              the Windows companion's .exe: PyInstaller on a hosted Windows runner, on a published release or by hand, attached to the release
+  release-rehearsal.yml          every build a release's tag runs, on a branch by hand or bb version rehearse, publishing nothing
   runner-smoke-test.yml          proves this runner picks up jobs, carries its toolchain and cannot see the shielded PAT (manual)
 ```

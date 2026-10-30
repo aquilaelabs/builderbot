@@ -213,7 +213,8 @@ def status(project):
     newest = lambda d: sorted(({"tag": t, **v} for t, v in (d or {}).items() if isinstance(v, dict)),
                               key=lambda x: -int(x.get("at") or 0))[:5]
     return readiness(project, fresh=True) | {"signed": newest(rec.get("signed")), "failed": newest(rec.get("failed")),
-                                             "looking": looking(project)}
+                                             "looking": looking(project), "last": rec.get("last") or {},
+                                             "expect": sorted(rec.get("expect") or {})}
 
 
 # ---- GitHub -----------------------------------------------------------------
@@ -246,11 +247,15 @@ def _download(repo, aid, token, into):
         raise cilogs.Refused(f"could not fetch the run's artifact: {e}") from e
 
 
-def _waiting(project, repo, token):
+def _waiting(project, repo, token, seen=None):
     """[(run, artifact id, tag)] of the recent runs that passed and handed
-    over an unsigned APK."""
+    over an unsigned APK; `seen`, when given, counts the runs asked about
+    and the ones skipped as known to hand over nothing (what a look says,
+    R190 step 5)."""
     j = cilogs._get(f"/repos/{repo}/actions/runs?per_page=30&status=success", token)
     out = []
+    seen = seen if seen is not None else {}
+    seen.update(asked=0, known_bare=0)
     for r in (j.get("workflow_runs") or [])[:30]:
         rid = int(r.get("id") or 0)
         at = str(r.get("created_at") or "")
@@ -258,8 +263,12 @@ def _waiting(project, repo, token):
             t = calendar.timegm(time.strptime(at[:19], "%Y-%m-%dT%H:%M:%S"))
         except ValueError:
             t = 0
-        if not rid or (t and time.time() - t > RUN_AGE_S) or (project, rid) in _bare:
+        if not rid or (t and time.time() - t > RUN_AGE_S):
             continue
+        if (project, rid) in _bare:
+            seen["known_bare"] += 1
+            continue
+        seen["asked"] += 1
         arts = cilogs._get(f"/repos/{repo}/actions/runs/{rid}/artifacts?per_page=50", token)
         found = False
         for a in (arts.get("artifacts") or [])[:50]:
@@ -373,21 +382,30 @@ def check(project, force=False):
         done["error"] = ("not on GitHub" if not repo else
                          "the controller has no GitHub token for this project, so it cannot fetch the APK to sign")
         return done
+    seen = {}
     try:
-        waiting = _waiting(project, repo, token)
+        waiting = _waiting(project, repo, token, seen)
     except cilogs.Refused as e:
         done["error"] = str(e)
         waiting = []
     d = _load()
     rec = _mine(d, project)
     rec["scanned"] = now
+    # What this look found, run by run, for bb sign release to say (R190
+    # step 5): "looking" alone left a missing APK unexplained.
+    last = {"at": now, "error": done["error"], "asked": seen.get("asked", 0),
+            "known_bare": seen.get("known_bare", 0), "runs": []}
     for rid, aid, tag in waiting:
         ran = rec["runs"].get(str(rid)) or {}
         if ran.get("state") == "signed":
+            last["runs"].append({"run": rid, "tag": tag, "state": "signed before"})
             continue
         if ran.get("state") == "failed" and not force and now - int(ran.get("at") or 0) < SCAN_S:
+            last["runs"].append({"run": rid, "tag": tag, "state": "failed within the hour, not tried again"})
             continue
         r = _sign_run(project, repo, token, rid, aid, tag)
+        last["runs"].append({"run": rid, "tag": tag, "state": "failed" if r.get("error") else "signed",
+                             "why": r.get("error") or "", "url": r.get("url") or ""})
         if r.get("error"):
             rec["runs"][str(rid)] = {"state": "failed", "at": now, "tag": tag}
             rec["failed"][tag] = {"why": r["error"], "at": now, "run": rid}
@@ -408,6 +426,7 @@ def check(project, force=False):
                                              f"{EXPECT_S // 3600} hours: did the Android workflow run for it?",
                                       "at": now, "run": 0}
                 done["failed"].append(tag)
+    rec["last"] = last
     # Old runs forgotten: their artifacts are gone by now.
     rec["runs"] = {k: v for k, v in rec["runs"].items() if now - int((v or {}).get("at") or 0) < 2 * RUN_AGE_S}
     with _lock:

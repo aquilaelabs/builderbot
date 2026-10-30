@@ -1,0 +1,98 @@
+# A release rehearsed (R190 step 2): every build a release's tag runs, on a
+# branch, publishing nothing. The 0.9.0 dev release spent about ten tags on
+# an OS image that would not boot, since only a tag built the whole set (the
+# operator, 30 Oct); this runs the same builds from `bb version rehearse` or
+# the Actions page, so a release is tagged once it is green here.
+#
+# What it runs: the controller bundle packed as the release packs it, the
+# OS image built and booted (os-image.yml), the Android APK built
+# (android-app.yml), and the companion's .pyz, .exe and the VS Code
+# extension built (companion-app.yml), each with no tag, so nothing is
+# attached, signed or handed over. The last job lists what a release from
+# this commit would carry, against the release's manifest
+# (.release-files).
+name: release rehearsal
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.pack.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1, pinned by commit (B274)
+        with:
+          fetch-depth: 0
+      - name: Pack the tree as the release packs it
+        id: pack
+        shell: bash
+        run: |
+          set -eo pipefail
+          ver="$(BB_RELAYED=1 bash scripts/bb version --file)"
+          name="builderbot-controller-${ver}.tar.gz"
+          git archive --format=tar --prefix="builderbot-${ver}/" HEAD | gzip -n -9 > "$name"
+          tar -tzf "$name" | grep -qx "builderbot-${ver}/scripts/dashboard/server.py" \
+            || { echo "::error::the bundle has no scripts/dashboard/server.py"; exit 1; }
+          ls -l "$name"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+  apps:
+    uses: ./.github/workflows/companion-app.yml
+    permissions:
+      contents: write
+    secrets: inherit
+
+  android:
+    uses: ./.github/workflows/android-app.yml
+    permissions:
+      contents: read
+
+  appliance:
+    uses: ./.github/workflows/os-image.yml
+    permissions:
+      contents: read
+
+  manifest:
+    needs: [bundle, apps, android, appliance]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1, pinned by commit (B274)
+      - name: Say what a release from this commit would carry
+        shell: bash
+        env:
+          VER: ${{ needs.bundle.outputs.version }}
+          BUNDLE: ${{ needs.bundle.result }}
+          APPS: ${{ needs.apps.result }}
+          ANDROID: ${{ needs.android.result }}
+          APPLIANCE: ${{ needs.appliance.result }}
+        run: |
+          set -eo pipefail
+          {
+            echo "## A release from this commit"
+            echo
+            echo "| Build | Result |"
+            echo "| --- | --- |"
+            echo "| Controller bundle | $BUNDLE |"
+            echo "| Companion (.pyz, .exe) and VS Code extension | $APPS |"
+            echo "| Android APK (signed by the controller after a release) | $ANDROID |"
+            echo "| BuilderBot OS (built and booted) | $APPLIANCE |"
+            echo
+            echo "The files the release must carry (.release-files), for ${VER:-this version}:"
+            echo
+            grep -v '^[[:space:]]*\(#\|$\)' .release-files | sed "s|@VER@|${VER:-VERSION}|g; s|^|- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for r in "$BUNDLE" "$APPS" "$ANDROID" "$APPLIANCE"; do
+            [ "$r" = success ] || { echo "::error::not every build passed: a release from here would be missing files"; exit 1; }
+          done
+          echo "every build passed: a tag on this commit carries the whole release"
