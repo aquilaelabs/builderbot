@@ -62,7 +62,14 @@ cleanup() { umount "$MNT" 2>/dev/null || true; umount "$MNT.sq" 2>/dev/null || t
 trap cleanup EXIT
 mkfs.vfat -F 32 -i "${BB_ESP_FSUUID/-/}" -n "$BB_ESP_LABEL" "$(P 2)" >/dev/null
 mount "$(P 2)" "$MNT"
-grub-install --target=x86_64-efi --efi-directory="$MNT" --boot-directory="$MNT" --removable --no-nvram "$DEV" >/dev/null 2>&1 \
+# Its own GRUB, not the distribution's signed one: Debian's and Ubuntu's
+# grub-install default to installing the prebuilt signed image, which looks
+# for its config where the distribution keeps it and so stopped at a grub>
+# prompt here (the CI boot test, 30 Oct). Where grub-install knows the
+# option; a grub-install without the Secure Boot patch builds its own anyway.
+nosb=()
+grub-install --help 2>/dev/null | grep -q -- --no-uefi-secure-boot && nosb=(--no-uefi-secure-boot)
+grub-install --target=x86_64-efi --efi-directory="$MNT" --boot-directory="$MNT" --removable --no-nvram "${nosb[@]}" "$DEV" >/dev/null 2>&1 \
     || die "grub-install for UEFI failed"
 grub-install --target=i386-pc --boot-directory="$MNT" "$DEV" >/dev/null 2>&1 \
     || die "grub-install for BIOS failed"
