@@ -107,7 +107,17 @@ REL
 cp "$TREE/usr/lib/builderbot-os/release" "$OUT/$NAME.release"
 # Every package in the image with its version (R160 step 6): what the weekly
 # rebuild compares against the last release's to say what moved.
-awk '/^Package: /{p=$2} /^Version: /{v=$2} /^$/{if(p!=""&&v!="")print p" "v; p="";v=""}' "$TREE/var/lib/dpkg/status" | sort > "$OUT/$NAME.packages"
+# From mkosi's manifest, recorded before CleanPackageMetadata removes the
+# package database the tree would otherwise carry; a tree that still has
+# that database (one built with --from-tree, or by hand) is read directly.
+MANIFEST="$OUT/mkosi/tree.manifest"
+if [ -f "$MANIFEST" ]; then
+    python3 -c 'import json, sys; [print(p["name"], p["version"]) for p in json.load(open(sys.argv[1]))["packages"]]' "$MANIFEST" | sort > "$OUT/$NAME.packages"
+elif [ -f "$TREE/var/lib/dpkg/status" ]; then
+    awk '/^Package: /{p=$2} /^Version: /{v=$2} /^$/{if(p!=""&&v!="")print p" "v; p="";v=""}' "$TREE/var/lib/dpkg/status" | sort > "$OUT/$NAME.packages"
+else
+    die "no package list: neither $MANIFEST nor the tree's dpkg status is there"
+fi
 if [ "$TREE_ONLY" = 1 ]; then say "tree at $TREE"; exit 0; fi
 
 # ---- the slot: a squashfs, its kernel and initrd ----------------------------
