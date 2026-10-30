@@ -60,7 +60,11 @@ Named so nobody looks for them, and never done by an agent:
 What to tick for the common cases, on GitHub's fine-grained token page
 (**Settings, Developer settings, Personal access tokens, Fine-grained
 tokens**), with only the project's repository chosen. Metadata: Read-only
-is always there.
+is always there. On an organization's repository, the organization may have
+to approve the token first (its **Settings, Personal access tokens, Pending
+requests**); until it does, GitHub lets the token read what is public and
+refuses every push. A person keeps one token for each host and account:
+giving a new one replaces the one before for every project that used it.
 
 | For | Contents | Pull requests | Issues | Actions | Workflows |
 |---|---|---|---|---|---|
