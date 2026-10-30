@@ -63,6 +63,8 @@ class World:
             f.write(f'#!/usr/bin/env bash\ncase "$1" in current) echo {slot};; other) echo {"b" if slot == "a" else "a"};; '
                     f'next) if [ -n "$2" ]; then echo "$2" > {self.nextf}; else cat {self.nextf} 2>/dev/null || echo a; fi;; '
                     f'trial) echo "prev=$2 ver=$3" > {self.trialf};; good) rm -f {self.trialf};; '
+                    f'hold) echo {slot} > {self.nextf}; rm -f {self.trialf};; '
+                    f'switch) [ -z "$BB_FAKE_SWITCH_FAILS" ] || exit 1; echo "$2" > {self.nextf}; echo "prev=$3 ver=$4" > {self.trialf};; '
                     f'status) echo "booted: slot {slot}"; [ -f {self.trialf} ] && echo "trial: on";; fell-back) echo no;; esac\n')
         self.state = os.path.join(self.d, "state", "config")
         os.makedirs(self.state)
@@ -133,10 +135,18 @@ class TheAgent(unittest.TestCase):
             def hello_again(self, why):
                 self.said = why
         self.A = A
+        # A gh that answers as BB_FAKE_GH_RC says, standing in for GitHub's
+        # attestation check; BB_FAKE_NO_GH takes it away.
         real = self.av.shutil.which
-        self.nogh = mock.patch.object(self.av.shutil, "which", side_effect=lambda n: None if n == "gh" else real(n))
-        self.nogh.start()
-        self.addCleanup(self.nogh.stop)
+        self.ghd = tempfile.mkdtemp()
+        gh = os.path.join(self.ghd, "gh")
+        with open(gh, "w") as f:
+            f.write('#!/bin/sh\necho "gh $*"\nexit "${BB_FAKE_GH_RC:-0}"\n')
+        os.chmod(gh, stat.S_IRWXU)
+        self.fakegh = mock.patch.object(self.av.shutil, "which", side_effect=lambda n: (
+            None if os.environ.get("BB_FAKE_NO_GH") else gh) if n == "gh" else real(n))
+        self.fakegh.start()
+        self.addCleanup(self.fakegh.stop)
 
     def run_update(self, w, cfg):
         with mock.patch.dict(os.environ, w.env):
@@ -185,8 +195,43 @@ class TheAgent(unittest.TestCase):
             got = self.av.os_release()
         self.assertTrue(got["trial"])
         self.assertEqual(got["fell_back"], "")
-        self.assertIn("no gh here", text)
+        self.assertIn("gh attestation verify", text)
         self.assertFalse(os.path.exists(os.path.join(w.work, "update")), "the working files are gone")
+
+    def test_a_slot_on_trial_is_never_the_one_an_update_runs_from(self):
+        # B470: running slot b on trial, slot a is the only good one, and an
+        # update would have written it.
+        w = World(slot="b")
+        with open(w.nextf, "w") as f:
+            f.write("b\n")
+        with open(w.trialf, "w") as f:
+            f.write("prev=a ver=0.9.1\n")
+        w.publish("0.9.2")
+        state, code, text = self.run_update(w, {"release": "v0.9.2"})
+        self.assertEqual((state, code), ("failed", 79), text)
+        with open(w.dev["a"], "rb") as f:
+            self.assertEqual(f.read(), b"\0" * 4096, "the good slot is untouched")
+
+    def test_an_image_with_no_attestation_check_writes_nothing(self):
+        w = World(slot="a")
+        w.publish("0.9.1")
+        for env, said in (({"BB_FAKE_NO_GH": "1"}, "no gh here"), ({"BB_FAKE_GH_RC": "1"}, "did not verify")):
+            with mock.patch.dict(os.environ, env):
+                state, code, text = self.run_update(w, {"release": "v0.9.1"})
+            self.assertEqual((state, code), ("failed", 68), text)
+            self.assertIn(said, text)
+            with open(w.dev["b"], "rb") as f:
+                self.assertEqual(f.read(), b"\0" * 4096)
+            self.assertFalse(os.path.exists(os.path.join(w.work, "update")), "a failed update leaves nothing behind")
+
+    def test_a_trial_not_set_leaves_the_next_boot_here(self):
+        w = World(slot="a")
+        w.publish("0.9.1")
+        with mock.patch.dict(os.environ, {"BB_FAKE_SWITCH_FAILS": "1"}):
+            state, code, text = self.run_update(w, {"release": "v0.9.1"})
+        self.assertEqual((state, code), ("failed", 73), text)
+        self.assertEqual(open(w.nextf).read().strip(), "a")
+        self.assertFalse(os.path.exists(w.trialf))
 
     def test_a_fallback_the_health_check_recorded_is_said_until_the_next_update(self):
         w = World(slot="a")

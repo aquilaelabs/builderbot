@@ -8,8 +8,10 @@
 #   slot ram [on|off]    whether GRUB loads the slot into memory at boot (the USB edition), read or set
 #   slot trial PREV VER  the next boot is a trial of the slot "next" names, holding VER; PREV is the slot
 #                        to go back to after two boots the health check never marked good
+#   slot hold            the next boot is this one's slot, no trial: before an update writes the other
+#   slot switch SLOT PREV VER   the next boot is a trial of SLOT holding VER, back to PREV: one write
 #   slot good            this boot's slot is healthy: the trial ends, and it stays
-#   slot fell-back       whether the last boot fell back to the slot before (and clears the mark)
+#   slot fell-back [keep]   whether the last boot fell back to the slot before (and clears the mark, unless keep)
 #
 # GRUB keeps the choice in its environment block on the ESP (bb_slot), the one
 # place this tool writes. Counting a new slot's tries and marking it good is
@@ -65,6 +67,22 @@ trial() {
     grub-editenv "$ENVF" set bb_trial=1 bb_tries=0 "bb_prev=$prev" "bb_ver_$nxt=$ver"
     grub-editenv "$ENVF" unset bb_fell_back
 }
+# Before an update writes the other slot: the next boot is this one's, no
+# trial, so a slot half written is never the one GRUB is pointed at (B470).
+hold() {
+    needenv || return 1
+    local cur; cur="$(current)" || return 1
+    grub-editenv "$ENVF" set "bb_slot=$cur" bb_trial=0 bb_tries=0
+}
+# After it: the written slot booted next on trial, in one write of GRUB's
+# environment, so a next without its trial never stands alone (B470).
+switch() {
+    local to="${1:-}" prev="${2:-}" ver="${3:-}"
+    case "$to:$prev" in a:b|b:a) ;; *) echo "slot switch takes the slot written and the one to go back to (a b, or b a), and the version" >&2; return 2 ;; esac
+    needenv || return 1
+    grub-editenv "$ENVF" set "bb_slot=$to" bb_trial=1 bb_tries=0 "bb_prev=$prev" "bb_ver_$to=$ver"
+    grub-editenv "$ENVF" unset bb_fell_back 2>/dev/null || true
+}
 good() {
     needenv || return 1
     local cur; cur="$(current 2>/dev/null || true)"
@@ -75,6 +93,7 @@ good() {
 fellback() {
     if [ "$(envget bb_fell_back)" = 1 ]; then
         echo yes
+        [ "${1:-}" = keep ] && return 0
         grub-editenv "$ENVF" unset bb_fell_back 2>/dev/null || true
     else
         echo no
@@ -97,8 +116,10 @@ case "${1:-}" in
     next) next "${2:-}" ;;
     ram) ram "${2:-}" ;;
     trial) trial "${2:-}" "${3:-}" ;;
+    hold) hold ;;
+    switch) switch "${2:-}" "${3:-}" "${4:-}" ;;
     good) good ;;
-    fell-back) fellback ;;
+    fell-back) fellback "${2:-}" ;;
     status) status ;;
-    *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

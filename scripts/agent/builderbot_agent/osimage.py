@@ -169,14 +169,21 @@ class OsImageMixin:
         try:
             for piece, inside in PIECES.items():
                 dest = os.path.join(work, piece)
+                at = os.path.join(mnt, inside)
+                # A piece is a plain file on the ISO itself, never a link
+                # out of it (B470: one to /dev/zero filled the disk).
+                if os.path.islink(at) or not os.path.isfile(at):
+                    job.say(f"the image has no {inside} as a plain file: nothing written\n")
+                    return {}
                 try:
-                    shutil.copyfile(os.path.join(mnt, inside), dest)
+                    shutil.copyfile(at, dest, follow_symlinks=False)
                 except OSError as e:
                     job.say(f"the image has no {inside}: {e}; nothing written\n")
                     return {}
                 files[piece] = dest
         finally:
-            self._sh(job, ["umount", mnt], timeout=60)
+            if self._sh(job, ["umount", mnt], timeout=60) != 0:
+                job.say(f"the image stayed mounted at {mnt}: umount it before the next update\n")
         return files
 
     def _apply_system_pool(self, job, cfg):
@@ -200,7 +207,16 @@ class OsImageMixin:
         """Write the next image into the slot not in use. `cfg` names a
         release by its tag, or a folder on this machine that holds the
         release's files (an offline machine, the files brought on a stick or
-        over a share); the sha256 files beside them are read either way."""
+        over a share); the sha256 files beside them are read either way.
+        What it fetched and took out of the ISO is gone again however it
+        ends: a failed update left gigabytes on the data partition (B470)."""
+        work = os.path.join(_env("BB_OS_WORK", "/var/lib/builderbot-os"), "update")
+        try:
+            return self._os_update(job, cfg, work)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def _os_update(self, job, cfg, work):
         say = job.say
         rel = os_release()
         tool = _env("BB_OS_SLOT", SLOT_TOOL)
@@ -213,6 +229,13 @@ class OsImageMixin:
         if not other:
             say("refused: this boot named no slot, so the one to write cannot be told from the one running\n")
             return "failed", 78
+        # The slot running now on trial is not proven: the other slot is the
+        # only good one, and writing it would leave nothing to go back to
+        # (B470).
+        if rel.get("trial") and rel.get("next") == cur:
+            say(f"refused: slot {cur} runs on trial and is not marked good yet, and slot {other} is the one to fall "
+                "back to: wait for the health check (a few minutes after the dashboard is up), then update\n")
+            return "failed", 79
         tag = str(cfg.get("release") or "").strip()
         src = str(cfg.get("from") or "").strip()
         if not tag and not src:
@@ -225,7 +248,6 @@ class OsImageMixin:
             say(f"refused: {src or 'the folder'} is not a folder on this machine\n")
             return "failed", 64
         ver = VER_RE.fullmatch(tag).group(1) if tag else ""
-        work = os.path.join(_env("BB_OS_WORK", "/var/lib/builderbot-os"), "update")
         shutil.rmtree(work, ignore_errors=True)
         os.makedirs(work, mode=0o700)
         name = f"builderbot-os-{ver}" if ver else ""
@@ -261,14 +283,20 @@ class OsImageMixin:
         say(f"{fn} matches its sha256\n")
         # The build attestation (R160 step 4): keyless, from the workflow
         # that built the image, checked where gh is here to ask GitHub.
+        # The image carries gh, so one without it is not taken on the
+        # sha256 alone, which comes from the same place as the image (B470).
         gh = shutil.which("gh")
-        if gh and not src:
+        if not src:
+            if not gh:
+                say("refused: no gh here to verify the image's build attestation with, and a sha256 from the same "
+                    "release proves nothing about who built it: nothing written\n")
+                return "failed", 68
             rc = self._sh(job, [gh, "attestation", "verify", iso, "--repo", _env("BB_OS_REPO", REPO)], timeout=120)
             if rc != 0:
                 say("the image's build attestation did not verify: nothing written\n")
                 return "failed", 68
-        elif not src:
-            say("no gh here to verify the build attestation with: the sha256 is what was checked\n")
+        else:
+            say("from a folder: checked against its sha256 alone, so it is only as trustworthy as the folder\n")
         job.step("reading the image")
         files = self._iso_pieces(job, iso, work)
         if not files:
@@ -282,6 +310,22 @@ class OsImageMixin:
         if not os.path.exists(dev):
             say(f"slot {other}'s partition is not here ({dev}): nothing written\n")
             return "failed", 70
+        # Every BuilderBot disk shares its partitions' UUIDs, so with a second
+        # one in the machine (a stick) the name could be either (B470).
+        if not _env(f"BB_OS_DEV_{other.upper()}", ""):
+            uuid = os.path.basename(SLOT_DEV[other])
+            r = subprocess.run(["blkid", "-t", f"PARTUUID={uuid}", "-o", "device"], capture_output=True, text=True,
+                               timeout=30, check=False)
+            if len(r.stdout.split()) > 1:
+                say(f"refused: {len(r.stdout.split())} disks here carry slot {other} ({', '.join(r.stdout.split())}): "
+                    "take out the other BuilderBot disk or stick, then update\n")
+                return "failed", 70
+        # GRUB pointed back at this slot, trial off, before the other is
+        # touched: a slot left half written by a lost power or a failed
+        # write is never the next boot (B470).
+        if self._sh(job, ["bash", tool, "hold"], timeout=30) != 0:
+            say("GRUB's environment could not be set back to this slot: nothing written\n")
+            return "failed", 73
         job.step(f"writing slot {other}")
         try:
             with open(files["root.squashfs"], "rb") as f, open(dev, "r+b") as d:
@@ -297,23 +341,27 @@ class OsImageMixin:
             os.makedirs(where, exist_ok=True)
             for piece, target in (("vmlinuz", "vmlinuz"), ("initrd", "initrd"), ("release", "release")):
                 shutil.copyfile(files[piece], os.path.join(where, target + ".new"))
+                # On the ESP before GRUB is told: a kernel still in the
+                # page cache when power goes is a slot that will not load.
+                with open(os.path.join(where, target + ".new"), "rb+") as f:
+                    os.fsync(f.fileno())
                 os.replace(os.path.join(where, target + ".new"), os.path.join(where, target))
+            os.sync()
         except OSError as e:
             say(f"the ESP did not take slot {other}'s kernel: {e}\n")
             return "failed", 72
         keep_state_before(say, rel.get("version") or "")
-        rc = self._sh(job, ["bash", tool, "next", other], timeout=30)
-        if rc != 0:
-            say(f"GRUB was not told to boot slot {other}: the slot is written and the next boot stays on slot {cur}\n")
+        # Named for the next boot and put on trial (R161 step 2) in one
+        # write: two boots without the health check's word go back to the
+        # slot running now. Not set, it is said, and the next boot stays here
+        # (B470: a next without its trial booted the new slot with no way
+        # back, and was reported a success).
+        if self._sh(job, ["bash", tool, "switch", other, cur, ver], timeout=30) != 0:
+            self._sh(job, ["bash", tool, "hold"], timeout=30)
+            say(f"GRUB was not told to boot slot {other} on trial: the slot is written and the next boot stays on slot {cur}\n")
             return "failed", 73
-        # On trial (R161 step 2): two boots without the health check's word
-        # go back to the slot running now.
-        rc = self._sh(job, ["bash", tool, "trial", cur, ver], timeout=30)
-        if rc != 0:
-            say(f"the trial was not set in GRUB's environment: slot {other} boots next without a fallback count\n")
         with contextlib.suppress(OSError):
             os.unlink(os.path.join(_env("BB_OS_WORK", "/var/lib/builderbot-os"), "fell-back"))
-        shutil.rmtree(work, ignore_errors=True)
         say(f"slot {other} holds BuilderBot OS {ver}, and the next boot starts it: restart this machine to finish (Reboot under This machine's Advanced). "
             f"Slot {cur} keeps {rel.get('version') or 'the image running now'} to fall back to.\n")
         self.hello_again(f"BuilderBot OS {ver} written to slot {other}")
