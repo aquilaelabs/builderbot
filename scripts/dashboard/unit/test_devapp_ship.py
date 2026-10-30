@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -84,6 +85,11 @@ class Ship(unittest.TestCase):
         devapp.containers_dir("web").mkdir(parents=True, exist_ok=True)
         (devapp.containers_dir("web") / "docker-compose.yml").write_text("services:\n  app:\n    build: .\n")
         r = devactions._ship_submit("web", "main", "n2")
+        # Its prepare thread is waited for here: left running, it released
+        # j_1 into the next test's queue, which never held it (B438).
+        for t in threading.enumerate():
+            if t.name == f"prepare-{r.get('job')}":
+                t.join(10)
         self.assertTrue(r.get("ok"), r)
         self.assertEqual(self.q.jobs[r["job"]]["node"], "n1", "built on the owner's node, not the container's own name's")
         b = devactions._ship_build_spec("web", "main", "j_9")
