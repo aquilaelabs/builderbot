@@ -157,13 +157,20 @@ need xorriso "xorriso (and mtools, for the EFI image)"
 say "the ISO: ${NAME}.iso"
 ISO="$(mktemp -d)"
 install -d "$ISO/live" "$ISO/boot/grub"
-ln -s "$OUT/$NAME.root.squashfs" "$ISO/live/filesystem.squashfs"
+# A copy, not a link: grub-mkrescue's xorriso runs as mkisofs, which takes
+# a link into the medium as a link rather than the file it names.
+cp "$OUT/$NAME.root.squashfs" "$ISO/live/filesystem.squashfs"
 install -m 0644 "$OUT/$NAME.vmlinuz" "$ISO/live/vmlinuz"
 install -m 0644 "$OUT/$NAME.initrd" "$ISO/live/initrd"
 install -m 0644 "$OUT/$NAME.release" "$ISO/live/release"
 install -m 0644 "$HERE/iso-grub.cfg" "$ISO/boot/grub/grub.cfg"
-grub-mkrescue -o "$OUT/$NAME.iso" "$ISO" -- -follow_links -volid BUILDERBOT_OS >/dev/null 2>&1 \
-    || die "grub-mkrescue did not make the ISO"
+# Its own words kept, and said when it fails: hidden, a failure was one line
+# with no reason (seen in CI, 30 Oct). The options after -- are xorriso's in
+# its mkisofs mode, where the volume's name is -V.
+if ! grub-mkrescue -o "$OUT/$NAME.iso" "$ISO" -- -V BUILDERBOT_OS > "$OUT/grub-mkrescue.log" 2>&1; then
+    tail -n 25 "$OUT/grub-mkrescue.log" >&2
+    die "grub-mkrescue did not make the ISO"
+fi
 rm -rf "$ISO"
 
 # ---- the same disk for a hypervisor (R160 step 3) ---------------------------
