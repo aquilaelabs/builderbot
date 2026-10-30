@@ -31,7 +31,8 @@ class Controller(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
         GOT.append((self.path, body))
-        status, got = ANSWER.get(body.get("action"), (200, {}))
+        a = ANSWER.get(body.get("action"), (200, {}))
+        status, got = a() if callable(a) else a
         data = json.dumps(got).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -96,12 +97,26 @@ class Clients(unittest.TestCase):
         ANSWER["release"] = (200, {"release": {"wanted": False}})
         self.assertIn("signs none of its releases", self.sign("--status", "", "").stdout)
 
-    def test_release_on_auto_starts_the_look(self):
+    def test_release_on_auto_starts_the_look_and_says_what_it_found(self):
+        # R190 step 5: waited for, the look's end told by the controller's
+        # own clock (its last look's time moving on), then each run said.
         ANSWER["release-sign"] = (200, {"ok": True, "started": True, "said": "looking"})
+        ANSWER["release"] = lambda: (200, {"release": {"looking": False, "expect": ["v1.0.0-dev.9"], "last": {
+            "at": len(GOT), "asked": 4, "known_bare": 2,
+            "runs": [{"run": 77, "tag": "v1.0.0", "state": "signed", "url": "https://example.test/r"}]}}})
         r = self.sign("--release", "", "the key was added")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(GOT[0][1], {"action": "release-sign", "project": "app", "why": "the key was added"})
-        self.assertIn("bb sign status says how it went", r.stderr)
+        self.assertEqual(GOT[1][1], {"action": "release-sign", "project": "app", "why": "the key was added"})
+        self.assertIn("run 77 for v1.0.0: signed  https://example.test/r", r.stdout)
+        self.assertIn("still expected: v1.0.0-dev.9", r.stdout)
+
+    def test_a_look_that_finds_nothing_says_why(self):
+        ANSWER["release-sign"] = (200, {"ok": True, "started": True, "said": "looking"})
+        ANSWER["release"] = lambda: (200, {"release": {"looking": False, "last": {
+            "at": len(GOT), "asked": 4, "known_bare": 2, "runs": []}}})
+        r = self.sign("--release", "", "again")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("4 recent run(s) that passed were asked and none handed one over, 2 more", r.stdout)
 
     def test_release_refused_says_why(self):
         ANSWER["release-sign"] = (403, {"error": "app's settings say Claude does not sign its builds"})
