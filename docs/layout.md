@@ -451,6 +451,7 @@ docs/design-language.md          what the dashboard's surfaces owe each other: h
 .github/actionlint.yaml          this runner's labels, for workflow linting
 .github/workflows/
   build-image.yml                GHCR publish: hosted, cached from :latest, on a push to main that touches the image's inputs
+  os-image.yml                   BuilderBot OS built and booted under QEMU: called by build-image.yml to publish, and on its own for a branch push touching the image
   lint.yml                       the linters, on a pull request, on this runner
   dashboard.yml                  the dashboard's browser suite, on a pull request that changes it, on this runner
   android-app.yml                the companion app's build
