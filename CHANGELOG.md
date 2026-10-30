@@ -79,6 +79,7 @@
 - Docker apps in the vetted catalog: an app entry is an Apps card on the Library, and Install fetches it at the commit the signed index pins, keeps it and opens New container with it picked on the Library's node
 - A pack's setting may be each person's own: a config field with `"scope": "person"` is set under Yours on the Installed page's row by anyone who works on that node's projects, sealed under their own key and read by their own sessions' verbs
 - Configure on the card: a tool pack says in its manifest what it asks for on a node (keys, choices, a list of endpoints, a switch, the projects allowed), a new Installed page under Machines, with the node picked, lists what the Library put there and draws that form on each row, keeps the answers sealed and hands them to that node for the pack's verbs; an agent's sign-in, a toolchain's system packages and Remove live there too, the Library's cards showing the catalog's entry alone; the Model router is installed from the Library and configured on Installed, and its section leaves the node's page (a821371)
+- A person keeps one token for each git host and sign-in: a new one replaces the one before in place, every project using it moves to the new one, and the older tokens an install already kept for the same host are let go at the upgrade (0c804b5)
 
 ### Upgrading
 
