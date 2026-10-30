@@ -533,7 +533,10 @@ jobs:
           done
           echo "the dashboard did not answer within ten minutes; the serial log's end follows, and it is the artifact"
           kill "$(cat qemu.pid)" || true
-          tail -n 120 serial.log || true
+          # The first boot's own lines, its kernel start to its first panic:
+          # a failing boot reboots and repeats, so the log's end was the same
+          # panic over and over, never what led to it.
+          awk '/Linux version/{n++} n==1' serial.log | tr -d '\r' | grep -v '^[[:space:]]*$' | tail -n 150 || true
           exit 1
       - uses: actions/upload-artifact@v4
         if: always()
