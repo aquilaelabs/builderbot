@@ -118,18 +118,30 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 ovmf
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 ovmf mtools grub-common jq
           sudo chmod a+rw /dev/kvm 2>/dev/null || true
       - name: Boot the image and wait for the dashboard
         shell: bash
         run: |
           set -euo pipefail
-          disk="$(find out -maxdepth 1 -name 'builderbot-os-*.qcow2' | head -1)"
+          qcow="$(find out -maxdepth 1 -name 'builderbot-os-*.qcow2' | head -1)"
+          # A copy of the disk with the console on the serial line (bb_args
+          # in the ESP's grubenv, which the menu adds to the kernel line), so
+          # what the initramfs and systemd say reaches serial.log; the disk
+          # as shipped writes them to the screen.
+          disk=boot.raw
+          qemu-img convert -O raw "$qcow" "$disk"
+          esp="$(sfdisk -J "$disk" | jq -r '.partitiontable.partitions[] | select(.name == "esp") | .start')"
+          at="$disk@@$((esp * 512))"
+          mcopy -n -i "$at" ::/grub/grubenv grubenv
+          grub-editenv grubenv set bb_args="console=ttyS0,115200"
+          mcopy -o -i "$at" grubenv ::/grub/grubenv
+          grub-editenv grubenv list
           kvm=""; [ -w /dev/kvm ] && kvm="-enable-kvm -cpu host"
           # shellcheck disable=SC2086
           qemu-system-x86_64 $kvm -m 4096 -smp 2 -machine q35 \
             -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
-            -drive file="$disk",format=qcow2,if=virtio \
+            -drive file="$disk",format=raw,if=virtio \
             -netdev user,id=n0,hostfwd=tcp:127.0.0.1:7680-:7680 -device virtio-net-pci,netdev=n0 \
             -display none -serial file:serial.log -daemonize -pidfile qemu.pid
           said="the dashboard did not answer within ten minutes"
