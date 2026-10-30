@@ -88,6 +88,20 @@ class Release(unittest.TestCase):
             self.addCleanup(setattr, fr, k, getattr(fr, k))
             setattr(fr, k, v)
 
+    def test_the_trees_own_notes_for_the_version_come_before_the_changelog(self):
+        # v0.9.0 went out with the changelog's list where its notes file
+        # with the mark and the screenshots was (B464).
+        d = self.tmp / "ws" / "app" / "docs" / "release-notes"
+        d.mkdir(parents=True)
+        (d / "0.5.0.md").write_text("![mark](https://raw.githubusercontent.com/@REPO@/@TAG@/m.png)\nghcr.io/@REPO@:@VER@\n")
+        fr.publish("app", "v0.5.0", "0.5.0", "65298e0")
+        made = [b for m, p, b in SEEN if m == "POST"][0]
+        self.assertIn("raw.githubusercontent.com/", made["body"])
+        self.assertIn("/v0.5.0/m.png", made["body"])
+        self.assertIn(":0.5.0", made["body"])
+        self.assertNotIn("@", made["body"].replace("ghcr.io", ""))
+        self.assertNotIn("Voice typing", made["body"])
+
     def test_the_release_carries_the_versions_notes_and_its_signed_builds(self):
         r = fr.publish("app", "v0.5.0", "0.5.0", "65298e0")
         self.assertTrue(r.get("made"), r)

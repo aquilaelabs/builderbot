@@ -99,11 +99,20 @@ def _keep(project, tag, url, error="", forge="GitHub"):
 
 # ---- what goes in it ----------------------------------------------------------
 
-def notes(where, version):
-    """The changelog's section for `version`, as Markdown, or "" when the
-    file has none: its categories as headings and its entries as a list.
-    A version cut without a bump has its changes still under Unreleased,
-    and those are what it releases (v0.5.0 went out with no notes, B116)."""
+def notes(where, version, tag="", repo=""):
+    """The release's notes: the tree's docs/release-notes/VERSION.md when it
+    has one (@TAG@, @VER@ and @REPO@ filled in, as CI fills them for a
+    release it makes), else the changelog's section for `version`, as
+    Markdown, or "" when the file has none: its categories as headings and
+    its entries as a list. A version cut without a bump has its changes
+    still under Unreleased, and those are what it releases (v0.5.0 went out
+    with no notes, B116)."""
+    own = Path(where) / "docs" / "release-notes" / f"{version}.md"
+    try:
+        return (own.read_text().replace("@TAG@", tag or f"v{version}")
+                .replace("@VER@", version).replace("@REPO@", repo)).strip()
+    except OSError:
+        pass
     text = changelog.read(where) or ""
     pending = None
     for sec in changelog.sections(text):
@@ -224,7 +233,7 @@ def publish(project, tag, version, sha, comp=""):
     base = forges.api_base(entry, at["host"], scheme or ("https" if at["scheme"] == "ssh" else at["scheme"]))
     where = WORKSPACE / project / comp if comp else WORKSPACE / project
     title = f"{comp + ' ' if comp else ''}{version}"
-    body = notes(where, version) or f"{_shown(project)} {version}"
+    body = notes(where, version, tag, at["path"]) or f"{_shown(project)} {version}"
     try:
         made = (_gitlab if entry["kind"] == "gitlab" else _gitea)(
             _Forge(base, entry, token), at, project, tag, version, sha, title, body)
@@ -250,7 +259,7 @@ def _github(project, tag, version, sha, comp=""):
             return {"url": have.get("html_url") or "", "made": False, "assets": [], "skipped": [],
                     "forge": "GitHub"}
         where = WORKSPACE / project / comp if comp else WORKSPACE / project
-        body = notes(where, version) or f"{_shown(project)} {version}"
+        body = notes(where, version, tag, repo) or f"{_shown(project)} {version}"
         rel = _req("POST", base, token, {"tag_name": tag, "name": f"{comp + ' ' if comp else ''}{version}",
                                          "body": body, "draft": False, "prerelease": False})
         up, skipped = [], []
