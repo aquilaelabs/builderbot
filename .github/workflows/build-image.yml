@@ -376,6 +376,8 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+      # To start the companion apps' builds for a release this job makes.
+      actions: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -410,8 +412,15 @@ jobs:
           # A dev build's tag (vX.Y.Z-dev.N, R179) is a pre-release and never
           # the latest: the dev channel alone takes it.
           pre=(); case "$TAG" in *-dev.*) pre=(--prerelease --latest=false);; esac
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$TAG" --notes "BuilderBot ${TAG#v}: see CHANGELOG.md."
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$TAG" --notes "BuilderBot ${TAG#v}: see CHANGELOG.md."
+            # A release this job's own token publishes starts no workflow
+            # (GitHub's rule), so the companion apps' release builds, which
+            # a release published by a person starts, are started by name.
+            for wf in android-app.yml companion-app.yml; do
+              gh workflow run "$wf" --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"
+            done
+          fi
           gh release upload "$TAG" "$NAME" "$NAME.sha256" --repo "$GITHUB_REPOSITORY" --clobber
 
   # The OS image (R160): built and booted by os-image.yml, which a branch
