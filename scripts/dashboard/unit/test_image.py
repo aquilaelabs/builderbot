@@ -322,6 +322,12 @@ class Workflow(unittest.TestCase):
         self.assertIn("ConditionKernelCommandLine=bbslot", unit)
         self.assertIn("ExecStart=/usr/lib/builderbot-os/health", unit)
         self.assertIn('bash "$SLOT" good', read(EXTRA, "usr", "lib", "builderbot-os", "health"))
+        # B471: a slot that panics or never gets healthy comes back by itself.
+        self.assertEqual(g.count("panic=15 console="), 3)
+        self.assertIn('set fallback="slot-${bb_prev}"', g)
+        health = read(EXTRA, "usr", "lib", "builderbot-os", "health")
+        self.assertIn("systemctl reboot", health)
+        self.assertNotIn('"$code" != "000"', health)
         if not shutil.which("grub-editenv"):
             self.skipTest("no grub-editenv here")
         tool = os.path.join(EXTRA, "usr", "lib", "builderbot-os", "slot")
@@ -337,9 +343,35 @@ class Workflow(unittest.TestCase):
                 self.assertIn(want, got, got)
             st = sh(f"bash {tool} status", env).stdout
             self.assertIn("trial: slot b, 0 boot(s) so far, back to slot a", st)
+            envf = f"{esp}/grub/grubenv"
+            # B471: the slot running now is healthy while b waits to boot for
+            # the first time: b's trial stands.
             self.assertEqual(sh(f"bash {tool} good", env).returncode, 0)
-            got = sh(f"grub-editenv {esp}/grub/grubenv list", env).stdout
+            self.assertIn("bb_trial=1", sh(f"grub-editenv {envf} list", env).stdout)
+            # ...b booted once and a was picked from the menu: back on a.
+            sh(f"grub-editenv {envf} set bb_tries=1", env)
+            sh(f"bash {tool} good", env)
+            got = sh(f"grub-editenv {envf} list", env).stdout
+            self.assertIn("bb_slot=a", got)
             self.assertIn("bb_trial=0", got)
+            # ...and b healthy on its own boot ends its trial on b.
+            self.assertEqual(sh(f"bash {tool} switch b a 0.9.2", env).returncode, 0)
+            got = sh(f"grub-editenv {envf} list", env).stdout
+            for want in ("bb_slot=b", "bb_trial=1", "bb_tries=0", "bb_prev=a", "bb_ver_b=0.9.2"):
+                self.assertIn(want, got, got)
+            open(c, "w").write("bbslot=b\n")
+            sh(f"grub-editenv {envf} set bb_tries=1", env)
+            sh(f"bash {tool} good", env)
+            got = sh(f"grub-editenv {envf} list", env).stdout
+            self.assertIn("bb_slot=b", got)
+            self.assertIn("bb_trial=0", got)
+            # B470: hold points the next boot back at the running slot.
+            self.assertEqual(sh(f"bash {tool} hold", env).returncode, 0)
+            self.assertIn("bb_slot=b", sh(f"grub-editenv {envf} list", env).stdout)
+            # A healthy boot with nothing to change leaves GRUB's file alone.
+            before = os.stat(envf).st_mtime_ns
+            sh(f"bash {tool} good", env)
+            self.assertEqual(os.stat(envf).st_mtime_ns, before)
             self.assertEqual(sh(f"bash {tool} fell-back", env).stdout.strip(), "no")
             sh(f"grub-editenv {esp}/grub/grubenv set bb_fell_back=1", env)
             self.assertEqual(sh(f"bash {tool} fell-back", env).stdout.strip(), "yes")

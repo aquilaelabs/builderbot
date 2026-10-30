@@ -83,11 +83,29 @@ switch() {
     grub-editenv "$ENVF" set "bb_slot=$to" bb_trial=1 bb_tries=0 "bb_prev=$prev" "bb_ver_$to=$ver"
     grub-editenv "$ENVF" unset bb_fell_back 2>/dev/null || true
 }
+# This boot is healthy. A trial ends only when this boot is the slot on
+# trial; a boot of the other slot (picked from the menu) during one that has
+# already booted ends the trial back on this slot, and one written during
+# this boot and not booted yet is left to boot (B471). Nothing is written
+# when nothing changes, so a healthy boot does not rewrite GRUB's
+# environment each time.
 good() {
     needenv || return 1
-    local cur; cur="$(current 2>/dev/null || true)"
-    grub-editenv "$ENVF" set bb_trial=0 bb_tries=0
-    [ -n "$cur" ] && [ -r "$RELEASE" ] && grub-editenv "$ENVF" set "bb_ver_$cur=$(sed -n 's/^BUILDERBOT_OS_VERSION=//p' "$RELEASE" | head -1)"
+    local cur nxt ver
+    cur="$(current 2>/dev/null || true)"
+    [ -n "$cur" ] || return 0
+    nxt="$(next)"
+    if [ "$(envget bb_trial)" = 1 ]; then
+        if [ "$cur" = "$nxt" ]; then
+            grub-editenv "$ENVF" set bb_trial=0 bb_tries=0
+        elif [ "$(envget bb_tries)" != 0 ]; then
+            grub-editenv "$ENVF" set "bb_slot=$cur" bb_trial=0 bb_tries=0
+        fi
+    fi
+    ver="$( [ -r "$RELEASE" ] && sed -n 's/^BUILDERBOT_OS_VERSION=//p' "$RELEASE" | head -1 || true)"
+    if [ -n "$ver" ] && [ "$(envget "bb_ver_$cur")" != "$ver" ]; then
+        grub-editenv "$ENVF" set "bb_ver_$cur=$ver"
+    fi
     return 0
 }
 fellback() {
