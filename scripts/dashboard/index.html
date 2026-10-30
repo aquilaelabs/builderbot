@@ -3285,14 +3285,15 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    row (the search at its left, its buttons at its right), then the rest in
    the order the page wrote it. Done here rather than in every page's
    markup: the list's children and a placeholder's take part in the
-   surface's own order, so a page and the shape it waits in agree. */
+   surface's own order, so a page and the shape it waits in agree. A page
+   of settings, whose list is its split (splitSects), keeps its own grid. */
 .doctab{display:flex;flex-direction:column}
-.doctab>.doclist,.doctab>.doclist>.skel.skt{display:contents}
-:is(.doctab,.doctab>.doclist,.doctab>.doclist>.skel.skt)>*{order:5}
-:is(.doctab,.doctab>.doclist,.doctab>.doclist>.skel.skt)>.field:has(>.notice){order:1}
-:is(.doctab,.doctab>.doclist,.doctab>.doclist>.skel.skt)>.pghead{order:2}
-:is(.doctab,.doctab>.doclist,.doctab>.doclist>.skel.skt)>.field:has(>.tiles){order:3}
-.doctab>.docbarrow{order:4}
+.doctab>.doclist:not(.ssplit),.doctab>.doclist:not(.ssplit)>.skel.skt,.doctab>.skel.skt{display:contents}
+:is(.doctab,.doctab>.skel.skt,.doctab>.doclist:not(.ssplit),.doctab>.doclist:not(.ssplit)>.skel.skt)>*{order:5}
+:is(.doctab,.doctab>.skel.skt,.doctab>.doclist:not(.ssplit),.doctab>.doclist:not(.ssplit)>.skel.skt)>.field:has(>.notice){order:1}
+:is(.doctab,.doctab>.skel.skt,.doctab>.doclist:not(.ssplit),.doctab>.doclist:not(.ssplit)>.skel.skt)>.pghead{order:2}
+:is(.doctab,.doctab>.skel.skt,.doctab>.doclist:not(.ssplit),.doctab>.doclist:not(.ssplit)>.skel.skt)>.field:has(>.tiles){order:3}
+:is(.doctab,.doctab>.skel.skt)>.docbarrow{order:4}
 .doctab>.fnote{order:6}
 .doctab>.doclist::after,.doctab.dmtab::after,.doctab.vmtab::after{order:7}
 /* The notebook's Docker view draws the manager's cards under its own class,

@@ -54,7 +54,7 @@ function renderPhoneInto(i){
     d.setBar("");
     // In the card the rows land in (.phonetab).
     d.list.innerHTML = skTpl(`<div class="phonetab"><div class="row toolstate"><div class="grow"><div class="name">Phone ${skv(6)}</div>
-        <div class="sub">${skv(10)}</div></div><span class="acts">${phoneCheckBtn(true)}</span></div>
+        <div class="sub">${skv(10)}</div></div><span class="acts actbar">${phoneCheckBtn(true)}</span></div>
       <div class="row">${fld("Phone IP address", 18, true)}${fld("Port", 7)}<span class="acts"><button type="button" class="primary" disabled>Connect</button></span></div>
       <div class="row"><div class="grow prefrow ctlrow">${fld("Pairing port", 9)}${fld("Pairing code", 9)}</div>
         <span class="acts"><button type="button" disabled>Pair</button></span>
@@ -174,7 +174,7 @@ function phonePanel(n){
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
            : dev ? (dev.serial ? esc(dev.serial) : `connected by ${esc(n.owner?.name || "somebody")}; which phone is theirs to know`)
            : "no phone on its adb"}</div></div>
-       <span class="acts">${phoneCheckBtn(false)}${dev && (n.mine || state?.admin) && mayPhone() ? `<button type="button" id="phDisconnect"${
+       <span class="acts actbar">${phoneCheckBtn(false)}${dev && (n.mine || state?.admin) && mayPhone() ? `<button type="button" id="phDisconnect"${
          n.mine ? "" : ` data-other="${esc(n.owner?.name || "somebody")}"`}
          >Disconnect</button>` : ""}</span>
      </div>`,
