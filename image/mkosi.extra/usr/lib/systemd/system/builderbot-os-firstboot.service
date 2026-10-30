@@ -4,6 +4,9 @@ Description=BuilderBot OS: this machine made its own controller's first node, on
 # the node is enrolled, and the unit does not run again. The controller's
 # service is the image's, enabled when it was built, so it is up first.
 ConditionPathExists=!/etc/builderbot-controller/own-node
+# Never under the ISO's installer, where no controller runs to enrol with
+# and a root agent on the LAN is the last thing wanted (B475).
+ConditionKernelCommandLine=!bbinstaller=1
 After=network-online.target builderbot-controller.service
 Wants=network-online.target builderbot-controller.service
 
