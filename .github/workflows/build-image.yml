@@ -531,8 +531,9 @@ jobs:
             case "$code" in 200|302|303) echo "the dashboard answered $code after $((i * 5)) s"; kill "$(cat qemu.pid)" || true; exit 0 ;; esac
             sleep 5
           done
-          echo "the dashboard did not answer within ten minutes; the serial log is the artifact"
+          echo "the dashboard did not answer within ten minutes; the serial log's end follows, and it is the artifact"
           kill "$(cat qemu.pid)" || true
+          tail -n 120 serial.log || true
           exit 1
       - uses: actions/upload-artifact@v4
         if: always()
