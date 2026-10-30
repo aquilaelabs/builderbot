@@ -462,10 +462,11 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          # A failure's last lines as the job's error annotation, which GitHub
+          # A failure's last lines as the job's error annotation (its end, under
+          # the annotation's length cap, where the error is), which GitHub
           # shows without signing in, where the log itself needs a token.
           if ! sudo -E image/build.sh --out out 2>&1 | tee build.log; then
-            tail -n 60 build.log | python3 -c 'import sys; t = sys.stdin.read(); print("::error title=Build the image::" + t.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))'
+            tail -n 40 build.log | tail -c 3500 | python3 -c 'import sys; t = sys.stdin.read(); print("::error title=Build the image::" + t.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))'
             exit 1
           fi
       - name: What moved since the last release
