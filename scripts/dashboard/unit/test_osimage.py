@@ -7,6 +7,7 @@ writes nothing; the census says the image, the slot and the next; the
 controller queues the job only for a machine that runs the image; the
 update window applies once per release at its hour and never by default."""
 import hashlib
+import json
 import os
 import re
 import stat
@@ -84,7 +85,10 @@ class World:
         self.work = os.path.join(self.d, "work")
         self.env = {"BB_OS_RELEASE": self.release, "BB_OS_SLOT": self.tool, "BB_OS_DEV_A": self.dev["a"], "BB_OS_DEV_B": self.dev["b"],
                     "BB_OS_ESP": self.esp, "BB_OS_WORK": self.work, "BB_OS_RELEASE_URL": "file://" + os.path.join(self.d, "rel"),
-                    "BB_OS_STATE": self.state}
+                    "BB_OS_STATE": self.state, "BB_OS_ATTEST_URL": "file://" + os.path.join(self.d, "attestations.json"),
+                    "BB_OS_TRUSTED_ROOT": os.path.join(self.d, "trusted-root.jsonl")}
+        with open(os.path.join(self.d, "trusted-root.jsonl"), "w") as f:
+            f.write("{}\n")
 
     def publish(self, version, bad=False, without=""):
         """The release's ISO under rel/vVERSION with its sha256: here a tar
@@ -107,6 +111,13 @@ class World:
             want = sha(f.read())
         with open(iso + ".sha256", "w") as f:
             f.write(f"{'0' * 64 if bad else want}  builderbot-os-{version}.iso\n")
+        # Its build attestation: what GitHub's API answers for the ISO's
+        # digest, and the bundle the release carries beside it.
+        bundle = {"mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json", "subject": want}
+        with open(os.path.join(self.d, "attestations.json"), "w") as f:
+            json.dump({"attestations": [{"bundle": bundle}]}, f)
+        with open(os.path.join(d, f"builderbot-os-{version}.attestation.jsonl"), "w") as f:
+            f.write(json.dumps(bundle) + "\n")
         return d, files
 
 
@@ -141,7 +152,10 @@ class TheAgent(unittest.TestCase):
         self.ghd = tempfile.mkdtemp()
         gh = os.path.join(self.ghd, "gh")
         with open(gh, "w") as f:
-            f.write('#!/bin/sh\necho "gh $*"\nexit "${BB_FAKE_GH_RC:-0}"\n')
+            # It wants --bundle, a file holding a bundle for the ISO's digest,
+            # as the real one checks the bundle against the file.
+            f.write('#!/bin/sh\necho "gh $*"\nf="$3"; b="$5"\n[ "$4" = --bundle ] || exit 9\n'
+                    'grep -q "$(sha256sum "$f" | cut -d" " -f1)" "$b" || exit 8\nexit "${BB_FAKE_GH_RC:-0}"\n')
         os.chmod(gh, stat.S_IRWXU)
         self.fakegh = mock.patch.object(self.av.shutil, "which", side_effect=lambda n: (
             None if os.environ.get("BB_FAKE_NO_GH") else gh) if n == "gh" else real(n))
@@ -236,6 +250,26 @@ class TheAgent(unittest.TestCase):
         with open(w.dev["b"], "rb") as f:
             self.assertEqual(f.read(), b"\0" * 4096)
 
+    def test_an_offline_folder_without_its_attestation_writes_nothing(self):
+        # R191 step 1: a folder on a share is no proof of who built it.
+        w = World(slot="a")
+        d, _ = w.publish("0.9.2")
+        os.unlink(os.path.join(d, "builderbot-os-0.9.2.attestation.jsonl"))
+        state, code, text = self.run_update(w, {"from": d})
+        self.assertEqual((state, code), ("failed", 68), text)
+        self.assertIn("attestation.jsonl", text)
+        with open(w.dev["b"], "rb") as f:
+            self.assertEqual(f.read(), b"\0" * 4096)
+
+    def test_github_with_no_attestation_for_the_image_writes_nothing(self):
+        w = World(slot="a")
+        w.publish("0.9.1")
+        with open(os.path.join(w.d, "attestations.json"), "w") as f:
+            f.write('{"attestations": []}')
+        state, code, text = self.run_update(w, {"release": "v0.9.1"})
+        self.assertEqual((state, code), ("failed", 68), text)
+        self.assertIn("no build attestation", text)
+
     def test_a_trial_not_set_leaves_the_next_boot_here(self):
         w = World(slot="a")
         w.publish("0.9.1")
@@ -289,6 +323,8 @@ class TheAgent(unittest.TestCase):
         with open(w.dev["a"], "rb") as f:
             self.assertTrue(f.read().startswith(files["root.squashfs"]))
         self.assertEqual(open(w.nextf).read().strip(), "a")
+        # Verified with no network, against the root the image was built with.
+        self.assertIn("--custom-trusted-root", text)
         state, code, text = self.run_update(w, {"from": os.path.join(w.d, "nowhere")})
         self.assertEqual(state, "failed")
         self.assertIn("is not a folder", text)

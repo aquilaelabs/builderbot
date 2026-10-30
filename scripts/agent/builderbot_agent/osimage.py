@@ -29,6 +29,13 @@ SLOT_DEV = {"a": "/dev/disk/by-partuuid/6a5c2f3e-0b7d-4b2a-9c1e-b0b1de5b0e0a",
 SLOT_MIB = 4096
 RELEASE_URL = "https://github.com/aquilaelabs/builderbot/releases/download"
 REPO = "aquilaelabs/builderbot"
+# A build's attestation, read from GitHub's public API with no token, and
+# verified by gh with --bundle, which asks for no sign-in: a machine has
+# none. An update from a folder takes the bundle the release carries
+# beside the ISO and verifies it against the trusted root this image was
+# built with, with no network.
+ATTEST_URL = "https://api.github.com/repos/{repo}/attestations/sha256:{digest}"
+TRUSTED_ROOT = "/usr/lib/builderbot-os/trusted-root.jsonl"
 # Each piece of a slot, and where image/build.sh puts it on the ISO.
 PIECES = {"root.squashfs": "live/filesystem.squashfs", "vmlinuz": "live/vmlinuz",
           "initrd": "live/initrd", "release": "live/release"}
@@ -185,6 +192,56 @@ class OsImageMixin:
     """Agent's BuilderBot OS update: one of the parts class Agent (agent.py)
     is made of."""
 
+    def _attested(self, job, iso, digest, name, src, work):
+        """Whether the ISO verifies against its build attestation, said in
+        the job either way: the bundle from the folder (and the trusted root
+        this image carries) or from GitHub's public API, then gh attestation
+        verify --bundle."""
+        say = job.say
+        gh = shutil.which("gh")
+        if not gh:
+            say("refused: no gh here to verify the image's build attestation with: nothing written\n")
+            return False
+        repo = _env("BB_OS_REPO", REPO)
+        bundle = os.path.join(work, "attestation.jsonl")
+        extra = []
+        if src:
+            have = os.path.join(src, f"{name}.attestation.jsonl")
+            root = _env("BB_OS_TRUSTED_ROOT", TRUSTED_ROOT)
+            if not os.path.isfile(have):
+                say(f"refused: {src} holds no {name}.attestation.jsonl, the release's proof of who built the image; "
+                    "bring it beside the ISO: nothing written\n")
+                return False
+            if not os.path.isfile(root):
+                say("refused: this image carries no trusted root to verify an offline update with; update online: "
+                    "nothing written\n")
+                return False
+            shutil.copyfile(have, bundle)
+            extra = ["--custom-trusted-root", root]
+        else:
+            url = _env("BB_OS_ATTEST_URL", ATTEST_URL).format(repo=repo, digest=digest)
+            try:
+                req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
+                                                           "User-Agent": "BuilderBot"})
+                with urllib.request.urlopen(req, timeout=60) as r:  # noqa: S310 (GitHub's API, or a test's file://)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+                    got = json.loads(r.read(4 << 20) or b"{}")
+            except (OSError, ValueError) as e:
+                say(f"the image's build attestation could not be fetched from GitHub ({e}): nothing written\n")
+                return False
+            lines = [json.dumps(a["bundle"]) for a in got.get("attestations") or []
+                     if isinstance(a, dict) and isinstance(a.get("bundle"), dict)]
+            if not lines:
+                say("GitHub has no build attestation for this image: nothing written\n")
+                return False
+            with open(bundle, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+        rc = self._sh(job, [gh, "attestation", "verify", iso, "--bundle", bundle, "--repo", repo, *extra], timeout=120)
+        if rc != 0:
+            say("the image's build attestation did not verify: nothing written\n")
+            return False
+        say("the image's build attestation verifies: built by BuilderBot's release workflow\n")
+        return True
+
     def _iso_pieces(self, job, iso, work):
         """The slot's pieces copied out of the ISO's live/ folder into
         `work`, the ISO mounted read-only for it: {piece: path}, or {} with
@@ -314,20 +371,12 @@ class OsImageMixin:
         say(f"{fn} matches its sha256\n")
         # The build attestation (R160 step 4): keyless, from the workflow
         # that built the image, checked where gh is here to ask GitHub.
-        # The image carries gh, so one without it is not taken on the
-        # sha256 alone, which comes from the same place as the image (B470).
-        gh = shutil.which("gh")
-        if not src:
-            if not gh:
-                say("refused: no gh here to verify the image's build attestation with, and a sha256 from the same "
-                    "release proves nothing about who built it: nothing written\n")
-                return "failed", 68
-            rc = self._sh(job, [gh, "attestation", "verify", iso, "--repo", _env("BB_OS_REPO", REPO)], timeout=120)
-            if rc != 0:
-                say("the image's build attestation did not verify: nothing written\n")
-                return "failed", 68
-        else:
-            say("from a folder: checked against its sha256 alone, so it is only as trustworthy as the folder\n")
+        # The build attestation, from a release or from a folder alike: a
+        # sha256 from the same place as the image proves nothing about who
+        # built it, and a folder may be on a share others write (B470, R191
+        # step 1).
+        if not self._attested(job, iso, have, name, src, work):
+            return "failed", 68
         job.step("reading the image")
         files = self._iso_pieces(job, iso, work)
         if not files:

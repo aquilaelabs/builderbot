@@ -474,6 +474,7 @@ jobs:
       # kernel and its initrd out of the ISO, and the raw disk, qcow2 and OVA
       # stay the boot test's and the run's artifact.
       - name: Attest the ISO and the stick
+        id: attest
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
@@ -483,10 +484,17 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: |
           tag="${GITHUB_REF_NAME}"
           pre=(); case "$tag" in *-dev.*) pre=(--prerelease --latest=false);; esac
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$tag" --notes "BuilderBot ${tag#v}: see CHANGELOG.md."
+          # The attestation's bundle beside them, one line: an update from a
+          # folder verifies the ISO with it and no network, against the
+          # trusted root the image carries.
+          iso="$(find out -maxdepth 1 -name 'builderbot-os-*.iso' | head -1)"
+          jq -c . "$BUNDLE" > "${iso%.iso}.attestation.jsonl"
           gh release upload "$tag" out/builderbot-os-*.iso out/builderbot-os-*.iso.sha256 \
-            out/builderbot-os-*.stick.raw.xz out/builderbot-os-*.stick.raw.xz.sha256 --repo "$GITHUB_REPOSITORY" --clobber
+            out/builderbot-os-*.stick.raw.xz out/builderbot-os-*.stick.raw.xz.sha256 \
+            "${iso%.iso}.attestation.jsonl" --repo "$GITHUB_REPOSITORY" --clobber

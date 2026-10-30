@@ -325,8 +325,12 @@ and which boots next.
 
 An offline machine takes the same files from a folder on it (a stick, a
 share): **Update from the folder** under Updates, the folder holding the
-release's ISO with its `.sha256` beside it. A folder's ISO is checked
-against that sha256 alone, so it is only as trustworthy as the folder.
+release's ISO with its `.sha256` and its `.attestation.jsonl` beside it,
+all three from the release. The ISO is checked against both with no
+network: the attestation against the trusted root the running image was
+built with, so a folder on a share others can write cannot hand over an
+image BuilderBot's release workflow did not build. A release's attestation
+is read from GitHub's public API, and neither way asks for a sign-in.
 
 **On trial.** The slot an update wrote boots on trial: GRUB counts each
 boot of it in its environment, and the health check

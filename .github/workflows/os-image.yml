@@ -66,6 +66,9 @@ jobs:
           echo "snapshot: $(cat image/SNAPSHOT)"
       - name: Build the image
         shell: bash
+        # For gh's trusted root, which build.sh bakes into the image.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           # A failure's last lines as the job's error annotation (its end, under

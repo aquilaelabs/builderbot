@@ -15,5 +15,6 @@ builderbot-app-@VER@.apk
 builderbot-app-@VER@.apk.sha256
 builderbot-os-@VER@.iso
 builderbot-os-@VER@.iso.sha256
+builderbot-os-@VER@.attestation.jsonl
 builderbot-os-@VER@.stick.raw.xz
 builderbot-os-@VER@.stick.raw.xz.sha256

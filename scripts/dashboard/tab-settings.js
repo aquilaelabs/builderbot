@@ -220,7 +220,7 @@ function updatesSection(){
   // restart to finish; elsewhere the installer's bundle (R90 step 5).
   const runs = os ? `BuilderBot OS ${esc(os.version)} from slot ${esc(os.slot || "?")}${os.next && os.next !== os.slot ? `, and slot ${esc(os.next)} boots next: restart to finish the update` : os.trial ? ", on trial until the health check marks it good" : ""}${os.fell_back ? `; ${esc(os.fell_back)}` : ""}`
     : esc(r.running || "an unstamped build");
-  const how = os ? `Update fetches the release's ISO, checks it against its sha256 and its build attestation, takes the root, kernel and initrd out of it, writes the slot not in use and names it for the next boot; the restart is yours, from This machine, and the slot running now stays to fall back to. An offline machine takes the same files from a folder here (a stick, a share).`
+  const how = os ? `Update fetches the release's ISO, checks it against its sha256 and its build attestation, takes the root, kernel and initrd out of it, writes the slot not in use and names it for the next boot; the restart is yours, from This machine, and the slot running now stays to fall back to. An offline machine takes the same files from a folder here (a stick, a share): the ISO, its .sha256 and its .attestation.jsonl.`
     : `Update fetches the release's bundle, checks its sha256 and its build attestation, holds the state to its version gate, switches to it and comes back by itself if the new build does not answer.`;
   // The machine's own packages (R164 step 3), on a bare-metal install
   // that is not BuilderBot OS: how many wait, the security ones among
@@ -429,7 +429,7 @@ function wireUpdates(root){
   }));
   root.querySelectorAll("[data-osfrom]").forEach(b => b.onclick = () => pressing(b, async () => {
     const from = ($("osFrom")?.value || "").trim();
-    if (!from){ notify("name the folder on this machine that holds the release's ISO", true); return; }
+    if (!from){ notify("name the folder on this machine that holds the release's ISO with its .sha256 and .attestation.jsonl", true); return; }
     if (!await askYes(`Write the ISO in ${from} into the other slot?\n\nThe ISO is checked against the sha256 beside it; the slot not in use takes it and boots next; nothing running changes until you restart.`, {title: "Update from a folder?", verb: "Write the slot"})) return;
     busy(b, "Updating");
     const j = await (await postJSON("/api/v1/nodes", {action: "os-update", id: b.dataset.osfrom, from})).json().catch(() => ({error: "no answer"}));

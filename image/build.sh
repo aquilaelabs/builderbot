@@ -33,6 +33,12 @@ OUT="$HERE/out"
 TREE_ONLY=0
 FROM_TREE=""
 MKOSI_PIN="${MKOSI_PIN:-25.3}"
+# The gh an OS update verifies the next image's build attestation with: a
+# pinned release checked against its sha256, since Debian's (2.46) predates
+# --bundle and asked for a sign-in the machine never has, so every online
+# update was refused.
+GH_PIN=2.102.0
+GH_SHA256=bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386
 
 usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "build.sh: $*" >&2; exit 1; }
@@ -100,6 +106,22 @@ fi
 install -m 0755 "$HERE/lay-disk" "$TREE/usr/lib/builderbot-os/lay-disk"
 install -m 0644 "$HERE/partitions.sh" "$TREE/usr/lib/builderbot-os/partitions.sh"
 install -m 0644 "$HERE/grub.cfg" "$TREE/usr/lib/builderbot-os/grub.cfg"
+# gh, pinned (above), and the Sigstore trusted root of the day it was built,
+# which an update from a folder verifies its bundle against with no network.
+say "gh ${GH_PIN}"
+need curl "curl"
+curl -fsSL -o "$OUT/gh.tar.gz" "https://github.com/cli/cli/releases/download/v${GH_PIN}/gh_${GH_PIN}_linux_amd64.tar.gz"
+echo "${GH_SHA256}  $OUT/gh.tar.gz" | sha256sum -c - >/dev/null || die "gh ${GH_PIN}'s archive does not match its pinned sha256"
+tar -xzf "$OUT/gh.tar.gz" -C "$OUT" "gh_${GH_PIN}_linux_amd64/bin/gh"
+install -m 0755 "$OUT/gh_${GH_PIN}_linux_amd64/bin/gh" "$TREE/usr/bin/gh"
+rm -rf "${OUT:?}/gh.tar.gz" "${OUT:?}/gh_${GH_PIN}_linux_amd64"
+if "$TREE/usr/bin/gh" attestation trusted-root > "$TREE/usr/lib/builderbot-os/trusted-root.jsonl.new" \
+        && [ -s "$TREE/usr/lib/builderbot-os/trusted-root.jsonl.new" ]; then
+    mv "$TREE/usr/lib/builderbot-os/trusted-root.jsonl.new" "$TREE/usr/lib/builderbot-os/trusted-root.jsonl"
+else
+    rm -f "$TREE/usr/lib/builderbot-os/trusted-root.jsonl.new"
+    die "gh attestation trusted-root gave nothing: an update from a folder would have nothing to verify against"
+fi
 cat > "$TREE/usr/lib/builderbot-os/release" <<REL
 BUILDERBOT_OS_VERSION=${VERSION}
 BUILDERBOT_VERSION=$(head -1 "$TREE_SRC/VERSION" | tr -d '[:space:]')
