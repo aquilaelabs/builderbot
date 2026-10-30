@@ -77,9 +77,11 @@ class GitHub(BaseHTTPRequestHandler):
             return self.answer({"message": "Bad credentials"}, 401)
         if p.startswith("/repos/o/app/actions/runs?"):
             now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            hour = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 3600))
             return self.answer({"workflow_runs": [
+                {"id": 22, "event": "workflow_dispatch", "created_at": now, "updated_at": now},
                 {"id": 21, "event": "release", "head_branch": "v0.7.0", "created_at": now},
-                {"id": 20, "event": "push", "head_branch": "main", "created_at": now},
+                {"id": 20, "event": "push", "head_branch": "main", "created_at": hour, "updated_at": hour},
                 {"id": 9, "event": "release", "head_branch": "v0.1.0", "created_at": "2020-01-01T00:00:00Z"}]})
         if p.startswith("/repos/o/app/actions/runs/21/artifacts"):
             return self.answer({"artifacts": [{"id": 77, "name": "bb-release-apk-v0.7.0", "expired": False},
@@ -215,6 +217,13 @@ class Signs(Base):
         self.assertEqual(len(self.signed), n)
         # ...and a run that handed over nothing is not asked about again.
         self.assertEqual(len([p for m, p, a in SEEN if "/runs/20/artifacts" in p]), asked)
+
+    def test_a_run_that_only_just_ended_is_asked_about_again(self):
+        # GitHub can list a run as ended before it lists its artifact (B467).
+        releasesign.check("app")
+        asked = len([p for m, p, a in SEEN if "/runs/22/artifacts" in p])
+        releasesign.check("app")
+        self.assertEqual(len([p for m, p, a in SEEN if "/runs/22/artifacts" in p]), asked + 1)
 
     def test_a_failed_signing_is_said_on_the_bell_and_signed_again_on_a_press(self):
         self.fail_why = "app-0.7.0-unsigned.apk: no key"

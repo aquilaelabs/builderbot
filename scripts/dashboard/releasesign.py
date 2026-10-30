@@ -271,7 +271,14 @@ def _waiting(project, repo, token):
         # A finished run's artifacts do not change: one that handed over
         # nothing is not asked about again (a look every few minutes for a
         # release's twelve hours would otherwise ask about thirty runs each).
-        if not found:
+        # GitHub can list a run as finished a little before it lists the
+        # artifact it uploaded, so a run that ended in the last ten minutes
+        # is asked about again (B467).
+        try:
+            ended = calendar.timegm(time.strptime(str(r.get("updated_at") or "")[:19], "%Y-%m-%dT%H:%M:%S"))
+        except ValueError:
+            ended = 0
+        if not found and (not ended or time.time() - ended > 600):
             _bare.add((project, rid))
     return out
 
@@ -444,7 +451,9 @@ def check_soon(project, force=False):
 
     def go():
         try:
-            check(project, force)
+            said = check(project, force).get("error")
+            if said:
+                print(f"dashboard: release signing {project}: {said}", flush=True)
         except Exception as e:                                      # noqa: BLE001 (a look must not take the server)
             print(f"dashboard: release signing {project}: {e}", flush=True)
         finally:
