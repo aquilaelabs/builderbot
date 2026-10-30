@@ -346,7 +346,6 @@ function nodeRunnerSection(n, c, between = "", acts = ""){
   const why = nodeStale(n) ? esc(staleWhy(n)) : "";
   const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
   const hostOf = (want, rep) => (rep.forge || want.forge) === "gitea" ? "Gitea" : (rep.forge || want.forge) === "github" ? "GitHub" : "";
-  let worst = "";
   const rows = slots.map(slot => {
     const want = recs[slot] || {}, rep = reps.find(r => r.slot === slot) || {};
     const stored = tokens.includes(slot);
@@ -367,7 +366,6 @@ function nodeRunnerSection(n, c, between = "", acts = ""){
       : rep.active ? ["listening", "ok", "", ""]
       : ["not listening", "off", "installed but not listening, so no workflow will reach it: Reinstall runner", "bad"];
     const rowCls = failed && rep.installed && pcls === "ok" ? "warn" : scls === "bad" ? "bad" : scls;
-    if (rowCls === "bad") worst = "bad"; else if (rowCls === "note" && worst !== "bad") worst = "note";
     const facts = rep.installed
       ? [rep.name ? `registered as ${rep.name}` : "", rep.labels?.length ? "labels " + rep.labels.join(", ") : ""].filter(Boolean).join(" · ") : "";
     // A token is what a reinstall and a removal mint from, so a runner
@@ -422,20 +420,16 @@ function nodeRunnerSection(n, c, between = "", acts = ""){
             title="save the token and add the runner to this node">Add runner</button></div>
       </div></div>`
     : "";
-  const status = !slots.length ? "none" : worst === "bad" ? "attention" : worst === "note" ? "working"
-    : reps.some(r => r.busy) ? "busy" : reps.some(r => r.active) ? "listening" : "asked for";
-  const pill = {attention: "bad", working: "note", busy: "ok", listening: "ok"}[status] || "";
-  // The node-scoped tool's shape, the Phone tab's too (R121 step 5): the
-  // state row first, the things below it, the add band, and at the foot
-  // what a workflow (or a session) does to reach this node.
-  // `between` is what the CI runner page puts under the head: every
-  // node's runner at a glance (runnerRows). This node's runners are a list
-  // of their own, a card on that page (the operator, 18 Oct: it read as
-  // loose rows under lines that ran to the edge).
-  return `${pageHead({cls: "toolstate", pills: `<span class="pill stat ${pill}">${esc(status)}</span>`,
-        facts: [["Runners", String(slots.length)]], actions: acts})}${between}
+  // No head (the operator, 29 Oct: a head of a state pill and a count over
+  // a lone button said again what the header and each runner's row say):
+  // `between`, every node's runner at a glance (runnerRows) where there
+  // are several, then this node's runners as a list of their own, a card
+  // (the operator, 18 Oct), the add band, Add runner under the list it adds
+  // to, and at the foot what a workflow does to reach this node.
+  return `${between}
       ${addbar ? `<div class="field">${addbar}</div>` : ""}
-      <div class="ndruns">${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}</div>
+      <div class="ndruns">${rows || `<div class="row"><div class="grow"><div class="ndrunnone">No runner on this node yet.</div></div></div>`}</div>
+      ${acts ? `<div class="field actbar ndrunadd">${acts}</div>` : ""}
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
         <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div></div>` : ""}`;
 }
@@ -2064,9 +2058,7 @@ function renderRunnerInto(i){
     // page's own; the node and its runners are on their way.
     // In the node's panel, as it lands: its rows are bands there, not a card.
     d.setBar("");
-    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${pageHead({cls: "toolstate",
-      facts: [["Runners", GHOST]],
-      actions: `<button type="button" class="primary" disabled>Add runner</button>`})}<div class="ndruns">${skRows(1)}</div></div>`);
+    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel"><div class="ndruns">${skRows(1)}</div><div class="field actbar ndrunadd"><button type="button" class="primary" disabled>Add runner</button></div></div>`);
     return;
   }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");

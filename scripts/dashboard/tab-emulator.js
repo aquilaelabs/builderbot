@@ -195,7 +195,7 @@ function renderEmulatorInto(i){
     // In the page's order: its head, its tiles, the images it holds,
     // then the ones to add.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
-    surf.list.innerHTML = skTpl(`${pageHead({cls: "tchead", facts: [["System images", GHOST]]})}
+    surf.list.innerHTML = skTpl(`${pageHead({facts: [["System images", GHOST]]})}
       <div class="field"><div class="tiles">${tile("images")}${tile("AVDs", "built on them")}${tile("free", "on the store")}</div></div>
       ${emuSections(`<div class="tcs">${skRows(2)}</div>`, "", `<div class="tcs">${skRows(2)}</div>`)}`);
     return;
@@ -223,7 +223,7 @@ function renderEmulatorInto(i){
     ${
     // Its node as a head (the operator, 25 Oct): where the images an
     // emulator boots are kept; its free space is the tile's (R218 step 24).
-    pageHead({cls: "tchead",
+    pageHead({
       pills: d.root && !d.wrong_platform ? "" : `<span class="pill warn">${d.wrong_platform ? "another platform" : "no store yet"}</span>`,
       facts: [["System images", d.root && !d.wrong_platform ? d.root : ""],
               ["Platform", d.wrong_platform ? `${d.platform}: the Android tools are packaged for ${d.wrong_platform}` : ""]]})}
