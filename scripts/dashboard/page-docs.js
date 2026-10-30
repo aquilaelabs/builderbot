@@ -300,8 +300,10 @@ const SKTPLS = {
     + docSection("design", "pages", "Pages", "", skRows(2))
     + docSection("design", "themes", "Themes", "", skRows(2))),
   // Its list, by the view's own titles (nb-artifacts.js ART_TITLES)...
-  artifacts: () => skTpl([["build", 1], ["files", 2]]
-    .map(([k, n]) => docSection("artifacts", k, artTitle(k), "", skRows(n))).join("")),
+  // ...with the jump bar the view draws over its three sections (sectJump:
+  // Build, Version and Files), so the page does not move down as it lands.
+  artifacts: () => skTpl(`<nav class="sectjump">${["build", "version", "files"].map(k => `<a href="#">${esc(artTitle(k))}</a>`).join("")}</nav>`
+    + [["build", 1], ["files", 2]].map(([k, n]) => docSection("artifacts", k, artTitle(k), "", skRows(n))).join("")),
   // The Overview's box of sections (nb-rules.js BRIEF_SECTS) as drawRules
   // lands it, the Brief left out, with the jump bar over them and the
   // Memories under them that the markup holds.
