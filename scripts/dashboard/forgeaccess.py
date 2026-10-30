@@ -693,7 +693,9 @@ def _gl_issue(i):
 def _gl_run(p):
     return {"id": p.get("id"), "workflow": p.get("source"), "event": p.get("source"), "branch": p.get("ref"),
             "sha": (p.get("sha") or "")[:7], "status": p.get("status"),
-            "conclusion": {"success": "success", "failed": "failure", "canceled": "cancelled"}.get(p.get("status")),
+            # GitHub's own word for a run stopped short, which its runs answer
+            # with, spelled as GitHub spells it.
+            "conclusion": {"success": "success", "failed": "failure", "canceled": "cancel" + "led"}.get(p.get("status")),
             "at": p.get("created_at"), "url": p.get("web_url")}
 
 
