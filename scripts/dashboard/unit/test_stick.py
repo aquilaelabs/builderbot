@@ -25,8 +25,13 @@ def load():
     return m
 
 
-LSBLK = '{"blockdevices": [{"name": "sda", "size": 512110190592, "model": "Samsung SSD", "rm": false, "tran": "sata", "type": "disk", "mountpoints": ["/"]},' \
+# The system on a partition, as it always is: the disk's own mount points
+# are empty, and a USB disk the machine booted from is no stick (B474).
+LSBLK = '{"blockdevices": [{"name": "sda", "size": 512110190592, "model": "Samsung SSD", "rm": false, "tran": "sata", "type": "disk", "mountpoints": [null],' \
+        ' "children": [{"name": "sda2", "type": "part", "mountpoints": ["/"]}]},' \
         '{"name": "sdb", "size": 32000000000, "model": "Ultra Fit", "rm": true, "tran": "usb", "type": "disk", "mountpoints": [null]},' \
+        '{"name": "sdc", "size": 1000000000000, "model": "T7", "rm": false, "tran": "usb", "type": "disk", "mountpoints": [null],' \
+        ' "children": [{"name": "sdc1", "type": "part", "mountpoints": ["/boot/efi"]}, {"name": "sdc2", "type": "part", "mountpoints": ["/"]}]},' \
         '{"name": "loop0", "size": 1, "type": "loop", "mountpoints": []}]}'
 
 
@@ -45,9 +50,11 @@ class Stick(unittest.TestCase):
 
     def test_the_disks_are_listed_and_only_a_removable_one_may_be_written(self):
         rows = self.m.disks()
-        self.assertEqual([(r["id"], r["removable"], r["system"]) for r in rows], [("/dev/sda", False, True), ("/dev/sdb", True, False)])
-        with self.assertRaises(SystemExit):
-            self.m.pick("/dev/sda")
+        self.assertEqual([(r["id"], r["removable"], r["system"]) for r in rows],
+                         [("/dev/sda", False, True), ("/dev/sdb", True, False), ("/dev/sdc", True, True)])
+        for dev in ("/dev/sda", "/dev/sdc"):
+            with self.assertRaises(SystemExit):
+                self.m.pick(dev)
         with self.assertRaises(SystemExit):
             self.m.pick("/dev/sdz")
         self.assertEqual(self.m.pick("/dev/sdb")["model"], "Ultra Fit")

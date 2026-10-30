@@ -69,14 +69,21 @@ def disks():
     """[{id, size, model, removable, system}] for this machine."""
     sysname = platform.system()
     if sysname == "Linux":
-        out = subprocess.run(["lsblk", "-J", "-b", "-d", "-o", "NAME,SIZE,MODEL,RM,TRAN,TYPE,MOUNTPOINTS"], capture_output=True, text=True, check=False).stdout
+        # The whole tree, not -d: a disk's own mount points are empty when
+        # / is on one of its partitions, and the system disk read as any
+        # other (B474).
+        out = subprocess.run(["lsblk", "-J", "-b", "-o", "NAME,SIZE,MODEL,RM,TRAN,TYPE,MOUNTPOINTS"], capture_output=True, text=True, check=False).stdout
+
+        def mounts(d):
+            return [m for m in (d.get("mountpoints") or []) if m] + [m for c in d.get("children") or [] for m in mounts(c)]
         rows = []
         for d in (json.loads(out or "{}").get("blockdevices") or []):
             if d.get("type") != "disk" or str(d.get("name", "")).startswith(("loop", "zram", "ram")):
                 continue
-            mnts = [m for m in (d.get("mountpoints") or []) if m]
+            mnts = mounts(d)
             rows.append({"id": "/dev/" + d["name"], "size": int(d.get("size") or 0), "model": (d.get("model") or "").strip(),
-                         "removable": bool(d.get("rm")) or d.get("tran") == "usb", "system": "/" in mnts or "/boot/efi" in mnts})
+                         "removable": bool(d.get("rm")) or d.get("tran") == "usb",
+                         "system": any(m in ("/", "/boot", "/boot/efi", "/usr", "/var", "/home", "[SWAP]") for m in mnts)})
         return rows
     if sysname == "Darwin":
         out = subprocess.run(["diskutil", "list", "-plist", "external", "physical"], capture_output=True, text=True, check=False).stdout
@@ -283,10 +290,19 @@ def open_disk(dev):
         subprocess.run(["diskutil", "unmountDisk", dev], capture_output=True, check=False)
         rdev = dev.replace("/dev/disk", "/dev/rdisk")
         return open(rdev, "r+b", buffering=0)
+    # Every file system on it taken off first, and the write refused if one
+    # will not go; then opened exclusively, which the kernel refuses while
+    # anything still holds the disk (B474).
     out = subprocess.run(["lsblk", "-nro", "MOUNTPOINTS", dev], capture_output=True, text=True, check=False).stdout.split()
     for m in out:
-        subprocess.run(["umount", m], capture_output=True, check=False)
-    return open(dev, "r+b", buffering=0)
+        r = subprocess.run(["umount", m], capture_output=True, text=True, check=False)
+        if r.returncode != 0:
+            die(f"{m} on {dev} would not unmount ({r.stderr.strip() or 'busy'}): nothing written")
+    try:
+        fd = os.open(dev, os.O_RDWR | os.O_EXCL)
+    except OSError as e:
+        die(f"{dev} is in use ({e.strerror}): nothing written")
+    return os.fdopen(fd, "r+b", buffering=0)
 
 
 def write_image(image, dev, verify_after=True, sets=(), config=None, mirror=None):
@@ -305,10 +321,9 @@ def write_image(image, dev, verify_after=True, sets=(), config=None, mirror=None
             if written % (512 << 20) < CHUNK:
                 say(f"  {written / GB:.1f} GB written")
         dst.flush()
-        try:
-            os.fsync(dst.fileno())
-        except OSError:
-            pass
+        # A stick that cannot flush did not take the image: said, never
+        # passed over (B474).
+        os.fsync(dst.fileno())
     say(f"written: {written / GB:.1f} GB")
     if verify_after:
         verify(dev, written, h.hexdigest())
@@ -322,6 +337,9 @@ def verify(dev, length, want):
     if platform.system() == "Windows" and re.fullmatch(r"\d+", dev):
         rdev = f"\\\\.\\PhysicalDrive{dev}"
     with open(rdev, "rb", buffering=0) as f:
+        # Read from the stick, not from what Linux still holds of the write.
+        if hasattr(os, "posix_fadvise"):
+            os.posix_fadvise(f.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
         while left > 0:
             chunk = f.read(min(CHUNK, left))
             if not chunk:
@@ -355,6 +373,11 @@ def cmd_write(a):
         die(f"no such image: {image}")
     if not image.endswith(".xz"):
         die("the image is the release's builderbot-os-VERSION.stick.raw.xz (or .raw.xz)")
+    # The disk asked about again after the download: one replugged meanwhile
+    # may be another disk under the same name (B474).
+    again = pick(a.disk)
+    if (again["size"], again["model"]) != (d["size"], d["model"]):
+        die(f"{a.disk} is not the disk it was before the download ({again['model'] or 'unnamed'}, {again['size'] / GB:.1f} GB now): nothing written")
     say(f"{d['id']}: {d['model'] or 'unnamed'}, {d['size'] / GB:.1f} GB. Everything on it is lost.")
     if not a.yes:
         if input("Type yes to write it: ").strip().lower() != "yes":
