@@ -130,9 +130,9 @@ cp "$KERNEL" "$OUT/$NAME.vmlinuz"; cp "$INITRD" "$OUT/$NAME.initrd"
 rm -f "$OUT/$NAME.root.squashfs"
 # What is left out is what is in those directories, never the directories:
 # the initramfs moves /dev, /proc, /sys and /run onto the root, and with no
-# mount point there the boot panics.
+# mount point there the boot panics. Its times are SOURCE_DATE_EPOCH's, which
+# mksquashfs reads itself and refuses beside -mkfs-time or -all-time.
 mksquashfs "$TREE" "$OUT/$NAME.root.squashfs" -comp zstd -Xcompression-level 19 -xattrs -noappend -quiet \
-    -mkfs-time "$SOURCE_DATE_EPOCH" -all-time "$SOURCE_DATE_EPOCH" \
     -wildcards -e 'proc/*' 'sys/*' 'dev/*' 'dev/.*' 'run/*' 'run/.*' 'tmp/*' 'tmp/.*' 'var/cache/apt/*' 'var/lib/apt/lists/*'
 for d in dev proc sys run tmp; do
     unsquashfs -l "$OUT/$NAME.root.squashfs" "/$d" 2>/dev/null | grep -qx "squashfs-root/$d" \
