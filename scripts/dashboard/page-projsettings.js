@@ -759,6 +759,7 @@ function renameProject(name, mode = "all"){
   // is the way a project moves from one host to another, since linking
   // refuses a repo that already has one.
   $("rnUnlink").hidden = !(git && p?.linked);
+  rnGitDoor = !!git;
   unbusy($("rnUnlink"), `Unlink from ${p?.forge_name || "its remote"}`);
   // The bin, on the gear's door only: the chain's is about the remote.
   // Not drawn for a role that does not give it (the operator, 21 Oct).
@@ -1468,13 +1469,19 @@ const rnDirty = () => RN_SECTS.filter(s => rnSectChanges(s).said.length);
 // The bars, put in once and then kept in step with what is typed: dead
 // rather than gone while there is nothing to save, so nothing moves under a
 // thumb (sectBar's rule).
+// Opened from the git host's door (the chain) the dialog is the Repository
+// section alone, and its Save and Revert sit in the foot beside Unlink (the
+// operator, 30 Oct), not on a line of their own above it.
+let rnGitDoor = false;
 function rnBars(){
   if (rnFor === null) return;
   const enc = rnEnc(), running = !!myLiveSession(rnFor);
   for (const sect of RN_SECTS){
     const body = document.querySelector(`details.rngroup[data-sect="rn:${sect}"] > .body`);
     if (!body) continue;
-    let bar = body.querySelector(":scope > .rnbarf > .rnbar");
+    // By its name, wherever it sits: the foot holds the repository's on
+    // the git door.
+    let bar = document.querySelector(`#rnmodal .rnbar[data-rnbar="${sect}"]`);
     if (!bar){
       body.insertAdjacentHTML("beforeend", `<div class="field rnbarf"><div class="actbar sectbar rnbar" data-rnbar="${sect}">
         <span class="state"></span><span class="sp"></span>
@@ -1488,6 +1495,9 @@ function rnBars(){
     // has the Settings view, which says what the remote is and opens its
     // door (rnRepoSum, B813).
     bar.parentElement.hidden = sect === "repo" && (!$("rnGitNone").hidden || !$("rnRepoSum").hidden);
+    const foot = $("rnUnlink")?.parentElement, wrap = bar.parentElement;
+    if (sect === "repo" && rnGitDoor && foot && wrap.parentElement !== foot) foot.insertBefore(wrap, $("rnDelete"));
+    else if (!(sect === "repo" && rnGitDoor) && wrap.parentElement !== body) body.appendChild(wrap);
     if (bar.dataset.busy) continue;
     const {said, start} = rnSectChanges(sect, enc);
     const ask = running && start.length > 0;
