@@ -220,6 +220,13 @@ class Dialects(Base):
         body, code = forgeaccess.run("app", "run rerun", {"pos": ["5"]})
         self.assertIn("Gitea's API has no rerun", body["error"])
 
+    def test_a_run_is_named_by_githubs_own_long_id(self):
+        # GitHub's run ids are eleven digits and its job ids twelve.
+        self.measured(GH)
+        self.host({("GET", "/repos/o/app/actions/runs/40996557892/jobs"): (200, {"jobs": []}, {})})
+        body, code = forgeaccess.run("app", "run log", {"pos": ["40996557892"]})
+        self.assertEqual(code, 200, body)
+
     def test_only_numbers_and_branch_names_reach_a_path(self):
         self.measured(GH)
         self.host({})

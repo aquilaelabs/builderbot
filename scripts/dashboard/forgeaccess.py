@@ -412,7 +412,7 @@ def briefing(project):
 # them reaches a path but numbers, refs checked against REF, and the words
 # the verb itself names.
 
-NUM = re.compile(r"[0-9]{1,10}")
+NUM = re.compile(r"[0-9]{1,20}")
 REF = re.compile(r"[A-Za-z0-9._/-]{1,200}")
 WORKFLOW = re.compile(r"[A-Za-z0-9._-]{1,100}\.ya?ml|[0-9]{1,12}")
 LABEL = re.compile(r"[^\x00-\x1f]{1,50}")
