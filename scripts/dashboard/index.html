@@ -3041,6 +3041,14 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .nb .nbhead>.actbar{align-items:center}
 .nb .nbhead>.actbar>button{flex:0 0 auto;white-space:nowrap}
 .nb .nbhead>.actbar:empty{display:none}
+/* A view's status line on its control row, words at the left and the
+   row's buttons at the right (viewGlance's slot), and a row with neither
+   not drawn at all. */
+.nb .nbhead>.nbsaidslot{flex:1 1 12rem;min-width:0}
+.nb .nbhead>.nbsaidslot:empty{display:none}
+.nb .nbhead>.nbsaidslot>.notice{margin:0;display:flex;align-items:center;flex-wrap:wrap;gap:var(--field-gap)}
+.nb .nbhead>.nbsaidslot>.notice>.actbar{margin-inline-start:auto}
+.nb .nbview>.field.nbhead:not(:has(>input:not([hidden]),>select,>label,>.pseg,>[id]:not(:empty),>.actbar>*:not([hidden]),>.nbsaidslot:not(:empty))){display:none}
 /* The Roadmap's status line is its bar: what is staged, then the session. */
 .nbsaid .stg:not(:empty)::after{content:" · "}
 .nbsaid .stg{color:var(--ink)}
@@ -3956,6 +3964,14 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    its facts under it, its buttons at the right (the operator, 25 Oct). */
 .pghead > .name{font-weight:600;font-size:1.05rem;color:var(--ink);display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .pghead > .actbar{margin-top:6px}
+/* A head with one action wears it in its top-right corner, on the head's
+   first line, as a card wears its action by its title (the operator, 29
+   Oct: never one button on a line of its own under the facts); with
+   several (a node's Test, Enroll script and Agent log) they keep the row
+   along its foot. */
+.pghead:has(> .actbar > :is(button, a.btn):only-child){display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--field-gap);align-items:start}
+.pghead:has(> .actbar > :is(button, a.btn):only-child) > *{grid-column:1}
+.pghead:has(> .actbar > :is(button, a.btn):only-child) > .actbar{grid-column:2;grid-row:1;margin:0;align-self:start}
 .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px var(--row-x);margin:4px 0 0}
 @media(max-width:900px){ .facts{grid-template-columns:minmax(0,1fr)} }
 .facts .fact{display:grid;grid-template-columns:minmax(5.5rem,auto) minmax(0,1fr);gap:0 8px;align-items:baseline;min-width:0}
@@ -4307,6 +4323,13 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .docbarrow>.dim,.docbarrow>.dim .sub{font:var(--f-note);color:var(--dim)}
 /* A node's list that is empty says so in the words' own voice, not mono. */
 .ndrunnone{font:var(--f-ui)}
+/* The runner list's heading with its one action at its right (the
+   operator, 29 Oct: Add runner stood alone on a line), a band in the
+   section voice on the list's card. */
+.ndrunhead{display:flex;align-items:center;gap:8px;min-height:max(var(--tap), 46px);box-sizing:border-box;border-bottom:var(--hair) solid var(--line)}
+.ndrunhead>b{font:var(--f-sect);color:var(--ink)}
+.ndrunhead>.dim{font:var(--f-note)}
+.ndrunhead>.sp{flex:1}
 .fxtab .fxbar select{flex:0 1 auto;min-width:0}
 /* A hint placed straight in a page's list is a band like any other: it
    was the Analysis tab's own rule, so the same line on the Toolchains tab
@@ -5779,10 +5802,10 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          view opens with its one-line summary and its History at the same
          height, and this tab is not the exception (uniform.mjs measures it). -->
     <div class="nbview" data-view="briefing" hidden>
-      <div class="field nbhead vbar docbarrow">
-        <button type="button" id="memLog"
-          title="every change to this notebook, with when">History</button>
+      <div class="field nbhead vbar docbarrow"><span class="nbsaidslot"></span>
         <span class="sp"></span>
+        <span class="actbar"><button type="button" id="memLog"
+          title="every change to this notebook, with when">History</button></span>
       </div>
       <!-- The glance (R109): the rules and the memories, counted. -->
       <div class="nbglance" id="memWhere" data-tiles="2"></div>
@@ -5888,7 +5911,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          useful answer more often: one file dominating is a fact about the
          suite, where one slow test is a fact about one test. -->
     <div class="nbview" data-view="tests" hidden>
-      <div class="field nbhead vbar docbarrow"><span class="sp"></span>
+      <div class="field nbhead vbar docbarrow"><span class="nbsaidslot"></span><span class="sp"></span>
         <span class="actbar"><button type="button" id="tstOut" title="the last run's output in this project's shell, following it while it runs">Open the run's output</button></span></div>
       <!-- The glance (R109): passing, failing, the time in tests, what is
            flagged and undescribed, and a run going on the line under them. -->
@@ -5904,7 +5927,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="field" id="tstList" data-skel="rows"></div>
     </div>
     <div class="nbview" data-view="artifacts" hidden>
-      <div class="field nbhead vbar docbarrow"><span class="sp"></span>
+      <div class="field nbhead vbar docbarrow"><span class="nbsaidslot"></span><span class="sp"></span>
         <span class="actbar"><button type="button" id="artSource" title="the code base as a zip, without build output">Download source</button></span></div>
       <!-- The glance (R109): what is in dist/ and its size, what was built
            on a branch, the captures kept. -->
@@ -5934,7 +5957,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <!-- This project's VMs as the VMs page draws them, scoped to it (R96, the
          operator, 21 Oct): its card, with New VM and the VMs page in its head. -->
     <div class="nbview vmtab" data-view="vms" hidden>
-      <div class="field nbhead vbar docbarrow"><span class="sp"></span>
+      <div class="field nbhead vbar docbarrow"><span class="nbsaidslot"></span><span class="sp"></span>
         <span class="actbar"><button type="button" id="nvOpen">VMs<span class="lng"> page</span></button><button type="button" id="nvNew" class="primary" hidden>New VM</button></span></div>
       <!-- The glance (R109): what runs of the project's VMs. -->
       <div class="nbglance" id="nvHint" data-tiles="1"></div>
@@ -5993,7 +6016,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            the notebook's Save like the roadmap; the prompts and the file
            are generated on the server, so the tab, bb design and
            docs/design-language.md say one thing. -->
-      <div class="field nbhead vbar docbarrow"><span class="sp"></span>
+      <div class="field nbhead vbar docbarrow"><span class="nbsaidslot"></span><span class="sp"></span>
         <span class="actbar"><button type="button" id="dsWrite"
           title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></span></div>
       <!-- The glance (R109): its pages and themes, and the file's state. -->
@@ -6059,7 +6082,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <!-- Your own conversations on this project (the operator, 22 Oct: out
          of Profile), each to resume, read or download (nb-sessions.js). -->
     <div class="nbview" data-view="sessions" hidden>
-      <div class="field nbhead vbar docbarrow"><span class="sp"></span></div>
+      <div class="field nbhead vbar docbarrow"><span class="nbsaidslot"></span><span class="sp"></span></div>
       <div class="nbglance" id="sessHint" data-tiles="3" data-said></div>
       <div class="sesslist"></div>
     </div>

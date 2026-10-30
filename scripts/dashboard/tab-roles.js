@@ -414,17 +414,18 @@ function renderRolesInto(i){
   // Refused outright (a plain account by link): the refusal is the page (B38).
   const refused = rolesErr && !nRoles;
   // No count beside the button (the operator, 25 Oct): the list says it.
-  d.setBar(`<span class="sp"></span>${
-    // Waiting, who may add a role is the status read's to say, and the
-    // button is there and dead, as it will land.
-    (rolesData ? rolesData.admin : state?.can?.admin) ? `<span class="actbar"><button type="button" class="primary"${
-      rolesData ? ` id="rolesNewOpen"` : " disabled"}>New role</button></span>` : ""}`);
+  // New role on the head (the operator, 29 Oct: not a row of its own).
+  // Waiting, who may add a role is the status read's to say, and the
+  // button is there and dead, as it will land.
+  d.setBar("");
+  const newRole = (rolesData ? rolesData.admin : state?.can?.admin) ? `<button type="button" class="primary"${
+      rolesData ? ` id="rolesNewOpen"` : " disabled"}>New role</button>` : "";
   if (rolesData === null){
     // Its template (R218 step 16): the two sections and their fields' labels
     // are the page's own; who holds what is on its way.
     const split = detail => `<div class="rsplit"><div class="rlist">${skRows(4)}</div><div class="rdetail">${detail}</div></div>`;
     const field = skField;
-    d.list.innerHTML = skTpl(pageHead({facts: [["Roles", GHOST], ["For projects", GHOST]]}) + split(field("Kind", 12) + skTable(ROLE_AREA_COLS, 4, "rareas")));
+    d.list.innerHTML = skTpl(pageHead({facts: [["Roles", GHOST], ["For projects", GHOST]], actions: newRole}) + split(field("Kind", 12) + skTable(ROLE_AREA_COLS, 4, "rareas")));
     loadRoles();
     return;
   }
@@ -438,7 +439,7 @@ function renderRolesInto(i){
   const all = Object.values(rolesData.roles || {});
   d.list.innerHTML = `
     ${rolesErr ? `<div class="row bad"><div class="grow">${esc(rolesErr)}</div></div>` : ""}
-    ${pageHead({facts: [["Roles", String(all.length)], ["For projects", String(all.filter(r => r.scope === "projects").length)]]})}
+    ${pageHead({facts: [["Roles", String(all.length)], ["For projects", String(all.filter(r => r.scope === "projects").length)]], actions: newRole})}
     <div class="rsplit${rolesPhoneOpen ? " open" : ""}">
       <div class="rlist">${ro.list}</div>
       <div class="rdetail">${ro.detail}</div>

@@ -1114,10 +1114,20 @@ function viewSaid(said, actions = "", tone = ""){
 }
 function viewGlance(el, tiles = [], said = "", actions = "", tone = ""){
   if (!el) return false;
-  const wrote = paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + viewSaid(said, actions, tone));
+  const html = Array.isArray(tiles) ? statTiles(tiles) : tiles || "";
+  // A view whose control row holds only buttons keeps its status line on
+  // that row, the words at its left and the buttons at its right (the
+  // operator, 29 Oct: a button never on a line of its own), in the row's
+  // own slot, which this paints and nothing else does.
+  const slot = el.closest(".nbview")?.querySelector(":scope > .nbhead > .nbsaidslot");
+  let wrote;
+  if (slot){
+    wrote = paint(el, html);
+    wrote = paint(slot, said || actions ? `<div class="notice${tone ? " " + esc(tone) : ""}">${said}${actions ? `<div class="actbar">${actions}</div>` : ""}</div>` : "") || wrote;
+  } else wrote = paint(el, html + viewSaid(said, actions, tone));
   // Marked once: a poll that brings nothing new writes nothing (uniform).
   if (!el.dataset.drawn) el.dataset.drawn = "1";
-  glanceSeen[el.id] = {tiles: el.querySelectorAll(".tile").length, said: !!el.querySelector(".nbsaid")};
+  glanceSeen[el.id] = {tiles: el.querySelectorAll(".tile").length, said: !!(said || actions)};
   return wrote;
 }
 

@@ -207,8 +207,9 @@ function renderSchedulesInto(i){
   const d = docSurface(i, "schedules");
   if (!d) return;
   if (schedData === null){
-    d.setBar(`<span class="sp"></span><span class="actbar"><button type="button" class="primary" disabled>New schedule</button></span>`);
-    d.list.innerHTML = skTpl(pageHead({facts: [["Schedules", GHOST], ["Turned on", GHOST], ["Next run", GHOST]]})
+    d.setBar("");
+    d.list.innerHTML = skTpl(pageHead({facts: [["Schedules", GHOST], ["Turned on", GHOST], ["Next run", GHOST]],
+                                       actions: `<button type="button" class="primary" disabled>New schedule</button>`})
       + docSection("schedules", "list", "Schedules", "", skRows(2)));
     loadSchedules();
     return;
@@ -220,9 +221,11 @@ function renderSchedulesInto(i){
   }
   const rows = schedData.schedules || [], may = !!schedData.may;
   const on = rows.filter(s => s.on), next = on.filter(s => s.next_at).sort((a, b) => a.next_at - b.next_at)[0];
-  d.setBar(`<span class="sp"></span>${may ? `<span class="actbar"><button type="button" class="primary" id="bSchedNew">New schedule</button></span>` : ""}`);
+  // New schedule on the head (the operator, 29 Oct: not a row of its own).
+  d.setBar("");
   d.list.innerHTML = pageHead({facts: [["Schedules", String(rows.length)], ["Turned on", String(on.length)],
-                                       ["Next run", next ? `${next.name}, ${schedWhen(next.next_at)}` : "none"]]})
+                                       ["Next run", next ? `${next.name}, ${schedWhen(next.next_at)}` : "none"]],
+                               actions: may ? `<button type="button" class="primary" id="bSchedNew">New schedule</button>` : ""})
     + docSection("schedules", "list", "Schedules", `${rows.length}`,
         rows.length ? `<div class="schedrows">${rows.map(s => schedRow(s, may)).join("")}</div>`
           // Nothing yet, said in words (the scan that used to stand here is

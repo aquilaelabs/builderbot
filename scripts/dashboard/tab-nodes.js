@@ -428,8 +428,8 @@ function nodeRunnerSection(n, c, between = "", acts = ""){
   // to, and at the foot what a workflow does to reach this node.
   return `${between}
       ${addbar ? `<div class="field">${addbar}</div>` : ""}
-      <div class="ndruns">${rows || `<div class="row"><div class="grow"><div class="ndrunnone">No runner on this node yet.</div></div></div>`}</div>
-      ${acts ? `<div class="field actbar ndrunadd">${acts}</div>` : ""}
+      <div class="ndruns">${acts ? `<div class="field ndrunhead"><b>Runners</b><span class="dim">${slots.length}</span><span class="sp"></span><span class="actbar ndrunadd">${acts}</span></div>` : ""}${
+        rows || `<div class="row"><div class="grow"><div class="ndrunnone">No runner on this node yet.</div></div></div>`}</div>
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
         <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div></div>` : ""}`;
 }
@@ -2058,7 +2058,7 @@ function renderRunnerInto(i){
     // page's own; the node and its runners are on their way.
     // In the node's panel, as it lands: its rows are bands there, not a card.
     d.setBar("");
-    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel"><div class="ndruns">${skRows(1)}</div><div class="field actbar ndrunadd"><button type="button" class="primary" disabled>Add runner</button></div></div>`);
+    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel"><div class="ndruns"><div class="field ndrunhead"><b>Runners</b><span class="sp"></span><span class="actbar ndrunadd"><button type="button" class="primary" disabled>Add runner</button></span></div>${skRows(1)}</div></div>`);
     return;
   }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");

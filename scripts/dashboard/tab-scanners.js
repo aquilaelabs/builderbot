@@ -122,19 +122,21 @@ function scannersUncovered(rows){
     tblWrap(cols, rows.map(r => `<div class="row">${tblLine(cols, [esc(r.project), esc(r.why)])}</div>`).join(""), "scanuncovered"));
 }
 
-function scannersBar(d){
+// The page's buttons, on its head (the operator, 29 Oct: never a row of
+// their own over a gap).
+function scannersActs(d){
   const undeployed = d ? (d.nodes || []).filter(n => !n.deployed && !n.host_only && (n.projects || []).length).length : 0;
-  return `<span class="sp"></span><span class="actbar"><button type="button" data-scancheck${d ? "" : " disabled"}>Check for updates</button>${
-    undeployed ? `<button type="button" class="primary" data-scandeployall>Deploy on ${undeployed === 1 ? "the node" : `${undeployed} nodes`}</button>` : ""}</span>`;
+  return `<button type="button" data-scancheck${d ? "" : " disabled"}>Check for updates</button>${
+    undeployed ? `<button type="button" class="primary" data-scandeployall>Deploy on ${undeployed === 1 ? "the node" : `${undeployed} nodes`}</button>` : ""}`;
 }
 
 function renderScannersInto(i){
   const d = docSurface(i, "scanners");
   if (!d) return;
   if (scannersData === null){
-    d.setBar(scannersBar(null));
+    d.setBar("");
     d.list.innerHTML = scannersErr ? `<div class="hint bad">${esc(scannersErr)}</div>`
-      : skTpl(pageHead({facts: [["Newest known", GHOST], ["Checked", GHOST]]})
+      : skTpl(pageHead({facts: [["Newest known", GHOST], ["Checked", GHOST]], actions: scannersActs(null)})
         + docSection("scanners", "schedule", "Schedule", "", `<div class="field">${skRows(2)}</div>`)
         + docSection("scanners", "node-", GHOST, "", `<div class="field">${skRows(3)}</div>`)
         + docSection("scanners", "uncovered", "Not covered", "", `<div class="field">${skRows(1)}</div>`));
@@ -143,10 +145,10 @@ function renderScannersInto(i){
   }
   const data = scannersData;
   const lt = data.latest || {};
-  d.setBar(scannersBar(data));
+  d.setBar("");
   const deployed = (data.nodes || []).some(n => n.deployed);
   d.list.innerHTML = pageHead({facts: [["Newest known", scannersVersions(lt.versions)],
-      ["Checked", lt.at ? ago(lt.at) : "never: the defaults this release pins"], ["Nodes scanning", String((data.nodes || []).filter(n => n.deployed).length)]]})
+      ["Checked", lt.at ? ago(lt.at) : "never: the defaults this release pins"], ["Nodes scanning", String((data.nodes || []).filter(n => n.deployed).length)]], actions: scannersActs(data)})
     + (lt.error ? `<div class="hint warn">${esc(lt.error)}</div>` : "")
     + scannersScheduleSection(data.schedule || {}, deployed)
     + (data.nodes || []).map(scannersNodeSection).join("")

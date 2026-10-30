@@ -892,6 +892,32 @@ for (const kind of kinds){
   ok(shape.loose.length === 0, `[${kind}] its top says what it knows in a head, not in loose words${shape.loose.length ? `; loose: ${shape.loose.join(' | ')}` : ''}`);
   ok(shape.between.length === 0, `[${kind}] nothing stands between its sections${shape.between.length ? `; between: ${shape.between.join(', ')}` : ''}`);
   ok(shape.late.length === 0, `[${kind}] its pills are at its top, before its first section${shape.late.length ? `; after it: ${shape.late.join(', ')}` : ''}`);
+  // No button on a line of its own at a page's top (the operator, 29 Oct:
+  // "a line in one, weird text above the button on the other"): a bar, a
+  // control row or a band over the list holding nothing but buttons, or a
+  // head's one action left under its facts rather than in its corner.
+  const lone = await page.evaluate(() => {
+    const doc = [...document.querySelectorAll('.pane .doc.on')].find(d => d.checkVisibility());
+    if (!doc) return [];
+    const vis = e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }) && e.getBoundingClientRect().height > 0;
+    const onlyButtons = row => {
+      const texts = [...row.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
+      const btn = row.querySelectorAll('button, a.btn');
+      return btn.length > 0 && [...btn].some(vis) && !row.querySelector('input:not([type=checkbox]):not([hidden]), select, textarea')
+        && texts.every(e => e.closest('button, a.btn'));
+    };
+    const out = [];
+    doc.querySelectorAll(':is(.doctab, .doctab > .doclist, .nbview) > :is(.docbarrow, .nbhead, .field)').forEach(r => {
+      if (vis(r) && !r.closest('.pghead') && onlyButtons(r)) out.push(`${r.className.split(' ').slice(0, 3).join('.')}: ${r.textContent.replace(/\s+/g, ' ').trim().slice(0, 40)}`);
+    });
+    doc.querySelectorAll('.pghead > .actbar').forEach(a => {
+      const b = [...a.children].filter(vis);
+      if (vis(a) && b.length === 1 && b[0].matches('button, a.btn') && getComputedStyle(a.parentElement).display !== 'grid')
+        out.push(`head: ${b[0].textContent.trim().slice(0, 30)} under its facts`);
+    });
+    return out;
+  });
+  ok(lone.length === 0, `[${kind}] no button stands on a line of its own at its top${lone.length ? `; alone: ${lone.join(' | ')}` : ''}`);
   const L = await language();
   ok(!L.err, `[${kind}] measurable for the button language (${L.err || 'ok'})`);
   if (!L.err){
