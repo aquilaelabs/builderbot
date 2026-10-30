@@ -121,7 +121,8 @@ class LaidOutAsTheImage(unittest.TestCase):
         r = sh(f'tree_stamp "{ROOT}"')
         ver, rev = r.stdout.split()
         target = open(os.path.join(ROOT, "VERSION"), encoding="utf-8").read().strip()
-        self.assertTrue(ver == target or re.fullmatch(re.escape(target) + r"-dev\.\d+\+[0-9a-f]{7}", ver), ver)
+        # A commit with a dev tag on it is stamped as the tag, with no commit.
+        self.assertTrue(ver == target or re.fullmatch(re.escape(target) + r"-dev\.\d+(\+[0-9a-f]{7})?", ver), ver)
         self.assertRegex(rev, r"^[0-9a-f]{40}$")
 
     def test_a_release_archive_is_stamped_by_its_version_and_header(self):
