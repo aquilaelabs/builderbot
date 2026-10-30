@@ -65,8 +65,8 @@ ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
   ok(dead.every(Boolean) && /Connect needs the phone's IP address and its port/.test(before.connect)
      && /Pair needs .*pairing code/.test(before.pair)
      && after.connect === '' && /Pair needs the pairing port and the pairing code/.test(after.pair)
-     && await page.$eval('.doc.on [data-phwhy="connect"]', e => e.classList.contains('warn')),
-     `Connect and Pair say under their rows what they still need, and the line goes as it is typed (${JSON.stringify({ before, after })})`);
+     && await page.$eval('.doc.on [data-phwhy="connect"]', e => !e.classList.contains('warn')),
+     `Connect and Pair say under their rows what they still need, muted rather than a warning, and the line goes as it is typed (${JSON.stringify({ before, after })})`);
   // ...and a box being typed in keeps the caret when the page is drawn again
   // under it (B156): a read landing between a fill's focus and its keys took
   // the focus with the old box, the keys went nowhere, and the port typed

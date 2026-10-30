@@ -4329,6 +4329,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .docbarrow>.dim,.docbarrow>.dim .sub{font:var(--f-note);color:var(--dim)}
 /* A node's list that is empty says so in the words' own voice, not mono. */
 .ndrunnone{font:var(--f-ui)}
+/* The Phone page's two steps, each a heading over its fields, the fields'
+   one line of help in the hint voice under them (the operator, 29 Oct:
+   four notes saying the same thing in the code face). */
+.phonetab .row:has(>.phstep){flex-wrap:wrap}
+.phonetab .row>.phstep{flex:1 1 100%;margin-bottom:2px}
+.phonetab .row>.hint{flex:1 1 100%}
 /* The runner list's heading with its one action at its right (the
    operator, 29 Oct: Add runner stood alone on a line), a band in the
    section voice on the list's card. */
