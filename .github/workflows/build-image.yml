@@ -414,12 +414,12 @@ jobs:
           pre=(); case "$TAG" in *-dev.*) pre=(--prerelease --latest=false);; esac
           # The notes are the tree's when it has them for this version
           # (docs/release-notes/X.Y.Z.md, or X.Y.Z-dev.md for a dev build),
-          # @TAG@ and @REPO@ filled in, so the release is published with
+          # @TAG@, @VER@ and @REPO@ filled in, so the release is published with
           # them rather than edited after.
           ver="${TAG#v}"; base="${ver%%-dev.*}"
           notes="docs/release-notes/$base.md"; case "$TAG" in *-dev.*) notes="docs/release-notes/$base-dev.md";; esac
           if [ -f "$notes" ]; then
-            sed -e "s|@TAG@|$TAG|g" -e "s|@REPO@|$GITHUB_REPOSITORY|g" "$notes" > notes.md
+            sed -e "s|@TAG@|$TAG|g" -e "s|@VER@|$ver|g" -e "s|@REPO@|$GITHUB_REPOSITORY|g" "$notes" > notes.md
           else
             echo "BuilderBot $ver: see CHANGELOG.md." > notes.md
           fi
