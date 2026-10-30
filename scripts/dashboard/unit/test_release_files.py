@@ -61,7 +61,7 @@ class Files(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["files"], ["app-1.0.0-dev.5.apk"])
         self.assertTrue(rows[0]["bad"])
-        self.assertIn("has not signed it", rows[0]["why"])
+        self.assertIn("has not signed it yet: the project's Signing view", rows[0]["why"])
 
     def test_nothing_is_checked_before_ci_has_had_its_time(self):
         self.assertEqual(self.check([], after=60), [])

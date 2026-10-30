@@ -99,8 +99,9 @@ def _why(project, tag, name):
         f = ((releasesign._load().get(project) or {}).get("failed") or {}).get(tag)
         if isinstance(f, dict) and f.get("why"):
             return f"the controller could not sign it: {f['why']}"
-        return f"the controller has not signed it: bb sign status {tag} says why, bb sign release looks again"
-    return "CI did not attach it: bb ci-log reads the release's run"
+        # Said to a person on the bell: where they look, not a session's verb.
+        return "the controller has not signed it yet: the project's Signing view says why and looks again"
+    return "CI did not attach it: the release's run on the git host says why"
 
 
 def missing(project, tag):
