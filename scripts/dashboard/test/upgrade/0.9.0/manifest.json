@@ -1,0 +1,120 @@
+{
+ "accounts": [
+  "ada",
+  "bea",
+  "cy",
+  "owner"
+ ],
+ "bugs": {
+  "alpha": [
+   1,
+   2
+  ],
+  "beta": [
+   1,
+   2
+  ],
+  "gamma": [
+   1,
+   2
+  ]
+ },
+ "devices": {
+  "bea": [
+   "BEA-LAPTOP"
+  ]
+ },
+ "owner": {
+  "name": "owner",
+  "password": "owner-pass-0.5"
+ },
+ "passwords": {
+  "ada": "ada-pass-0.5",
+  "bea": "bea-pass-0.5",
+  "cy": "cy-pass-0.5"
+ },
+ "project_roles": {
+  "ada": {
+   "gamma-2": [
+    "gamma_owner"
+   ]
+  },
+  "bea": {
+   "alpha-2": [
+    "reviewer"
+   ],
+   "beta-2": [
+    "builder"
+   ]
+  },
+  "cy": {
+   "beta-2": [
+    "reviewer"
+   ]
+  },
+  "owner": {
+   "alpha-2": [
+    "alpha_owner"
+   ],
+   "beta-2": [
+    "beta_owner"
+   ]
+  }
+ },
+ "projects": [
+  "alpha",
+  "beta",
+  "gamma"
+ ],
+ "roadmap": {
+  "alpha": [
+   1,
+   2
+  ],
+  "beta": [
+   1,
+   2
+  ],
+  "gamma": [
+   1,
+   2
+  ]
+ },
+ "roles": [
+  "builder",
+  "reviewer"
+ ],
+ "rules": {
+  "alpha": [
+   "plain-words",
+   "tests-first"
+  ],
+  "beta": [
+   "plain-words",
+   "tests-first"
+  ],
+  "gamma": [
+   "plain-words",
+   "tests-first"
+  ]
+ },
+ "state": 19,
+ "toolpacks": [
+  "wordy"
+ ],
+ "version": "0.9.0",
+ "wiki": {
+  "alpha": [
+   "Build",
+   "Home"
+  ],
+  "beta": [
+   "Build",
+   "Home"
+  ],
+  "gamma": [
+   "Build",
+   "Home"
+  ]
+ }
+}
