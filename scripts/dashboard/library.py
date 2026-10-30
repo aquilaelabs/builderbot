@@ -21,6 +21,15 @@ def _an(w):
     return ("an " if w[:1].upper() in "AEIOU" or (w[:1] == "x" and w[1:2].isupper()) else "a ") + w
 
 
+def _agent_about(provider):
+    """What an agent's card says it is: a Claude session's, a ChatGPT
+    session's; Any model's is a session on any model, which "an Any model
+    session" did not say."""
+    if provider.lower().startswith("any "):
+        return f"What a session on {provider.lower()} runs on the node."
+    return f"What {_an(provider)} session runs on the node."
+
+
 def service_values(fields, status):
     """A service's configuration as the page shows it, from its own status
     (the router's: a provider's key as whether it is set, the endpoints
@@ -73,7 +82,7 @@ def rows(node_payload, agent_rows, apps, catalog_index, companions, services=(),
     busy_on = job.get("current") if job.get("running") and job.get("action") != "check" else ""
     for r in agent_rows or []:
         out.append({"kind": "agent", "tier": "official", "name": r["name"], "label": r.get("label") or r["name"], "agent": r.get("agent", ""),
-                    "about": f"What {_an(r.get('for') or r.get('label') or '')} session runs on the node.", "platforms": [],
+                    "about": _agent_about(r.get("for") or r.get("label") or ""), "platforms": [],
                     "installed": bool(r.get("installed")), "version": r.get("installed") or "", "latest": r.get("latest") or "",
                     "update": r.get("state") == "update", "running": bool(r.get("running")), "doing": r.get("action") or "",
                     "error": r.get("error") or "",
