@@ -59,6 +59,29 @@ class Stick(unittest.TestCase):
             self.m.pick("/dev/sdz")
         self.assertEqual(self.m.pick("/dev/sdb")["model"], "Ultra Fit")
 
+    def test_an_image_is_checked_against_its_build_attestation_where_gh_is(self):
+        # R191 step 2: the bundle from GitHub's public API, gh verify --bundle.
+        import io
+        import json
+        img = os.path.join(self.d, "builderbot-os-1.0.0.stick.raw.xz")
+        with open(img, "wb") as f:
+            f.write(b"image")
+        gh = os.path.join(self.d, "gh")
+        for rc, answer, ok in ((0, {"attestations": [{"bundle": {"x": 1}}]}, True),
+                               (1, {"attestations": [{"bundle": {"x": 1}}]}, False),
+                               (0, {"attestations": []}, False)):
+            with open(gh, "w") as f:
+                f.write(f"#!/bin/sh\n[ \"$4\" = --bundle ] || exit 9\nexit {rc}\n")
+            os.chmod(gh, stat.S_IRWXU)
+            with mock.patch.object(self.m.urllib.request, "urlopen", return_value=io.BytesIO(json.dumps(answer).encode())):
+                if ok:
+                    self.m.attested(img)
+                else:
+                    with self.assertRaises(SystemExit):
+                        self.m.attested(img)
+        os.unlink(gh)
+        self.m.attested(img)  # no gh: said, and the sha256 is what held
+
     def test_an_image_is_written_whole_from_its_xz_and_read_back(self):
         raw = os.urandom(3 << 20) + b"\0" * (1 << 20)
         img = os.path.join(self.d, "builderbot-os-0.9.0.stick.raw.xz")

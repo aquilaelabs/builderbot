@@ -9,8 +9,10 @@ image onto a USB stick and checks it.
 
 DISK is /dev/sdX on Linux, /dev/diskN on a Mac, \\\\.\\PhysicalDriveN or its
 number on Windows. The image is builderbot-os-VERSION.stick.raw.xz from a
-release (its sha256 beside it is fetched and checked), the newest one when
-nothing else is named, or a file you have. --set KEY=VALUE, as often as
+release (its sha256 beside it is fetched and checked, and its build
+attestation where gh is on the machine), the newest one when nothing else
+is named, or a file you have (checked the same way, with its .sha256 where
+it sits beside it). --set KEY=VALUE, as often as
 needed, writes a line into the stick's builderbot.env, which each boot reads:
 TZ (the machine's time zone, Europe/Berlin), BB_RELEASE_LINE (the release
 line updates follow, 0.9), BB_HOSTNAME, and a static address for the wired
@@ -158,7 +160,48 @@ def release_image(tag, channel="normal"):
     fetch(base, name)
     fetch(base + ".sha256", name + ".sha256", say_progress=False)
     check_sha(name, name + ".sha256")
+    attested(name)
     return name
+
+
+ATTEST = "https://api.github.com/repos/aquilaelabs/builderbot/attestations/sha256:{digest}"
+
+
+def attested(path):
+    """The image checked against its build attestation where gh is on this
+    machine (R191 step 2): the bundle from GitHub's public API, verified by
+    gh with --bundle, which asks for no sign-in. Without gh it is said, and
+    the sha256 is what held; one that does not verify is not written."""
+    import shutil
+    import tempfile
+    gh = shutil.which("gh")
+    if not gh:
+        say("not checked against its build attestation: gh is not here (cli.github.com); the sha256 is what held")
+        return
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(CHUNK), b""):
+            h.update(chunk)
+    req = urllib.request.Request(ATTEST.format(digest=h.hexdigest()), headers={"Accept": "application/vnd.github+json",
+                                                                              "User-Agent": "builderbot-stick"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:  # noqa: S310 (GitHub's API)
+            got = json.loads(r.read(4 << 20) or b"{}")
+    except (OSError, ValueError) as e:
+        die(f"the image's build attestation could not be read from GitHub ({e}): not written")
+    lines = [json.dumps(a["bundle"]) for a in got.get("attestations") or [] if isinstance(a, dict) and isinstance(a.get("bundle"), dict)]
+    if not lines:
+        die(f"GitHub has no build attestation for {os.path.basename(path)}: it is not an image BuilderBot's release built, so not written")
+    with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+        f.write("\n".join(lines) + "\n")
+    try:
+        r = subprocess.run([gh, "attestation", "verify", path, "--bundle", f.name, "--repo", "aquilaelabs/builderbot"],
+                           capture_output=True, text=True, check=False)
+    finally:
+        os.unlink(f.name)
+    if r.returncode != 0:
+        die(f"{os.path.basename(path)} does not verify against its build attestation: not written\n{(r.stderr or r.stdout).strip()[-600:]}")
+    say(f"{os.path.basename(path)}: built by BuilderBot's release workflow (its attestation verifies)")
 
 
 def check_sha(path, sha_file):
@@ -371,6 +414,14 @@ def cmd_write(a):
         image = release_image(a.release or "latest", a.channel)
     elif not os.path.isfile(image):
         die(f"no such image: {image}")
+    else:
+        # A file you have is checked as a fetched one is: its sha256 where it
+        # sits beside it, and its build attestation (R191 step 2).
+        if os.path.isfile(image + ".sha256"):
+            check_sha(image, image + ".sha256")
+        else:
+            say(f"no {os.path.basename(image)}.sha256 beside it: its sha256 is not checked")
+        attested(image)
     if not image.endswith(".xz"):
         die("the image is the release's builderbot-os-VERSION.stick.raw.xz (or .raw.xz)")
     # The disk asked about again after the download: one replugged meanwhile
