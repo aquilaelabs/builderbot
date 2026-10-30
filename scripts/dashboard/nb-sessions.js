@@ -59,7 +59,7 @@ function nbSessionsView({$, nb, project, root}){
       {label: mine.length === 1 ? "conversation" : "conversations", value: mine.length},
       {label: "this week", value: week, omit: !week},
       {label: "visible to every session", value: open, omit: !open}] : [],
-      mine.length ? "yours alone unless made visible: the whole exchange, your words and the session's, each command it ran and what came back" : "");
+      mine.length ? "yours alone unless you make one visible: each is the whole exchange" : "");
     // What the view is for is its empty state (the a-notebook/views rule).
     list.innerHTML = (mine.length ? `<div class="field mineconv">${convRows(project, mine)}</div>`
       : `<div class="field"><div class="hint nbempty">Your sessions on this project, once you have had one: each is listed here for you alone, to resume, read, download or make visible to every session here.</div></div>`)

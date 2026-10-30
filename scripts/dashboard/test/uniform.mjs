@@ -1234,9 +1234,14 @@ if (runs('b')) {
   const settled = async (w) => {
     let last = null;
     for (let i = 0; i < 80; i++){
+      // The head row and the view's first band (the glance, ordered over
+      // it), both still, since the first band is what is measured.
       const now = await page.evaluate(x => {
-        const h = document.querySelector(`.nb .nbview[data-view="${x}"] > .nbhead`);
-        return h ? Math.round(h.getBoundingClientRect().top) : null;
+        const v = document.querySelector(`.nb .nbview[data-view="${x}"]`);
+        const h = v?.querySelector(':scope > .nbhead');
+        const shown = v ? [...v.children].filter(e => e.offsetHeight > 0 || e.offsetWidth > 0) : [];
+        return h && shown.length ? `${Math.round(h.getBoundingClientRect().top)}/${
+          Math.round(Math.min(...shown.map(e => e.getBoundingClientRect().top)))}` : null;
       }, w);
       if (now !== null && now === last) return;
       last = now;
@@ -1254,8 +1259,16 @@ if (runs('b')) {
       const first = shown[0];
       const head = view.querySelector(':scope > .nbhead');
       return { first: first ? (first.className || first.tagName).split(/\s+/)[0] : '(nothing)',
-               isHead: !!first && first.classList.contains('nbhead'),
+               // A row with nothing on it is not drawn (414bbe5), and a page of
+               // settings has none (Settings, Permissions: d8cce4c): then the
+               // view opens with what would sit under it.
+               isHead: !!first && first.classList.contains('nbhead') || !head || !head.offsetHeight,
+               drawn: !!head && head.offsetHeight > 0,
                top: head ? Math.round(head.getBoundingClientRect().top) : null,
+               // The view's first band, wherever the CSS orders it: since the
+               // glance comes before the control row (d5dff08, the operator
+               // 29 Oct), the row's own top moves with the tiles over it.
+               firstTop: Math.round(Math.min(...shown.map(e => e.getBoundingClientRect().top))),
                height: head ? Math.round(head.getBoundingClientRect().height) : null,
                // The control row (R109): its search and its toggles at the
                // left, its actions in an action bar after its spacer, the
@@ -1271,7 +1284,7 @@ if (runs('b')) {
                // a page of settings, keeps its one line of what it is).
                words: !head || w === 'settings' || w === 'permissions' ? '' : [...head.childNodes].filter(n =>
                  (n.nodeType === 3 && n.textContent.trim()) || (n.nodeType === 1 && n.checkVisibility()
-                   && !n.matches('button, input, select, .actbar, .sp, .gbpicker, #dkSeg'))).map(n => n.textContent.trim()).join(' ').slice(0, 60),
+                   && !n.matches('button, input, select, .actbar, .sp, .gbpicker, #dkSeg, .nbsaidslot'))).map(n => n.textContent.trim()).join(' ').slice(0, 60),
                glance: (() => {
                  const bad = [];
                  // Tiles only in the glance's .tiles, the Containers page's shape.
@@ -1295,19 +1308,20 @@ if (runs('b')) {
      `every notebook view opens with its head row${notFirst.length ? `; not: ${notFirst.join(', ')}` : ''}`);
   // Within a pixel: a top on a half pixel rounds either way, 212 on one view
   // and 213 on the next with nothing drawn differently (B504, B116).
-  const topsAt = Object.values(heads).map(h => h.top).filter(t => t !== null);
-  ok(topsAt.length === Object.keys(heads).length && Math.max(...topsAt) - Math.min(...topsAt) <= 1,
-     `...and the head row sits at one height on every view (${JSON.stringify(
-       Object.fromEntries(Object.entries(heads).map(([v, h]) => [v, h.top])))})`);
+  const drawnHeads = Object.values(heads).filter(h => h.drawn);
+  const topsAt = Object.values(heads).map(h => h.firstTop);
+  ok(Math.max(...topsAt) - Math.min(...topsAt) <= 1,
+     `...and every view's first band starts at one height (${JSON.stringify(
+       Object.fromEntries(Object.entries(heads).map(([v, h]) => [v, h.firstTop])))})`);
   ok(Object.values(heads).every(h => h.right),
      '...with its actions, where it has any, at the right of the row, the primary last');
   ok(Object.values(heads).every(h => !h.words),
-     `...and no words on it, the counts being the glance's tiles under it (R109; ${JSON.stringify(
+     `...and no words on it but its status line in the row's slot, the counts being the glance's tiles (R109; ${JSON.stringify(
        Object.fromEntries(Object.entries(heads).filter(([, h]) => h.words).map(([v, h]) => [v, h.words])))})`);
-  const hs = Object.values(heads).map(h => h.height);
+  const hs = drawnHeads.map(h => h.height);
   ok(Math.max(...hs) - Math.min(...hs) <= 1,
-     `...one control high on every view, the Containers page's bar (${JSON.stringify(
-       Object.fromEntries(Object.entries(heads).map(([v, h]) => [v, h.height])))})`);
+     `...one control high on every view that draws its row, the Containers page's bar (${JSON.stringify(
+       Object.fromEntries(Object.entries(heads).filter(([, h]) => h.drawn).map(([v, h]) => [v, h.height])))})`);
   const glance = Object.entries(heads).filter(([, h]) => h.glance).map(([v, h]) => `${v}: ${h.glance}`);
   ok(glance.length === 0,
      `...and under it the glance: tiles in the tiles' shape, then a status line, then one band of chips, and no loose Save row (R109)${
