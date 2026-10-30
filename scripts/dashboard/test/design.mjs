@@ -34,7 +34,7 @@ const saved = async () => {
         throw new Error(`${key}'s Save never settled: ${why}`);
       });
   }
-  await page.waitForFunction(() => !/unsaved/.test(document.querySelector('.nb #dsHint')?.textContent || ''), null, { timeout: 20000 });
+  await page.waitForFunction(() => !/unsaved/.test([...document.querySelectorAll('.nb .nbview[data-view="design"] :is(#dsHint, .nbsaidslot)')].map(e => e.textContent).join(' ')), null, { timeout: 20000 });
   await page.waitForTimeout(300);
 };
 // ...and Revert, every section's that has something to throw away.
@@ -76,7 +76,7 @@ await page.evaluate(n => openNotebook(n, 'design'), P);
 // The view's own sections, not its template's (R218 step 16), which stand in
 // a .skt while the design is on its way.
 await page.waitForSelector(`${NB} #dsBody > details.sect`, { timeout: 20000 });
-ok(/no pages yet/.test(await page.$eval(`${NB} #dsHint`, e => e.textContent))
+ok(/no pages yet/.test(await page.$eval(`${NB} .nbview[data-view="design"]`, e => (e.querySelector(".nbsaidslot")?.textContent || "") + e.querySelector("#dsHint").textContent))
    && !!(await page.$(`${NB} [data-sect="design:pages"] [data-ssave="design:pages"]`))
    && !!(await page.$(`${NB} [data-sect="design:themes"] [data-ssave="design:themes"]`)),
    'the view opens on its head row, saying there are no pages, each section with its own Save');
@@ -401,7 +401,7 @@ ok(bad.status === 400 && /a color is #rrggbb/.test(bad.error), `a color that is 
 
 // ---- the file, and bb design -----------------------------------------------------------
 await page.click(`${NB} #dsWrite`);
-await page.waitForFunction(() => /is written and current/.test(document.querySelector('.nb #dsHint')?.textContent || ''), null, { timeout: 10000 });
+await page.waitForFunction(() => /is written and current/.test([...document.querySelectorAll('.nb .nbview[data-view="design"] :is(#dsHint, .nbsaidslot)')].map(e => e.textContent).join(' ')), null, { timeout: 10000 });
 const file = `${DIR}/ws/${P}/docs/design-language.md`;
 const written = existsSync(file) ? readFileSync(file, 'utf8') : '';
 ok(/^# The design language/.test(written) && /\| `--accent` \| `#ff8800` \|/.test(written)
@@ -931,7 +931,7 @@ ok(gone.pages.length === 0 && gone.language.themes.length === 1 && gone.language
   const ro = await page.$eval(`${NB} .nbview[data-view="design"]`, v => ({
     shown: [...v.querySelectorAll('button')].filter(b => b.checkVisibility() && !b.closest('summary') && !b.hasAttribute('aria-expanded')).map(b => b.textContent.trim()),
     fields: v.querySelectorAll('input:disabled, textarea:disabled').length,
-    hint: v.querySelector('#dsHint')?.textContent || '' }));
+    hint: [...v.querySelectorAll('#dsHint, .nbsaidslot')].map(e => e.textContent).join(' ') }));
   await page.evaluate(p => { [...document.querySelectorAll('.nb')].find(n => n.querySelector('#memTitle')?.textContent === `Notebook: ${p}`).classList.remove('ro');
     getNotebook(p).view('memory'); getNotebook(p).view('design'); }, P);
   ok(ro.shown.length === 0 && ro.fields > 0 && !/Write the file/.test(ro.hint),

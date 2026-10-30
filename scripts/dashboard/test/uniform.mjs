@@ -496,6 +496,8 @@ async function language(){
     const tight = [...box.querySelectorAll('.sub, .hint, .note, p, dl.facts, .notice')].filter(t => {
       const n = t.nextElementSibling;
       if (!n || !vis(t) || !vis(n) || !t.textContent.trim() || !n.matches('.actbar, .acts') || !n.querySelector('button')) return false;
+      // Beside them, not under them: a head's one action in its corner.
+      if (n.getBoundingClientRect().left >= t.getBoundingClientRect().right - 2) return false;
       return n.getBoundingClientRect().top - t.getBoundingClientRect().bottom < 8;
     }).map(t => `${named(t)} "${t.textContent.trim().slice(0, 20)}"`);
     return { loose, order, layout: [...new Set(layout)], reds: [...reds], sects, alien, flat, tight };
@@ -902,13 +904,18 @@ for (const kind of kinds){
     const vis = e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }) && e.getBoundingClientRect().height > 0;
     const onlyButtons = row => {
       const texts = [...row.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
-      const btn = row.querySelectorAll('button, a.btn');
-      return btn.length > 0 && [...btn].some(vis) && !row.querySelector('input:not([type=checkbox]):not([hidden]), select, textarea')
+      // One button with nothing beside it: a row of several (History,
+      // Reorder, Add to roadmap) is a control row and keeps its line.
+      const btn = [...row.querySelectorAll('button, a.btn')].filter(vis);
+      return btn.length === 1 && !row.querySelector('input:not([type=checkbox]):not([hidden]), select, textarea')
         && texts.every(e => e.closest('button, a.btn'));
     };
     const out = [];
     doc.querySelectorAll(':is(.doctab, .doctab > .doclist, .nbview) > :is(.docbarrow, .nbhead, .field)').forEach(r => {
-      if (vis(r) && !r.closest('.pghead') && onlyButtons(r)) out.push(`${r.className.split(' ').slice(0, 3).join('.')}: ${r.textContent.replace(/\s+/g, ' ').trim().slice(0, 40)}`);
+      // ...unless it shares its line with something (the tiles at its left).
+      const b = r.getBoundingClientRect();
+      const shares = [...r.parentElement.children].some(o => o !== r && vis(o) && o.getBoundingClientRect().top < b.bottom - 2 && o.getBoundingClientRect().bottom > b.top + 2);
+      if (vis(r) && !shares && !r.closest('.pghead') && onlyButtons(r)) out.push(`${r.className.split(' ').slice(0, 3).join('.')}: ${r.textContent.replace(/\s+/g, ' ').trim().slice(0, 40)}`);
     });
     doc.querySelectorAll('.pghead > .actbar').forEach(a => {
       const b = [...a.children].filter(vis);

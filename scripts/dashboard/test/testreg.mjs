@@ -243,7 +243,7 @@ await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await nbTab(page, 'tests');
 await page.waitForSelector('#tstList .tst', { timeout: 15000 });
-const hint = await page.$eval('#tstHint', e => e.textContent.replace(/\s+/g, ' '));
+const hint = await page.$eval('.nbview[data-view="tests"]', v => [...v.querySelectorAll('#tstHint, .nbsaidslot')].map(e => e.textContent).join(' ').replace(/\s+/g, ' '));
 ok(/in tests/.test(hint) && /flagged/.test(hint),
    `the header carries the projected suite time and what is only waiting (${hint.trim()})`);
 const rows = await page.$$eval('#tstList .tst', es => es.map(e => ({
@@ -586,11 +586,11 @@ const reg = await page.evaluate(async () => (await (await fetch('/api/tests?proj
 ok(reg && reg.cmd === 'npm test cards', `the registry's payload carries the run going (${JSON.stringify(reg)})`);
 await nbTab(page, 'bugs');
 await nbTab(page, 'tests');
-await page.waitForFunction(() => /tests running/.test(document.querySelector('.nb #tstHint')?.textContent || ''), null, { timeout: 15000 });
-const headGoing = await page.$eval('.nb #tstHint', e => ({ said: e.querySelector('.nbsaid .notice')?.textContent.replace(/\s+/g, ' ').trim() || '',
-                                                           tiles: e.querySelectorAll('.tile').length }));
+await page.waitForFunction(() => /tests running/.test([...document.querySelectorAll('.nb .nbview[data-view="tests"] :is(#tstHint, .nbsaidslot)')].map(e => e.textContent).join(' ')), null, { timeout: 15000 });
+const headGoing = await page.$eval('.nb .nbview[data-view="tests"]', v => ({ said: v.querySelector('.nbsaidslot > .notice, #tstHint .nbsaid .notice')?.textContent.replace(/\s+/g, ' ').trim() || '',
+                                                           tiles: v.querySelectorAll('#tstHint .tile').length }));
 ok(/^tests running, started just now(?: by \w+)?: npm test cards$/.test(headGoing.said) && headGoing.tiles > 0,
-   `the Tests view's status line names the run going, under its tiles: when it started, by whom, the command (${JSON.stringify(headGoing).slice(0, 120)})`);
+   `the Tests view's status line names the run going, on its control row under its tiles: when it started, by whom, the command (${JSON.stringify(headGoing).slice(0, 120)})`);
 await page.waitForFunction(() => /tests running, started just now/.test(document.querySelector('.pane .bar.proj .ptesting')?.textContent || ''),
   null, { timeout: 20000 });
 ok(true, "...and the project's header says tests running, started just now");
