@@ -1,9 +1,12 @@
 # Machines: the controller, nodes and storage
 
-The Machines group on the rail: **Nodes**, every machine work runs on, and
-**Storage**, what a node's disks hold; with them here, **Controller
-settings**, in the Home group, what the controller owns and applies live. **Jobs**, the queue of work placed on
-the nodes, is a page of its own on the rail. This doc covers enrolling and
+The Machines group on the rail: **Nodes**, every machine work runs on,
+**Storage**, what a node's disks hold, and **Installed**, what the Library
+put on a node. Beside it, the **Controller** group holds what the
+controller owns: **This machine** on a bare-metal install, **Settings**
+(Controller settings), **Network**, **Keys** and **Audit**. **Jobs**, the
+queue of work placed on the nodes, and **Schedules** are a group of their
+own on the rail. This doc covers enrolling and
 running nodes, their stores and their network, the controller's settings and
 logs, and the jobs. The design behind nodes is
 [nodes.md](nodes.md); the sandbox VM a node usually is,
@@ -18,35 +21,35 @@ nothing enrolled the page says so and offers the one thing there is to do.
 (It does keep a node record of its own, which is how a share it mounts is
 recognized as the same store a node mounts; that is plumbing, not a node on
 the page.) A controller installed bare metal can be a node of itself
-([install.md](install.md#bare-metal)): its machine is then an ordinary row
-here, marked **this machine**, offered in a project's node pickers as such
-and in no container picker, its session network always on, and the Doctor
-says whether the wall between its sessions and the controller holds. The
-page shows one node, picked in the Machines header over it (R177: one band
-for Nodes, Storage and Installed, the node pulldown where a project's name
-is, when it was seen, where it dials in from and its agent beside it, and
-**Create sandbox VM** and **Enroll node** at the right of the sub-nav's line;
-the pick holds across the three pages, and the Build and Containers groups
-wear the same header, R178, a sub-tab reading *not here* when the node
-lacks its feature): a header with its state, and where it dials in from, which is the address of its
-last hello, so a node whose address moves is followed within a minute, its
-screen relay rebound onto the new address by its agent and the session-port
-rule on the node rewritten if the controller's own address is what moved,
-and its agent (with
-**Update agent** when this container ships a newer one, busy until the node
-comes back on it), then **sections**, each a fold with its status on the
-heading so a phone reads the headings and opens one: Health (the meters:
-cpu, memory, the card's load and its own memory where an NVIDIA driver
-answers, and each store's room; the toolchains its census found, which is what a project bound to it can
-build), Projects (the projects bound to it), Sessions (whether it runs them,
-and which are open), GPU (where it has a card), USB (on a VM host: each USB
-device with what holds it, **Give to a VM** and **Take back**, and its
-controllers; [vms.md](vms.md#usb-devices)), Model router (R144, R172: a card of the Library's with this node picked, under Services, where it is configured, deployed and removed; the row here says so), Features (what the machine has
-beyond the base, each with **Install** or **Uninstall**: VM host, the IOMMU
-on a VM host's kernel command line, and the
-hosting firewall on a hosting-only node), Coding agents (one line saying
-which are installed there, with the way to the node's **Agents** page, where
-each is installed, updated, removed and signed in to), Storage (mounts and stores), Network, and Advanced, which
+([install.md](install.md#bare-metal)): its machine is then
+[This machine](#this-machine) in the Controller group rather than a node
+here, offered in a project's node pickers as such, its session network
+always on, and the Doctor says whether the wall between its sessions and
+the controller holds. The
+page shows one node, picked in the Machines header over it: one band for
+Nodes, Storage and Installed, with the node pulldown where a project's name
+is, when it was seen, where it dials in from (the address of its last
+hello, so a node whose address moves is followed within a minute) and its
+agent beside it, and **Create sandbox VM** and **Enroll node** at the right
+of the sub-nav's line. The pick holds across the three pages, and the Build
+and Containers groups wear the same header. Under it, nothing names the
+node again: the agent's bar (with **Update agent** when this container
+ships a newer one, busy until the node comes back on it), then
+**sections**, each a fold with its status on the heading so a phone reads
+the headings and opens one, the small jump chips over them: Health (the
+meters: cpu, memory, the card's load and its own memory where an NVIDIA
+driver answers, and each store's room; the toolchains its census found,
+which is what a project bound to it can build), Repositories (the
+projects bound to it), Sessions (whether it runs them, which are open, and
+one line saying which coding agents are installed there and which you are
+signed in to: the Library installs them and the **Installed** page signs
+in), GPU (where it has a card), USB (on a VM host: each USB device with
+what holds it, **Give to a VM** and **Take back**, and its controllers;
+[vms.md](vms.md#usb-devices)), Features (what the machine has beyond the
+base, each with **Install** or **Uninstall**: VM host, the IOMMU on a VM
+host's kernel command line, and the hosting firewall on a hosting-only
+node; and a row each for what the Library installs, the GPU driver, the
+Android emulator and the model router, pointing there), Storage (mounts and stores), Network, and Advanced, which
 holds the node's **name** (Rename changes what it is called everywhere here:
 the pickers, the project cards and the label a runner installed from then on registers
 with; a runner already installed keeps the label it registered with until
@@ -344,9 +347,7 @@ hours during which the array is readable, or unprotected, as the job says.
 The record is BuilderBot's own (`/etc/builderbot/array.json`), from which
 `snapraid.conf` and the array's fstab lines (by filesystem UUID, `nofail`)
 are written whole. Destroying the array unmounts it and forgets it: every
-data disk keeps its files, readable on any Linux. The cache tier and the
-mover the step's details describe wait on pools by purpose (R162 step 6),
-where write landing is a share's opt-in.
+data disk keeps its files, readable on any Linux. There is no cache tier and no mover (see Pools by purpose below).
 
 **Other disks and shares** (R162): under the shares, a disk plugged into
 the machine (USB, eSATA) or a remote SMB share or NFS export, mounted at
@@ -438,9 +439,9 @@ machine's disks as its agent lists them (`lsblk`, and `smartctl` where it
 is installed): each by name, model, size, serial, spinning or solid state,
 what each partition holds (a filesystem and where it is mounted, a ZFS
 pool's member, swap, nothing), the system disk marked, and SMART's health,
-temperature and hours. A failing disk is said in the bad tone. Nothing
-here writes to a disk: the pools and the shares made from them are the
-storage module's next pieces.
+temperature and hours. A failing disk is said in the bad tone. The list
+only reads: a disk is written by the Pools and Array sections' own forms,
+each of which names the disks it takes again before anything is written.
 
 ## Installed
 
@@ -481,8 +482,8 @@ has been up, its agent and whether the wall between its sessions and the
 controller is in force), then the **Updates** section (the release running
 against the newest, **Check now**, **Update**: [Controller settings](#controller-settings)),
 then the machine as a node, drawn exactly as a node's page draws any node:
-its health, the projects on it, its sessions, GPU, USB, model router,
-features, storage, network and the advanced verbs, reboot and power off
+its health, the projects on it, its sessions, GPU, USB, features,
+storage, network and the advanced verbs, reboot and power off
 among them. The machine is not a row on the Nodes page and not in its
 picker; a project still picks it as its node, shown as **This machine** in
 every project's node picker, so its sessions, builds and containers run
@@ -555,7 +556,7 @@ own ports, addresses and bridge are This machine's Network section.
 
 ## Controller settings
 
-**Controller settings**, beside Home in the rail's Home group (`#/home/settings`),
+**Controller settings**, Settings in the rail's Controller group (`#/controller/settings`),
 drawn only for an account that may read the controller, is what the
 **controller** owns and can apply live. Its bar carries the container's uptime
 and the build it is serving. Its sections, each with its own Apply and Revert:
@@ -573,7 +574,7 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   names it for the next boot, the restart yours ([image.md](image.md)), and
   **Update from the folder** takes the files from a folder on the machine.
   The container edition has no such section: its image is pulled by the
-  host. On a controller in debug mode with the dev switch on the section
+  host. On a controller started for development with its dev switch on the section
   carries a **Channel** pulldown, Releases or Dev builds
   ([versions.md](versions.md#two-channels)); everywhere else the releases
   are the only channel and no pulldown is drawn.
@@ -610,6 +611,10 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   container rebuild is refused under it, and the bell says so), the memory
   level past which the bell warns, and a memory limit for every container
   whose compose file sets none ([nodes.md](nodes.md#room-a-node-keeps-for-itself)).
+- **Vetted catalog**: the address the Library reads the vetted catalog's
+  signed index from, and the import of a mirror of it made by
+  `tools/catalog-mirror.py` for a controller without the network
+  ([tool-packs.md](tool-packs.md)).
 - **Apps**: which of the apps a person installs this controller offers as
   Library cards ([reference.md](reference.md#the-apps-a-person-installs)).
 - **Mail**: the SMTP server BuilderBot sends through (its port, security,
