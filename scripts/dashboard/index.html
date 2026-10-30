@@ -1579,6 +1579,9 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
    "API 36-ext19 · 1.8 GB" was pushing the whole tab wider than the screen,
    which clipped every paragraph on it. */
 .imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* A picker's word to its left, centered on its line, as a filter row's is
+   (the page-head rule): a label's own margin set it low beside the select. */
+.imgadd>label{flex:0 0 auto;margin:0;color:var(--dim);font:var(--f-note);align-self:center;line-height:1}
 /* Sizing only: the font is the house control font from the .doctab group.
    It carried its own 12px sans here, which the conformance suite flagged the
    first week it ran: two selects on one page in a different voice than every
