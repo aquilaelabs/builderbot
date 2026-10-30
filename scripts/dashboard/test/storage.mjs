@@ -48,7 +48,7 @@ ok(await page.$eval('.pane .bar label.pick select#ndPick', s => [...s.options].s
 await page.selectOption('.pane .bar #ndPick', minted.id);
 const sect = `.storagetab [data-stnode="${minted.id}"]`;
 await page.waitForSelector(sect, { timeout: 10000 });
-const drawn = await page.$eval(sect, s => ({ status: [...s.querySelectorAll('.toolstate .fact')].find(f => /Measured/.test(f.textContent))?.textContent.replace(/\s+/g, ' ').trim().replace(/^Measured /, 'measured '),
+const drawn = await page.$eval(sect, s => ({ status: 'measured ' + ([...s.querySelectorAll('.toolstate .fact')].find(f => f.querySelector('dt')?.textContent === 'Measured')?.querySelector('dd')?.textContent.trim() || ''),
   // Each filesystem a card titled by its mount (R218 step 47), its meter "used".
   meters: [...s.querySelectorAll('details[data-sect^="storage:fs:"] > summary .t')].map(l => l.textContent),
   used: [...s.querySelectorAll('.ndmeter .lbl')].every(l => l.textContent === 'used'),
