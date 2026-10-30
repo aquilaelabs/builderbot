@@ -334,8 +334,9 @@ is read from GitHub's public API, and neither way asks for a sign-in.
 
 **On trial.** The slot an update wrote boots on trial: GRUB counts each
 boot of it in its environment, and the health check
-(`builderbot-os-health.service`) marks it good once the dashboard answers
-with a page and the node's agent runs. A trial boot that is not healthy
+(`builderbot-os-health.service`) marks it good once the controller's health
+answer (`/api/v1/healthz`) says it is up, three times running, and the
+node's agent runs. A trial boot that is not healthy
 within ten minutes restarts, a kernel or initramfs that panics restarts
 after fifteen seconds, and a kernel that will not load falls to the slot
 before at once; a second boot without the health check's word goes back to
