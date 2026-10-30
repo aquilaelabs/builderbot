@@ -242,6 +242,13 @@ if argv and argv[0] == "rehearse":
                                   "args": {"pos": [wf], "flags": {"ref": branch}}},
                    auth=os.environ.get("BB_VERSION_AUTH", ""), timeout=120)
     if isinstance(r, dict) and r.get("error"):
+        # GitHub starts a dispatch only for a workflow its default branch
+        # also carries: until the rehearsal is merged there, it is said so.
+        if "404" in r["error"] or "not found" in r["error"].lower() or "workflow_dispatch" in r["error"]:
+            fail(f"[builderbot] ERROR: GitHub would not start {wf} on {branch} ({r['error']}): it starts a "
+                 "workflow by hand only once the repository's default branch carries that file too, so the "
+                 "rehearsal works from the first merge that brings it there. Meanwhile a branch push runs "
+                 "the OS image's build and boot (os-image.yml)")
         fail(f"[builderbot] ERROR: {r['error']}")
     print(f"the release rehearsal is started on {branch} at {here.strip()[:7]}: bb forge run list shows it, "
           "bb ci-log reads it, and its summary lists what a release from here would carry")
