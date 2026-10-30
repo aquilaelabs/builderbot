@@ -1480,8 +1480,9 @@ function rnBars(){
     const body = document.querySelector(`details.rngroup[data-sect="rn:${sect}"] > .body`);
     if (!body) continue;
     // By its name, wherever it sits: the foot holds the repository's on
-    // the git door.
-    let bar = document.querySelector(`#rnmodal .rnbar[data-rnbar="${sect}"]`);
+    // the git door; and the box moves out of the dialog into the Settings
+    // view, so it is looked for in the page, not the dialog.
+    let bar = document.querySelector(`.rnbar[data-rnbar="${sect}"]`);
     if (!bar){
       body.insertAdjacentHTML("beforeend", `<div class="field rnbarf"><div class="actbar sectbar rnbar" data-rnbar="${sect}">
         <span class="state"></span><span class="sp"></span>
