@@ -24,13 +24,18 @@ if [ -n "$cap" ]; then
     fi
 fi
 
-# The disk and the partition: by the data partition's fixed UUID, or a disk
-# named for a test (an image file, whose filesystem is not touched).
+# The disk and the partition: the one /var is mounted from, which the
+# initramfs took as this boot's data partition, its UUID checked; or a disk
+# named for a test (an image file, whose filesystem is not touched). Never
+# by the UUID alone: every BuilderBot disk shares it, and a stick plugged
+# into an installed machine had its table rewritten (R191 step 3).
 if [ -n "${BB_GROW_DISK:-}" ]; then
     disk="$BB_GROW_DISK"; part=""
 else
-    part="$(readlink -f "/dev/disk/by-partuuid/$BB_PART_DATA" 2>/dev/null || true)"
-    [ -b "$part" ] || { say "no data partition by its UUID: nothing to grow"; exit 0; }
+    part="$(findmnt -no SOURCE "${BB_GROW_VAR:-/var}" 2>/dev/null | head -n 1 || true)"
+    [ -b "$part" ] || { say "/var is not on a partition: nothing to grow"; exit 0; }
+    [ "$(blkid -s PARTUUID -o value "$part" 2>/dev/null || true)" = "$BB_PART_DATA" ] \
+        || { say "/var is not on BuilderBot's data partition: nothing to grow"; exit 0; }
     disk="/dev/$(lsblk -no pkname "$part" | head -n 1)"
     [ -b "$disk" ] || { say "no disk under $part"; exit 0; }
 fi
