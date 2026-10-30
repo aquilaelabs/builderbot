@@ -4809,13 +4809,11 @@ releasesign.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json
                                               if d.is_dir() and not d.name.startswith(".")))
 
 
-def _forge_release(project, tag, version_, sha, comp=""):
-    """forgerelease.publish, and the release's unsigned APK expected for
-    signing once a release was made (releasesign.expect)."""
-    r = forgerelease.publish(project, tag, version_, sha, comp)
-    if r.get("url") and not r.get("error"):
-        releasesign.expect(project, tag)
-    return r
+def _release_made(project, tag):
+    """A release's tag pushed, dev or stable: its unsigned APK expected for
+    signing (releasesign.expect). A dev release's page is CI's, so this
+    is not the forge's half, which a dev release never reached (B469)."""
+    releasesign.expect(project, tag)
 
 
 # The briefing says what a session may move the version by, with the rest
@@ -4823,7 +4821,7 @@ def _forge_release(project, tag, version_, sha, comp=""):
 preamble.version_policy = version.policy
 version.configure_verbs(PANEL=version_payload, GIT_ENV=users.git_env, CREDS_ENV=projects._git_env,
                         MAY_PUSH=projects.may_push, SESSIONS=sessions_anywhere,
-                        FORGE=_forge_release,
+                        FORGE=forgerelease.publish, MADE=_release_made,
                         AUDIT=lambda *row: None if NODES_OK else db.audit(*row))
 
 

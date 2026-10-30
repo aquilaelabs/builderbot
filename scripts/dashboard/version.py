@@ -1773,7 +1773,8 @@ MAY_PUSH = None
 SESSIONS = None
 AUDIT = None
 FORGE = None        # (project, tag, version, sha, comp) -> the forge's release (forgerelease.publish)
-_VERB_PARTS = ("PANEL", "GIT_ENV", "CREDS_ENV", "MAY_PUSH", "SESSIONS", "AUDIT", "FORGE")
+MADE = None         # (project, tag): a release's tag pushed, dev or not (what follows it is looked for)
+_VERB_PARTS = ("PANEL", "GIT_ENV", "CREDS_ENV", "MAY_PUSH", "SESSIONS", "AUDIT", "FORGE", "MADE")
 
 
 def configure_verbs(**parts):
@@ -1818,6 +1819,10 @@ def verb(name, act, req, who, principal):
         # page is CI's (R179): made a pre-release by the image workflow.
         if r.get("pushed") and FORGE and not dev:
             r["forge"] = FORGE(name, r["tag"], r["target"], r["sha"], comp)
+        # What CI builds for it is looked for whichever channel it is on: a
+        # dev release's APK was left to the hourly look (B469).
+        if r.get("pushed") and MADE:
+            MADE(name, r["tag"])
         if dev:
             r["dev"] = True
         AUDIT(principal, "version-release", name,
