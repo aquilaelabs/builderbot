@@ -339,8 +339,8 @@ The token is also what an agent works the git host with, through `bb
 forge`: pull requests, issues, CI runs and their logs, and releases on
 GitHub, GitLab, Gitea or Forgejo, each run on the controller with the token,
 which never reaches a session. The controller measures what the token may
-do without changing anything (when it is stored, when Test is pressed and
-once a day), and the project's Permissions view, **On the git host**, lists
+do without changing anything (when it is stored, when Measure is pressed
+on the Permissions view and once a day), and the project's Permissions view, **On the git host**, lists
 each ability with what the token says and an Allow or Deny over it: Deny
 takes the ability away whatever the token allows, and merging starts at
 Deny. Every session is told at its start what it may do there and what to
@@ -359,7 +359,10 @@ several projects, and two people may give tokens with different scopes), so
 the forge's log says who did what. The project keeps none of its own: its
 settings list who has given one, never the token, and your own store's
 tokens for the host are offered there with **Give it to this project**;
-**Take it back** withdraws yours. A token is used only while its person is
+**Take it back** withdraws yours. You keep one token for each git host
+and sign-in: a new one for the same host and account replaces the one
+before in place, and every project using it moves to the new one. A token
+is used only while its person is
 signed in, on any browser or device (the phone app counts): your sessions'
 `bb git`, your presses in the Git view, the release you cut and the wiki
 you sync all run with yours, and signed out everywhere, a session of yours
