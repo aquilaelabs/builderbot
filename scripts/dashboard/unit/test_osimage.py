@@ -224,6 +224,18 @@ class TheAgent(unittest.TestCase):
                 self.assertEqual(f.read(), b"\0" * 4096)
             self.assertFalse(os.path.exists(os.path.join(w.work, "update")), "a failed update leaves nothing behind")
 
+    def test_an_image_that_would_not_fit_is_not_fetched(self):
+        # R191 step 4: refused before a byte is written, saying how much.
+        w = World(slot="a")
+        w.publish("0.9.1")
+        full = mock.Mock(f_bavail=10, f_frsize=4096)
+        with mock.patch.object(self.av.os, "statvfs", return_value=full):
+            state, code, text = self.run_update(w, {"release": "v0.9.1"})
+        self.assertEqual((state, code), ("failed", 66), text)
+        self.assertIn("the update needs about", text)
+        with open(w.dev["b"], "rb") as f:
+            self.assertEqual(f.read(), b"\0" * 4096)
+
     def test_a_trial_not_set_leaves_the_next_boot_here(self):
         w = World(slot="a")
         w.publish("0.9.1")

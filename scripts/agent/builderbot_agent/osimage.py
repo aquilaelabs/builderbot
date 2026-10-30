@@ -115,21 +115,50 @@ def _sha256(path):
     return h.hexdigest()
 
 
+# What an update holds at once on the data partition, against the ISO's
+# size: the ISO, the root taken out of it, its kernel and initrd (R191
+# step 4: a fetch that filled /var took the controller's database with it).
+ROOM = 2.2
+
+
+def _room(where, size):
+    """Why `size` bytes of ISO do not fit beside the update's working files
+    in `where`, or ""."""
+    try:
+        st = os.statvfs(where)
+    except OSError:
+        return ""
+    free, need = st.f_bavail * st.f_frsize, int(size * ROOM)
+    if size and free < need:
+        return (f"the data partition has {free >> 20} MB free and the update needs about {need >> 20} MB "
+                f"for the image and what it takes out of it: free some, or grow the disk")
+    return ""
+
+
 def _fetch(url, dest, say):
     """One file by URL (https, or file:// for the tests) into dest, by
-    chunks, saying each tenth of a large one."""
-    with urllib.request.urlopen(url, timeout=60) as r, open(dest, "wb") as f:  # noqa: S310 (the release's address, or a test's file://)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    chunks, saying each tenth of a large one; refused before a byte is
+    written when it would not fit with what the update takes out of it."""
+    with urllib.request.urlopen(url, timeout=60) as r:  # noqa: S310 (the release's address, or a test's file://)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         total = int(r.headers.get("Content-Length") or 0)
-        got, said = 0, 0
-        while True:
-            chunk = r.read(1 << 20)
-            if not chunk:
-                break
-            f.write(chunk)
-            got += len(chunk)
-            if total > (64 << 20) and got * 10 // total > said:
-                said = got * 10 // total
-                say(f"{os.path.basename(dest)}: {said * 10}% of {total >> 20} MB\n")
+        if dest.endswith(".iso") and (why := _room(os.path.dirname(dest), total)):
+            raise OSError(why)
+        with open(dest, "wb") as f:
+            _copy_from(r, f, dest, total, say)
+
+
+def _copy_from(r, f, dest, total, say):
+    """r into f by chunks, saying each tenth of a large one."""
+    got, said = 0, 0
+    while True:
+        chunk = r.read(1 << 20)
+        if not chunk:
+            break
+        f.write(chunk)
+        got += len(chunk)
+        if total > (64 << 20) and got * 10 // total > said:
+            said = got * 10 // total
+            say(f"{os.path.basename(dest)}: {said * 10}% of {total >> 20} MB\n")
 
 
 def stick_status():
@@ -264,6 +293,8 @@ class OsImageMixin:
         iso = os.path.join(work, fn)
         try:
             if src:
+                if why := _room(work, os.path.getsize(os.path.join(src, fn))):
+                    raise OSError(why)
                 shutil.copyfile(os.path.join(src, fn), iso)
                 shutil.copyfile(os.path.join(src, fn + ".sha256"), iso + ".sha256")
             else:
