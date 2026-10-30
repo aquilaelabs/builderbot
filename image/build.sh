@@ -128,8 +128,16 @@ INITRD="$(find "$TREE/boot" -maxdepth 1 -name 'initrd.img-*' | sort -V | tail -1
 [ -f "$KERNEL" ] && [ -f "$INITRD" ] || die "the tree has no kernel and initrd under /boot"
 cp "$KERNEL" "$OUT/$NAME.vmlinuz"; cp "$INITRD" "$OUT/$NAME.initrd"
 rm -f "$OUT/$NAME.root.squashfs"
+# What is left out is what is in those directories, never the directories:
+# the initramfs moves /dev, /proc, /sys and /run onto the root, and with no
+# mount point there the boot panics.
 mksquashfs "$TREE" "$OUT/$NAME.root.squashfs" -comp zstd -Xcompression-level 19 -xattrs -noappend -quiet \
-    -e proc sys dev run tmp var/cache/apt var/lib/apt/lists -mkfs-time "$SOURCE_DATE_EPOCH" -all-time "$SOURCE_DATE_EPOCH"
+    -mkfs-time "$SOURCE_DATE_EPOCH" -all-time "$SOURCE_DATE_EPOCH" \
+    -wildcards -e 'proc/*' 'sys/*' 'dev/*' 'dev/.*' 'run/*' 'run/.*' 'tmp/*' 'tmp/.*' 'var/cache/apt/*' 'var/lib/apt/lists/*'
+for d in dev proc sys run tmp; do
+    unsquashfs -l "$OUT/$NAME.root.squashfs" "/$d" 2>/dev/null | grep -qx "squashfs-root/$d" \
+        || die "the root squashfs has no /$d, so the boot would have nowhere to mount it"
+done
 SQ_MIB=$(( ($(stat -c %s "$OUT/$NAME.root.squashfs") + 1048575) / 1048576 ))
 [ "$SQ_MIB" -lt "$BB_SIZE_SLOT_MIB" ] || die "the root squashfs is ${SQ_MIB} MiB and a slot holds ${BB_SIZE_SLOT_MIB}: fewer packages, or a bigger slot in image/partitions.sh"
 
