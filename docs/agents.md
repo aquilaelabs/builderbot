@@ -2,8 +2,9 @@
 
 A session on a project runs a coding agent in a terminal on a node: Claude
 (Anthropic's Claude Code), ChatGPT (OpenAI's Codex CLI), Copilot (GitHub's
-Copilot CLI) or Grok (xAI's Grok Build), each used the same way and held to the same briefing and
-guards. This page says what each agent is to BuilderBot, where it is
+Copilot CLI), Grok (xAI's Grok Build) or Any model (OpenCode, through a
+node's model router), each used the same way and held to the same briefing
+and guards. This page says what each agent is to BuilderBot, where it is
 installed and signed in to, and how each is wired.
 
 ## One table of agents
@@ -202,15 +203,16 @@ credential of any of them.
 ## Any model, through a router
 
 The fifth agent signs in to nobody. The **Model router** is a card of the
-Library's under Services (R144, R172): with a node picked, Configure under
-its Details takes the provider keys you give it, other OpenAI-compatible
-endpoints, Ollama beside it where you turn it on, and the projects allowed
-to use it; Install deploys LiteLLM there as a written container once
-something is behind it, Save on a deployed one rebuilds it with the change,
-and Remove takes it off. Each allowed project is handed the router's
+Library's under Services, and it is set up on the node's Installed page:
+with a node picked, its page there (Configure on its row) takes the
+provider keys you give it, other OpenAI-compatible endpoints, Ollama
+beside it where you turn it on, and the projects allowed to use it;
+Install deploys LiteLLM there as a written container once something is
+behind it, Save on a deployed one rebuilds it with the change, and Remove
+takes it off. On the Containers page it is a row of the System section. Each allowed project is handed the router's
 address and a key of its own at a session's start, so its spend is its
 own. Start's **Any model** offers the router's models with their context
-and price where the router knows them (`Read the models` on the card reads
+and price where the router knows them (`Read the models` on its page reads
 them), and OpenCode's own card says whether the router on that node is
 there for it, and bb-tty
 starts OpenCode with a config written for the session: the router as its
@@ -223,7 +225,7 @@ for the briefing**, with Start's line under the picker saying by how much.
 While an Any model session runs, its tab on the dock says what its project
 has spent through the router so far (the key is the project's, so the
 spend is) and, for a model Ollama runs on the node, its tokens per second
-as the router's log last measured it (**Read the spend** on the card
+as the router's log last measured it (**Read the spend** on its page
 reads both). Its guards are a plugin of BuilderBot's that bb-tty writes into the
 account's OpenCode plugins folder, calling `bb-agent-hook open` before a
 tool (a refusal throws, so the tool does not run), on a prompt, at a

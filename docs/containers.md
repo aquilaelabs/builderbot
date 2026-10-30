@@ -2,7 +2,8 @@
 
 The Containers group on the rail: **Containers** is the Docker manager,
 where a project's containers are built, started, stopped and given their env
-on a node, and **nginx** is each node's reverse proxy. The containers
+on a node, and **VMs** the virtual machines ([vms.md](vms.md)), both for
+the node picked once in the group's header. The containers
 BuilderBot deploys itself (each node's nginx, its scanners and its model
 router) are the **System** section at the top of the Containers page: rows
 like any other container's, with **Configure**, which opens that
@@ -390,7 +391,7 @@ nodes and projects' containers use one name without typing it again.
 
 nginx keeps up to date like the toolchains and the agent (R192, the
 operator, 11 Oct). The controller reads the registry's tag list once a week
-(Check now on the nginx page reads it at once) and keeps the newest release
+(Check for updates on the nginx page reads it at once) and keeps the newest release
 line's alpine tag with its digest; a node's nginx is pinned to a digest when
 it is deployed or updated, written into its compose file as
 `nginx:TAG@sha256:...`, so a Save rebuilds with exactly what it had and
@@ -421,7 +422,8 @@ it at another ACME directory (a staging one, or a private CA).
 
 ## Scanners
 
-The Scanners page, beside nginx, deploys BuilderBot's own static analysis
+The Scanners page, opened from the scanners' row in the System section,
+deploys BuilderBot's own static analysis
 scanners (Semgrep, Trivy, mobsfscan) to each node that holds projects as
 one compose project of one-shot services, their versions pinned at the
 deploy like nginx's image (R145), and runs them there on one schedule over

@@ -374,14 +374,16 @@ the page (the pick holds across the Library, the Emulator, the Phone and
 the CI runner, and a sub-tab says *not here* when the node lacks what it
 needs). A section per kind, in
 this order: the coding agents a session runs (Claude Code, Codex CLI,
-Copilot CLI, Grok Build), the toolchains a project builds with, the tool
-packs a person added, the apps a NAS runs as containers, and under **For
+Copilot CLI, Grok Build, OpenCode), the toolchains a project builds with,
+the tool packs a person added, the services a node runs for the others
+(the model router), the apps a NAS runs as containers, and under **For
 you** the companions a person downloads for their own machines. Every row
 is one shape: its name, its tier (official, shipped with BuilderBot;
 vetted, from the catalog the maintainers sign; sideloaded, added by URL or
 made here), what is installed and what an update would move it to, one
 line saying what it is, and at its right the one verb it takes: Install,
-Update, Remove, Edit on a pack, Download on a companion, and on an app New
+Update, Remove, Edit on a pack, Download on a companion, Install on a
+service once it is configured on the Installed page, and on an app New
 container, since an app is not installed on the node but made as a
 container, each press another one under its own name. Details opens the
 entry's own page, with a small top header whose **Back** returns to the
@@ -397,15 +399,18 @@ and the secrets made for it; a companion's other files. What is on the
 node (an agent's sign-in, a toolchain's path and system packages, a
 service's configuration, Remove) is the Installed page's under Machines
 ([machines.md](machines.md#installed)). A search box under the head matches a
-name, a description, a kind or a tier, and the chips beside it narrow the
-list by kind and by tier; nothing there is saved.
+name, a description, a kind or a tier, with **Check for updates**, **Add
+your own** and Remove on its line, and the filter chips under it narrow
+the list: All, then **Installed** (what this node has, each card in its
+own kind's section), **Updates**, each kind and each tier; nothing there
+is saved.
 
 Nothing installs a second way from here. A toolchain's Install is the
 toolchain job described below, with its agreements asked the same way; an
-agent's is the Agents verb; a pack's Install opens the Add tool pack dialog
+agent's is the agents' own verb; a pack's Install opens the Add tool pack dialog
 on the catalog's commit, with Look first; an app's Install opens New
 container with the app picked and its blanks shown, and Create makes it a
-container on the Containers page. **Check for updates** in the bar asks
+container on the Containers page. **Check for updates** asks
 about every row that installs on the node, and **Add your own** is the
 sideload, one dialog asking what is being added: a tool pack (from a
 repository, a pasted bbtool.json or an upload of its files, docs/tool-packs.md;
