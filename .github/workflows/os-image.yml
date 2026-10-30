@@ -125,7 +125,8 @@ jobs:
         run: |
           set -euo pipefail
           qcow="$(find out -maxdepth 1 -name 'builderbot-os-*.qcow2' | head -1)"
-          # A copy of the disk with the console on the serial line (bb_args
+          # A copy of the disk with the console on the serial line and the
+          # initramfs tracing each step to it (bb_args
           # in the ESP's grubenv, which the menu adds to the kernel line), so
           # what the initramfs and systemd say reaches serial.log; the disk
           # as shipped writes them to the screen.
@@ -134,7 +135,7 @@ jobs:
           esp="$(sfdisk -J "$disk" | jq -r '.partitiontable.partitions[] | select(.name == "esp") | .start')"
           at="$disk@@$((esp * 512))"
           mcopy -n -i "$at" ::/grub/grubenv grubenv
-          grub-editenv grubenv set bb_args="console=ttyS0,115200"
+          grub-editenv grubenv set bb_args="console=ttyS0,115200 debug=vc loglevel=7"
           mcopy -o -i "$at" grubenv ::/grub/grubenv
           grub-editenv grubenv list
           kvm=""; [ -w /dev/kvm ] && kvm="-enable-kvm -cpu host"
@@ -163,7 +164,7 @@ jobs:
           awk '/BdsDxe: starting/{n++} n==1{print} /end Kernel panic/{if(n==1)exit}' plain.log > first.log || true
           # No firmware line to cut at: the log's start, which is the first boot.
           [ -s first.log ] || head -n 400 plain.log > first.log
-          tail -n 150 first.log
+          tail -n 400 first.log
           exit 1
       - uses: actions/upload-artifact@v4
         if: always()
