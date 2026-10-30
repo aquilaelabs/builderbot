@@ -4580,11 +4580,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   :is(.doctab,.nb) .field.docbarrow>label.pick>select:not([multiple]):not([size]){min-width:0;max-width:none;width:auto;flex:0 1 auto}
   :is(.doctab,.nb) .field.docbarrow>.sp{display:none}
   :is(.doctab,.nb) .field.docbarrow>.actbar{flex:0 1 auto;min-width:0;flex-wrap:nowrap;justify-content:flex-end;margin-inline-start:auto}
-  /* A search in the row takes its whole first line, the switch and the
-     buttons on the line under it (the operator, 29 Oct: the buttons sat
-     over a search that stopped short of the edge). */
+  /* A search shares its line with the row's buttons while they fit, and
+     only where they do not takes the first line whole with the buttons
+     under it (the operator, 29 Oct: never the buttons over a search, and
+     never a line of its own beside room for them). */
   :is(.doctab,.nb) .field.docbarrow:has(>input[type=search]){flex-wrap:wrap}
-  :is(.doctab,.nb) .field.docbarrow>input[type=search]{order:-1;flex:1 1 100%;max-width:none;width:100%}
+  :is(.doctab,.nb) .field.docbarrow>input[type=search]{order:-1;flex:1 1 9rem;min-width:9rem;max-width:none;width:auto}
   /* The buttons keep their words whole; the picker is what gives up width
      (the operator's phone, 18 Oct: "Re-ch…" and "Rem…" beside a picker
      half the bar wide). */
@@ -4614,13 +4615,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   .lng{display:none}
   .shrt{display:inline}
 }
-/* ...and under 440px the search takes the whole first line of its row,
-   the views and the buttons on the line under it (the operator, 29 Oct:
-   it sat under them, short of the edge), the same on a page and a
-   notebook view (R109). */
+/* ...the same under 440px, on a page and a notebook view (R109). */
 @media(max-width:440px){
   :is(.doctab,.nb) .field.docbarrow:has(>input[type=search]:not([hidden])){flex-wrap:wrap}
-  :is(.doctab,.nb) .field.docbarrow>input[type=search]{order:-1;flex:1 1 100%;max-width:none}
+  :is(.doctab,.nb) .field.docbarrow>input[type=search]{order:-1;flex:1 1 9rem;min-width:9rem;max-width:none}
   /* The picker is what gives up width on the line above it, from a zero
      basis, so a long node name never puts Check and New under it. */
   :is(.doctab,.nb) .field.docbarrow.dmpick>label.pick{flex:1 1 0;min-width:0;max-width:none}
