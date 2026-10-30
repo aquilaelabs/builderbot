@@ -206,8 +206,18 @@ def nginx_conf(routes, rec=None):
     # servers on one port is nginx's "duplicate default server", seen on
     # bb-dev-sandbox, 10 Oct).
     any_host = "*" in by_host
+    # An ACME HTTP-01 challenge being answered (R150): the token's line on
+    # every port-80 server, the default one included, since the name may
+    # route nowhere yet.
+    tokens = rec.get("acme_tokens") or {}
+    chall = [f"    location = /.well-known/acme-challenge/{t} {{ default_type text/plain; return 200 \"{v}\"; }}"
+             for t, v in sorted(tokens.items()) if re.fullmatch(r"[A-Za-z0-9_-]{8,128}", str(t)) and re.fullmatch(r"[A-Za-z0-9_.-]{8,256}", str(v))]
     if not any_host:
-        lines.append("  server { listen 80 default_server; server_name _; return 444; }")
+        if chall:
+            lines += ["  server {", "    listen 80 default_server;", "    server_name _;", *chall,
+                      "    location / { return 444; }", "  }"]
+        else:
+            lines.append("  server { listen 80 default_server; server_name _; return 444; }")
     if not (any_host and any(r["tls"] for r in by_host["*"])):
         lines.append("  server { listen 443 ssl default_server; server_name _; "
                      "ssl_reject_handshake on; return 444; }")
@@ -226,6 +236,8 @@ def nginx_conf(routes, rec=None):
             if listen.startswith("443"):
                 lines.append(f"    ssl_certificate {cert};")
                 lines.append(f"    ssl_certificate_key {key};")
+            else:
+                lines += chall
             # The longest path first, so /api wins over / for /api/x.
             for r in sorted(rs, key=lambda x: -len(x["path"])):
                 if listen.startswith("443") and not r["tls"]:
@@ -558,13 +570,16 @@ def attention(deployed):
     return out
 
 
+import checks  # noqa: E402 (the cadence, R176)
+
+
 def check_loop():
     """The weekly check, from when the last one happened rather than from
     the start: a container restart is not a reason to ask the registry
     again. Started by the server beside the toolchains' loop."""
     time.sleep(CHECK_DELAY)
     while True:
-        if time.time() >= int(latest_image().get("at") or 0) + CHECK_EVERY:
+        if checks.due("nginx", int(latest_image().get("at") or 0)):
             with contextlib.suppress(Exception):   # noqa: BLE001 (the loop outlives one bad answer)
                 check_image()
         time.sleep(300)
@@ -633,7 +648,12 @@ def view(devapp, instance_state):
                "wide": wide_names(rec) if (n.get("config") or {}).get("host_only") else {},
                "live": n.get("live"), "clash": [],
                # What it is pinned to and the line it would move to (R192).
-               "image": image_of(rec) | {"ref": image_ref(rec)}, "behind": behind(rec)}
+               "image": image_of(rec) | {"ref": image_ref(rec)}, "behind": behind(rec),
+               # Certificates from Let's Encrypt (R150): what is being asked
+               # for, the email the account was made with, and whether a
+               # DNS-01 challenge has a Cloudflare token to write with.
+               "acme": {"pending": rec.get("acme_pending") or {}, "email": (rec.get("acme") or {}).get("email", ""),
+                        "cf": bool(cf_token and cf_token()), "directory": ACME_DIRECTORY}}
         out.append((row, is_up))
     # Each node's daemon half at once (the operator, 18 Oct: the tab took
     # five seconds, the nodes' reads one after another): the view waits for
@@ -645,6 +665,275 @@ def view(devapp, instance_state):
         if state is not None:
             row["state"] = state
     return {"nodes": [row for row, _ in out], "image": IMAGE, "latest": latest_image(), "hostnames": hostnames()}
+
+
+# ---- certificates from an ACME directory (R150) -----------------------------
+# Let's Encrypt, or any ACME directory (BB_ACME_DIRECTORY for a test or a
+# private CA): a pair asked for on the nginx page by hostname, by an HTTP-01
+# challenge the node's nginx answers on port 80 (the token's line written
+# into its config for the minutes it takes) or a DNS-01 record written
+# through the Cloudflare API token Settings holds; kept on the node as any
+# pasted pair is (set_cert) and renewed by renew_loop thirty days before it
+# ends, the result on the bell either way.
+
+ACME_DIRECTORY = os.environ.get("BB_ACME_DIRECTORY") or "https://acme-v02.api.letsencrypt.org/directory"
+RENEW_BEFORE = 30 * 86400
+RENEW_EVERY = 6 * 3600
+cf_token = None          # () -> the Cloudflare API token, set by the server (settings.secret)
+_acme_busy = set()
+_acme_lock = threading.Lock()
+
+
+def _acme_account_pem():
+    """The ACME account key, made once and kept 0600 beside the nodes'
+    pairs: one account for the install, whatever node asks."""
+    d = STATE / "nginx"
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    f = d / "acme-account.pem"
+    try:
+        return f.read_text()
+    except OSError:
+        import acme                                         # noqa: PLC0415
+        pem = acme.account_key_new()
+        fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(pem)
+        return pem
+
+
+def _acme_note(nid, host, **fields):
+    """The state of a hostname's request on the record, for the page."""
+    with _lock:
+        st = _load()
+        rec = st.setdefault(str(nid), {})
+        pend = rec.setdefault("acme_pending", {})
+        if fields.get("gone"):
+            pend.pop(host, None)
+        else:
+            pend[host] = {**(pend.get(host) or {}), **fields, "at": int(time.time())}
+        _save(st)
+
+
+def _acme_said(nid, host, ok, why=""):
+    """A result for the bell: the last few per node, newest first."""
+    with _lock:
+        st = _load()
+        rec = st.setdefault(str(nid), {})
+        said = [x for x in (rec.get("acme_said") or []) if x.get("host") != host]
+        said.insert(0, {"host": host, "ok": bool(ok), "why": str(why or "")[:300], "at": int(time.time())})
+        rec["acme_said"] = said[:12]
+        _save(st)
+
+
+def _node_addr(nid):
+    for n in node_list():
+        if n.get("id") == nid:
+            return str(n.get("addr") or (n.get("agent") or {}).get("addr") or "")
+    return ""
+
+
+def _cf_zone(token, host):
+    import tunnel                                           # noqa: PLC0415
+    parts = host.split(".")
+    for i in range(1, len(parts) - 1):
+        cand = ".".join(parts[i:])
+        got, err = tunnel._api("GET", f"/zones?name={cand}", token)
+        if err:
+            return None, err
+        if got:
+            return got[0], ""
+    return None, f"no zone of yours holds {host}: is the domain on this Cloudflare account, and may the API token read zones?"
+
+
+def _cf_txt(token, name, value, delete=False):
+    """The _acme-challenge TXT record written, or taken off, through
+    Cloudflare's API. "" or the error."""
+    import tunnel                                           # noqa: PLC0415
+    zone, err = _cf_zone(token, name)
+    if err:
+        return err
+    recs, err = tunnel._api("GET", f"/zones/{zone['id']}/dns_records?type=TXT&name={name}", token)
+    if err:
+        return err
+    have = next((r for r in recs or [] if str(r.get("content") or "").strip('"') == value), None)
+    if delete:
+        if have:
+            _, err = tunnel._api("DELETE", f"/zones/{zone['id']}/dns_records/{have['id']}", token)
+        return err
+    if have:
+        return ""
+    _, err = tunnel._api("POST", f"/zones/{zone['id']}/dns_records", token,
+                         {"type": "TXT", "name": name, "content": value, "ttl": 60,
+                          "comment": "BuilderBot: an ACME challenge (R150), taken off when it is answered"})
+    return err
+
+
+def _challenge_served(addr, host, token, value, wait=120):
+    """Whether the node's nginx answers the HTTP-01 token at its address,
+    polled while the rebuild lands; a node whose address is unknown or
+    unreachable from here is given the wait and then trusted."""
+    if not addr:
+        time.sleep(min(wait, 30))
+        return True
+    end = time.time() + wait
+    while time.time() < end:
+        try:
+            req = urllib.request.Request(f"http://{addr}/.well-known/acme-challenge/{token}", headers={"Host": host})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                if r.read().decode(errors="replace").strip() == value:
+                    return True
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+        time.sleep(3)
+    return False
+
+
+def acme_request(nid, host, method, email, containers, devactions, devapp):
+    """A pair for `host` from the ACME directory, asked for now in the
+    background: {ok, started} or {error}. method is http-01 (port 80 of
+    this node reachable at the name) or dns-01 (Cloudflare, with the API
+    token Settings holds)."""
+    host = str(host or "").strip().lower()
+    method = str(method or "http-01").strip().lower()
+    email = str(email or "").strip()
+    if not HOST_RE.match(host) or "." not in host:
+        return {"error": "a certificate is asked for by a public name like www.example.com"}
+    if method not in ("http-01", "dns-01"):
+        return {"error": "the challenge is http-01 or dns-01"}
+    if method == "dns-01" and not (cf_token and cf_token()):
+        return {"error": "a DNS-01 challenge writes the record through Cloudflare's API: set the Cloudflare API token under Controller settings first"}
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return {"error": "the email Let's Encrypt writes to about this certificate is not an address"}
+    if not deployed(devapp, nid) and method == "http-01":
+        return {"error": "an HTTP-01 challenge is answered by this node's nginx: Deploy it first"}
+    with _acme_lock:
+        if (nid, host) in _acme_busy:
+            return {"error": f"a certificate for {host} is being asked for already"}
+        _acme_busy.add((nid, host))
+    with _lock:
+        st = _load()
+        rec = st.setdefault(str(nid), {})
+        if email:
+            rec.setdefault("acme", {})["email"] = email
+        _save(st)
+    _acme_note(nid, host, method=method, state="asking", error="")
+    threading.Thread(target=_acme_run, args=(nid, host, method, email, containers, devactions, devapp),
+                     name=f"acme-{host}", daemon=True).start()
+    return {"ok": True, "started": True, "host": host}
+
+
+def _acme_run(nid, host, method, email, containers, devactions, devapp):
+    import acme                                             # noqa: PLC0415
+    addr = _node_addr(nid)
+    token = cf_token() if cf_token else ""
+
+    def present(kind, name, tok, value):
+        if kind == "http-01":
+            with _lock:
+                st = _load()
+                st.setdefault(str(nid), {}).setdefault("acme_tokens", {})[tok] = value
+                _save(st)
+            _acme_note(nid, host, state="answering the challenge on port 80")
+            r = apply(nid, containers, devactions, devapp)
+            if r.get("error"):
+                raise acme.AcmeError(f"nginx could not be rebuilt with the challenge: {r['error']}")
+            if not _challenge_served(addr, name, tok, value):
+                raise acme.AcmeError(f"this node's nginx did not answer the challenge at {addr or 'its address'}: "
+                                     "is port 80 open there, and does the name reach this node?")
+        else:
+            _acme_note(nid, host, state="writing the DNS record")
+            err = _cf_txt(token, f"_acme-challenge.{name}", value)
+            if err:
+                raise acme.AcmeError(f"Cloudflare refused the record: {err}")
+            time.sleep(15)
+
+    def cleanup(kind, name, tok, value):
+        if kind == "http-01":
+            with _lock:
+                st = _load()
+                (st.get(str(nid)) or {}).get("acme_tokens", {}).pop(tok, None)
+                _save(st)
+        else:
+            _cf_txt(token, f"_acme-challenge.{name}", value, delete=True)
+
+    try:
+        client = acme.Client(ACME_DIRECTORY, _acme_account_pem(), contact=f"mailto:{email}" if email else "")
+        _acme_note(nid, host, state="ordering")
+        chain, key = client.issue([host], method, present, cleanup)
+        got = set_cert(nid, chain, key, host)
+        if got.get("error"):
+            raise acme.AcmeError(f"the certificate came, and could not be kept: {got['error']}")
+        with _lock:
+            st = _load()
+            c = st.setdefault(str(nid), {}).setdefault("certs", {}).get(host) or {}
+            c["acme"] = {"method": method, "email": email, "at": int(time.time())}
+            st[str(nid)]["certs"][host] = c
+            _save(st)
+        _acme_note(nid, host, gone=True)
+        _acme_said(nid, host, True, f"a certificate for {host} from {ACME_DIRECTORY.split('/')[2]}, until "
+                                    + time.strftime("%d %b %Y", time.localtime(got["cert"]["expires"])))
+        r = apply(nid, containers, devactions, devapp)
+        if r.get("error"):
+            _acme_said(nid, host, False, f"the certificate is kept, and nginx was not rebuilt with it: {r['error']}")
+    except Exception as e:                                  # noqa: BLE001 (the thread must say, never die silent)
+        why = str(e)
+        _acme_note(nid, host, state="failed", error=why[:300])
+        _acme_said(nid, host, False, why)
+        print(f"dashboard: acme {host} on {nid}: {why}", flush=True)
+        # A token left in the config comes out.
+        with _lock:
+            st = _load()
+            if (st.get(str(nid)) or {}).get("acme_tokens"):
+                st[str(nid)]["acme_tokens"] = {}
+                _save(st)
+                dirty = True
+            else:
+                dirty = False
+        if dirty:
+            with contextlib.suppress(Exception):            # noqa: BLE001
+                apply(nid, containers, devactions, devapp)
+    finally:
+        with _acme_lock:
+            _acme_busy.discard((nid, host))
+
+
+def acme_due(now=None):
+    """[(nid, host, meta)] for every ACME pair ending within RENEW_BEFORE."""
+    now = now or time.time()
+    out = []
+    for nid, rec in _load().items():
+        if nid.startswith("_") or not isinstance(rec, dict):
+            continue
+        for host, c in (rec.get("certs") or {}).items():
+            if (c or {}).get("set") and (c.get("acme") or {}).get("method") and int(c.get("expires") or 0) - now < RENEW_BEFORE:
+                out.append((nid, host, c["acme"]))
+    return out
+
+
+def renew_loop(containers, devactions, devapp):
+    """Every few hours: each ACME pair ending within thirty days asked for
+    again, the way it was first; a failure is said on the bell and tried
+    again next round. Started by the server beside check_loop."""
+    time.sleep(CHECK_DELAY)
+    while True:
+        with contextlib.suppress(Exception):               # noqa: BLE001 (the loop outlives one bad answer)
+            for nid, host, meta in acme_due():
+                acme_request(nid, host, meta.get("method"), meta.get("email"), containers, devactions, devapp)
+        time.sleep(RENEW_EVERY)
+
+
+def acme_rows():
+    """The bell's rows (kind acme): a certificate that came or a request
+    that failed, per node and hostname, the newest of each."""
+    out = []
+    for nid, rec in _load().items():
+        if nid.startswith("_") or not isinstance(rec, dict):
+            continue
+        for x in rec.get("acme_said") or []:
+            out.append({"kind": "acme", "id": f"{nid}:{x['host']}", "node": node_name(nid) if node_name else nid,
+                        "nid": nid, "host": x["host"], "bad": not x.get("ok"), "why": x.get("why", ""),
+                        "at": x.get("at", 0), "key": f"acme:{nid}:{x['host']}@{x.get('at', 0)}"})
+    return out
 
 
 # ---- the public hostnames (the operator, 12 Oct) ----------------------------

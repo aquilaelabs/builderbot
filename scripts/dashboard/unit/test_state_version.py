@@ -58,12 +58,13 @@ class Gate(unittest.TestCase):
         self.assertEqual(sv.read(self.state), (self.cur, "0.5.0"))
         self.assertFalse((self.state / "backups").exists())
 
-    def test_a_config_from_before_the_stamp_is_state_0_and_copied_first(self):
+    def test_a_config_from_0_6_0_is_copied_before_it_moves(self):
         db = self.lived_in()
         self.addCleanup(db.close)
+        self.stamp(sv.SUPPORTED_FROM, "0.6.0")
         with redirect_stdout(io.StringIO()):
-            self.assertEqual(sv.gate(self.state, "0.5.0"), 0)
-        dest = self.state / "backups" / "before-0.5.0"
+            self.assertEqual(sv.gate(self.state, "0.9.0"), sv.SUPPORTED_FROM)
+        dest = self.state / "backups" / "before-0.9.0"
         self.assertTrue((dest / "users.json").is_file())
         self.assertTrue((dest / "wiki" / "alpha" / "Home.md").is_file(), "the wiki is state")
         self.assertFalse((dest / "logs").exists(), "logs are not")
@@ -71,15 +72,16 @@ class Gate(unittest.TestCase):
         self.assertFalse((dest / "backups").exists())
         got = sqlite3.connect(dest / "builderbot.db").execute("SELECT x FROM t").fetchall()
         self.assertEqual(got, [(7,)], "the database copied whole, its WAL folded in")
-        self.assertEqual(sv.read(self.state), (None, ""), "the stamp moves when the migrations have run")
+        self.assertEqual(sv.read(self.state), (sv.SUPPORTED_FROM, "0.6.0"), "the stamp moves when the migrations have run")
 
     def test_a_second_try_keeps_the_first_copy(self):
         self.lived_in().close()
+        self.stamp(sv.SUPPORTED_FROM, "0.6.0")
         with redirect_stdout(io.StringIO()):
-            sv.gate(self.state, "0.5.0")
+            sv.gate(self.state, "0.9.0")
             (self.state / "users.json").write_text('{"half": "migrated"}')
-            sv.gate(self.state, "0.5.0")
-        self.assertEqual((self.state / "backups" / "before-0.5.0" / "users.json").read_text(), '{"users": {}}')
+            sv.gate(self.state, "0.9.0")
+        self.assertEqual((self.state / "backups" / "before-0.9.0" / "users.json").read_text(), '{"users": {}}')
 
     def test_the_newest_three_copies_are_kept(self):
         (self.state / "users.json").write_text("{}")
@@ -111,7 +113,20 @@ class Gate(unittest.TestCase):
             why = sv.refusal(self.state, "0.6.0")
         self.assertIn("Start the newest 0.5 release on it first", why)
         self.assertIn("install.md#upgrading", why)
-        self.assertEqual(sv.refusal(self.state, "0.5.0"), "", "this build migrates from 0")
+        with mock.patch.object(sv, "SUPPORTED_FROM", 0):
+            self.assertEqual(sv.refusal(self.state, "0.5.0"), "", "a build with no floor migrates from 0")
+
+    def test_this_build_upgrades_from_0_6_0_on_and_sends_older_through_0_6(self):
+        # The operator, 28 Oct: 0.9 upgrades from 0.6, 0.7 and 0.8, no further.
+        self.stamp(2, "0.6.0")
+        self.assertEqual(sv.refusal(self.state, "0.9.0"), "", "0.6.0's state is the floor")
+        for n, by in ((1, "0.5.3"), (0, "")):
+            self.stamp(n, by)
+            self.assertIn("Start the newest 0.6 release on it first", sv.refusal(self.state, "0.9.0"))
+        (self.state / "state.json").unlink()
+        self.lived_in().close()
+        self.assertIn("Start the newest 0.6 release on it first", sv.refusal(self.state, "0.9.0"),
+                      "a lived-in /config from before the stamp is state 0")
 
     def test_an_unreadable_stamp_is_refused_rather_than_guessed(self):
         (self.state / "state.json").write_text("{nope")
@@ -129,6 +144,21 @@ class Gate(unittest.TestCase):
         self.assertEqual(sv.main(["check", str(self.state)]), 0)
 
 
+class ClaimFromAShell(unittest.TestCase):
+    """B436: the owner made from a shell on a new install, before its first
+    start, leaves a stamped store, which that start takes as its own."""
+    def test_a_claim_on_a_fresh_store_stamps_it(self):
+        import subprocess
+        here = Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, DASHBOARD_STATE=d, BB_USERS_PW="longenough1")
+            r = subprocess.run([sys.executable, str(here.parent / "lib" / "users-verbs.py"), "claim", str(here / "users.py"), "owner1"],
+                               env=env, capture_output=True, text=True, check=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(sv.read(d)[0], sv.current())
+            self.assertEqual(sv.refusal(d, "0.9.0"), "")
+
+
 class Migrate(unittest.TestCase):
     """The runner, over a directory of migrations of the test's own."""
     def setUp(self):
@@ -142,6 +172,10 @@ class Migrate(unittest.TestCase):
         patch = mock.patch.object(sv, "MIGRATIONS", self.mig)
         patch.start()
         self.addCleanup(patch.stop)
+        # The runner's own behavior, below any floor a build sets.
+        floor = mock.patch.object(sv, "SUPPORTED_FROM", 0)
+        floor.start()
+        self.addCleanup(floor.stop)
         (self.state / "users.json").write_text("{}")
 
     def test_each_runs_once_in_order_and_is_stamped(self):
@@ -197,45 +231,6 @@ class Migrate(unittest.TestCase):
         self.assertFalse((dest / "runner-tokens").exists(), "its own volume, not copied")
         self.assertIn("wiki/alpha/hidden.md", (dest / "NOT-COPIED.txt").read_text())
         self.assertEqual(sv.HELD, "")
-
-
-class First(unittest.TestCase):
-    """0001: what ran at every start before the stamp, now once."""
-    def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, self.tmp, True)
-        (self.tmp / "ws" / "alpha").mkdir(parents=True)
-        (self.tmp / "ws" / "beta").mkdir(parents=True)
-        import membership
-        import registry
-        import roles
-        import settings
-        import users
-        self.users, self.settings = users, settings
-        for m in (membership, roles, users, settings):
-            m.configure(state=self.tmp, write_json=write_json)
-        registry.configure(state=self.tmp, workspace=self.tmp / "ws", write_json=write_json)
-        with users._lock:
-            d = users.load()
-            d["users"] = {"boss": {"uid": "u_1", "role": "owner", "projects": ["*"]},
-                          "ann": {"uid": "u_2", "role": "user", "projects": ["alpha"]}}
-            users._save(d)
-        write_json(self.tmp / "settings.json", {"apps_token": "ghp_x", "apps_android": True})
-
-    def test_it_runs_the_old_migrators_and_twice_changes_nothing(self):
-        m = sv._load(sv.migrations()[0][1])
-        with redirect_stdout(io.StringIO()):
-            m.run({"project_names": lambda: ["alpha", "beta"]})
-        d = self.users.load()
-        self.assertTrue(d.get("r152") and d.get("r155"), "both marked done")
-        self.assertEqual(d["users"]["boss"]["projects"], ["alpha", "beta"], "the owner's star, by name")
-        self.assertEqual(d["users"]["ann"]["projects"], [], "a project held with no role is let go")
-        self.assertEqual(json.loads((self.tmp / "settings.json").read_text()), {"apps_android": True})
-        self.assertNotIn("apps_token", self.settings.KEYS, "and it is no setting any more")
-        before = (self.tmp / "users.json").read_text()
-        with redirect_stdout(io.StringIO()):
-            m.run({"project_names": lambda: ["alpha", "beta"]})
-        self.assertEqual((self.tmp / "users.json").read_text(), before)
 
 
 class Release(unittest.TestCase):

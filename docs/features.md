@@ -8,7 +8,7 @@ explains each in full.
 One page in the browser, at a desk or on a phone ([dashboard.md](dashboard.md)).
 
 - **The rail** down the left edge: Home, Projects, Build, Containers,
-  Machines, Sessions, Jobs, People, Settings and Help. On a phone it is a bar
+  Controller, Machines, Sessions, Jobs, People, Settings and Help. On a phone it is a bar
   at the foot.
 - **Home**: tiles for what is running and what needs you (nodes online,
   containers running, jobs and failures, sessions open, updates due, CI in
@@ -73,7 +73,7 @@ works there ([notebook.md](notebook.md)).
   dock, on its project and in the bell.
 - A session may **read other projects** you allow, without changing them.
 - Each person signs in to each agent with their own account, on each node,
-  from the Agents page.
+  from the Installed page under Machines.
 
 ## The `bb` command
 
@@ -110,7 +110,7 @@ The machines that do the work ([machines.md](machines.md), [nodes.md](nodes.md))
 
 ([toolchains.md](toolchains.md))
 
-- A catalog of toolchains installed per node from the Toolchains page: JDK,
+- A catalog of toolchains installed per node from the Library: JDK,
   the Android SDK, Flutter, Go, .NET, Node.js, Python, Rust, Swift, Zig,
   Playwright, ffmpeg, language servers, lint tools, document, graphics,
   diagram and speech tools, LibreOffice, and PyTorch with CUDA.
@@ -181,5 +181,5 @@ The machines that do the work ([machines.md](machines.md), [nodes.md](nodes.md))
   toolchains in folders you choose ([install.md](install.md)).
 - **Upgrades** between releases carried forward automatically, with a backup
   first and a clear refusal on an unsupported jump ([install.md](install.md#upgrading)).
-- **Settings**, logs and diagnostics on the Controller settings page.
+- **Settings**, logs and diagnostics on the Controller group's Settings page.
 - **Nothing is sent to us**: no telemetry ([privacy.md](privacy.md)).

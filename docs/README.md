@@ -32,6 +32,7 @@ dashboard's rail.
 ## Work on a project
 
 - [projects.md](projects.md): the Projects page: making, cloning and linking a project, its menu and settings, archiving and deleting it
+- [git-hosts.md](git-hosts.md): what an agent can do on your git host (GitHub, GitLab, Gitea): each ability, the token permission it needs, and the project's Allow or Deny over it
 - [notebook.md](notebook.md): a project's page: Overview, Roadmap, Bugs, Git, Tests, Analysis, Artifacts, Docker, Wiki and Design
 - [sessions.md](sessions.md): sessions of each agent, Claude, ChatGPT and Copilot: starting one, the Sessions page, what a session sees, what it is told and the rules it is held to
 
@@ -41,14 +42,16 @@ dashboard's rail.
 - [scanners.md](scanners.md): setting up the static analysis stack (Semgrep, Trivy, mobsfscan) and the script that runs it
 - [versions.md](versions.md): a project's version, release lines (two releases built at once), and moving fixes forward and back between them
 - [toolchains.md](toolchains.md): the Build pages: Toolchains, the NVIDIA card, Android versions and the Emulator, and a Phone lent to a project
-- [agents.md](agents.md): the coding agents a session runs (Claude Code, Codex CLI, Copilot CLI, Grok Build): the Agents page, installing each on a node and signing in to it there
+- [agents.md](agents.md): the coding agents a session runs (Claude Code, Codex CLI, Copilot CLI, Grok Build): installing each on a node from the Library and signing in to it there
 - [tool-packs.md](tool-packs.md): toolchains you add yourself from a repository, the commands they give a session, and how to write one
 - [containers.md](containers.md): the Containers page and nginx: dev instances, how one is reached, their networks and image updates
 - [vms.md](vms.md): the VMs page and `bb vm`: VM host on a node, the OS catalog, Make VMs, the network, snapshots, a VM made a node
+- [nas.md](nas.md): the installed edition as a NAS, its design: Python the management plane and never the data path, the two storage profiles, and what BuilderBot does not build
+- [image.md](image.md): BuilderBot OS, the appliance image the installed editions are made from: Debian pinned to a snapshot, two root slots, what persists, how it boots and how it is built
 
 ## Machines, people and devices
 
-- [machines.md](machines.md): Controller settings, Nodes, Storage, the logs and the Jobs page
+- [machines.md](machines.md): This machine, Controller settings, Network, Nodes, Storage, Installed, the logs and the Jobs page
 - [people.md](people.md): accounts and roles, a project's owner and invitations, the chat, and your Profile
 - [companion-app.md](companion-app.md): the Android companion app: pairing, approvals and notifications from a phone
 
@@ -57,6 +60,7 @@ dashboard's rail.
 - [reference.md](reference.md): every setting in the environment, every `bb` command, the apps to install, and signing Android releases
 - [bb-command.md](bb-command.md): the `bb` verbs with more behind them: the test harness, the code map, capture, sound and documents
 - [privacy.md](privacy.md): what an install keeps about the people who use it, what it contacts, and how to remove it; nothing goes to BuilderBot's authors
+- [security.md](security.md): the threat model: who is trusted for what, what each store protects and does not, what an unlock gives up, and the line each hardening step closes
 
 ## Working on BuilderBot
 

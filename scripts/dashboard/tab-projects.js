@@ -255,7 +255,7 @@ function cardBack(c){
   const fb = (attr, val, label, icon, extra = "") => `<button type="button" class="ic" ${attr}="${esc(val)}" aria-label="${esc(label)}" title="${esc(label)}"${extra}>${icon}</button>`;
   const tone = colorTone(c.color);
   const foot = [
-    fb("data-pcolor", c.key, c.color ? `Color: ${c.color}` : "Color", SWATCH, tone ? ` data-sw style="--sw:${tone}"` : ""),
+    fb("data-pcolor", c.key, c.color ? `Color: ${c.color}` : "Color", SWATCH, tone ? ` data-sw data-style="--sw:${tone}"` : ""),
     c.archived ? "" : fb("data-pgroup", c.key, c.group ? `Group: ${c.group}` : "Group", TAG),
     c.may_lock ? fb("data-lock", c.key, lockLabel(c), c.locked ? LOCK : LOCK_OPEN, ` data-on="${c.locked ? "0" : "1"}" aria-pressed="${!!c.locked}"`) : "",
     first && first.mine !== false ? fb("data-bug", first.name, "Report bug", BUG) : "",
@@ -301,7 +301,8 @@ function pjFadeArm(e){
 // Turn a card over, or back, in place: the class moves and the faces trade
 // which one a press and a screen reader reach; the next paint draws it so.
 function flipCard(key){
-  const on = !pjEditing.has(key);
+  const on = !pjEditing.has(key), c = projectList().find(x => x.key === key);
+  const was = c ? projectCard(c) : "";
   // One card on its back at a time (the operator, 26 Oct): another turned
   // over goes back to its front, a box open on it canceled, as Back does.
   if (on) [...pjEditing].filter(k => k !== key).forEach(k => {
@@ -316,9 +317,11 @@ function flipCard(key){
   card.querySelector(".pcfront").inert = on;
   card.querySelector(".pcback").inert = !on;
   card.querySelectorAll("[data-pedit]").forEach(b => b.setAttribute("aria-expanded", String(on)));
-  // Drawn again once it has turned, so the grid's markup says so: the next
-  // poll otherwise finds it changed and redraws the card, taking a box open
-  // on its back (Group, a rename, a move) with it.
+  // What paint() remembers says so too, so the next poll finds nothing
+  // changed and leaves the card, and a box open on its back (Group, a
+  // rename, a move), alone. Drawn again only where that cannot be said.
+  const grid = card.closest("#pjGrid");
+  if (c && grid && paintAdopt(grid, was, projectCard(c))) return;
   clearTimeout(flipCard.t);
   flipCard.t = setTimeout(() => drawProjects(state?.projects || []), 450);
 }

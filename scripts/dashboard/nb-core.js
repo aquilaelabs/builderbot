@@ -45,7 +45,13 @@ function getNotebook(project){
 
 function openNotebook(name, view){
   openTab({kind: "notebook", arg: name, label: "Notebook: " + projLabel(name)});
-  if (view) getNotebook(name).view(view);
+  // Overview is the Briefing view under the name it is shown by, as the
+  // address has it; a view the notebook has no pane for opens on its first
+  // rather than on nothing (seen 29 Oct: a blank notebook).
+  if (view === "overview") view = "briefing";
+  const nb = getNotebook(name);
+  if (view && !nb.root?.querySelector(`.nbview[data-view="${CSS.escape(view)}"]`)) view = "briefing";
+  if (view) nb.view(view);
 }
 
 // ---- a project's notebook: one closure each -----------------------------
@@ -854,7 +860,7 @@ function makeNotebook(project){
     viewGlance($("dkHint"), blind || !n ? "" : dmTiles({running: mine.filter(d => d.running).length, all: mine.length,
       behind: mine.filter(d => (d.images_behind || []).length || d.nginx_to).length, checked: !!got.images_at}),
       blind && n ? `on ${esc(where)}: the daemon did not answer, so the rows cannot say what is running`
-        : n ? `on ${esc(where)}${imgs}` : "");
+        : n ? `on ${esc(where)}${imgs}` : "no node runs this project's containers yet");
     const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length,
                                 dmView, got.images_at, blind]);
     if (key === dkSeen) return;
@@ -1003,7 +1009,7 @@ function projectState(p){
 }
 // The one notice a project carries (why nobody can start here, the agent
 // out of window), in the notice voice, or nothing.
-function projectNote(p){
+function projectNote(p, band = false){
   const here = withMe(p.name).length > 0;
   // What holds it back is said ahead of a wait that would end by itself
   // (B826: a copy going up was said and the missing Claude Code that really
@@ -1018,17 +1024,34 @@ function projectNote(p){
   // ahead of the rest, which are about starting one.
   const behind = !here ? [] : [...new Set(((state?.claude_where || {})[tmuxName(p.name)] || (state?.claude_where || {})[p.name] || [])
     .filter(r => r.who === state?.me).flatMap(r => r.behind || []))];
-  if (behind.length) return `<div class="pnote warn">Restart your session to use what changed: ${esc(behind.join("; "))}.</div>`;
+  // A band between the header and the view strip, put away with its x for
+  // as long as it says the same (the operator, 28 Oct); what changed next
+  // brings it back, and so does leaving the notebook and coming back to it
+  // (the operator, 29 Oct). Every note the header carries is one (pnoteBand).
+  if (behind.length){
+    const text = `Restart your session to use what changed: ${behind.join("; ")}.`;
+    return band ? pnoteBand(p, text) : `<div class="pnote warn">${esc(text)}</div>`;
+  }
   // The project's agent missing on its node, for an account that may install
   // it: the button says it (Install Claude, Install ChatGPT), so no line does.
   if (agentInstall(p, projectAgent(p))) return "";
   const said = held || p.session_why;
-  if (said && !p.locked_me && !here) return `<div class="pnote dim">${esc(said)}</div>`;
+  // An error where no session can run there and nothing passes by itself
+  // (a node removed, disabled, off or hosting only); a warning where it is a
+  // wait or a hold (the operator, 29 Oct: warnings yellow, errors red).
+  const tone = held || p.session_waiting ? "warn" : "bad";
+  if (said && !p.locked_me && !here) return band ? pnoteBand(p, said, tone) : `<div class="pnote dim">${esc(said)}</div>`;
   // ...and otherwise why Start agent is dead, whatever made it so (B88):
   // a Profile with no commit author, somebody else's node. A locked one
   // says so by its mark, and is left out.
   const dead = p.locked_me ? "" : claudeDeadWhy(p);
-  return dead ? `<div class="pnote dim">${esc(dead)}</div>` : "";
+  return !dead ? "" : band ? pnoteBand(p, dead) : `<div class="pnote dim">${esc(dead)}</div>`;
+}
+// A note in the project's header as a band with its x (the operator, 28 and
+// 29 Oct: every one, the way the restart band is), or "" while it is put away.
+function pnoteBand(p, text, tone = "warn"){
+  if (pnotePutAway(p.name) === text) return "";
+  return `<div class="pnote ${tone === "bad" ? "bad" : "warn"} pband" data-pnote="${esc(p.name)}"><span class="grow">${esc(text)}</span><button type="button" class="ic" data-pnote-x aria-label="put this away">×</button></div>`;
 }
 // The node to install Claude Code on in place of starting a session, or "":
 // the project's node has none and this account may install toolchains there
@@ -1105,7 +1128,7 @@ function agentButton(p){
   // Oct: one word for every agent; 23 Oct: Manage agent, not Open Claude).
   const inst = agentInstall(p, ag);
   return inst ? `<button type="button" data-tcinst="${esc(inst)}" data-agent="${esc(ag.id)}" title="${
-        esc(`${ag.product} is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install ${esc(ag.name)}</button>`
+        esc(`${ag.product} is not installed on ${p.node_name || "its node"}: the Library installs it there`)}">Install ${esc(ag.name)}</button>`
     : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(at)}"${dead ? " disabled" : ""} title="${esc(say)}">${
         mine ? "Manage agent" : "Start agent"}</button>`;
 }
@@ -1152,12 +1175,34 @@ function projectHeader(t){
     ${projectState(p)}
     <span class="sp"></span>
     ${projectActions(p)}
-  </div>${projectNote(p)}${p.testing ? `<div class="pnote dim ptesting">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}`;
+  </div>${projectNote(p, true)}${p.testing ? `<div class="pnote dim ptesting">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}`;
 }
 // The row's handlers serve the header too (the same data-* names); the
 // menu's own button is the one thing the row did differently.
+// The header's band put away, by project: the text it had, for this visit
+// to the notebook alone (the operator, 29 Oct: it comes back once you fully
+// leave the notebook and return). A view of the same notebook is the same
+// visit; another page, another project or a reload is not.
+const pnoteAway = {};
+let pnoteHere = "";
+function pnotePutAway(name, text){
+  if (text !== undefined) pnoteAway[name] = text;
+  return pnoteAway[name] || "";
+}
+// The project the front pane is on, told on every draw of its bar: leaving
+// one forgets what was put away there.
+function pnoteOnShow(name){
+  if (name === pnoteHere) return;
+  if (pnoteHere) delete pnoteAway[pnoteHere];
+  pnoteHere = name;
+}
 function wireProjectHeader(bar){
   wireProjectRows(bar);
+  bar.querySelectorAll("[data-pnote-x]").forEach(b => b.onclick = () => {
+    const band = b.closest("[data-pnote]");
+    pnotePutAway(band.dataset.pnote, band.querySelector(".grow")?.textContent || "");
+    band.remove();
+  });
   bar.querySelectorAll("select[data-reposw]").forEach(s => s.onchange = () => openNotebook(s.value));
   // On the project's own page its menu's Settings is the notebook's Settings
   // view (R259: the view strip carries no tab for it), not the dialog. Only

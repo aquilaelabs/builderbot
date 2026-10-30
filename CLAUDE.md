@@ -43,7 +43,10 @@ bb tests lab                  # the lab suites, against the lab's own stack (lab
 
 The browser suite runs the checkout's `server.py` on a spare port with a
 scratch state directory, fake projects and a private tmux server, from a
-copy of the tree, one run at a time. Its discipline is the house rule
+copy of the tree, one run at a time. A project whose settings name a
+**Test node** (beside its nodes) runs `bb tests run`, `bb dashboard test`
+and the gate's suites there as a job, the tree snapshotted and the lines
+streamed back. Its discipline is the house rule
 `tests`. `surface.mjs` holds the page's top-level names; a new one is
 added there. `lib.mjs` is the pattern a suite follows (real touch over
 CDP, dialogs recorded, console errors collected). `BB_TEST_TIMING=1`
@@ -140,7 +143,7 @@ ref and nowhere else; `bb ci-log` reads a run's output.
   `bb-tty` validates its one URL argument against directories that exist.
   The terminal, at `/termws`, is there for anything else.
 - **A setting that has to be in the environment lands in five places:**
-  `.env.example`, `docker-compose.yml`, `unraid/builderbot.xml`,
+  `.env.example`, `docker-compose.yml`, `platforms/unraid/builderbot.xml`,
   `docs/reference.md`, and `docs/unraid.md` when it needs host-side setup.
 - **The briefing** is `config/templates/briefing.md`, assembled per session
   by `preamble.py` with the project's rules, roadmap and bugs: the core

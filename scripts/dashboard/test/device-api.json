@@ -4,7 +4,7 @@
     "endpoint it calls, the method, the request fields it sends, and the response fields it reads",
     "with their types. test/deviceapi.mjs drives each endpoint on this tree's controller and fails",
     "when one is gone or a pinned field is missing or changes type; the Android app's own surface is",
-    "android/api-surface.json, held the same way by test/appapi.mjs. Adding a field or an endpoint",
+    "apps/android/api-surface.json, held the same way by test/appapi.mjs. Adding a field or an endpoint",
     "is always allowed. A field or endpoint may be removed only in the release after the apps that",
     "read it were changed to stop reading it, and the pin is updated in the same change as that",
     "removal, with a changelog line saying which app releases it leaves behind.",
@@ -14,13 +14,13 @@
   ],
   "apps": {
     "android": {
-      "contract": "android/api-surface.json",
+      "contract": "apps/android/api-surface.json",
       "suite": "appapi.mjs",
       "says": {"User-Agent": "BuilderBot-app/VERSION api/TARGET_API"},
       "handshake": "GET /api/meta answers api (server.py APP_API); the app says plainly when that is older or newer than its TARGET_API"
     },
     "companion": {
-      "source": "windows/bbcompanion, with the agent's sync (scripts/agent/builderbot_agent/wssync.py) on the device door",
+      "source": "apps/windows/bbcompanion, with the agent's sync (scripts/agent/builderbot_agent/wssync.py) on the device door",
       "says": {"Authorization": "Bearer bbd_...", "X-BB-Door": "the door it speaks (devices.DOOR)",
                "X-BB-App": "companion/VERSION"},
       "handshake": "the controller refuses a door older than devices.DOOR_MIN with 426 and the way to update; its projects and apps answers say door and door_min, and the app says plainly when the controller's door is older than its NEEDS_DOOR",
@@ -55,7 +55,7 @@
       ]
     },
     "vscode": {
-      "source": "vscode/extension.js and vscode/lib/client.js",
+      "source": "apps/vscode/extension.js and apps/vscode/lib/client.js",
       "says": {"Cookie": "bb_session from /login", "X-BB-Api": "the Files API it speaks (files.API)",
                "X-BB-App": "vscode/VERSION"},
       "handshake": "the controller refuses a Files API older than files.API_MIN with 426 and the way to update; its projects answer says api and api_min, and the extension says plainly when the controller's api is older than its own",

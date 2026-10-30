@@ -18,14 +18,15 @@ edge:
 | Home, the top bar, the dock | The landing page, the bell, the search, the terminals and the chat | [dashboard.md](dashboard.md) |
 | Projects | Every project as a card; making, linking, archiving and deleting one | [projects.md](projects.md) |
 | A project's page | Its notebook: Overview, Roadmap, Bugs, Git, Tests, Analysis, Artifacts, Docker, Wiki, Design | [notebook.md](notebook.md) |
-| Build | Toolchains, Emulator and Phone | [toolchains.md](toolchains.md) |
-| Build | Agents: the coding agents on each node, their versions and your sign-in there | [agents.md](agents.md) |
+| Build | Library, Emulator and Phone | [toolchains.md](toolchains.md) |
+| Build, Machines | The coding agents: installed from the Library, signed in to on the Installed page | [agents.md](agents.md) |
 | Build | CI runner, builds, tests, the scanner's findings, signing and releases | [building.md](building.md) |
-| Containers | The Docker manager and nginx | [containers.md](containers.md) |
-| Machines, Jobs | Controller settings, Nodes, Storage and the job queue | [machines.md](machines.md) |
+| Containers | The Docker manager, its System section with nginx and the scanners | [containers.md](containers.md) |
+| Containers | VMs | [vms.md](vms.md) |
+| Controller, Machines, Jobs | This machine, Controller settings, Network, Nodes, Storage, Installed and the job queue | [machines.md](machines.md) |
 | Sessions | each agent's sessions: starting one, what it sees, what it is told | [sessions.md](sessions.md) |
 | People, Settings | Users, Roles, and your Profile | [people.md](people.md) |
-| Build > Apps | The companion app for an Android phone | [companion-app.md](companion-app.md) |
+| Build > Library, Phone | The companion app for an Android phone | [companion-app.md](companion-app.md) |
 | (a terminal) | The `bb` command | [bb-command.md](bb-command.md) and [reference.md](reference.md) |
 
 ## What's in the image
@@ -36,7 +37,7 @@ edge:
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Playwright** | CLI + the system deps; the browsers themselves install to the [toolchain store](toolchains.md#the-toolchain-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
-| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK and the emulator are recipes on the Toolchains page, installed with the node picked, and the system images the emulator boots are on the Emulator page |
+| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK and the emulator are cards on the Library page, installed with the node picked, and the system images the emulator boots are on the Emulator page |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins; no daemon and no host socket here, so containers run on a node |
 | **Search** | ripgrep, fd, fzf, jq, yq |
@@ -70,7 +71,7 @@ update cannot touch. See [the toolchain store lives outside the image](toolchain
 - Don't attach the runner to public repos; treat container-produced commits
   and packages with normal review.
 
-Full discussion: [unraid.md](unraid.md#notes-and-gotchas).
+Full discussion: [unraid.md](unraid.md#notes-and-gotchas); the threat model, who is trusted for what and what each store protects, is [security.md](security.md).
 
 ## Without the container
 

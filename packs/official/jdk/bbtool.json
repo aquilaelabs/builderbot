@@ -1,0 +1,63 @@
+{
+ "about": "Java 21, which Gradle, sdkmanager and the emulator tools need. The first thing a node needs for Android work.",
+ "label": "JDK 21 (Temurin)",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {
+   "JAVA_HOME": ""
+  },
+  "tool": "bin/java"
+ },
+ "name": "jdk",
+ "platforms": [
+  "linux/amd64",
+  "linux/arm64",
+  "darwin/arm64",
+  "darwin/amd64"
+ ],
+ "shipped": {
+  "probe": "jdk",
+  "reports": "java",
+  "source": {
+   "checksum": {
+    "from": "json",
+    "path": "0.binary.package.checksum",
+    "url": {
+     "darwin/amd64": "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=x64&image_type=jdk&os=mac&vendor=eclipse",
+     "darwin/arm64": "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=aarch64&image_type=jdk&os=mac&vendor=eclipse",
+     "linux/amd64": "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=x64&image_type=jdk&os=linux&vendor=eclipse",
+     "linux/arm64": "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=aarch64&image_type=jdk&os=linux&vendor=eclipse"
+    }
+   },
+   "download": {
+    "bytes": 200000000,
+    "resolver": "approximate"
+   },
+   "fresh_only": true,
+   "kind": "tarball",
+   "strip": {
+    "darwin/*": 3,
+    "linux/*": 1
+   },
+   "url": {
+    "darwin/amd64": "https://api.adoptium.net/v3/binary/latest/21/ga/mac/x64/jdk/hotspot/normal/eclipse",
+    "darwin/arm64": "https://api.adoptium.net/v3/binary/latest/21/ga/mac/aarch64/jdk/hotspot/normal/eclipse",
+    "linux/amd64": "https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse",
+    "linux/arm64": "https://api.adoptium.net/v3/binary/latest/21/ga/linux/aarch64/jdk/hotspot/normal/eclipse"
+   },
+   "verify": [
+    "{dir}/bin/java",
+    "-version"
+   ]
+  }
+ },
+ "terms": [
+  {
+   "label": "GPLv2 with the Classpath Exception",
+   "url": "https://openjdk.org/legal/gplv2+ce.html"
+  }
+ ],
+ "tier": "official"
+}

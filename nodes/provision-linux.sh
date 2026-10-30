@@ -148,7 +148,7 @@ it, which is a paste rather than a questionnaire.
                        data on.
   --nfs HOST:EXPORT:PATH[:ro]   the same thing over NFS, when a share
                        cannot be passed directly. Repeatable, same `:ro`. EXPORT is the exported
-                       share path (on Unraid /mnt/user/<share>/...) and not
+                       share path (on a NAS host /mnt/user/<share>/...) and not
                        a pool path like /mnt/cache/...: that spelling is for
                        bind mounts and is not what the server offers, so the
                        mount fails, quietly, because of nofail.
@@ -197,7 +197,14 @@ it, which is a paste rather than a questionnaire.
                        too), and port 22 unless a door closed it. Going
                        out is left alone: the box pulls images, renews
                        certificates and dials the controller.
+  --feature iommu      the IOMMU on the kernel's command line (intel_iommu=on
+                       or amd_iommu=on with iommu=pt), for a PCI device or
+                       a whole USB controller given to a VM; the machine
+                       restarts for it, which is yours to do
   --feature vmhost     a VM host: KVM through libvirt, for the VMs page
+  --feature storage    ZFS, mergerfs, SnapRAID and SMART, for the Storage page's pools and array (the controller's own machine)
+  --feature shares     Samba and NFS, for the shares the Storage page makes (the controller's own machine)
+  --feature ups        a UPS through NUT on USB, read on This machine and the bell, the machine shut down cleanly on a low battery (the controller's own machine)
                        (needs /dev/kvm; on a VM, its host passes
                        virtualization through). Each feature is bb-sandbox
                        feature install ID, run once the node has enrolled,
@@ -314,7 +321,7 @@ if [ -n "$REACH" ]; then
     case "$CONTROLLER" in https://*) ;; *) echo "through a public hostname the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
 fi
 for f in "${FEATURES_WANT[@]}"; do
-    case "$f" in vmhost|firewall) ;; *) echo "--feature takes vmhost or firewall, not ${f}" >&2; exit 1 ;; esac
+    case "$f" in vmhost|firewall|iommu) ;; *) echo "--feature takes vmhost, firewall or iommu, not ${f}" >&2; exit 1 ;; esac
     [ "${GUEST:-0}" != 1 ] || { echo "--feature ${f} needs root, and a guest node runs without it" >&2; exit 1; }
 done
 if [ "$FIREWALL" = 1 ]; then
@@ -475,6 +482,8 @@ Environment=BUILDERBOT_NODE_JSON=${node_json}
 Environment=BUILDERBOT_RUNNER_DIR=${foot}/runner
 Restart=always
 RestartSec=5
+LimitCORE=0
+LimitMEMLOCK=infinity
 StandardOutput=append:${foot}/log/agent.log
 StandardError=append:${foot}/log/agent.log
 
@@ -693,14 +702,23 @@ Wants=network-online.target
 ExecStart=${cmd}
 Restart=always
 RestartSec=5
+LimitCORE=0
+LimitMEMLOCK=infinity
 ${extra}
 
 [Install]
 WantedBy=multi-user.target
 EOF
-            systemctl daemon-reload
-            systemctl enable "$name" >/dev/null 2>&1
-            systemctl restart "$name" ;;
+            # Staged into an image being built (install-controller.sh
+            # --stage): no systemd runs there, so the unit is enabled for the
+            # first boot and nothing is started.
+            if [ "${BB_SVC_NO_START:-0}" = 1 ]; then
+                systemctl enable "$name" >/dev/null 2>&1
+            else
+                systemctl daemon-reload
+                systemctl enable "$name" >/dev/null 2>&1
+                systemctl restart "$name"
+            fi ;;
         openrc)
             cat > "/etc/init.d/${name}" <<EOF
 #!/sbin/openrc-run
@@ -913,14 +931,14 @@ pkg_refresh
 # shellcheck disable=SC2046  # the names are meant to split
 pkg $(pkg_names base)
 command -v curl >/dev/null 2>&1 || pkg curl >/dev/null 2>&1 || warn "curl did not install, so every download below will fail"
-# ...and the guest agent only where there is a host to talk to, so Unraid can
+# ...and the guest agent only where there is a host to talk to, so the host can
 # shut the machine down cleanly rather than pulling the plug. Nothing here is
 # otherwise particular to a VM: this runs on bare metal just as well, and an
 # emulator is happier there, with /dev/kvm native instead of nested.
 if is_vm; then
     # shellcheck disable=SC2046
     pkg $(pkg_names guest) 2>/dev/null && svc_enable "$(pkg_names guestsvc)" >/dev/null 2>&1 \
-        || warn "the qemu guest agent did not install, so Unraid will pull the plug instead of shutting this VM down"
+        || warn "the qemu guest agent did not install, so the host will pull the plug instead of shutting this VM down"
 fi
 
 # --- the tunnel to the controller (R161) ------------------------------------
@@ -1372,7 +1390,7 @@ else
     # shellcheck disable=SC2046
     pkg $(pkg_names reel) >/dev/null 2>&1 \
         || warn "Xvfb, xdotool or xdpyinfo did not install; bb capture reel --display needs them"
-    # Claude Code is not installed here: the node's Toolchains tab does it on
+    # Claude Code is not installed here: the Library does it on
     # purpose, so whoever enrolls a node sees what is put on it (R145), and a
     # session refuses to start until it is there.
     # A login shell as this account gets what a dashboard session gets: the
@@ -1624,7 +1642,7 @@ mount_one() {
     held="$(stores_under "$path")"
     [ -n "$held" ] && printf '   %s sits inside it, so that store is on the root disk until it mounts.\n' \
         "$(printf '%s' "$held" | tr '\n' ' ')"
-    printf '   On Unraid an export is a SHARE (/mnt/user/<share>), never a\n'
+    printf '   On a NAS host an export is a SHARE (/mnt/user/<share>), never a\n'
     printf '   pool path like /mnt/cache/<share>, which is right for a bind\n'
     printf '   mount and is not exported. Check it allows this host:\n'
     printf '     showmount -e <server>\n'
@@ -1766,7 +1784,7 @@ cmd_sdk() {
         *) die "bb-sandbox sdk reads; it does not install. '$verb' changes the store, and
    doing it from here would go around the one-install-at-a-time rule the
    controller keeps across every machine sharing it. Use the dashboard's
-   Tools tab, with this node picked. Readable: $BB_READONLY_VERBS" ;;
+   Library, with this node picked. Readable: $BB_READONLY_VERBS" ;;
     esac
     [ -r "$NODE_JSON" ] || die "this machine is not enrolled ($NODE_JSON is not readable): there is no store to read"
     store="$(python3 -c 'import json,sys
@@ -1779,7 +1797,7 @@ print(json.load(open(sys.argv[1])).get("user") or "")' "$NODE_JSON" 2>/dev/null)
     newest="$(ls -1dt "$store"/.bb/*/scripts/bb 2>/dev/null | head -1 || true)"
     [ -n "$newest" ] || die "no bb on this machine yet: the controller unpacks one into
    ${store}/.bb the first time a toolchain job runs on this node. Install
-   something from the dashboard's Tools tab and it will be here."
+   something from the dashboard's Library and it will be here."
     bb="$newest"
     local -a env=(env
         "SDK_ROOT=$store" "BUILDER_HOME=$store" "BB_NODE_TOOLCHAINS=1"
@@ -2247,8 +2265,8 @@ apt_idle() {
     return 0
 }
 apt_get() { apt_idle; apt-get -o DPkg::Lock::Timeout=300 "$@"; }
-# The distribution's NVIDIA driver, from apt: the Toolchains tab's driver
-# row (R102), and nothing else installs it.
+# The distribution's NVIDIA driver, from apt: its card in the Library
+# (R102), and nothing else installs it.
 gpu_install_driver() {
     # GPU_DRIVER_PKG, where the caller set one, is the metapackage of the
     # branch to install (nvidia-driver-610-open) rather than the one the
@@ -2293,11 +2311,11 @@ cmd_gpu() {
     fi
     say "card: $card"
     # The display runs on NVIDIA's driver and does not install it (the
-    # operator, 30 Sep): the driver is the Toolchains tab's row, the one
+    # operator, 30 Sep): the driver is the Library's card, the one
     # place it is installed, so a machine has it because somebody chose to.
     if [ -z "$(gpu_driver_version)" ]; then
-        gpu_state "needs the driver: install the NVIDIA driver on this node's Toolchains page first"
-        die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains page, then set the display up"
+        gpu_state "needs the driver: install the NVIDIA driver from the Library with this node picked first"
+        die "the NVIDIA driver is not installed on this machine: install it from the Library with this node picked, then set the display up"
     fi
     if ! command -v Xorg >/dev/null 2>&1; then
         have apt-get || die "no Xorg on this machine, and it is not installed from here on this family: install an X server, then set the display up again"
@@ -2354,7 +2372,7 @@ cmd_gpu_display() {
     # Asked before nvidia-smi, which tries to load the driver for a card that
     # is not there (B168).
     if [ -z "$(gpu_card)" ]; then
-        gpu_state "down: no NVIDIA card on this machine; the driver is installed for one that is gone (remove it on the Toolchains page)"
+        gpu_state "down: no NVIDIA card on this machine; the driver is installed for one that is gone (remove it on the Installed page)"
         return 1
     fi
     if ! nvidia-smi -L >/dev/null 2>&1; then
@@ -2427,9 +2445,9 @@ EOF
     return 1
 }
 
-# --- the NVIDIA driver as a row of the Toolchains tab (R102) -------------------
-# The driver alone, installed and removed from the tab, apart from the
-# emulator's display. It is the machine's and not the toolchain store's: its
+# --- the NVIDIA driver as a card in the Library (R102) ------------------------
+# The driver alone, installed from the Library and removed on the
+# Installed page, apart from the emulator's display. It is the machine's and not the toolchain store's: its
 # kernel module is built for this machine's kernel and its libraries must
 # match that module exactly, so there is one per machine, installed as root,
 # and it takes the card only at the next boot, since nouveau holds it until
@@ -2631,7 +2649,7 @@ cmd_gpu_driver() {
     esac
 }
 
-# --- the NVIDIA container toolkit as a row of the Toolchains tab (R102) --------
+# --- the NVIDIA container toolkit as a card in the Library (R102) -------------
 # What lets a container on this machine use the card: NVIDIA's runtime hook,
 # which hands the driver's libraries and the device nodes to a container
 # that asks for a GPU. Ubuntu and Debian do not carry it, so it comes from
@@ -2688,7 +2706,7 @@ cmd_gpu_container() {
         install)
             have apt-get || die "the container toolkit is installed from here on Debian and Ubuntu only: on this family, from NVIDIA's repository for it"
             have docker || die "no docker on this machine, so there is no container to hand the card to"
-            [ -n "$(gpu_driver_version)" ] || die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains page first; the toolkit hands its libraries to a container"
+            [ -n "$(gpu_driver_version)" ] || die "the NVIDIA driver is not installed on this machine: install it from the Library with this node picked first; the toolkit hands its libraries to a container"
             have curl || die "curl is not on this machine, and the package source is fetched with it"
             say "adding NVIDIA's package source for the container toolkit"
             curl -fsSL "$NVCT_URL/gpgkey" > "$NVCT_KEY" \
@@ -2864,16 +2882,13 @@ feature_vmhost() {
     case "$1" in
         state) [ -f "$FEATURES_DIR/vmhost" ] && echo installed || echo absent ;;
         install)
-            # Never beside the controller (R90 step 14): it puts the job
-            # account in libvirt's group, which is root here, and root holds
-            # the controller's state.
-            if [ "$BESIDE_CONTROLLER" = 1 ] || [ -s /etc/bb-session.wall ]; then
-                die "this machine is the controller's own, so it is no VM host: libvirt's group is root here, and the wall keeps the controller's state from the node's accounts"
-            fi
+            # Beside the controller (R165 step 1) the VMs run through the
+            # root agent: the job account stays out of libvirt's group, which
+            # is root on that machine (R90 step 14), below.
             # No /dev/kvm is a machine that cannot run a VM at speed: a VM
             # whose host does not pass virtualization through, or a box with
             # it off in the firmware. Said, not emulated (tens of times slower).
-            [ -e /dev/kvm ] || die "no /dev/kvm here, so VMs would run in software, tens of times slower. On a VM, its host must pass virtualization through: CPU mode host-passthrough (Unraid: CPU Mode Host Passthrough; Proxmox: CPU type host) and nested KVM on in the host's kvm_intel or kvm_amd. On a machine of its own, turn VT-x or AMD-V on in its firmware"
+            [ -e /dev/kvm ] || die "no /dev/kvm here, so VMs would run in software, tens of times slower. On a VM, its host must pass virtualization through: CPU mode host-passthrough (a NAS host: CPU Mode Host Passthrough; Proxmox: CPU type host) and nested KVM on in the host's kvm_intel or kvm_amd. On a machine of its own, turn VT-x or AMD-V on in its firmware"
             [ -n "$fam" ] || die "VM host is installed on the Debian, RHEL, Arch, openSUSE and Alpine families; this machine is none of them"
             pkgs="$(vmhost_pkgs "$fam")"
             [ -n "$pkgs" ] || die "no VM host packages for $(uname -m) on this family"
@@ -2892,7 +2907,12 @@ feature_vmhost() {
             have systemctl && { systemctl enable --now libvirtd >/dev/null 2>&1 || systemctl enable --now virtqemud.socket >/dev/null 2>&1 || true; }
             # Alpine's OpenRC, which has no systemctl.
             have rc-update && { rc-update add libvirtd default >/dev/null 2>&1; rc-service libvirtd start >/dev/null 2>&1 || true; }
-            getent group libvirt >/dev/null 2>&1 && id -u "$DOCKER_USER" >/dev/null 2>&1 && usermod -aG libvirt "$DOCKER_USER"
+            if [ "$BESIDE_CONTROLLER" = 1 ] || [ -s /etc/bb-session.wall ]; then
+                getent group libvirt >/dev/null 2>&1 && gpasswd -d "$DOCKER_USER" libvirt >/dev/null 2>&1 || true
+                say "the VMs here run through the root agent: ${DOCKER_USER} stays out of libvirt's group, which is root on the controller's own machine"
+            else
+                getent group libvirt >/dev/null 2>&1 && id -u "$DOCKER_USER" >/dev/null 2>&1 && usermod -aG libvirt "$DOCKER_USER"
+            fi
             # The cached cloud images and each VM's disk, the jobs account's;
             # 0755 so libvirt's own account reaches the disks it is handed.
             install -d -m 0755 -o "$DOCKER_USER" /var/lib/builderbot/vms /var/lib/builderbot/vms/images /var/lib/builderbot/vms/disks
@@ -3006,7 +3026,199 @@ UNIT
             say "firewall off: this box takes in what its other rules allow" ;;
     esac
 }
-FEATURE_IDS="vmhost firewall"
+# The IOMMU on the kernel's command line (R116 step 4): what passing a PCI
+# device or a whole USB controller to a VM needs. One marked block in the
+# bootloader's defaults, written by whichever of grubby, GRUB's defaults,
+# extlinux or systemd-boot the machine boots by, and taken out the same way;
+# the marker names the way so a remove undoes exactly that. The kernel
+# reads it at the next boot, which is the person's to ask for.
+feature_iommu() {
+    local vendor args marker="$FEATURES_DIR/iommu" way="" f
+    case "$1" in
+        state) [ -f "$marker" ] && echo installed || echo absent ;;
+        install)
+            vendor="$(awk -F: '/^vendor_id/{gsub(/ /,"",$2); print $2; exit}' /proc/cpuinfo 2>/dev/null)"
+            case "$vendor" in
+                GenuineIntel) args="intel_iommu=on iommu=pt" ;;
+                AuthenticAMD) args="amd_iommu=on iommu=pt" ;;
+                *) die "the IOMMU switch is for an Intel or AMD machine; this one's CPU says ${vendor:-nothing}" ;;
+            esac
+            say "IOMMU: $args on the kernel's command line"
+            install -d -m 0755 "$FEATURES_DIR"
+            if have grubby; then
+                grubby --update-kernel=ALL --args="$args" || die "grubby did not take the arguments"
+                way=grubby
+            elif [ -f /etc/default/grub ]; then
+                sed -i '/^# builderbot-iommu-begin$/,/^# builderbot-iommu-end$/d' /etc/default/grub
+                printf '# builderbot-iommu-begin\nGRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT %s"\n# builderbot-iommu-end\n' "$args" >> /etc/default/grub
+                grub_regen || die "GRUB's configuration did not regenerate; the block is in /etc/default/grub"
+                way=grub
+            elif [ -f /etc/update-extlinux.conf ]; then
+                sed -i "s/^default_kernel_opts=\"\(.*\)\"/default_kernel_opts=\"\1 $args\"/" /etc/update-extlinux.conf
+                update-extlinux >/dev/null 2>&1 || die "update-extlinux did not take it"
+                way=extlinux
+            elif [ -d /boot/loader/entries ]; then
+                for f in /boot/loader/entries/*.conf; do
+                    [ -f "$f" ] && sed -i "/^options /{/$args/!s/\$/ $args/}" "$f"
+                done
+                way=sdboot
+            else
+                die "no bootloader here that this knows (grubby, GRUB, extlinux, systemd-boot): add $args to the kernel's command line by hand"
+            fi
+            printf 'way=%s\nargs=%s\n' "$way" "$args" > "$marker"
+            say "IOMMU on at the next restart ($args, by $way); restart the machine, and if its groups stay empty turn VT-d or AMD-Vi on in the firmware" ;;
+        remove)
+            [ -f "$marker" ] || { say "the IOMMU line was not put there by BuilderBot; nothing to remove"; return 0; }
+            way="$(sed -n 's/^way=//p' "$marker")"; args="$(sed -n 's/^args=//p' "$marker")"
+            say "taking $args off the kernel's command line (by $way)"
+            case "$way" in
+                grubby) grubby --update-kernel=ALL --remove-args="$args" || warn "grubby did not take them off" ;;
+                grub) sed -i '/^# builderbot-iommu-begin$/,/^# builderbot-iommu-end$/d' /etc/default/grub; grub_regen || warn "GRUB's configuration did not regenerate" ;;
+                extlinux) sed -i "s/ $args//" /etc/update-extlinux.conf; update-extlinux >/dev/null 2>&1 || warn "update-extlinux did not take it" ;;
+                sdboot) for f in /boot/loader/entries/*.conf; do [ -f "$f" ] && sed -i "s/ $args//" "$f"; done ;;
+            esac
+            rm -f "$marker"
+            say "IOMMU off at the next restart" ;;
+    esac
+}
+# GRUB's configuration written again from its defaults, by whichever
+# command and path this family has.
+grub_regen() {
+    if have update-grub; then update-grub >/dev/null 2>&1
+    elif have grub2-mkconfig; then grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null 2>&1
+    elif have grub-mkconfig; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1
+    else return 1; fi
+}
+# The installed edition's parts as the own node's features (R56 step 2):
+# storage (ZFS, mergerfs, SnapRAID and SMART for the Storage page's pools and
+# array) and shares (Samba and NFS), each installed with exactly its
+# packages and removed with them, their services the machine's own, run by
+# the root agent and never by the controller's account. On a BuilderBot OS
+# disk the packages are the image's (pkg says so when one is missing).
+storage_pkgs() {
+    case "$1" in
+        deb) echo "zfsutils-linux mergerfs snapraid smartmontools$([ "${ID:-}" = debian ] && echo ' zfs-dkms')" ;;
+        *) echo "" ;;
+    esac
+}
+ups_pkgs() {
+    case "$1" in
+        deb) echo "nut" ;;
+        *) echo "" ;;
+    esac
+}
+shares_pkgs() {
+    case "$1" in
+        deb) echo "samba nfs-kernel-server" ;;
+        *) echo "" ;;
+    esac
+}
+# feature_pkgs ID OP PKGS WHAT: the install and remove every package feature
+# shares: the marker naming what it set out to add, the packages added,
+# the marker kept on a second run, exactly the added ones dropped.
+feature_pkgs() {
+    local id="${1:?}" op="$2" pkgs="$3" what="$4" fam added before
+    fam="$(os_family)"
+    case "$op" in
+        state) [ -f "$FEATURES_DIR/$id" ] && echo installed || echo absent ;;
+        install)
+            [ "$fam" = deb ] || die "$what is installed on the Debian family for now; this machine is $(os_family || echo 'none of them')"
+            [ -n "$pkgs" ] || die "no $what packages for this family"
+            # shellcheck disable=SC2086
+            added="$(pkgs_missing "$fam" $pkgs)"
+            say "$what"
+            before="$(pkgs_all "$fam")"
+            install -d -m 0755 "$FEATURES_DIR"
+            printf 'packages=%s\n' "$added" > "$FEATURES_DIR/$id.partial"
+            # shellcheck disable=SC2086
+            pkgs_add "$fam" $added || die "the packages did not install; the output above says why ($FEATURES_DIR/$id.partial names what it set out to add)"
+            added="$(LC_ALL=C comm -13 <(printf '%s\n' "$before") <(pkgs_all "$fam") | tr '\n' ' ')"
+            [ -f "$FEATURES_DIR/$id" ] && added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/$id") $added"
+            printf 'packages=%s\n' "$(printf '%s\n' $added | LC_ALL=C sort -u | tr '\n' ' ')" > "$FEATURES_DIR/$id"
+            rm -f "${FEATURES_DIR:?}/${id:?}.partial" ;;
+        remove)
+            [ -f "$FEATURES_DIR/$id.partial" ] && [ ! -f "$FEATURES_DIR/$id" ] && mv "$FEATURES_DIR/$id.partial" "$FEATURES_DIR/$id"
+            [ -f "$FEATURES_DIR/$id" ] || { say "$what was not installed by BuilderBot here; nothing to remove"; return 0; }
+            added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/$id")"
+            # shellcheck disable=SC2086
+            [ -z "${added// /}" ] || pkgs_drop "$fam" $added || warn "the packages did not all come off; the output above says why"
+            rm -f "${FEATURES_DIR:?}/${id:?}"
+            say "$what removed${added:+ ($(printf '%s' "$added" | wc -w) packages it had added)}; what was here before it stays" ;;
+    esac
+}
+feature_storage() {
+    case "$1" in
+        state) feature_pkgs storage state "" "" ;;
+        install)
+            feature_pkgs storage install "$(storage_pkgs "$(os_family)")" "storage: ZFS, mergerfs, SnapRAID and SMART"
+            # The pools found at boot and their datasets mounted, and the
+            # disks' SMART watched; nothing is made here, the Storage page does.
+            have systemctl && { systemctl enable --now zfs-import-cache.service zfs-mount.service zfs-zed.service >/dev/null 2>&1 || true
+                                systemctl enable --now smartmontools.service smartd.service >/dev/null 2>&1 || true; }
+            say "storage installed: pools, an array and the disks' health are the Storage page's" ;;
+        remove)
+            if have zpool && [ -n "$(zpool list -H -o name 2>/dev/null)" ]; then
+                die "a ZFS pool is on this machine ($(zpool list -H -o name 2>/dev/null | tr '\n' ' ')): export or destroy it on the Storage page first, then remove storage"
+            fi
+            have systemctl && systemctl disable --now smartd.service smartmontools.service >/dev/null 2>&1 || true
+            feature_pkgs storage remove "" "storage" ;;
+    esac
+}
+feature_shares() {
+    case "$1" in
+        state) feature_pkgs shares state "" "" ;;
+        install)
+            feature_pkgs shares install "$(shares_pkgs "$(os_family)")" "shares: Samba and NFS"
+            # Served the moment a share is made (the Storage page writes
+            # each), the daemons the machine's own units, never the controller's.
+            install -d -m 0755 /etc/samba/smb.conf.d /etc/exports.d
+            grep -q '^include = /etc/samba/smb.conf.d/builderbot.conf' /etc/samba/smb.conf 2>/dev/null \
+                || printf '\n# BuilderBot: the shares the Storage page makes.\ninclude = /etc/samba/smb.conf.d/builderbot.conf\n' >> /etc/samba/smb.conf
+            [ -f /etc/samba/smb.conf.d/builderbot.conf ] || : > /etc/samba/smb.conf.d/builderbot.conf
+            have systemctl && { systemctl enable --now smbd.service nmbd.service nfs-server.service >/dev/null 2>&1 || true; }
+            say "shares installed: each share is made on the Storage page, given to accounts there" ;;
+        remove)
+            if [ -s /etc/samba/smb.conf.d/builderbot.conf ] || ls /etc/exports.d/builderbot-*.exports >/dev/null 2>&1; then
+                die "shares are served from this machine: remove them on the Storage page first, then shares"
+            fi
+            have systemctl && systemctl disable --now smbd.service nmbd.service nfs-server.service >/dev/null 2>&1 || true
+            sed -i '/^# BuilderBot: the shares the Storage page makes.$/d; \#^include = /etc/samba/smb.conf.d/builderbot.conf$#d' /etc/samba/smb.conf 2>/dev/null || true
+            feature_pkgs shares remove "" "shares" ;;
+    esac
+}
+# ups (R164 step 3): NUT in standalone mode on a USB UPS (usbhid-ups, the
+# driver nearly every one answers), its monitor shutting the machine down
+# cleanly on a low battery; the Power section reads it. The files are
+# written once, ours, and left alone where a person changed them.
+feature_ups() {
+    local f pw
+    case "$1" in
+        state) feature_pkgs ups state "" "" ;;
+        install)
+            feature_pkgs ups install "$(ups_pkgs "$(os_family)")" "ups: NUT"
+            install -d -m 0755 /etc/nut
+            if ! grep -qs '^# BuilderBot' /etc/nut/ups.conf; then
+                printf '# BuilderBot (the Features section): a USB UPS, standalone. Edit if yours needs another driver.\n[ups]\n    driver = usbhid-ups\n    port = auto\n    desc = "UPS"\n' > /etc/nut/ups.conf
+            fi
+            if ! grep -qs '^# BuilderBot' /etc/nut/upsd.users; then
+                pw="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 20)"
+                printf '# BuilderBot (the Features section)\n[monuser]\n    password = %s\n    upsmon primary\n' "$pw" > /etc/nut/upsd.users
+                printf '# BuilderBot (the Features section): the machine shuts down cleanly when the UPS says low battery.\nMONITOR ups@localhost 1 monuser %s primary\nSHUTDOWNCMD "/sbin/shutdown -h +0"\nMINSUPPLIES 1\nPOLLFREQ 5\nPOLLFREQALERT 5\nHOSTSYNC 15\nDEADTIME 15\nPOWERDOWNFLAG /etc/killpower\nRBWARNTIME 43200\nNOCOMMWARNTIME 300\nFINALDELAY 5\n' "$pw" > /etc/nut/upsmon.conf
+                chmod 0640 /etc/nut/upsd.users /etc/nut/upsmon.conf
+                chgrp nut /etc/nut/upsd.users /etc/nut/upsmon.conf 2>/dev/null || true
+            fi
+            printf '# BuilderBot (the Features section)\nMODE=standalone\n' > /etc/nut/nut.conf
+            have systemctl && { systemctl enable --now nut-driver-enumerator.service nut-server.service nut-monitor.service >/dev/null 2>&1 || true; }
+            say "ups installed: a USB UPS answers on This machine's Power section; the machine shuts down cleanly on a low battery" ;;
+        remove)
+            have systemctl && systemctl disable --now nut-monitor.service nut-server.service >/dev/null 2>&1 || true
+            for f in /etc/nut/ups.conf /etc/nut/upsd.users /etc/nut/upsmon.conf /etc/nut/nut.conf; do
+                grep -qs '^# BuilderBot' "$f" && rm -f "$f"
+            done
+            feature_pkgs ups remove "" "ups" ;;
+    esac
+}
+FEATURE_IDS="vmhost firewall iommu storage shares ups"
 cmd_feature() {
     local op="${1-}" id="${2-}"
     case "$op" in install|remove|state) ;; *) die "usage: bb-sandbox feature install|remove|state ID (one of: ${FEATURE_IDS})" ;; esac
@@ -3155,6 +3367,10 @@ if [ -n "$CONTROLLER" ]; then
     say "agent: enrolling with ${CONTROLLER}"
     # shellcheck disable=SC2046
     pkg $(pkg_names python)
+    # The sealed sign-ins' cryptography (R158 step 3): X25519 and
+    # ChaCha20-Poly1305 from the family's package of the cryptography library.
+    # shellcheck disable=SC2046
+    pkg $(pkg_names pycrypto)
     hdr="$(mktemp)"
     curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
          "${CONTROLLER%/}/api/v1/agent/download" -o "${AGENT}.new" \
@@ -3454,7 +3670,7 @@ shell as the docker account), running bb-tty from the bb the controller ships, s
 a project bound to this node lives on this machine, in its synced copy of
 the project at /workspace, which the agent makes and keeps in step with the
 controller's. Each person signs in to each agent on this node from its
-Agents page on the dashboard (Build, Agents), once per account.
+row on the dashboard's Installed page (Machines, Installed), once per account.
 
 bb itself is not on this account's PATH: it is the controller's, fetched
 into the toolchain store by the agent (<store>/<scope>/.bb/current/scripts/bb)

@@ -38,7 +38,8 @@ from .backends import net_backend
 from .toolchains import extract_sandbox_tool
 from .sessnet import session_conf, session_sudoers
 from .runners import runner_dirs, runner_slot
-from .census import FEATURES, _os_release, export_gaps, mounts_now, network_now, services_now
+from .census import FEATURES, _os_release, boot_id, export_gaps, mounts_now, network_now, services_now
+from .disks import disks_now
 from .jobs import Job, pump
 
 
@@ -48,6 +49,13 @@ from .jobs import Job, pump
 # The same bytes as provision-linux.sh's keep_journal writes.
 JOURNAL_DROPIN = ("# Written by BuilderBot (R185): keep the journal across boots, and at most 1G of it.\n"
                   "[Journal]\nStorage=persistent\nSystemMaxUse=1G\n")
+
+
+# The spin-downs This machine offers, in minutes (0 for never), and
+# hdparm -S's code for each: units of five seconds up to 20 minutes, then
+# 241 and up for half hours.
+SPINDOWN_MINUTES = (0, 5, 10, 15, 20, 30, 60, 120)
+SPINDOWN_CODE = {0: 0, 5: 60, 10: 120, 15: 180, 20: 240, 30: 241, 60: 242, 120: 244}
 
 
 class ConfigPlaneMixin:
@@ -95,6 +103,28 @@ class ConfigPlaneMixin:
             return self._apply_lockdown(job)
         if what == "feature":
             return self._apply_feature(job, cfg)
+        if what == "controller-update":
+            return self._apply_controller_update(job, cfg)
+        if what == "storage-share":
+            return self._apply_storage_share(job, cfg)
+        if what == "storage-pool":
+            return self._apply_storage_pool(job, cfg)
+        if what == "storage-snapshot":
+            return self._apply_storage_snapshot(job, cfg)
+        if what == "storage-array":
+            return self._apply_storage_array(job, cfg)
+        if what == "host-update":
+            return self._apply_host_update(job, cfg)
+        if what == "storage-backup":
+            return self._apply_storage_backup(job, cfg)
+        if what == "machine":
+            return self._apply_machine(job, cfg)
+        if what == "system-pool":
+            # A stick's system pool (R161 step 10, osimage.py).
+            return self._apply_system_pool(job, cfg)
+        if what == "os-update":
+            # BuilderBot OS: the next image into the other slot (osimage.py).
+            return self._apply_os_update(job, cfg)
         if what == "gpu-off":
             # The emulator off the card (R102): the display's unit stopped,
             # the driver left alone; then a hello, as the set-up sends.
@@ -212,6 +242,29 @@ class ConfigPlaneMixin:
         self.hello_again(f"the {fid} feature was {'installed' if op == 'install' else 'removed'}")
         return ("succeeded", 0) if rc == 0 else ("failed", rc)
 
+    def _apply_controller_update(self, job, cfg):
+        """The controller this machine carries, updated by its own node's
+        root agent (R90 step 5): the installed release's own installer run
+        with --update, which fetches the release's bundle and verifies it,
+        holds the state to its gate, switches the link, and rolls back by
+        itself when the new build does not answer. Only on a machine that
+        is a bare-metal controller's own node (the installer's marker), and
+        a release named only by its tag."""
+        mark = "/etc/builderbot-controller/own-node"
+        installer = "/opt/builderbot/nodes/install-controller.sh"
+        if not os.path.isfile(mark) or not os.path.isfile(installer):
+            job.say("refused: this machine is not a bare-metal controller's own node, so there is no installer here to run\n")
+            return "failed", 77
+        tag = str(cfg.get("release") or "")
+        if tag and not re.fullmatch(r"v?\d+\.\d+\.\d+", tag):
+            job.say("refused: a release is named by its tag, vX.Y.Z\n")
+            return "failed", 64
+        argv = ["bash", installer, "--update"] + (["--release", tag] if tag else [])
+        job.say(f"controller update: {' '.join(argv[1:])}\n")
+        rc = self._sh(job, argv, timeout=3600)
+        self.hello_again("the controller was updated")
+        return ("succeeded", 0) if rc == 0 else ("failed", rc)
+
     def _apply_lockdown(self, job):
         """Lock down (R92): every container here stopped and kept from
         starting again at a boot (BuilderBot's nginx among them), and the
@@ -248,6 +301,88 @@ class ConfigPlaneMixin:
         rc = self._sh(job, [SANDBOX_BIN, "gpu"], timeout=1800)
         self.hello_again("the GPU was set up")
         return ("succeeded", 0) if rc == 0 else ("failed", rc)
+
+    def _apply_machine(self, job, cfg):
+        """The machine's name and time zone (R161 step 3, R56 step 8), set
+        through systemd's own tools, each checked to its shape first: a
+        hostname is a label of letters, digits and hyphens, a time zone a
+        name under /usr/share/zoneinfo. Root's, as every system job is."""
+        if os.geteuid() != 0:
+            job.say("refused: the machine's name and time zone are root's, and this agent does not run as root\n")
+            return "failed", 77
+        host = str(cfg.get("hostname") or "").strip()
+        tz = str(cfg.get("timezone") or "").strip()
+        spin = cfg.get("spindown") if isinstance(cfg.get("spindown"), int) and not isinstance(cfg.get("spindown"), bool) else None
+        if not host and not tz and spin is None:
+            job.say("refused: nothing to set (a hostname, a time zone, a spin-down)\n")
+            return "failed", 64
+        if spin is not None and spin not in SPINDOWN_MINUTES:
+            job.say(f"refused: a spin-down is one of {', '.join(str(m) for m in SPINDOWN_MINUTES)} minutes, 0 for never\n")
+            return "failed", 64
+        if host and not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", host.lower()):
+            job.say(f"refused: {host!r} is not a hostname (letters, digits and hyphens, 63 at most)\n")
+            return "failed", 64
+        if tz and not (re.fullmatch(r"[A-Za-z0-9_+-]{1,32}(/[A-Za-z0-9_+-]{1,32}){0,2}", tz)
+                       and os.path.isfile(os.path.join("/usr/share/zoneinfo", tz))):
+            job.say(f"refused: {tz!r} is not a time zone this machine knows (/usr/share/zoneinfo)\n")
+            return "failed", 64
+        bad = 0
+        if host:
+            tool = shutil.which("hostnamectl")
+            if not tool:
+                job.say("refused: no hostnamectl here to set the name with\n")
+                return "failed", 78
+            bad += self._sh(job, [tool, "set-hostname", host.lower()], timeout=30) != 0
+        if tz and not bad:
+            tool = shutil.which("timedatectl")
+            if not tool:
+                job.say("refused: no timedatectl here to set the time zone with\n")
+                return "failed", 78
+            bad += self._sh(job, [tool, "set-timezone", tz], timeout=30) != 0
+        if spin is not None and not bad:
+            # The disks spun down when idle (R164 step 3): hdparm -S on every
+            # spinning disk but the system's, kept in node.json and put back
+            # after a boot by the minute pass (spindown_pass).
+            self.state["spindown"] = spin
+            self.state.pop("spindown_boot", None)
+            save_state(self.state)
+            bad += self.spindown_pass(job) != 0
+        self.hello_again("the machine's name, time zone or spin-down changed")
+        if bad:
+            return "failed", 1
+        spun = "" if spin is None else f"spin-down {spin or 'never'}"
+        job.say(f"set: {' '.join(x for x in (host and f'hostname {host.lower()}', tz and f'time zone {tz}', spun) if x)}\n")
+        return "succeeded", 0
+
+    def spindown_pass(self, job=None):
+        """Once a minute, and from the job: the spin-down kept in node.json
+        applied to every spinning disk but the system's once per boot
+        (hdparm's timer is the drive's and does not survive a power cycle).
+        0 from nothing to do or every disk set, else how many refused."""
+        spin = self.state.get("spindown")
+        if not isinstance(spin, int) or os.geteuid() != 0:
+            return 0
+        boot = boot_id()
+        if job is None and self.state.get("spindown_boot") == boot:
+            return 0
+        tool = shutil.which("hdparm")
+        if not tool:
+            if job:
+                job.say("refused: no hdparm here to set a spin-down with (the storage feature installs it)\n")
+            return 1
+        bad = 0
+        for d in disks_now(smart=False):
+            if d.get("ssd") or d.get("system") or d.get("removable") or not d.get("name", "").startswith("sd"):
+                continue
+            argv = [tool, "-S", str(SPINDOWN_CODE[spin]), f"/dev/{d['name']}"]
+            rc = self._sh(job, argv, timeout=30) if job else subprocess.run(argv, capture_output=True, timeout=30, check=False).returncode
+            bad += rc != 0
+        if not bad:
+            self.state["spindown_boot"] = boot
+            save_state(self.state)
+        if job:
+            job.say(f"spin-down {spin or 'never'}: {'set on every spinning disk' if not bad else f'{bad} disk(s) refused it'}\n")
+        return bad
 
     def _apply_power(self, job, what):
         """Reboot the machine or power it off, a few seconds out, so this
@@ -558,7 +693,7 @@ class ConfigPlaneMixin:
         Streamed, the way Job.exec and _apply_root are: its output pumped
         as it comes and the log posted on a clock. It used to run the command
         to the end and post nothing meanwhile, so the NVIDIA rows on the
-        Toolchains page never said installing (the step rides a log post) and
+        Toolchains page (the Installed page's since R172) never said installing (the step rides a log post) and
         the job sat at assigned for as long as apt took (30 Sep).
         """
         # A job that cannot post or be canceled (a check's own stand-in, a
@@ -1078,7 +1213,7 @@ class ConfigPlaneMixin:
         if gaps:
             job.say("refused: the host's NFS exports admit this node's current address and not "
                     "the new one, so the shares would not mount after the move. Change the rule "
-                    "on the host first (Unraid: Shares -> the share -> NFS Security Settings), "
+                    "on the host first (on a NAS host: Shares -> the share -> NFS Security Settings), "
                     "then apply again:\n  " + "\n  ".join(gaps) + "\n")
             return "failed", 77
         desired = backend.render(iface, mode, addr, gw, dns, routes)

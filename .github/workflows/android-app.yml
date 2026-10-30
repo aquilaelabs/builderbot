@@ -24,7 +24,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "android/**"
+      - "apps/android/**"
       - ".github/workflows/android-app.yml"
   # ...and for each release, handed to the controller to sign and attach
   # under the release's version with its sha256, for every controller on
@@ -121,7 +121,7 @@ jobs:
       # store, and an update built on another runner failed to install).
       - name: Build the unsigned APK
         id: build
-        working-directory: android
+        working-directory: apps/android
         run: |
           set -o pipefail
           exec > >(tee -a "$CI_LOG") 2>&1
@@ -138,13 +138,13 @@ jobs:
           exec > >(tee -a "$CI_LOG") 2>&1
           echo "== Name it by the repository's version"
           echo "file=builderbot-app-${{ steps.v.outputs.file }}-unsigned.apk" >> "$GITHUB_OUTPUT"
-          cp "android/${{ steps.build.outputs.apk }}" \
+          cp "apps/android/${{ steps.build.outputs.apk }}" \
              "builderbot-app-${{ steps.v.outputs.file }}-unsigned.apk"
           # A release's own name, which the controller keeps less -unsigned
           # once it has signed it: builderbot-app-0.7.0.apk for v0.7.0.
           if [ -n "$TAG" ]; then
             mkdir -p release-apk
-            cp "android/${{ steps.build.outputs.apk }}" "release-apk/builderbot-app-${TAG#v}-unsigned.apk"
+            cp "apps/android/${{ steps.build.outputs.apk }}" "release-apk/builderbot-app-${TAG#v}-unsigned.apk"
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           fi
 

@@ -33,7 +33,9 @@ KEY_RE = re.compile(r"(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0
 VM_NET = ipaddress.ip_network("10.232.0.0/16")
 DEFAULTS = {"vcpus": 2, "mem_mb": 2048, "disk_gb": 20}
 ACTIONS = ("start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm", "eject", "disk-grow", "disk-add",
-           "hardware", "autostart")
+           "hardware", "autostart", "usb-give", "usb-take")
+USB_ID_RE = re.compile(r"0x[0-9a-f]{4}")
+USB_PORT_RE = re.compile(r"\d{1,3}-[\d.]{1,20}")
 # R99: an installer's ISO on a node, a VM's further disks, its MAC and the
 # password its screen asks for (VNC takes eight characters at most).
 ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
@@ -237,6 +239,13 @@ def _live(n):
     return {v.get("name"): v for v in ((n or {}).get("reported") or {}).get("vms") or [] if isinstance(v, dict)}
 
 
+# A VM that belongs to the machine rather than a project (R165 step 3): the
+# NAS's own apps and desktops, keyed under this name, an administrator's to
+# make and act on under the VMs area, never a session's, and on any VM
+# host (the own machine first, where there is one).
+MACHINE = "machine"
+
+
 def view(projects=None):
     """Every VM record, the node's census laid over it, for the page and for
     `bb vm list`: only the projects named, when `projects` is given."""
@@ -267,6 +276,8 @@ def view(projects=None):
                        # node says, after an Eject or a person's own change.
                        screen=bool(live.get("screen")), iso=live.get("iso") or "",
                        hw=live.get("hw") or {}, autostart=bool(live.get("autostart")),
+                       # The USB devices it holds (R116), as they were named.
+                       usb=live.get("usb") or [],
                        # What its guest agent says of it (R110 step 8).
                        guest=live.get("guest") or {})
             # A node VM is on the LAN, where the host sees no lease of its:
@@ -287,6 +298,20 @@ def view(projects=None):
             # Made, and the node's last report does not list it: not there.
             row.update(state="missing" if (n or {}).get("reported", {}).get("vms") is not None else "unknown")
         out.append(row)
+    return out
+
+
+def others():
+    """The libvirt domains on each node that BuilderBot did not make (R165
+    step 1), as its census says: an administrator reads them on the VMs page
+    by name, state and size, and nothing acts on one from here."""
+    out = []
+    for n in node_list():
+        for v in ((n.get("reported") or {}).get("vms_other") or [])[:64]:
+            if isinstance(v, dict) and v.get("name"):
+                out.append({"node": n["id"], "node_name": n.get("name") or n["id"], "name": str(v["name"]),
+                            "state": str(v.get("state") or "unknown"), "vcpus": int(v.get("vcpus") or 0),
+                            "mem_mb": int(v.get("mem_mb") or 0)})
     return out
 
 
@@ -749,6 +774,17 @@ def act(principal, project, name, action, req=None):
             spec.update(hw=hw, **({"network": _net_name(sub)} if sub else {}))
         if action == "autostart":
             spec["on"] = req.get("on") is True
+        if action in ("usb-give", "usb-take"):
+            # A USB device given to a VM, or taken back (R116): an
+            # administrator's, since a device can be a disk or a key; named
+            # as the node's census names it, and for a give one the node
+            # lists now and no other VM here holds.
+            if not req.get("_admin"):
+                return {"error": "giving a USB device to a VM is an administrator's"}
+            want, why = usb_named(req.get("usb"), n, rec["domain"], give=action == "usb-give")
+            if why:
+                return {"error": why}
+            spec["usb"] = want
         if action == "disk-add":
             try:
                 gb = int(req.get("gb") or 0)
@@ -772,6 +808,67 @@ def act(principal, project, name, action, req=None):
         _save(d)
     audit(principal, f"vm-{action}", key, {"job": r["job"], **({"snapshot": spec["snapshot"]} if "snapshot" in spec else {})})
     return {"ok": True, "job": r["job"]}
+
+
+def usb_named(d, n, domain, give):
+    """A USB device as a request names it (R116): (the device as the node's
+    census lists it, "") or (None, why). For a give it must be plugged in
+    now, not used by the host and not another VM's; a take names what the
+    VM holds, plugged in or not."""
+    d = d if isinstance(d, dict) else {}
+    if not (USB_ID_RE.fullmatch(str(d.get("vendor"))) and USB_ID_RE.fullmatch(str(d.get("product")))):
+        return None, "name the device by its vendor and product (0x046d, 0xc52b), with its serial or its port"
+    want = {"vendor": d["vendor"], "product": d["product"], "serial": re.sub(r"[^\w.:+/-]", "", str(d.get("serial") or ""))[:64],
+            "port": str(d.get("port") or "") if USB_PORT_RE.fullmatch(str(d.get("port") or "")) else ""}
+    rep = (n or {}).get("reported") or {}
+    here = usb_find((rep.get("vm_host") or {}).get("usb") or [], want)
+    if give:
+        if not here:
+            return None, f"{usb_words(want)} is not plugged into {(n or {}).get('name') or 'the node'} now, as far as its last report says"
+        if here.get("use"):
+            return None, f"the host uses {usb_words(here)}: {'; '.join(here['use'])}"
+        for v in rep.get("vms") or []:
+            if v.get("name") != domain and any(usb_same(k, here) for k in v.get("usb") or []):
+                return None, f"{v.get('name')} holds {usb_words(here)}; take it back from it first"
+        want.update(serial=here.get("serial") or "", port=here.get("port") or "", name=here.get("name") or "")
+    else:
+        mine = next((v for v in rep.get("vms") or [] if v.get("name") == domain), {})
+        had = next((k for k in mine.get("usb") or [] if usb_same(k, want)), None)
+        if not had and not here:
+            return None, f"{domain} does not hold {usb_words(want)}"
+        want["name"] = (had or here or {}).get("name") or ""
+    return want, ""
+
+
+def usb_find(usb, want):
+    """The node's device `want` names, or None (the agent's rule: vendor and
+    product, the serial among them, the port when two are alike)."""
+    same = [u for u in usb if u.get("vendor") == want["vendor"] and u.get("product") == want["product"]]
+    if want.get("serial"):
+        # A serial named is the device: one alike with another serial is
+        # another device, never a match.
+        same = [u for u in same if u.get("serial") == want["serial"]]
+    if len(same) > 1 and want.get("port"):
+        same = [u for u in same if u.get("port") == want["port"]]
+    return same[0] if same else None
+
+
+def usb_same(a, b):
+    if (a.get("vendor"), a.get("product")) != (b.get("vendor"), b.get("product")):
+        return False
+    if a.get("serial") and b.get("serial"):
+        return a["serial"] == b["serial"]
+    if a.get("port") and b.get("port"):
+        return a["port"] == b["port"]
+    return True
+
+
+def usb_words(d):
+    """A device in words for a reason: its name, else vendor:product, with
+    its serial or its port when it has one."""
+    said = str(d.get("name") or "") or f"{str(d.get('vendor'))[2:]}:{str(d.get('product'))[2:]}"
+    tail = f" (serial {d['serial']})" if d.get("serial") else f" (port {d['port']})" if d.get("port") else ""
+    return said + tail
 
 
 def vm_done(job, state):

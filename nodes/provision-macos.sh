@@ -115,7 +115,7 @@ if command -v git >/dev/null 2>&1; then chk ok "git: $(git --version 2>&1)"
 else chk fail "no git"; fi
 xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' 2>/dev/null | head -1)"
 if [ -n "$xcode" ]; then chk ok "Xcode: $xcode"
-else chk warn "no Xcode.app: iOS and macOS apps need it, from the App Store or the xcodes recipe from the Tools tab once enrolled"; fi
+else chk warn "no Xcode.app: iOS and macOS apps need it, from the App Store or the xcodes recipe from the Library once enrolled"; fi
 if [ -n "$TOOLCHAINS" ]; then
     if [ -d "$TOOLCHAINS" ] && [ -w "$TOOLCHAINS" ]; then chk ok "toolchain store at $TOOLCHAINS (this Mac's scope: darwin-$(uname -m))"
     else chk fail "$TOOLCHAINS is not a writable directory: mount the share first (Finder: Go > Connect to Server, smb://…), or use a directory of this Mac's"; fi
@@ -209,7 +209,7 @@ cat <<EOF
 
 Done. This Mac is a GUEST node: the dashboard's Nodes page shows it live
 within a minute, with Storage and Network not offered (they are yours), and
-the Tools tab installs into its own scope of the toolchain store,
+the Library installs into its own scope of the toolchain store,
 $TOOLCHAINS/darwin-$(uname -m). Root is never asked for here.
 
   launchctl print gui/$(id -u)/$LABEL     is it running

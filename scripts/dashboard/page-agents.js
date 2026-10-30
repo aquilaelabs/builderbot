@@ -12,7 +12,7 @@ const AGENTS = [
   {id: "codex", name: "ChatGPT", product: "Codex CLI", command: "codex", provider: "OpenAI", live: true},
   {id: "copilot", name: "Copilot", product: "Copilot CLI", command: "copilot", provider: "GitHub", live: true},
   {id: "grok", name: "Grok", product: "Grok Build", command: "grok", provider: "xAI", live: true},
-  {id: "open", name: "Any model", product: "OpenCode", command: "opencode", provider: "", live: false},
+  {id: "open", name: "Any model", product: "OpenCode", command: "opencode", provider: "", live: true},
 ];
 
 // Each agent's own models and efforts beside Claude's (agents.py MODELS,
@@ -30,8 +30,25 @@ const AGENT_GUARDS = {
   claude: "every guard, through Claude Code's own hooks: the hold while BuilderBot updates, the node's turn limit, the house rules' command guard and their recall after a summary, the work note, the prompt relay, the stop check and the asking mark",
   codex: "the same guards through Codex's own hooks (before a tool, a prompt, the stop, its permission prompt and after a summary), but for the code map's hint before a search, which it has no tool for",
   copilot: "the same guards through Copilot's own hooks (before a tool, a prompt, the stop and its permission prompt), but for the house rules' recall after a summary, which it has no hook for, and the code map's hint",
+  open: "the same guards through a plugin of BuilderBot's in OpenCode (before a tool, a prompt, the stop, its permission ask and after a summary); its keys are the router's, never a sign-in of its own",
   grok: "the same guards through Grok's own hooks (before a tool, a prompt, the stop and after a summary), but for the asking mark, which it has no permission-prompt hook for, and a house rule's words on a prompt, which it does not pass on to the model",
 };
+
+// The coding agents installed packs bring (R169 step 9), from the status's
+// pack_agents: added after the shipped five, their models and what holds
+// their guards beside them, and dropped again when their pack goes.
+function agentsAdopt(rows){
+  const want = Array.isArray(rows) ? rows.filter(r => r && r.id && !AGENTS.some(a => a.id === r.id && !a.pack)) : [];
+  for (let i = AGENTS.length - 1; i >= 0; i--)
+    if (AGENTS[i].pack && !want.some(r => r.id === AGENTS[i].id)){ delete AGENT_MODELS[AGENTS[i].id]; delete AGENT_GUARDS[AGENTS[i].id]; AGENTS.splice(i, 1); }
+  for (const r of want){
+    const row = {id: r.id, name: r.name, product: r.product, command: r.command, provider: r.provider || "", live: true, pack: true};
+    const at = AGENTS.findIndex(a => a.id === r.id);
+    if (at < 0) AGENTS.push(row); else AGENTS[at] = row;
+    AGENT_MODELS[r.id] = {models: Array.isArray(r.models) ? r.models : [], efforts: []};
+    AGENT_GUARDS[r.id] = r.guards || "";
+  }
+}
 
 // ---- reading names ----
 // The agents a session may run today, Claude first.
@@ -70,11 +87,6 @@ function agentOfArg(arg){
       return {agent: a, project: rest.split(":")[0], slot: m ? +m[1] : 1, rest};
     }
   return null;
-}
-// The session an agent's slot on a project runs in, before the account's
-// prefix (agents.session_name): `claude-alpha`, `claude-alpha~2`.
-function agentSessionName(id, project, slot = 1){
-  return `${(agentById(id) || AGENTS[0]).id}-${tmuxName(project)}${slot > 1 ? `~${slot}` : ""}`;
 }
 // A coding agent's session as a person says it: "ChatGPT on web", by the
 // agent its name carries and the project's own name, never the tmux one.

@@ -45,6 +45,15 @@ _lock = threading.RLock()
 
 MANIFEST = "bbtool.json"
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
+# bb tool's own words (scripts/bb cmd_tool): a pack of somebody's named one
+# would never be reached, so none may be (R169 step 5 added search and
+# install); the official packs behind graphics, diagrams and office are the
+# toolchains those words run.
+BB_TOOL_WORDS = frozenset({"graphics", "diagrams", "docs", "office", "sound", "search", "install"})
+NAME_OFFICIAL = re.compile(r"^[a-z][a-z0-9:-]{1,39}$")
+# A shipped layout may name the pack's own root ("") or a place under the
+# store's root (root:android/...), which a person's pack may not.
+REL_OFFICIAL = re.compile(r"^(|root:[A-Za-z0-9._/-]{1,200}|(?!/)(?!.*(?:^|/)\.\.?(?:/|$))[A-Za-z0-9._/-]{1,200})$")
 VERB = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 # A path inside the pack: no way out of its directory, nothing hidden.
 REL = re.compile(r"^(?!/)(?!.*(?:^|/)\.\.?(?:/|$))[A-Za-z0-9._/-]{1,200}$")
@@ -54,6 +63,11 @@ PLATFORM = re.compile(r"^(linux|darwin)/(amd64|arm64|\*)$")
 PLACEHOLDERS = ("{dir}", "{dist}", "{project}", "{args}")
 GUIDANCE_MAX = 16 * 1024
 MANIFEST_MAX = 64 * 1024
+# A pack's own icon on its Library card (R182): a file in the pack, PNG, WebP
+# or SVG, kept under the state and served as an image alone (server.py's
+# /api/pack-icon), never drawn into the page as markup.
+ICON_MAX = 64 * 1024
+ICON_TYPES = {"png": "image/png", "webp": "image/webp", "svg": "image/svg+xml"}
 # http too, for a git host on the LAN: what is installed is the commit an
 # administrator approved, and git checks every object against its hash, so a
 # fetch altered on the way is refused rather than installed.
@@ -103,20 +117,297 @@ def _words(v, what, errors, placeholders=PLACEHOLDERS):
     return [str(w) for w in v]
 
 
+# One manifest for everything (R169 step 1): a pack's tier, and the two
+# blocks the official packs carry beyond a person's pack. `shipped` is a
+# toolchain's recipe as config/toolchains.json has it (its source, probe,
+# system packages and the rest), which the installer runs; `agent` is a
+# coding agent's adapter as agents.py's table has it. Either stands in for
+# install steps and verbs, since what they install is the tool itself.
+TIERS = ("official", "vetted", "url")
+# What a pack asks for per node (R172): each field's kind, drawn by the
+# Library as Configure on the card, the answers kept sealed on the
+# controller and handed to the node. A `list` field is rows of `fields`.
+CONFIG_KINDS = ("secret", "text", "choice", "list", "switch", "projects")
+CONFIG_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
+ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]{0,40}$")
+# A deployed thing an official pack stands for (R172): the model router.
+SERVICES = ("router",)
+AGENT_FIELDS = ("product", "command", "provider", "reported", "update_job", "login_job", "logout_job",
+                "briefing", "guards", "state", "transcripts", "latest_url", "tool")
+AGENT_BRIEFING = ("system-prompt-file", "instructions-file")
+AGENT_GUARDS = ("hooks", "plugin", "approval")
+AGENT_STATES = ("hooks", "plugin", "session-log")
+
+
+def _agent(a, errors):
+    """The agent block checked: an agent that cannot take the guards is
+    not listed (R169 step 1)."""
+    if not isinstance(a, dict):
+        errors.append("agent is an object: product, command, provider, reported, the jobs, briefing, guards, state, transcripts")
+        return None
+    out = {}
+    for k in AGENT_FIELDS:
+        v = a.get(k, "")
+        if not isinstance(v, str) or len(v) > 200:
+            errors.append(f"agent.{k} is a string")
+            return None
+        out[k] = v
+    for k in ("product", "command", "reported", "update_job", "transcripts"):
+        if not out[k]:
+            errors.append(f"agent.{k} is required")
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", out["command"] or "x"):
+        errors.append("agent.command is the program's name on PATH")
+    if out["briefing"] not in AGENT_BRIEFING:
+        errors.append(f"agent.briefing is one of {', '.join(AGENT_BRIEFING)}")
+    if out["guards"] not in AGENT_GUARDS:
+        errors.append(f"agent.guards is one of {', '.join(AGENT_GUARDS)}: an agent that cannot take BuilderBot's guards is not listed")
+    if out["state"] not in AGENT_STATES:
+        errors.append(f"agent.state is one of {', '.join(AGENT_STATES)}")
+    if out["transcripts"] and not REL.fullmatch(out["transcripts"]):
+        errors.append("agent.transcripts is a path under the account's home")
+    if out["latest_url"] and not re.fullmatch(r"https://[A-Za-z0-9._~:/@+?=&%-]{3,300}", out["latest_url"]):
+        errors.append("agent.latest_url is an https address")
+    return out
+
+
+# A coding agent from a vetted pack (R169 step 8): an adapter of data, never
+# code. Its hooks file is one of the two shapes bb-tty writes for the shipped
+# agents (grouped: {hooks: {EVENT: [{hooks: [{type, command, timeout}]}]}} as
+# Claude's, Codex's and Grok's; flat: {version: 1, hooks: {EVENT: [{type,
+# bash, timeoutSec}]}} as Copilot's), and its payload one of the two field
+# shapes they send (Claude's snake_case, or the camelCase of Grok and
+# Copilot), so bb-agent-hook holds it to the same guards with no code of its
+# own. Before a tool, a prompt and the stop are required: an agent that
+# cannot take the guards is not listed.
+PACK_AGENT = re.compile(r"^[a-z][a-z0-9]{1,15}$")
+PACK_AGENT_SHAPES = ("grouped", "flat")
+PACK_AGENT_PAYLOADS = ("snake", "camel")
+PACK_AGENT_EVENTS = ("pre", "prompt", "stop", "recall", "asking")
+PACK_AGENT_NEEDS = ("pre", "prompt", "stop")
+PACK_AGENT_BRIEFING = ("flag-text", "flag-file", "env-file", "none")
+PACK_AGENT_FIRST = ("after-dashdash", "flag", "none")
+SHIPPED_AGENTS = ("claude", "codex", "copilot", "grok", "open")
+FLAG = re.compile(r"^-{1,2}[A-Za-z0-9][A-Za-z0-9-]{0,40}$")
+ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]{0,40}$")
+ARG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._=:,/-]{0,80}$|^-{1,2}[A-Za-z0-9][A-Za-z0-9._=:,/-]{0,80}$")
+EVENT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._]{0,40}$")
+TOOL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,60}$")
+
+
+def _pack_agent(name, a, errors):
+    """The adapter of a coding agent a vetted pack brings, checked and cut
+    down to what bb-tty and bb-agent-hook read, or None."""
+    if not isinstance(a, dict):
+        errors.append("agent is an object: name, product, command, briefing, hooks, signin, transcripts")
+        return None
+    bad = len(errors)
+    if not PACK_AGENT.fullmatch(name):
+        errors.append("a pack that brings a coding agent is named 2 to 16 of a-z and 0-9, starting with a letter: its sessions are named after it")
+    elif name in SHIPPED_AGENTS:
+        errors.append(f"{name} is a coding agent BuilderBot ships; a pack's agent takes a name of its own")
+    out = {}
+    for k, cap in (("name", 30), ("product", 60), ("provider", 60)):
+        v = a.get(k, "")
+        if not isinstance(v, str) or len(v) > cap or (k != "provider" and not v.strip()):
+            errors.append(f"agent.{k} is a short string" + ("" if k == "provider" else ", required"))
+        out[k] = str(v or "").strip()[:cap]
+    cmd = a.get("command")
+    if not (isinstance(cmd, str) and re.fullmatch(r"[a-z][a-z0-9._-]{0,39}", cmd)):
+        errors.append("agent.command is the program's name, which the pack's layout.bin puts on PATH")
+    out["command"] = str(cmd or "")
+    b = a.get("briefing") if isinstance(a.get("briefing"), dict) else {"how": a.get("briefing") or "none"}
+    how = b.get("how")
+    if how not in PACK_AGENT_BRIEFING:
+        errors.append(f"agent.briefing.how is one of {', '.join(PACK_AGENT_BRIEFING)}")
+    out["briefing"] = {"how": how}
+    if how in ("flag-text", "flag-file"):
+        if not (isinstance(b.get("flag"), str) and FLAG.fullmatch(b["flag"])):
+            errors.append(f"agent.briefing.flag is the option {how} hands the briefing with, e.g. --rules")
+        out["briefing"]["flag"] = str(b.get("flag") or "")
+    elif how == "env-file":
+        if not (isinstance(b.get("env"), str) and ENV_NAME.fullmatch(b["env"])):
+            errors.append("agent.briefing.env is the variable that names the briefing's file")
+        out["briefing"]["env"] = str(b.get("env") or "")
+    h = a.get("hooks")
+    if not isinstance(h, dict):
+        errors.append("agent.hooks is an object: file, shape, payload and events (pre, prompt and stop at least): an agent that cannot take BuilderBot's guards is not listed")
+        h = {}
+    if not (isinstance(h.get("file"), str) and REL.fullmatch(h["file"])):
+        errors.append("agent.hooks.file is its hooks file's path under the account's home, e.g. .foo/hooks/builderbot.json")
+    if h.get("shape") not in PACK_AGENT_SHAPES:
+        errors.append(f"agent.hooks.shape is one of {', '.join(PACK_AGENT_SHAPES)}")
+    if h.get("payload") not in PACK_AGENT_PAYLOADS:
+        errors.append(f"agent.hooks.payload is one of {', '.join(PACK_AGENT_PAYLOADS)}")
+    evs = h.get("events") if isinstance(h.get("events"), dict) else {}
+    for k in evs:
+        if k not in PACK_AGENT_EVENTS:
+            errors.append(f"agent.hooks.events.{k} is not one of BuilderBot's: {', '.join(PACK_AGENT_EVENTS)}")
+        elif not (isinstance(evs[k], str) and EVENT_NAME.fullmatch(evs[k])):
+            errors.append(f"agent.hooks.events.{k} is the agent's own name for that event")
+    missing = [k for k in PACK_AGENT_NEEDS if k not in evs]
+    if missing:
+        errors.append(f"agent.hooks.events names no {', '.join(missing)}: an agent that cannot take BuilderBot's guards is not listed")
+    tools = h.get("tools") if isinstance(h.get("tools"), dict) else {}
+    for k, v in tools.items():
+        if k not in ("shell", "edit", "grep") or not (isinstance(v, list) and len(v) <= 8 and all(isinstance(t, str) and TOOL_NAME.fullmatch(t) for t in v)):
+            errors.append("agent.hooks.tools maps shell, edit and grep to the agent's own tool names")
+    out["hooks"] = {"file": str(h.get("file") or ""), "shape": h.get("shape"), "payload": h.get("payload"),
+                    "events": {k: v for k, v in evs.items() if k in PACK_AGENT_EVENTS},
+                    "tools": {k: list(v) for k, v in tools.items() if k in ("shell", "edit", "grep") and isinstance(v, list)}}
+    env = a.get("env") if a.get("env") is not None else {}
+    if not (isinstance(env, dict) and len(env) <= 8 and all(ENV_NAME.fullmatch(str(k)) and isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9._:,-]{0,80}", v)
+                                                          for k, v in env.items())):
+        errors.append("agent.env maps up to 8 NAME to plain words (an updater off, a telemetry switch), never a path or a secret")
+        env = {}
+    if any(k.startswith("BB_") or k in ("PATH", "HOME", "LD_PRELOAD", "LD_LIBRARY_PATH") for k in env):
+        errors.append("agent.env sets none of PATH, HOME, LD_* or BuilderBot's own BB_ names")
+    out["env"] = dict(env)
+    si = a.get("signin") if isinstance(a.get("signin"), dict) else {}
+    for k, v in (("respawn", a.get("respawn")), ("signin.login", si.get("login"))):
+        v = v if v is not None else []
+        if not (isinstance(v, list) and len(v) <= 6 and all(isinstance(x, str) and ARG.fullmatch(x) for x in v)):
+            errors.append(f"agent.{k} lists up to 6 plain words")
+            v = []
+        out[k.split(".")[-1]] = list(v)
+    if out["login"] and out["login"][0] != out["command"]:
+        errors.append("agent.signin.login runs the agent's own command, e.g. [\"foo\", \"login\"]")
+    fp = a.get("first_prompt") if isinstance(a.get("first_prompt"), dict) else {"how": a.get("first_prompt") or "none"}
+    if fp.get("how") not in PACK_AGENT_FIRST:
+        errors.append(f"agent.first_prompt.how is one of {', '.join(PACK_AGENT_FIRST)}")
+    out["first_prompt"] = {"how": fp.get("how")}
+    if fp.get("how") == "flag":
+        if not (isinstance(fp.get("flag"), str) and FLAG.fullmatch(fp["flag"])):
+            errors.append("agent.first_prompt.flag is the option a first prompt goes after, e.g. -i")
+        out["first_prompt"]["flag"] = str(fp.get("flag") or "")
+    sf, se = si.get("file", ""), si.get("env", "")
+    if sf and not (isinstance(sf, str) and REL.fullmatch(sf)):
+        errors.append("agent.signin.file is where its sign-in is kept, under the account's home")
+    if se and not (isinstance(se, str) and ENV_NAME.fullmatch(se)):
+        errors.append("agent.signin.env is a variable whose presence signs it in (an API key)")
+    out["signin"] = {"file": str(sf or ""), "env": str(se or "")}
+    tr = a.get("transcripts") if isinstance(a.get("transcripts"), dict) else {}
+    td, tf = tr.get("dir", ""), tr.get("file", "")
+    if td and not (isinstance(td, str) and REL.fullmatch(td)):
+        errors.append("agent.transcripts.dir is the folder its conversations are kept in, under the account's home")
+    if tf and not (isinstance(tf, str) and re.fullmatch(r"[A-Za-z0-9._/{}-]{1,120}", tf) and "{session}" in tf and ".." not in tf):
+        errors.append("agent.transcripts.file is a conversation's file under that folder, with {session} for its id")
+    sk = tr.get("session_key", "") or ""
+    if sk and not (isinstance(sk, str) and re.fullmatch(r"[a-z_A-Z]{1,40}", sk)):
+        errors.append("agent.transcripts.session_key is the payload's field the session's id is in")
+    out["transcripts"] = {"dir": str(td or ""), "file": str(tf or ""), "session_key": str(sk)}
+    models = a.get("models") if a.get("models") is not None else []
+    if not (isinstance(models, list) and len(models) <= 24 and all(isinstance(x, str) and re.fullmatch(r"[A-Za-z0-9._:/-]{1,60}", x) for x in models)):
+        errors.append("agent.models lists up to 24 model names Start offers")
+        models = []
+    out["models"] = list(models)
+    if models and not (isinstance(a.get("model_flag"), str) and FLAG.fullmatch(a["model_flag"])):
+        errors.append("agent.model_flag is the option a model is picked with, e.g. --model")
+    out["model_flag"] = str(a.get("model_flag") or "") if models else ""
+    return out if len(errors) == bad else None
+
+
+def _config(c, errors, depth=0):
+    """The config block checked: a list of fields, each {name, label, kind,
+    help, required, env, choices (choice), fields (list)}; [] with the
+    errors said."""
+    if not isinstance(c, list) or len(c) > 24:
+        errors.append("config is a list of up to 24 fields, each {name, label, kind, help, required}")
+        return []
+    out, seen = [], set()
+    for f in c:
+        if not isinstance(f, dict):
+            errors.append("a config field is an object")
+            continue
+        name, kind = str(f.get("name") or ""), str(f.get("kind") or "text")
+        if not CONFIG_NAME.fullmatch(name) or name in seen:
+            errors.append(f"config field {name or '(unnamed)'}: name is 1 to 40 of a-z, 0-9, - and _, starting with a letter, and once")
+            continue
+        seen.add(name)
+        if kind not in CONFIG_KINDS or (kind in ("list", "projects") and depth):
+            errors.append(f"config field {name}: kind is one of {', '.join(CONFIG_KINDS)}" + (" (not inside a list)" if depth else ""))
+            continue
+        field = {"name": name, "kind": kind, "label": str(f.get("label") or name)[:60], "help": str(f.get("help") or "")[:200],
+                 "required": f.get("required") is True}
+        # Whose the value is (R172 step 5): the node's (one for everybody
+        # there), or each person's own on that node, kept under their key.
+        scope = str(f.get("scope") or "node")
+        if scope not in ("node", "person") or (depth and scope != "node"):
+            errors.append(f"config field {name}: scope is node or person" + (" (a list's rows are the list's)" if depth else ""))
+            continue
+        if scope == "person":
+            field["scope"] = "person"
+        env = str(f.get("env") or "")
+        if env and not ENV_NAME.fullmatch(env):
+            errors.append(f"config field {name}: env is a NAME a verb reads it as")
+        elif env:
+            field["env"] = env
+        if kind == "choice":
+            ch = f.get("choices")
+            if not isinstance(ch, list) or not ch or not all(isinstance(x, dict) and str(x.get("value") or "") for x in ch):
+                errors.append(f"config field {name}: choices lists {{value, label}}")
+                continue
+            field["choices"] = [{"value": str(x["value"])[:60], "label": str(x.get("label") or x["value"])[:60]} for x in ch[:24]]
+        if kind == "list":
+            sub_errors = []
+            field["fields"] = _config(f.get("fields"), sub_errors, depth + 1)
+            if sub_errors or not field["fields"]:
+                errors.append(f"config field {name}: a list names the fields of each row: " + "; ".join(sub_errors or ["none"]))
+                continue
+        out.append(field)
+    return out
+
+
 def validate(m, shipped=()):
     """A manifest checked and cut down to what BuilderBot reads: (clean,
-    errors). Nothing in it is run here; the errors say what to fix."""
+    errors). Nothing in it is run here; the errors say what to fix. An
+    official pack (tier official, R169 step 1) may carry a shipped
+    toolchain's recipe or an agent's adapter in place of install steps and
+    verbs, and may take a shipped name, being the shipped thing itself."""
     errors = []
     if not isinstance(m, dict):
         return None, [f"{MANIFEST} is a JSON object"]
+    tier = str(m.get("tier") or "url")
+    if tier not in TIERS:
+        errors.append(f"tier is one of {', '.join(TIERS)}")
+    official = tier == "official"
     name = str(m.get("name") or "")
-    if not NAME.fullmatch(name):
+    # A shipped toolchain's name may carry a colon (android:emulator), the
+    # store's own family form; a person's pack never does.
+    if not (NAME_OFFICIAL if official else NAME).fullmatch(name):
         errors.append("name is 2 to 40 of a-z, 0-9 and -, starting with a letter")
-    elif name in shipped:
+    elif name in shipped and not official:
         errors.append(f"{name} is a toolchain BuilderBot ships; a pack takes a name of its own")
-    out: dict = {"name": name,
+    elif name in BB_TOOL_WORDS and not official:
+        errors.append(f"{name} is one of bb tool's own words; a pack takes a name of its own")
+    out: dict = {"name": name, "tier": tier,
            "label": str(m.get("label") or name)[:80],
            "about": str(m.get("about") or "")[:400]}
+    if official and isinstance(m.get("shipped"), dict):
+        out["shipped"] = m["shipped"]
+    elif m.get("shipped") is not None:
+        errors.append("shipped (a toolchain's recipe) is an official pack's alone")
+    if m.get("agent") is not None:
+        if not official:
+            a = _pack_agent(name, m["agent"], errors)
+            if a:
+                out["pack_agent"] = a
+        else:
+            a = _agent(m["agent"], errors)
+            if a:
+                out["agent"] = a
+    # A deployed thing (R172): the model router, deployed and configured
+    # from its card; an official pack's alone, like an agent's adapter.
+    if m.get("service") is not None:
+        sv = m["service"] if isinstance(m["service"], dict) else {}
+        if not official:
+            errors.append("service (a deployed thing of BuilderBot's) is an official pack's alone")
+        elif str(sv.get("kind") or "") not in SERVICES:
+            errors.append(f"service.kind is one of {', '.join(SERVICES)}")
+        else:
+            out["service"] = {"kind": str(sv["kind"])}
+    if m.get("config") is not None:
+        out["config"] = _config(m["config"], errors)
+    stands_in = "shipped" in out or "agent" in out or "service" in out or "pack_agent" in out
     plats = m.get("platforms") or []
     if not isinstance(plats, list) or not plats or not all(isinstance(p, str) and PLATFORM.fullmatch(p) for p in plats):
         # The wildcard named too, in the form the rule takes (B111): a bare
@@ -129,6 +420,28 @@ def validate(m, shipped=()):
         errors.append("terms lists what it is under, each {label, url}")
         terms = []
     out["terms"] = [{"label": str(t["label"])[:120], "url": str(t.get("url") or "")[:300]} for t in terms]
+    # What it touches (R169 step 4): the hosts its install fetches from and
+    # whether it needs root on the node, said on Look before it is added; a
+    # pack that needs root is an administrator's to add.
+    tch = m.get("touches") if m.get("touches") is not None else {}
+    if not isinstance(tch, dict):
+        errors.append("touches is an object: hosts (the names its install fetches from) and root (true or false)")
+        tch = {}
+    hosts = tch.get("hosts") or []
+    if not isinstance(hosts, list) or len(hosts) > 16 or not all(isinstance(h, str) and re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", h) for h in hosts):
+        errors.append("touches.hosts lists up to 16 host names an install fetches from, e.g. [\"github.com\"]")
+        hosts = []
+    if tch.get("root") not in (None, True, False):
+        errors.append("touches.root is true or false")
+    out["touches"] = {"hosts": hosts, "root": tch.get("root") is True}
+    # The BuilderBot versions it works with (R169 step 6), by release line
+    # ("0.9", "0.10"); none named, every one. Checked before it is added and
+    # said on the bell when this install moves to a line it does not name.
+    ww = m.get("works_with") if m.get("works_with") is not None else []
+    if not isinstance(ww, list) or len(ww) > 16 or not all(isinstance(x, str) and re.fullmatch(r"\d{1,3}\.\d{1,3}", x) for x in ww):
+        errors.append("works_with lists the BuilderBot release lines it works with, e.g. [\"0.9\", \"0.10\"]")
+        ww = []
+    out["works_with"] = ww
     inst = m.get("install") or {}
     if not isinstance(inst, dict):
         errors.append("install is an object: steps (each a list of words) and verify")
@@ -144,12 +457,13 @@ def validate(m, shipped=()):
     if not isinstance(lay, dict):
         errors.append("layout is an object: bin, env and tool")
         lay = {}
+    rel = REL_OFFICIAL if official else REL
     bins = lay.get("bin") or []
-    if not isinstance(bins, list) or not all(isinstance(b, str) and REL.fullmatch(b) for b in bins):
+    if not isinstance(bins, list) or not all(isinstance(b, str) and rel.fullmatch(b) for b in bins):
         errors.append("layout.bin lists directories inside the pack to put on PATH")
         bins = []
     tool = lay.get("tool") or ""
-    if tool and not (isinstance(tool, str) and REL.fullmatch(tool)):
+    if tool and not (isinstance(tool, str) and rel.fullmatch(tool)):
         errors.append("layout.tool is a file inside the pack whose presence says it is installed")
         tool = ""
     env = lay.get("env") or {}
@@ -158,15 +472,27 @@ def validate(m, shipped=()):
         errors.append("layout.env maps NAME to a path inside the pack (\"\" for the pack itself) or =VALUE")
         env = {}
     out["layout"] = {"bin": bins, "env": env, "tool": tool or MANIFEST}
-    apt = (m.get("system") or {}).get("apt") if isinstance(m.get("system"), dict) else None
-    if apt is not None and not (isinstance(apt, list) and all(isinstance(a, str) and re.fullmatch(r"[a-z0-9.+|-]{1,80}", a)
-                                                              for a in apt)):
-        errors.append("system.apt lists Debian package names")
-        apt = None
-    if apt:
-        out["system"] = {"apt": apt}
+    # System packages per package manager (R171), as the shipped recipes
+    # carry them: the node's family script installs its own manager's list,
+    # and a node whose manager the pack names none for is not offered it.
+    sysd = m.get("system") if isinstance(m.get("system"), dict) else {}
+    keep = {}
+    for mgr, shape in SYSTEM_NAMES.items():
+        names = sysd.get(mgr)
+        if names is None:
+            continue
+        if not (isinstance(names, list) and len(names) <= 60 and all(isinstance(a, str) and shape.fullmatch(a) for a in names)):
+            errors.append(f"system.{mgr} lists {SYSTEM_WORDS[mgr]} package names")
+            continue
+        if names:
+            keep[mgr] = names
+    for mgr in sysd:
+        if mgr not in SYSTEM_NAMES:
+            errors.append(f"system.{mgr} is not a package manager a node runs: {', '.join(SYSTEM_NAMES)}")
+    if keep:
+        out["system"] = keep
     verbs = m.get("verbs") or {}
-    if not isinstance(verbs, dict) or not verbs:
+    if not isinstance(verbs, dict) or (not verbs and not stands_in):
         errors.append("verbs names at least one command a session calls, each {about, usage, run}")
         verbs = {}
     out["verbs"] = {}
@@ -197,6 +523,11 @@ def validate(m, shipped=()):
         errors.append("guidance names a Markdown file inside the pack")
         g = ""
     out["guidance_file"] = g
+    ic = m.get("icon") or ""
+    if ic and not (isinstance(ic, str) and REL.fullmatch(ic) and ic.rsplit(".", 1)[-1].lower() in ICON_TYPES):
+        errors.append("icon names a PNG, WebP or SVG file inside the pack")
+        ic = ""
+    out["icon"] = ic
     return (out if not errors else None), errors
 
 
@@ -206,10 +537,29 @@ def _git(args, cwd=None, timeout=FETCH_TIMEOUT):
                           timeout=timeout, env=env, check=False)
 
 
-def fetch(url, commit="", shipped=()):
+PATH_IN = re.compile(r"[a-z0-9][\w./-]{0,120}")
+
+
+mirror_bundle = None    # catalogmirror.bundle(url, commit): the imported mirror's bundle holding it, or None
+
+
+def _source(url, commit):
+    """Where a fetch reads `url` at `commit` (its head when none): the
+    imported catalog mirror's bundle when it holds that commit (R169 step 6),
+    nothing going to the network, else the repository itself, shallow."""
+    b = mirror_bundle(url, commit) if mirror_bundle and commit else None
+    if b:
+        return [b, f"refs/pins/{commit}"]
+    return ["--depth", "1", url, commit or "HEAD"]
+
+
+def fetch(url, commit="", shipped=(), sha256="", path=""):
     """The repository at `commit` (its default branch's head when none):
     {commit, manifest, guidance} with the manifest validated, or {error}.
-    Fetched into a scratch directory that is gone when this returns."""
+    Fetched into a scratch directory that is gone when this returns. With
+    `sha256` (the catalog's, of the archive at that commit, R169 step 4)
+    the archive is made and compared, and a difference refuses the pack:
+    git's own hashes pin the commit, this pins what the maintainers saw."""
     url = str(url or "").strip()
     # A suite's pack is a repository on disk (BB_TOOLPACKS_FILE_URLS=1); a
     # controller only ever fetches one over the network.
@@ -218,9 +568,15 @@ def fetch(url, commit="", shipped=()):
         return {"error": "a pack is a git repository's address: https://host/owner/repo"}
     if commit and not re.fullmatch(r"[0-9a-f]{40}", commit):
         return {"error": "a commit is its full 40-character hash"}
+    # A pack in a folder of the repository (R170 step 6): the archive and
+    # the manifest are that folder's.
+    path = str(path or "").strip("/")
+    if path and (not PATH_IN.fullmatch(path) or ".." in path.split("/")):
+        return {"error": "a pack's folder is a plain relative path inside the repository"}
+    at = f"{path}/" if path else ""
     tmp = tempfile.mkdtemp(prefix="toolpack-")
     try:
-        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", "--depth", "1", url, commit or "HEAD"]):
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", *_source(url, commit)]):
             try:
                 r = _git(args)
             except subprocess.TimeoutExpired:
@@ -231,17 +587,66 @@ def fetch(url, commit="", shipped=()):
         got = _git(["-C", tmp, "rev-parse", "FETCH_HEAD"]).stdout.strip()
         if commit and got != commit:
             return {"error": f"{url} answered {got[:12]} where {commit[:12]} was asked"}
+        if sha256:
+            if not re.fullmatch(r"[0-9a-f]{64}", sha256):
+                return {"error": "the catalog's sha256 is 64 hex digits"}
+            import hashlib  # noqa: PLC0415
+            r = subprocess.run(["git", "-C", tmp, "archive", "--format=tar", "FETCH_HEAD", *([path] if path else [])], capture_output=True, timeout=120, check=False)
+            if r.returncode != 0 or hashlib.sha256(r.stdout).hexdigest() != sha256:
+                return {"error": f"{url} at {got[:12]} is not what the catalog vetted: its archive's sha256 differs, so it is refused"}
 
         def read(rel, cap):
-            r = subprocess.run(["git", "-C", tmp, "show", f"FETCH_HEAD:{rel}"], capture_output=True,
+            r = subprocess.run(["git", "-C", tmp, "show", f"FETCH_HEAD:{at}{rel}"], capture_output=True,
                                timeout=30, check=False)
             if r.returncode != 0:
                 return None
             return r.stdout[:cap + 1]
-        got_m = _examine(read, shipped, f"{url} has no {MANIFEST} at its root")
+        got_m = _examine(read, shipped, f"{url} has no {MANIFEST} at {('its ' + path) if path else 'its root'}")
         if got_m.get("error"):
             return {**got_m, "commit": got} if got_m.get("errors") else got_m
-        return {"commit": got, **got_m, "plain": url.startswith("http://")}
+        return {"commit": got, **got_m, "plain": url.startswith("http://"), "path": path}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def fetch_folder(url, commit, sha256, path, files, cap=256 << 10):
+    """A catalog entry's folder at the commit it pins (R170 step 7: an app's
+    bbapp.json and compose.yml), its archive's sha256 checked as a pack's
+    is: {files: {name: bytes}} or {error}. Only the files named are read."""
+    url = str(url or "").strip()
+    local = os.environ.get("BB_TOOLPACKS_FILE_URLS") == "1" and url.startswith("file:///")
+    if not (URL.fullmatch(url) or local):
+        return {"error": "a catalog entry is a git repository's address: https://host/owner/repo"}
+    if not re.fullmatch(r"[0-9a-f]{40}", str(commit or "")) or not re.fullmatch(r"[0-9a-f]{64}", str(sha256 or "")):
+        return {"error": "a catalog entry pins a full commit and its archive's sha256"}
+    path = str(path or "").strip("/")
+    if not path or not PATH_IN.fullmatch(path) or ".." in path.split("/"):
+        return {"error": "a catalog entry's folder is a plain relative path inside the repository"}
+    tmp = tempfile.mkdtemp(prefix="catalog-")
+    try:
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", *_source(url, commit)]):
+            try:
+                r = _git(args)
+            except subprocess.TimeoutExpired:
+                return {"error": f"{url} did not answer within {FETCH_TIMEOUT}s"}
+            if r.returncode != 0:
+                said = (r.stderr or r.stdout).strip().splitlines()
+                return {"error": f"could not fetch {url}: {said[-1] if said else 'git failed'}"}
+        if _git(["-C", tmp, "rev-parse", "FETCH_HEAD"]).stdout.strip() != commit:
+            return {"error": f"{url} did not answer with {commit[:12]}"}
+        import hashlib  # noqa: PLC0415
+        r = subprocess.run(["git", "-C", tmp, "archive", "--format=tar", "FETCH_HEAD", path], capture_output=True, timeout=120, check=False)
+        if r.returncode != 0 or hashlib.sha256(r.stdout).hexdigest() != sha256:
+            return {"error": f"{url} at {commit[:12]} is not what the catalog vetted: its archive's sha256 differs, so it is refused"}
+        out = {}
+        for name in files:
+            g = subprocess.run(["git", "-C", tmp, "show", f"FETCH_HEAD:{path}/{name}"], capture_output=True, timeout=30, check=False)
+            if g.returncode != 0:
+                return {"error": f"{url} has no {name} in {path}"}
+            if len(g.stdout) > cap:
+                return {"error": f"{path}/{name} is over {cap // 1024} KB"}
+            out[name] = g.stdout
+        return {"files": out}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -268,7 +673,73 @@ def _examine(read, shipped, missing):
         if g is None:
             return {"error": f"{MANIFEST} names {clean['guidance_file']} as its guidance, and it is not there"}
         guidance = g[:GUIDANCE_MAX].decode("utf-8", "replace")
-    return {"manifest": clean, "guidance": guidance}
+    icon = None
+    if clean.get("icon"):
+        raw = read(clean["icon"], ICON_MAX)
+        if raw is None:
+            return {"error": f"{MANIFEST} names {clean['icon']} as its icon, and it is not there"}
+        ext = clean["icon"].rsplit(".", 1)[-1].lower()
+        why = icon_refused(raw, ext)
+        if why:
+            return {"error": f"{clean['icon']}: {why}"}
+        icon = (raw, ext)
+    return {"manifest": clean, "guidance": guidance, **({"icon_bytes": icon} if icon else {})}
+
+
+def icon_refused(raw, ext):
+    """Why an icon's bytes are not the image its name says, or "": a PNG's
+    and a WebP's signature, an SVG that is a document with an svg element,
+    and the size cap."""
+    if len(raw) > ICON_MAX:
+        return f"an icon is {ICON_MAX // 1024} KB at most"
+    if ext == "png" and not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "not a PNG image"
+    if ext == "webp" and not (raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"):
+        return "not a WebP image"
+    if ext == "svg":
+        head = raw[:4096].decode("utf-8", "replace").lower()
+        if "<svg" not in head:
+            return "not an SVG image"
+    return ""
+
+
+def icon_dir():
+    return Path(FILE).parent / "pack-icons" if FILE else None
+
+
+def _keep_icon(name, got):
+    """The icon a pack's files carry, kept under the state by the pack's name
+    (one file, any older one of another type gone); its type, or "" for
+    none."""
+    d = icon_dir()
+    if not d or not NAME.fullmatch(name):
+        return ""
+    for e in ICON_TYPES:
+        (d / f"{name}.{e}").unlink(missing_ok=True)
+    ic = got.get("icon_bytes")
+    if not ic:
+        return ""
+    raw, ext = ic
+    d.mkdir(parents=True, exist_ok=True)
+    tmp = d / f".{name}.{ext}.new"
+    tmp.write_bytes(raw)
+    tmp.replace(d / f"{name}.{ext}")
+    return ext
+
+
+def icon_of(name):
+    """(bytes, content type) of a kept pack's icon, or None."""
+    d = icon_dir()
+    if not d or not NAME.fullmatch(str(name or "")):
+        return None
+    for e, ct in ICON_TYPES.items():
+        f = d / f"{name}.{e}"
+        if f.is_file():
+            try:
+                return f.read_bytes(), ct
+            except OSError:
+                return None
+    return None
 
 
 # ---- a pack made here ------------------------------------------------------
@@ -360,7 +831,7 @@ def _git_here(name, *args, work=None):
     return _git([*AUTHOR, *pre, *args])
 
 
-def add_staged(staged, by, shipped=()):
+def add_staged(staged, by, shipped=(), may_root=False):
     """Keep a pack made here, as the version that was looked at: committed
     to its repository on this controller, its bundle written for the nodes.
     A pack of the same name made here is updated; one from a repository is
@@ -374,6 +845,10 @@ def add_staged(staged, by, shipped=()):
             return got
         m = got["manifest"]
         name = m["name"]
+        if (m.get("touches") or {}).get("root") and not may_root:
+            return {"error": f"{name}: {ROOT_REFUSED}"}
+        if not fits(m):
+            return {"error": _unfit_why(m)}
         with _lock:
             data = _load()
             was = data["packs"].get(name)
@@ -400,7 +875,7 @@ def add_staged(staged, by, shipped=()):
             if r.returncode != 0:
                 return {"error": f"could not write {name}'s bundle: {(r.stderr or '').strip()}"}
             rec = {"name": name, "url": HERE + name, "hosted": True, "commit": commit, "manifest": m,
-                   "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time())}
+                   "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time()), "icon": _keep_icon(name, got)}
             data["packs"][name] = rec
             write_json(FILE, data)
         return {"ok": True, "pack": rec, "replaced": bool(was), "unchanged": bool(same)}
@@ -433,24 +908,136 @@ def packs():
         return _load()["packs"]
 
 
-def add(url, commit, by, shipped=()):
+# The package managers a node's family runs (provision-linux.sh's families),
+# each with the shape of its package names.
+SYSTEM_NAMES = {"apt": re.compile(r"[a-z0-9.+|-]{1,80}"), "dnf": re.compile(r"[A-Za-z0-9._+|-]{1,80}"),
+                "pacman": re.compile(r"[a-z0-9@._+|-]{1,80}"), "zypper": re.compile(r"[A-Za-z0-9._+|-]{1,80}"),
+                "apk": re.compile(r"[a-z0-9._+|-]{1,80}")}
+SYSTEM_WORDS = {"apt": "Debian and Ubuntu", "dnf": "Fedora and Red Hat", "pacman": "Arch", "zypper": "openSUSE", "apk": "Alpine"}
+
+
+ROOT_REFUSED = "it needs root on the node (its touches say so): an administrator adds it"
+running_version = lambda: ""    # noqa: E731 (this build's version, set by the server)
+
+
+def line_of(version):
+    """A version's release line, "0.9" of "0.9.0-dev.4342+48b768b"; "" when it has none."""
+    m = re.match(r"^v?(\d+)\.(\d+)", str(version or ""))
+    return f"{m.group(1)}.{m.group(2)}" if m else ""
+
+
+def fits(manifest, version=None):
+    """Whether a pack's manifest names this build's release line (R169 step 6):
+    True for one that names none, or a build with no version."""
+    ww = (manifest or {}).get("works_with") or []
+    line = line_of(running_version() if version is None else version)
+    return not ww or not line or line in ww
+
+
+def unfit():
+    """The bell's rows (kind pack) for each pack this install holds whose
+    works_with does not name the running release line."""
+    line = line_of(running_version())
+    out = []
+    for n, r in packs().items():
+        m = (r or {}).get("manifest") or {}
+        if line and not fits(m):
+            out.append({"kind": "pack", "name": n, "key": f"pack:unfit:{n}:{line}",
+                        "said": f"the pack {n} says it works with BuilderBot {', '.join(m.get('works_with') or [])}, and this is {line}: "
+                                "update it from the Library, or remove it"})
+    return out
+
+
+def _unfit_why(m):
+    line = line_of(running_version())
+    return f"{m['name']} works with BuilderBot {', '.join(m.get('works_with') or [])}, and this is {line}: a newer commit of it may name {line}"
+
+
+def add(url, commit, by, shipped=(), sha256="", tier="url", path="", may_root=False):
     """Keep a pack pinned to `commit`, which the person approving it saw:
     the repository is fetched again at exactly that commit, so what is kept
-    is what was shown. A pack of the same name is replaced (an update)."""
-    got = fetch(url, commit, shipped)
+    is what was shown. A pack of the same name is replaced (an update).
+    From the vetted catalog (R169 step 4) it carries the index's sha256,
+    checked on the way in, and its tier. A pack in a folder of the
+    repository (`path`, R170 step 6) is kept as a pack made here: that
+    folder's files at that commit, committed to its repository on this
+    controller, so a node fetches the folder and nothing else."""
+    got = fetch(url, commit, shipped, sha256, path)
     if got.get("error"):
         return got
+    # One that needs root is an administrator's to add (R169 step 4).
+    if (got.get("manifest") or {}).get("touches", {}).get("root") and not may_root:
+        return {"error": f"{got['manifest']['name']}: {ROOT_REFUSED}"}
+    # ...and one that does not name this release line is not added (step 6).
+    if got.get("manifest") and not fits(got["manifest"]):
+        return {"error": _unfit_why(got["manifest"])}
+    # One from the mirror is kept hosted, its folder or its whole tree, so
+    # the nodes take it from the controller and need no network either.
+    if path or (mirror_bundle and mirror_bundle(url, got["commit"])):
+        return _add_folder(url, got["commit"], path, by, shipped, sha256, tier)
     m = got["manifest"]
     with _lock:
         d = _load()
         rec = {"name": m["name"], "url": url, "commit": got["commit"], "manifest": m,
-               "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time())}
+               "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time()),
+               "tier": tier if tier in ("vetted", "official") and sha256 else "url", "sha256": sha256 or ""}
         was = d["packs"].get(m["name"])
         if was and was.get("url") != url:
             return {"error": f"a pack called {m['name']} is already here from {was.get('url')}; remove it first"}
+        rec["icon"] = _keep_icon(m["name"], got)
         d["packs"][m["name"]] = rec
         write_json(FILE, d)
     return {"ok": True, "pack": rec, "replaced": bool(was)}
+
+
+def _add_folder(url, commit, path, by, shipped, sha256, tier):
+    """A folder of a repository at a commit, staged as a pack made here and
+    kept, its record naming where it came from (R170 step 6)."""
+    _staging().mkdir(parents=True, exist_ok=True)
+    tok = secrets.token_hex(8)
+    d = _staging() / tok
+    d.mkdir()
+    tmp = tempfile.mkdtemp(prefix="toolpack-")
+    try:
+        for args in (["init", "-q", tmp], ["-C", tmp, "fetch", "-q", *_source(url, commit)]):
+            r = _git(args)
+            if r.returncode != 0:
+                return {"error": f"could not fetch {url}: {(r.stderr or r.stdout).strip().splitlines()[-1:] or 'git failed'}"}
+        arc = subprocess.run(["git", "-C", tmp, "archive", "--format=tar", f"FETCH_HEAD:{path}"], capture_output=True, timeout=120, check=False)
+        if arc.returncode != 0:
+            return {"error": f"{url} at {commit[:12]} has no folder {path}"}
+        import io  # noqa: PLC0415
+        import tarfile  # noqa: PLC0415
+        with tarfile.open(fileobj=io.BytesIO(arc.stdout), mode="r:") as tar:
+            for ti in tar.getmembers():
+                if not (ti.isfile() or ti.isdir()) or ti.name.startswith(("/", "..")) or ".." in ti.name.split("/"):
+                    return {"error": f"{path} holds something a pack cannot: {ti.name}"}
+            tar.extractall(d, filter="data")
+    except (subprocess.TimeoutExpired, OSError, tarfile.TarError) as e:
+        return {"error": f"could not take {path} from {url}: {e}"}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    out = add_staged(tok, by, shipped)
+    shutil.rmtree(d, ignore_errors=True)
+    if out.get("error"):
+        return out
+    with _lock:
+        data = _load()
+        rec = data["packs"].get(out["pack"]["name"])
+        if rec:
+            rec.update({"url": url, "commit": commit, "path": path, "sha256": sha256 or "",
+                        "tier": tier if tier in ("vetted", "official") and sha256 else "url"})
+            write_json(FILE, data)
+            out["pack"] = rec
+    return out
+
+
+def configs():
+    """{pack name: its config fields} for every added pack that asks for
+    any (R172), what packconfig.for_node reads the node's answers by."""
+    with _lock:
+        d = _load()
+    return {n: r["manifest"]["config"] for n, r in d["packs"].items() if isinstance(r, dict) and (r.get("manifest") or {}).get("config")}
 
 
 def where_said(name, where):
@@ -458,7 +1045,7 @@ def where_said(name, where):
     would stay in those stores with no row left to uninstall them from, and
     a pack added back would read as installed with no install run."""
     return {"error": f"{name} is installed on {', '.join(where)}: uninstall it there first "
-                     f"(pick that node on the Toolchains page and press the uninstall on its row), "
+                     f"(pick that node in the Library and press Remove on its card), "
                      f"then remove the pack", "installed": list(where)}
 
 
@@ -473,6 +1060,7 @@ def remove(name, where=()):
             return {"error": f"no tool pack called {name}"}
         rec = d["packs"].pop(name)
         write_json(FILE, d)
+        _keep_icon(name, {})
         if rec.get("hosted") and HOSTED and NAME.fullmatch(name):
             shutil.rmtree(HOSTED / f"{name}.git", ignore_errors=True)
             (HOSTED / f"{name}.bundle").unlink(missing_ok=True)
@@ -508,11 +1096,50 @@ def recipe(rec):
     row = {"name": m["name"], "label": m["label"], "probe": m["name"], "about": m["about"] or m["label"],
            "platforms": m["platforms"], "layout": m["layout"], "source": src, "terms": m["terms"],
            "verbs": m["verbs"],
-           "pack": {"url": rec["url"], "commit": rec["commit"], "by": rec.get("by", ""), "at": rec.get("at", 0),
-                    "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted"))}}
+           "pack": {"url": rec["url"], "commit": rec["commit"], "path": rec.get("path", ""), "by": rec.get("by", ""), "at": rec.get("at", 0),
+                    "tier": rec.get("tier") or ("here" if rec.get("hosted") else "url"),
+                    "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted")), "agent": bool(offers_agent(rec)),
+                    # Whether it carries an icon of its own (R182).
+                    "icon": bool(rec.get("icon"))}}
+    # A coding agent it offers, for bb-tty and bb-agent-hook on the node,
+    # which read it from the bundle's config/toolpacks.json (R169 step 10).
+    if offers_agent(rec):
+        row["agent"] = offers_agent(rec)
     if m.get("system"):
         row["system"] = m["system"]
+    if m.get("config"):
+        row["config"] = m["config"]
     return row
+
+
+def offers_agent(rec):
+    """The coding agent an installed pack offers (R169 step 9), its adapter,
+    or None: only one the vetted catalog pinned, or an official one, since
+    the adapter decides what runs in every session of it."""
+    m = (rec or {}).get("manifest") or {}
+    return m.get("pack_agent") if m.get("pack_agent") and rec.get("tier") in ("vetted", "official") else None
+
+
+_offered = {"stamp": None, "rows": ()}
+
+
+def offered_agents():
+    """[(name, label, adapter)] for every installed pack that offers a coding
+    agent, in name order; read again only when the packs' file changes, since
+    every session name is asked of it."""
+    try:
+        st = FILE.stat() if FILE else None
+        stamp = (str(FILE), st.st_mtime_ns, st.st_size) if st else None
+    except OSError:
+        stamp = None
+    if stamp is None or stamp != _offered["stamp"]:
+        rows = []
+        for name, rec in sorted(packs().items()) if stamp is not None else ():
+            a = offers_agent(rec)
+            if a:
+                rows.append((name, rec["manifest"].get("label") or name, a))
+        _offered.update(stamp=stamp, rows=tuple(rows))
+    return _offered["rows"]
 
 
 def recipes():

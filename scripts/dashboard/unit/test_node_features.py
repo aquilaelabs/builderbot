@@ -46,7 +46,7 @@ class Helper(unittest.TestCase):
     def test_an_unknown_feature_or_verb_is_refused_by_name(self):
         r = self.run_helper("install", "warpdrive")
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("no such feature: warpdrive; one of: vmhost firewall", r.stderr)
+        self.assertIn("no such feature: warpdrive; one of: vmhost firewall iommu storage shares", r.stderr)
         r = self.run_helper("explode", "vmhost")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("usage: bb-sandbox feature install|remove|state", r.stderr)
@@ -99,6 +99,24 @@ class Controller(unittest.TestCase):
     def test_an_unknown_one_is_refused(self):
         self.assertIn("no such feature", nodes.node_feature("user:test", self.nid, "warpdrive", "install").get("error", ""))
 
+    def test_a_controller_update_is_the_own_node_s_job_on_a_bare_metal_install(self):
+        # R90 step 5: refused on a container install and on any node but
+        # the controller's own machine; there, a system job with the release
+        # named only by its tag.
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"BB_INSTALL": ""}):
+            self.assertIn("installed bare metal", nodes.node_controller_update("user:test", self.nid).get("error", ""))
+        with mock.patch.dict(os.environ, {"BB_INSTALL": "bare-metal"}):
+            self.assertIn("own machine", nodes.node_controller_update("user:test", self.nid).get("error", ""))
+            cfg = dict((nodes.node(self.nid) or {}).get("config") or {}, own=True)
+            nodes._exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(cfg), self.nid))
+            self.assertIn("vX.Y.Z", nodes.node_controller_update("user:test", self.nid, "main").get("error", ""))
+            r = nodes.node_controller_update("user:test", self.nid, "v0.9.0")
+            self.assertTrue(r.get("job"), r)
+            got = nodes.job_next(self.nid, 0)
+            self.assertEqual((got["spec"]["apply"], got["spec"]["config"]), ("controller-update", {"release": "v0.9.0"}))
+            self.assertIn("one at a time", nodes.node_controller_update("user:test", self.nid).get("error", ""))
+
 
 class Agent(unittest.TestCase):
     def test_only_the_table_reaches_bb_sandbox(self):
@@ -117,6 +135,15 @@ class Agent(unittest.TestCase):
         self.assertEqual(a._apply_feature(Job(), {"id": "vmhost", "op": "purge"}), ("failed", 64))
         self.assertEqual(a._apply_feature(Job(), {"id": "vmhost", "op": "remove"}), ("succeeded", 0))
         self.assertEqual(ran, [["feature", "remove", "vmhost"]])
+        # The controller's own update (R90 step 5): only where the installer's
+        # own-node marker and the installer are, and a release by its tag.
+        from unittest import mock
+        self.assertEqual(a._apply_controller_update(Job(), {}), ("failed", 77))
+        with mock.patch("os.path.isfile", return_value=True):
+            self.assertEqual(a._apply_controller_update(Job(), {"release": "main; rm -rf /"}), ("failed", 64))
+            a._sh = lambda job, argv, **kw: ran.append(argv) or 0
+            self.assertEqual(a._apply_controller_update(Job(), {"release": "v0.9.0"}), ("succeeded", 0))
+            self.assertEqual(ran[-1], ["bash", "/opt/builderbot/nodes/install-controller.sh", "--update", "--release", "v0.9.0"])
 
 
 class HelperFresh(unittest.TestCase):

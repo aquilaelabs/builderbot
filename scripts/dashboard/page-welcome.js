@@ -66,9 +66,12 @@ function abShow(which){
   if (which === "log" && !abLogLoaded) abLoadLog();
 }
 // ---- Credits: what BuilderBot is built on --------------------------------
-// The open-source work this install carries or runs, each with what it does
-// here and its license; kept beside the Dockerfile and the provisioner that
-// put them there, which a change to either updates.
+// The open-source work BuilderBot itself ships and runs, each with what it
+// does here and its license: what the controller's image (the Dockerfile),
+// the node provisioner, the OS image (image/mkosi.conf), the Android app
+// and the official catalog packs put there, which a change to any of those
+// updates. Nothing a person adds through the Library (a third-party pack, a
+// sideloaded app) is credited here (the operator, 28 Oct).
 const AB_CREDITS = [
   ["In the controller's image", [
     ["xterm.js", "every terminal in the dock", "MIT", "https://github.com/xtermjs/xterm.js"],
@@ -82,6 +85,7 @@ const AB_CREDITS = [
     ["GitHub CLI", "pull requests and CI logs", "MIT", "https://cli.github.com/"],
     ["tmux", "the sessions that outlive a closed tab", "ISC", "https://github.com/tmux/tmux"],
     ["SQLite", "the controller's record of nodes and jobs", "public domain", "https://sqlite.org/"],
+    ["cryptography", "every seal the controller and a node keep (ChaCha20-Poly1305, X25519, HKDF)", "Apache-2.0 or BSD-3-Clause", "https://cryptography.io/"],
     ["ShellCheck, hadolint, actionlint, Ruff and yq", "bb lint", "GPL-3.0, GPL-3.0, MIT, MIT, MIT", "https://www.shellcheck.net/"],
     ["uv and mise", "Python and the toolchains' versions", "MIT or Apache-2.0, MIT", "https://github.com/astral-sh/uv"],
     ["ripgrep, fd and fzf", "finding things in a tree", "MIT", "https://github.com/BurntSushi/ripgrep"],
@@ -90,6 +94,7 @@ const AB_CREDITS = [
   ]],
   ["On a node", [
     ["Claude Code", "what a Claude session runs, by Anthropic", "Anthropic's terms", "https://www.anthropic.com/claude-code"],
+    ["Codex CLI", "what a ChatGPT session runs, by OpenAI", "Apache-2.0", "https://github.com/openai/codex"],
     ["Docker Engine", "a project's containers and nginx", "Apache-2.0", "https://www.docker.com/"],
     ["QEMU, KVM and libvirt", "the VMs", "GPL-2.0, LGPL-2.1+", "https://libvirt.org/"],
     ["EDK II (OVMF)", "a VM's UEFI firmware", "BSD-2-Clause-Patent", "https://github.com/tianocore/edk2"],
@@ -97,6 +102,25 @@ const AB_CREDITS = [
     ["nftables", "the session, hosting and VM firewalls", "GPL-2.0", "https://netfilter.org/projects/nftables/"],
     ["nginx", "a node's hostnames and certificates", "BSD-2-Clause", "https://nginx.org/"],
     ["Tailscale", "the SSH door, where a node uses it", "BSD-3-Clause", "https://tailscale.com/"],
+    ["LiteLLM", "the model router a node runs for any model", "MIT", "https://github.com/BerriAI/litellm"],
+    ["Ollama", "local models beside the router, where you turn it on", "MIT", "https://ollama.com/"],
+    ["OpenCode", "a session on any model through the router", "MIT", "https://opencode.ai/"],
+    ["Semgrep, Trivy and mobsfscan", "the static analysis scanners a node runs over its projects", "LGPL-2.1, Apache-2.0, LGPL-3.0", "https://semgrep.dev/"],
+    ["WireGuard", "a node's tunnel to the controller, where it enrolls through one", "GPL-2.0", "https://www.wireguard.com/"],
+  ]],
+  ["In BuilderBot OS and the bare-metal install", [
+    ["Debian", "the image's base, pinned to one dated snapshot", "various, free", "https://www.debian.org/"],
+    ["mkosi and systemd", "how the image is built and how it boots", "LGPL-2.1+", "https://github.com/systemd/mkosi"],
+    ["GRUB", "the boot menu with its two slots and the fallback", "GPL-3.0", "https://www.gnu.org/software/grub/"],
+    ["OpenZFS", "the pools", "CDDL-1.0", "https://openzfs.org/"],
+    ["mergerfs and SnapRAID", "the array of mixed disks and its parity", "ISC, GPL-3.0", "https://github.com/trapexit/mergerfs"],
+    ["Samba and nfs-utils", "the SMB and NFS shares", "GPL-3.0, GPL-2.0", "https://www.samba.org/"],
+    ["smartmontools", "what each disk says of itself", "GPL-2.0", "https://www.smartmontools.org/"],
+    ["Network UPS Tools", "the UPS, where there is one", "GPL-2.0+", "https://networkupstools.org/"],
+  ]],
+  ["The official catalog's toolchains", [
+    ["Temurin JDK, Go, Rust, Node.js, Python (uv), .NET, Swift, Zig, Flutter, the Android SDK's tools, Playwright's browsers, PyTorch, FFmpeg, LibreOffice, PlantUML, Mermaid, pandoc, piper and whisper",
+     "what the Library installs on a node for a project to build with, each fetched from its publisher", "each its own", ""],
   ]],
   ["Where a VM comes from", [
     ["Ubuntu, Debian, Fedora, Rocky Linux, AlmaLinux, CentOS Stream, Arch Linux, openSUSE, Gentoo and Alpine",
@@ -231,7 +255,7 @@ function closeAbout(){
 // ---- the build this container runs --------------------------------------
 
 // Which build of the image this container is running, beside how long it has
-// been running it. The pair is the point: an Unraid container keeps serving
+// been running it. The pair is the point: a NAS's container keeps serving
 // whatever it last pulled, so "how long has this been up" and "what is this"
 // are different questions, and only one of them used to be answerable. The
 // stamp is what /opt is serving; bb drift is what a checkout has changed since.

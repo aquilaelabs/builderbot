@@ -1,4 +1,4 @@
-// The companion app's contract. android/api-surface.json names every path
+// The companion app's contract. apps/android/api-surface.json names every path
 // the app calls and the fields it reads from each answer, and carries the
 // number server.py's APP_API and the app's TARGET_API both carry. This file
 // holds the running dashboard to that: a path that stops answering, a field
@@ -17,8 +17,8 @@ const base = URL.replace(/\/$/, '');
 const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
 const get = async p => { const r = await fetch(base + p, { headers: H }); return { status: r.status, body: await r.json() }; };
 
-const surface = JSON.parse(readFileSync(join(REPO, 'android', 'api-surface.json'), 'utf8'));
-const gradle = readFileSync(join(REPO, 'android', 'app', 'build.gradle.kts'), 'utf8');
+const surface = JSON.parse(readFileSync(join(REPO, 'apps', 'android', 'api-surface.json'), 'utf8'));
+const gradle = readFileSync(join(REPO, 'apps', 'android', 'app', 'build.gradle.kts'), 'utf8');
 const serverPy = readFileSync(join(REPO, 'scripts', 'dashboard', 'server.py'), 'utf8');
 
 // ---- one number, three places -------------------------------------------------

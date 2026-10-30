@@ -1,0 +1,63 @@
+{
+ "about": "rustup, cargo and the stable toolchain. Building for Windows also needs a linker: mingw, or zig with cargo-zigbuild.",
+ "label": "Rust",
+ "layout": {
+  "bin": [
+   "cargo/bin"
+  ],
+  "env": {
+   "CARGO_HOME": "cargo",
+   "RUSTUP_HOME": "rustup"
+  },
+  "tool": "cargo/bin/cargo"
+ },
+ "name": "rust",
+ "platforms": [
+  "linux/amd64"
+ ],
+ "shipped": {
+  "probe": "rust",
+  "reports": "rust",
+  "source": {
+   "after": [
+    "a Windows target also needs a linker: rustup target add x86_64-pc-windows-gnu,",
+    "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb toolchains install zig + cargo-zigbuild"
+   ],
+   "checksum": {
+    "from": "file",
+    "url": "{url}.sha256"
+   },
+   "chmod": true,
+   "download": {
+    "match": "\\[pkg\\.(?:rustc|cargo|rust-std)\\.target\\.x86_64-unknown-linux-gnu\\][^\\[]*?xz_url = \"([^\"]+)\"",
+    "resolver": "url-matches",
+    "url": "https://static.rust-lang.org/dist/channel-rust-stable.toml"
+   },
+   "env": {
+    "CARGO_HOME": "{dir}/cargo",
+    "RUSTUP_HOME": "{dir}/rustup"
+   },
+   "fresh_only": true,
+   "kind": "script",
+   "run": [
+    "{script}",
+    "-y",
+    "--no-modify-path",
+    "--profile",
+    "minimal"
+   ],
+   "url": "https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init",
+   "verify": [
+    "{dir}/cargo/bin/rustc",
+    "--version"
+   ]
+  }
+ },
+ "terms": [
+  {
+   "label": "Rust's licenses (MIT or Apache 2.0)",
+   "url": "https://www.rust-lang.org/policies/licenses"
+  }
+ ],
+ "tier": "official"
+}

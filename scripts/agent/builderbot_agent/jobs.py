@@ -235,6 +235,9 @@ class Job(threading.Thread):
                 state, code = self.agent.system(self, spec)
             elif self.job.get("type") == "compose":
                 state, code = self.agent.compose(self, spec)
+            elif self.job.get("type") == "scan":
+                # The node's own scanners over its projects (R145, scan.py).
+                state, code = self.agent.scan(self, spec)
             elif self.job.get("type") == "vm":
                 state, code = self.agent.vm(self, spec)
             elif self.job.get("type") == "toolchain":
@@ -532,7 +535,7 @@ class Job(threading.Thread):
         # ...and its seal, where sign-ins are sealed (R126): signed out is
         # nothing left here to open.
         forget = getattr(self.agent, "token_forget", None)
-        if forget and p.returncode == 0 and (agent or "claude") in ("claude", "codex"):
+        if forget and p.returncode == 0:
             forget(uid, agent or "claude")
         return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
 

@@ -40,12 +40,12 @@ await api('/api/prefs', { project: 'alpha', node: sandbox.id });
 await page.evaluate(() => openPhoneTab());
 // The page itself (its Node picker), not its template's rows (R218 step 16).
 await page.waitForSelector('.doc.on .phonetab .row', { timeout: 20000 });
-await page.waitForSelector('.doc.on #phPick', { timeout: 20000 });
+await page.waitForSelector('.pane .bar #ndPick', { timeout: 20000 });
 // A phone is a tool of its own again (R121, the operator 4 Oct): a page
 // under Build with a Node picker of the nodes that carry adb; the Nodes
 // tab, a machine's configuration, only points at it.
 ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools.some(([k]) => k === 'phone')) && railAllows('phone')) && await page.evaluate(() => tabs.some(t => t.kind === 'phone'))
-   && await page.$eval('.doc.on #phPick', s => [...s.options].some(o => o.textContent.startsWith('sandbox'))),
+   && await page.$eval('.pane .bar #ndPick', s => [...s.options].some(o => o.textContent.startsWith('sandbox'))),
    'the rail opens a Phone page, its Node picker listing the node that carries adb');
 ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
    '...and the Nodes page carries no Phone section of its own');
@@ -65,8 +65,8 @@ ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
   ok(dead.every(Boolean) && /Connect needs the phone's IP address and its port/.test(before.connect)
      && /Pair needs .*pairing code/.test(before.pair)
      && after.connect === '' && /Pair needs the pairing port and the pairing code/.test(after.pair)
-     && await page.$eval('.doc.on [data-phwhy="connect"]', e => e.classList.contains('warn')),
-     `Connect and Pair say under their rows what they still need, and the line goes as it is typed (${JSON.stringify({ before, after })})`);
+     && await page.$eval('.doc.on [data-phwhy="connect"]', e => !e.classList.contains('warn')),
+     `Connect and Pair say under their rows what they still need, muted rather than a warning, and the line goes as it is typed (${JSON.stringify({ before, after })})`);
   // ...and a box being typed in keeps the caret when the page is drawn again
   // under it (B156): a read landing between a fill's focus and its keys took
   // the focus with the old box, the keys went nowhere, and the port typed
@@ -85,14 +85,16 @@ ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
 {
   const link = await page.evaluate(() => {
     const was = state.areas;
-    state.areas = { ...(was || {}), toolchains: '' };
-    const off = pageLink('toolchains', 'Toolchains page');
-    state.areas = { ...(was || {}), toolchains: 'write' };
-    const on = pageLink('toolchains', 'Toolchains page');
+    // The Library is open to Install, Curate or Nodes (railAllows): all
+    // three off, it is shut.
+    state.areas = { ...(was || {}), install: '', curate: '', nodes: '' };
+    const off = pageLink('library', 'Library');
+    state.areas = { ...(was || {}), install: 'write' };
+    const on = pageLink('library', 'Library');
     state.areas = was;
     return { off, on };
   });
-  ok(link.off === 'Toolchains page' && /href="#\/build\/toolchains"/.test(link.on),
+  ok(link.off === 'Library' && /href="#\/build\/library"/.test(link.on),
      `a page link is a link only where the account may open the page (${JSON.stringify(link)})`);
 }
 

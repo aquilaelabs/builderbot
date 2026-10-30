@@ -1,0 +1,56 @@
+{
+ "about": "Installs and switches Xcode versions on a Mac: run xcodes install --latest on the node, with an Apple ID the first time.",
+ "label": "xcodes (Xcode installer)",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/xcodes"
+ },
+ "name": "xcodes",
+ "platforms": [
+  "darwin/*"
+ ],
+ "shipped": {
+  "probe": "xcodes",
+  "reports": "xcodes",
+  "source": {
+   "checksum": {
+    "from": "github-asset"
+   },
+   "download": {
+    "bytes": 12000000,
+    "resolver": "approximate"
+   },
+   "fresh_only": true,
+   "kind": "script",
+   "run": [
+    "sh",
+    "-ec",
+    "dst=\"$2/bin\"; mkdir -p \"$dst\"; python3 -c 'import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \"$1\" \"$dst\"; chmod +x \"$dst/xcodes\"",
+    "--",
+    "{script}",
+    "{dir}"
+   ],
+   "url": "https://github.com/XcodesOrg/xcodes/releases/latest/download/xcodes.zip",
+   "verify": [
+    "{dir}/bin/xcodes",
+    "version"
+   ]
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "xcodes (MIT)",
+   "url": "https://github.com/XcodesOrg/xcodes/blob/main/LICENSE"
+  },
+  {
+   "accept": true,
+   "label": "Apple's Xcode license, for the Xcode it installs",
+   "url": "https://www.apple.com/legal/sla/docs/xcode.pdf"
+  }
+ ],
+ "tier": "official"
+}

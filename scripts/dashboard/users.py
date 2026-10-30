@@ -922,6 +922,158 @@ def add(name, password, role="user", projects=None):
     return {"ok": True, "name": name}
 
 
+def adopt(owner, people):
+    """A prepared configuration's accounts (R161 step 8, firstboot.py), on a
+    store with nobody in it: the owner from a name and a password hash in
+    this file's own scheme (a stick maker hashed what was typed), and each
+    person by name and role with no password, which the owner sets on the
+    Users page, and their SMB password's NT hash where one came with them.
+    {ok, made: [names], skipped: [(name, why)]} or {error}."""
+    name = str((owner or {}).get("name") or "").strip()
+    pw = str((owner or {}).get("password_hash") or "")
+    if not NAME_RE.match(name):
+        return {"error": "the owner's name is letters, digits and . _ @ + - , up to 64"}
+    if not re.fullmatch(r"pbkdf2_sha256\$\d+\$[0-9a-f]{32}\$[0-9a-f]{64}", pw):
+        return {"error": "the owner's password is not a hash this controller reads"}
+    made, skipped = [], []
+    with _lock:
+        d = load()
+        if d["users"]:
+            return {"error": "this controller already has an account"}
+        now = int(time.time())
+        d["users"][name] = {"uid": mint_uid(), "role": "owner", "projects": [], "password": pw,
+                            "created": now, "seen": 0, "prefs": {}, "pins_empty": True}
+        made.append(name)
+        for p in people or []:
+            pn = str((p or {}).get("name") or "").strip()
+            role = str((p or {}).get("role") or "user")
+            nt = str((p or {}).get("smb_nt") or "").upper()
+            if not NAME_RE.match(pn) or pn in d["users"]:
+                skipped.append((pn, "not a name, or a name taken"))
+                continue
+            if role not in ("admin", "user"):
+                role = "user"
+            u = {"uid": mint_uid(), "role": role, "roles": [], "projects": [], "password": "",
+                 "created": now, "seen": 0, "prefs": {}, "pins_empty": True}
+            if re.fullmatch(r"[0-9A-F]{32}", nt):
+                u["smb_nt"], u["smb_at"] = nt, now
+            d["users"][pn] = u
+            made.append(pn)
+        _save(d)
+    import accountkeys
+    if accountkeys.STATE is not None:
+        for n in made:
+            accountkeys.key_of((load()["users"].get(n) or {}).get("uid") or "")
+    return {"ok": True, "made": made, "skipped": skipped}
+
+
+# ---- SMB passwords (R164 step 1) ----
+# A share on the controller's own machine is reached as the account's own
+# Unix user there (bbu- and the id's hex, accounts.py), with an SMB password
+# the person sets on Profile. Samba wants the NT hash (MD4 of the password
+# in UTF-16LE), which is what is kept here and handed to the own machine's
+# agent in its hello; the password itself is never stored. The hash opens
+# the shares as the password does, so it is in the users file and nowhere
+# else, never listed, and a backup carries it sealed as the rest.
+
+def _md4(data):
+    """MD4 (RFC 1320), since OpenSSL 3 no longer offers it to hashlib."""
+    mask = 0xFFFFFFFF
+    f = lambda x, y, z: (x & y) | (~x & z)  # noqa: E731
+    g = lambda x, y, z: (x & y) | (x & z) | (y & z)  # noqa: E731
+    h = lambda x, y, z: x ^ y ^ z  # noqa: E731
+    rot = lambda x, n: ((x << n) | (x >> (32 - n))) & mask  # noqa: E731
+    msg = bytearray(data) + b"\x80"
+    msg += b"\x00" * ((56 - len(msg) % 64) % 64) + (len(data) * 8).to_bytes(8, "little")
+    a, b, c, d = 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476
+    for off in range(0, len(msg), 64):
+        x = [int.from_bytes(msg[off + i:off + i + 4], "little") for i in range(0, 64, 4)]
+        aa, bb, cc, dd = a, b, c, d
+        for i in range(16):
+            k, sh = i, (3, 7, 11, 19)[i % 4]
+            a, d, c, b = d, c, b, rot((a + f(b, c, d) + x[k]) & mask, sh)
+        for i in range(16):
+            k, sh = (i % 4) * 4 + i // 4, (3, 5, 9, 13)[i % 4]
+            a, d, c, b = d, c, b, rot((a + g(b, c, d) + x[k] + 0x5A827999) & mask, sh)
+        for i in range(16):
+            k, sh = (0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15)[i], (3, 9, 11, 15)[i % 4]
+            a, d, c, b = d, c, b, rot((a + h(b, c, d) + x[k] + 0x6ED9EBA1) & mask, sh)
+        a, b, c, d = (a + aa) & mask, (b + bb) & mask, (c + cc) & mask, (d + dd) & mask
+    return b"".join(v.to_bytes(4, "little") for v in (a, b, c, d))
+
+
+def nt_hash(password):
+    """The NT hash Samba keeps for a password, as 32 upper-case hex digits."""
+    return _md4(str(password).encode("utf-16-le")).hex().upper()
+
+
+def smb_user_of(uid):
+    """The Unix user an account is on a node (accounts.py's user_of)."""
+    return "bbu-" + uid[2:] if re.fullmatch(r"u_[0-9a-f]{8}", str(uid or "")) else ""
+
+
+def set_smb_password(name, password):
+    """Set (8 characters at least) or, with "", clear the account's SMB
+    password: {ok} or {error}. The own machine's agent takes it up at its
+    next hello."""
+    if password and len(password) < 8:
+        return {"error": "an SMB password is at least 8 characters"}
+    with _lock:
+        d = load()
+        u = d["users"].get(name)
+        if not u:
+            return {"error": f"no account called {name}"}
+        if password:
+            u["smb_nt"], u["smb_at"] = nt_hash(password), int(time.time())
+        else:
+            u.pop("smb_nt", None); u.pop("smb_at", None)
+        _save(d)
+    return {"ok": True, "name": name, "set": bool(password)}
+
+
+def smb_users():
+    """Every account with an SMB password: [{user, nt}] for the own
+    machine's hello, the Unix user and the hash and nothing else."""
+    out = []
+    for _name, u in sorted(load()["users"].items()):
+        user = smb_user_of(u.get("uid") or "")
+        if user and u.get("smb_nt"):
+            out.append({"user": user, "nt": str(u["smb_nt"])})
+    return out
+
+
+def smb_names():
+    """{unix user: account name} for every account, so a share's users
+    read as people on the page."""
+    return {smb_user_of(u.get("uid") or ""): name for name, u in load()["users"].items() if smb_user_of(u.get("uid") or "")}
+
+
+def smb_resolve(names):
+    """A share's users as the page sends them (an account's name, role:NAME
+    for everybody holding a role, or a Unix user the machine has) to the
+    Unix users Samba is told: (users, "") or ([], why)."""
+    d = load()["users"]
+    out = []
+    for raw in names:
+        n = str(raw or "").strip()
+        if not n:
+            continue
+        if n.startswith("role:"):
+            role, hit = n[5:], False
+            for _name, u in sorted(d.items()):
+                if role in roles.roles_of(u) and smb_user_of(u.get("uid") or ""):
+                    out.append(smb_user_of(u["uid"])); hit = True
+            if not hit:
+                return [], f"nobody holds the role {role}"
+        elif n in d and smb_user_of(d[n].get("uid") or ""):
+            out.append(smb_user_of(d[n]["uid"]))
+        elif re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", n):
+            out.append(n)
+        else:
+            return [], f"{n} is not an account, a role (role:NAME) or a user name"
+    return list(dict.fromkeys(out)), ""
+
+
 def set_password(name, password):
     if len(password or "") < 8:
         return {"error": "a password is at least 8 characters"}
@@ -930,8 +1082,21 @@ def set_password(name, password):
         if name not in d["users"]:
             return {"error": f"no account called {name}"}
         d["users"][name]["password"] = hash_password(password)
+        uid = d["users"][name].get("uid") or ""
         _save(d)
+    # Every browser's cookie stops verifying with the stamp; the sign-ins
+    # they named go too (R159), so the tokens they kept in use are not.
+    _signed_out_everywhere(uid)
     return {"ok": True, "name": name}
+
+
+def _signed_out_everywhere(uid):
+    try:
+        import logins                                       # noqa: PLC0415
+        if logins.STATE is not None and uid:
+            logins.drop_all(uid)
+    except ImportError:
+        pass
 
 
 def set_role(name, role):
@@ -1160,6 +1325,7 @@ def remove(name):
         accountkeys.forget(u.get("uid") or "")
     if gitcreds.STATE is not None and u.get("uid"):
         gitcreds.unlink_account(u["uid"], name)
+    _signed_out_everywhere(u.get("uid") or "")
     return {"ok": True, "name": name}
 
 

@@ -577,7 +577,7 @@ sleep 60
 `, { mode: 0o755 });
       tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`);
       const refused = shell(`u:${ownerUid}:codex:${proj}:b:${boot}`, { FAKE_CODEX_OUT: '1' });
-      ok(/not signed in to ChatGPT/.test(refused) && /Agents page/.test(refused) && !alive(`codex-${proj}`),
+      ok(/not signed in to ChatGPT/.test(refused) && /Library/.test(refused) && !alive(`codex-${proj}`),
          `signed out of ChatGPT, a Codex session is refused with where to sign in (${refused.trim().split('\n')[0]})`);
       shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
       await sleep(400);

@@ -1,5 +1,5 @@
-"""Claude Code is a coding agent of each node (R145, R95): a row on its
-Agents page from the census and the latest known, installed on purpose, and
+"""Claude Code is a coding agent of each node (R145, R95): a row in the
+Library and on the Installed page from the census and the latest known, installed on purpose, and
 required for a session, which is held where it is missing."""
 import os
 import sys
@@ -53,7 +53,7 @@ class ClaudeToolchain(unittest.TestCase):
         n = node(claude="")
         self.use(n)
         self.assertEqual(agentcode.claude_row(n)["state"], "absent")
-        self.assertIn("Claude Code is not installed on clbox: its Agents page installs it",
+        self.assertIn("Claude Code is not installed on clbox: the Library installs it",
                       claudecode.holds().get("n1", ""))
 
     def test_none_installed_does_not_end_a_running_session(self):

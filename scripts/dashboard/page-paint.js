@@ -92,6 +92,19 @@ function paint(el, html, quiet = false){
   return true;
 }
 
+// A change a press already made in place (a card turned over: its class and
+// its faces' inert) written into what paint() remembers, so the next paint
+// of the same markup is no change and the element is left alone. Replacing
+// it instead, as the turn ends, flashed the card in Firefox (the operator,
+// 29 Oct). Only where the record still holds `from`, so a poll's change
+// since is still drawn.
+function paintAdopt(el, from, to){
+  const rec = painted.get(el);
+  if (!rec || rec.first !== el.firstChild || rec.n !== paintedKids(el) || from === to || !rec.html.includes(from)) return false;
+  rec.html = rec.html.replace(from, to);
+  return true;
+}
+
 // A terminal at some directory, always a new one. "" is the workspace root.
 function newShell(proj){
   if (!mayShell()){ notify("a shell is an administrator's", true); return; }

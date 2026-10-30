@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Everything behind the dashboard's Tools tab.
+"""Everything behind the toolchains in the dashboard's Library and Installed page.
 
 The catalog, where a toolchain's files land, what it weighs, what version it is
 and what version upstream has, and the one-job-at-a-time worker that installs,
@@ -161,6 +161,14 @@ def load_toolchains(packs=()):
         if isinstance(pk, dict):
             row["pack"] = {"url": str(pk.get("url") or ""), "commit": str(pk.get("commit") or "")[:40],
                            "by": str(pk.get("by") or ""), "at": int(pk.get("at") or 0), "here": bool(pk.get("here")),
+                           # Its tier and the repository's folder it came
+                           # from, for the Library's card and the catalog's
+                           # newer pin (B442).
+                           "tier": str(pk.get("tier") or "url")[:12], "path": str(pk.get("path") or "")[:200],
+                           # Whether it brings a coding agent (R169 step 9).
+                           "agent": bool(pk.get("agent")),
+                           # ...and an icon of its own (R182).
+                           "icon": bool(pk.get("icon")),
                            "verbs": sorted(str(v) for v in (r.get("verbs") or {}))[:40],
                            # What it runs now, for an update to be read as
                            # what changes: each verb's words, and the
@@ -344,7 +352,7 @@ def _tc_path(probe):
 # slow to say their own name), and they cannot change while nothing is being
 # installed. Re-read when that set does.
 #
-# ON DISK as well as in memory, since it is what made the Toolchains tab slow to
+# ON DISK as well as in memory, since it is what made the toolchains' page slow to
 # open after every container restart: the answer had not changed (the same
 # toolchains on the same share) and the tab paid four seconds to hear it
 # again. The key is what makes that safe rather than stale. It is the set of
@@ -593,9 +601,9 @@ def _reason(said, last, cap=400):
 def job_rev():
     """A token for "anything this tab draws has moved", for the revisions poll.
 
-    Everything the Toolchains page used to keep its own timer for. It polled at
-    half a second while a job ran and at eight seconds otherwise, and the
-    eight-second half was there for the one fact this used to leave out: the
+    What a page drawing toolchains would otherwise keep its own timer for:
+    half a second while a job runs and eight seconds otherwise, the
+    eight-second half there for the one fact this used to leave out: the
     version check. It is in memory here and costs nothing to report, so the
     tab watches this instead of holding a third clock.
 
@@ -978,7 +986,7 @@ def attention(project_nodes):
     """Bell rows, one per live agent node with a toolchain behind what is
     out: every toolchain its last check found an update for, and Claude
     Code beside them (claudecode.behind), each as {name, label, from, to}.
-    One shape for all of them, with Open on that node's Toolchains page,
+    One shape for all of them, with Open on the Library for that node,
     which is where each is updated (the operator, 9 Oct). Computed on every
     poll, so a row leaves the moment its update lands. `project_nodes` is
     {project: node id}."""
@@ -1003,9 +1011,9 @@ def attention(project_nodes):
 
 def agent_attention(project_nodes):
     """Bell rows, one per live agent node with a coding agent behind what is
-    out (R95, the operator 22 Oct: agents are the Agents page's), kind
+    out (R95, the operator 22 Oct: agents have rows of their own), kind
     agents, in the toolchain rows' shape so the bell keys and dismisses
-    them alike, with Open on that node's Agents page."""
+    them alike, with Open on the Library for that node."""
     out = []
     for n in nodes.node_list() if nodes else []:
         if n.get("kind") != "agent" or not n.get("live"):
@@ -1337,6 +1345,13 @@ def payload_for_node(nid):
     fam = str((rep.get("sysdeps") or {}).get("family") or "")
     unmet = (rep.get("sysdeps") or {}).get("unmet") or {}
     sysl = {p["name"]: (p.get("system") or {}).get(fam) or [] for p in TOOLCHAINS} if fam else {}
+    # A pack that names system packages for other managers alone is not for
+    # this node (R171), said on its row as a platform miss is.
+    recipes = {p["name"]: p for p in TOOLCHAINS}
+    for i in items:
+        miss = "" if i.get("wrong_platform") else family_miss(recipes.get(i["name"]) or {}, fam)
+        if miss:
+            i["wrong_platform"] = f"not for this node: {miss}"
     for i in items:
         names = sysl.get(i["name"]) or []
         if names:
@@ -1443,7 +1458,8 @@ def payload_for_node(nid):
         # job's result does, so a census from the job's last seconds counts.
         m["settling"] = bool(ended) and int(rep.get("at") or 0) < ended - 5 and time.time() - ended < 120
     # The coding agents are not here (R95, the operator 22 Oct): they are
-    # installed, updated and removed on the Agents page (agentcode.rows).
+    # installed and updated in the Library and removed on the Installed page
+    # (agentcode.rows).
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # What is this machine's rather than the store's: the NVIDIA
             # driver and the container toolkit, where the node has the card
@@ -1465,6 +1481,8 @@ def payload_for_node(nid):
             # What on the store no node runs from any more (R196).
             "cleanable": cleanable(nid),
             "items": items, "job": job or {"running": False},
+            # The node's platform (R170 step 9): what the Library judges a card's platforms against.
+            "platform": plat,
             # A job that ended and succeeded while the store still reads as
             # before it: the node's census lands a moment after the job's end,
             # and the tab read the store once and stopped, so the rows stayed
@@ -1477,7 +1495,7 @@ DRIVER = "nvidia-driver"
 
 
 def driver_row(n):
-    """The NVIDIA driver as a row of the node's Toolchains page (R102), or
+    """The NVIDIA driver as a row of the Library and the Installed page (R102), or
     None where the node reports no NVIDIA card. A row like the store's, with
     a tick box, in the same batch and the same check, but the machine's own:
     built for its kernel, installed as root, taking the card at the next
@@ -1525,7 +1543,7 @@ def _store_share(n):
 
     The store's own id first (nodes.store_id, a marker file inside it),
     because it is the only answer that survives the transport differing. On
-    Unraid the toolchain store is reached through the FUSE layer by the
+    a NAS host the toolchain store is reached through the user-share layer by the
     controller (fstype fuse.shfs, source "shfs") and over NFS by a node
     (nas:/mnt/user/sdk); neither string can be derived from the other, so
     without the id the pair is invisible and the one-install-at-a-time
@@ -1813,6 +1831,16 @@ def supports(tc, plat):
     return any(x == plat or x == f"{o}/*" for x in want)
 
 
+def family_miss(tc, fam):
+    """Why a recipe is not for a node of package manager `fam` (R171): it
+    names system packages, but none for that manager. "" when it fits, or
+    when the node has not said its family."""
+    sysd = tc.get("system") or {}
+    if not fam or not sysd or fam in sysd or fam == "macos":
+        return ""
+    return f"it names system packages for {', '.join(sorted(sysd))} only, and this node installs with {fam}"
+
+
 def unsupported(names, plat):
     """[(name, platforms)] for the ones this platform cannot have."""
     by = {p["name"]: p for p in TOOLCHAINS}
@@ -1909,8 +1937,8 @@ TOOLKIT = "nvidia-container-toolkit"
 
 
 def container_row(n):
-    """The NVIDIA container toolkit as a row of the node's Toolchains page
-    (R102), or None where the node reports no NVIDIA card or no Docker: what
+    """The NVIDIA container toolkit as a row of the Library and the Installed
+    page (R102), or None where the node reports no NVIDIA card or no Docker: what
     lets a container there reserve the card. The machine's own like the
     driver it needs, and from NVIDIA's package source, which its install
     adds and its removal takes away; Docker reloads its configuration for
@@ -1951,12 +1979,12 @@ def container_why(n):
         return f"{name} reports no Docker"
     if row["state"] == "absent":
         return (f"{name} has no NVIDIA container toolkit, which is what hands the card to a container: "
-                "an administrator installs it from that node's Toolchains page")
+                "an administrator installs it from the Library with that node picked")
     if row["state"] == "unconfigured":
         return (f"Docker on {name} does not list the nvidia runtime, though the toolkit is installed: "
-                "install the toolkit again from that node's Toolchains page, which configures it")
+                "install the toolkit again from the Library with that node picked, which configures it")
     if not row["driver_loaded"]:
-        return f"NVIDIA's driver is not running the card on {name}: its Toolchains page says where it stands"
+        return f"NVIDIA's driver is not running the card on {name}: the Installed page says where it stands"
     return ""
 
 
@@ -2059,6 +2087,12 @@ def node_job(principal, nid, action, names, driver=""):
                              + "; ".join(f"{x} is packaged for {p}" for x, p in no)
                              + ". The catalog names the platform each recipe works on; "
                                "adding another is a URL per row, not a code change."}
+        fam = str(((n.get("reported") or {}).get("sysdeps") or {}).get("family") or "")
+        by = {p["name"]: p for p in TOOLCHAINS}
+        off = [(x, family_miss(by.get(x) or {}, fam)) for x in names]
+        off = [(x, w) for x, w in off if w]
+        if off:
+            return {"error": "; ".join(f"{x} is not for {n['name']}: {w}" for x, w in off)}
         need_kb = sum(_need_kb(x) for x in names)
         free = store.get("free_mb")
         if need_kb and free is not None and free * 1024 < need_kb * 1.2:
@@ -2197,14 +2231,24 @@ def versions_loop():
     # A catalog edit still forces one, and that is decided when the file is
     # read: load_versions zeroes the timestamp when the digest it was saved
     # against is not the one running now.
-    due = _tc_checked + TC_CHECK_EVERY if _tc_checked else 0
+    import checks
+    last = _tc_checked
     while True:
-        if TOOLCHAINS and time.time() >= due and not _tc_job["running"]:
+        # The catalog's cadence (R176): this controller's store, the agents'
+        # newest versions and the vetted index, weekly unless set.
+        if TOOLCHAINS and (not last or checks.due("catalog", last)) and checks.every("catalog") is not None and not _tc_job["running"]:
             if start_job("check", [p["name"] for p in TOOLCHAINS], auto=True):
-                due = time.time() + TC_CHECK_EVERY
+                last = time.time()
         with contextlib.suppress(Exception):
             node_checks_due()
         time.sleep(300)
+
+
+def node_check_every(n):
+    """A node's version check cadence (R176): its config's check_versions,
+    daily, weekly (the default), monthly or off; seconds, or None for off."""
+    v = ((n or {}).get("config") or {}).get("check_versions") or "weekly"
+    return {"daily": 86400, "weekly": 7 * 86400, "monthly": 30 * 86400, "off": None}.get(v, 7 * 86400)
 
 
 def node_checks_due(now=None):
@@ -2231,7 +2275,11 @@ def node_checks_due(now=None):
                     if (j.get("spec") or {}).get("action") == "check"), default=0)
         # ...or sooner, for a node that has just started (nodes.checks_wanted).
         wanted = n["id"] in getattr(nodes, "checks_wanted", ())
-        if last and now - last < TC_CHECK_EVERY and not wanted:
+        # The node's own cadence (R176): its page's setting, weekly unless set.
+        every = node_check_every(n)
+        if every is None and not wanted:
+            continue
+        if last and now - last < (every or TC_CHECK_EVERY) and not wanted:
             continue
         r = node_job("system", n["id"], "check", [])
         if r.get("ok") or r.get("job"):
@@ -2239,12 +2287,14 @@ def node_checks_due(now=None):
             getattr(nodes, "checks_wanted", set()).discard(n["id"])
     # Claude Code on the same clock (R145): asked once for every node, since
     # what is out is one answer, when any node was due or a week has passed.
-    if claudecode and (queued or now - int(claudecode.latest().get("at") or 0) >= TC_CHECK_EVERY):
+    import checks
+    agents_every = checks.every("catalog") or TC_CHECK_EVERY
+    if claudecode and (queued or now - int(claudecode.latest().get("at") or 0) >= agents_every):
         with contextlib.suppress(Exception):
             claudecode.check()
     # The other coding agents on the same clock (R95 step 2).
     for a in agentcode.tracked() if agentcode else ():
-        if queued or now - int(agentcode.latest(a.id).get("at") or 0) >= TC_CHECK_EVERY:
+        if queued or now - int(agentcode.latest(a.id).get("at") or 0) >= agents_every:
             with contextlib.suppress(Exception):
                 agentcode.check(a.id)
     return queued
@@ -2297,10 +2347,10 @@ def verb(action, req, principal):
         # ...and to remove one left for a card that has gone (B168).
         known |= {r["name"] for r in (driver_row(node), container_row(node)) if r and r["state"] == "nocard"}
         want = [str(x) for x in (req.get("names") or [])]
-        # A coding agent is the Agents page's (R95, the operator 22 Oct):
+        # A coding agent is its own verb's (R95, the operator 22 Oct):
         # named here, it is refused with the way there.
         if any(agents.by_tool(x) for x in want):
-            return {"error": "a coding agent is installed, updated and removed on the Agents page, "
+            return {"error": "a coding agent is installed and updated in the Library and removed on the Installed page, "
                              "not here: POST /api/agents"}, 400
         if action == "check":
             # Every row, or the ones named: the question a check answers

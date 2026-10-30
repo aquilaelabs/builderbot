@@ -1,5 +1,5 @@
-"""Codex CLI and Copilot CLI as rows of a node's Toolchains page (R95 step
-2): the census's version against the registry's latest, each install its
+"""Codex CLI and Copilot CLI as a node's rows in the Library and on the
+Installed page (R95 step 2): the census's version against the registry's latest, each install its
 own job, and the node agent's half run against a stub installer, never a
 vendor's."""
 import json
@@ -66,8 +66,8 @@ class Controller(unittest.TestCase):
         agentcode.tmux_base = lambda s: s
         return agentcode.nodes
 
-    def test_codex_copilot_and_grok_are_tracked_and_claude_is_not(self):
-        self.assertEqual([a.id for a in agentcode.tracked()], ["codex", "copilot", "grok"])
+    def test_codex_copilot_grok_and_open_are_tracked_and_claude_is_not(self):
+        self.assertEqual([a.id for a in agentcode.tracked()], ["codex", "copilot", "grok", "open"])
 
     def test_the_version_is_read_out_of_what_each_prints(self):
         n = node(codex="codex-cli 0.163.0", copilot="GitHub Copilot CLI 1.0.102.")

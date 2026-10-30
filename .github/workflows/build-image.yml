@@ -49,6 +49,10 @@ on:
         description: "Rebuild every layer from scratch (slow; the host then re-pulls the whole image)"
         type: boolean
         default: false
+      appliance:
+        description: "Build the appliance image too (BuilderBot OS, image/build.sh; an hour on a hosted runner)"
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -216,7 +220,7 @@ jobs:
           # attestation has to be an index: the image and the attestation are
           # two entries in it. ghcr then serves the tag ONLY to a request that
           # accepts application/vnd.oci.image.index.v1+json, and answers 404 to
-          # one that asks for the docker manifest types. Unraid's Docker page
+          # one that asks for the docker manifest types. A NAS's Docker page
           # asks for the docker types, so every image that moved to an index
           # went to "not available" in its version column. That was measured on
           # ghcr.io/advplyr/audiobookshelf, which 404s for every Accept header
@@ -227,7 +231,7 @@ jobs:
           # here: one platform, one private image, one consumer, and that
           # consumer's whole job is to tell the operator whether the box is
           # current. Delete this line to get the attestation back, and the
-          # version column goes blank again until Unraid can read an index.
+          # version column goes blank again until such a page can read an index.
           provenance: false
           # Inline cache, not the GHA cache. The GHA quota is 10GB per repo
           # and this image's layers alone exceeded it, so every build's cache
@@ -359,3 +363,116 @@ jobs:
           # whole directory because both workflows write into it.
           find "$dir" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' \
             | sort -rn | tail -n +61 | cut -d' ' -f2- | xargs -r rm -f
+
+  # The controller bundle a release publishes (R90 step 5): the tag's tree
+  # as builderbot-controller-X.Y.Z.tar.gz with its sha256 beside it and a
+  # build attestation, which install-controller.sh --update on a bare-metal
+  # install fetches and verifies in place of the tag's source archive. On a
+  # tag push alone; the release is made here when the tag has none yet.
+  bundle:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      # To start the companion apps' builds for a release this job makes.
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Pack the tag's tree
+        id: pack
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          ver="${tag#v}"
+          name="builderbot-controller-${ver}.tar.gz"
+          # The tree as the release carries it, with the commit's hash where
+          # the installer reads it (tree_stamp's .release-rev).
+          git archive --format=tar --prefix="builderbot-${ver}/" "$tag" > tree.tar
+          mkdir -p stamp/"builderbot-${ver}" && git rev-parse "$tag^{commit}" > stamp/"builderbot-${ver}"/.release-rev
+          tar -rf tree.tar -C stamp "builderbot-${ver}/.release-rev"
+          gzip -n -9 < tree.tar > "$name"
+          sha256sum "$name" > "$name.sha256"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Attest the bundle
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.pack.outputs.name }}
+      - name: Put it on the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pack.outputs.tag }}
+          NAME: ${{ steps.pack.outputs.name }}
+        run: |
+          # A dev build's tag (vX.Y.Z-dev.N, R179) is a pre-release and never
+          # the latest: the dev channel alone takes it.
+          pre=(); case "$TAG" in *-dev.*) pre=(--prerelease --latest=false);; esac
+          # The notes are the tree's when it has them for this version
+          # (docs/release-notes/X.Y.Z.md, or X.Y.Z-dev.md for a dev build),
+          # @TAG@, @VER@ and @REPO@ filled in, so the release is published with
+          # them rather than edited after.
+          ver="${TAG#v}"; base="${ver%%-dev.*}"
+          notes="docs/release-notes/$base.md"; case "$TAG" in *-dev.*) notes="docs/release-notes/$base-dev.md";; esac
+          if [ -f "$notes" ]; then
+            sed -e "s|@TAG@|$TAG|g" -e "s|@VER@|$ver|g" -e "s|@REPO@|$GITHUB_REPOSITORY|g" "$notes" > notes.md
+          else
+            echo "BuilderBot $ver: see CHANGELOG.md." > notes.md
+          fi
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$TAG" --notes-file notes.md
+            # A release this job's own token publishes starts no workflow
+            # (GitHub's rule), so the companion apps' release builds, which
+            # a release published by a person starts, are started by name.
+            for wf in android-app.yml companion-app.yml; do
+              gh workflow run "$wf" --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"
+            done
+          fi
+          gh release upload "$TAG" "$NAME" "$NAME.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+
+  # The OS image (R160): built and booted by os-image.yml, which a branch
+  # push touching the image also runs on its own, so a fix is proved without
+  # a tag or a release (the operator, 30 Oct); a tag, a manual run with the
+  # box ticked and the weekly rebuild call it here, and appliance-publish
+  # puts what it built on the release.
+  appliance:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.appliance) || github.event_name == 'schedule'
+    uses: ./.github/workflows/os-image.yml
+
+  appliance-publish:
+    needs: appliance
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: builderbot-os
+          path: out
+      - name: Attest the disk, the ISO, the VM disks and the slot
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            out/builderbot-os-*.raw.xz
+            out/builderbot-os-*.stick.raw.xz
+            out/builderbot-os-*.iso
+            out/builderbot-os-*.qcow2
+            out/builderbot-os-*.ova
+            out/builderbot-os-*.root.squashfs
+      - name: Put it on the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          pre=(); case "$tag" in *-dev.*) pre=(--prerelease --latest=false);; esac
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$tag" --notes "BuilderBot ${tag#v}: see CHANGELOG.md."
+          gh release upload "$tag" out/builderbot-os-* --repo "$GITHUB_REPOSITORY" --clobber

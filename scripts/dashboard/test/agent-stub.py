@@ -33,6 +33,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 URL = os.environ["STUB_AGENT_URL"].rstrip("/")
@@ -211,6 +212,42 @@ def compose(job):
     return "succeeded", 0, out
 
 
+def scan(job):
+    """A scan job (R145) the way builderbot-agent.scan does it, with no
+    docker: one small SARIF per scanner naming a finding in each project,
+    sent up as scan-put, so the Scanners and Analysis pages have something
+    to show."""
+    spec = job.get("spec") or {}
+    projects = [str(p) for p in (spec.get("projects") or [])]
+    seq = [0]
+
+    def say(text):
+        seq[0] += 1
+        call("log", {"job": job["id"], "chunks": [{"seq": seq[0], "chunk": text}]})
+
+    say(f"scanning {', '.join(projects)}\n")
+    sent = []
+    for svc in (spec.get("scanners") or ["semgrep", "trivy", "mobsfscan"]):
+        call("log", {"job": job["id"], "chunks": [], "step": svc})
+        results = [{"ruleId": f"stub.{svc}.rule", "level": "warning",
+                    "message": {"text": f"a {svc} finding the stub made"},
+                    "locations": [{"physicalLocation": {"artifactLocation": {"uri": f"/src/{p}/README.md"},
+                                                        "region": {"startLine": 1}}}]} for p in projects]
+        doc = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": svc}}, "results": results}]}
+        q = urllib.parse.urlencode({"scanner": svc, "projects": ",".join(projects)})
+        req = urllib.request.Request(f"{URL}/api/v1/agent/scan-put?{q}", method="POST",
+                                     data=json.dumps(doc).encode(),
+                                     headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/octet-stream",
+                                              "X-Forwarded-For": "stub"})
+        try:
+            urllib.request.urlopen(req, timeout=60).read()
+            sent.append(svc)
+            say(f"   {svc} sent up\n")
+        except OSError as e:
+            say(f"   {svc} not taken: {e}\n")
+    return ("succeeded" if sent else "failed"), (0 if sent else 1), [{"kind": "scan", "projects": projects, "sent": sent}]
+
+
 def run_exec(job):
     spec = job.get("spec") or {}
     argv = [str(a) for a in (spec.get("argv") or [])]
@@ -364,6 +401,8 @@ def run_job(j):
     try:
         if j.get("type") == "compose":
             state, code, outputs = compose(j)
+        elif j.get("type") == "scan":
+            state, code, outputs = scan(j)
         elif j.get("type") == "exec":
             state, code, outputs = run_exec(j)
         elif j.get("type") == "system":

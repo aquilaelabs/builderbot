@@ -33,7 +33,7 @@ crash with extra steps.
 **BuilderBot itself is NOT excluded**, and the reason is worth a line: its
 dev instance is a second container from the same compose file, on another
 machine, so building or bouncing it never touches the container this dashboard
-is running in, whose lifecycle belongs to Unraid. The first cut excluded it on
+is running in, whose lifecycle belongs to the host. The first cut excluded it on
 a stale argument (replacing the running container kills the builder
 mid-flight, which is true and not what this does). Expect `up` to refuse while
 the real instance holds the same host ports; that refusal is compose saying
@@ -86,7 +86,7 @@ write_json = None
 field = None                     # server.py's one-string-field reader, for act()
 # Why a container of a project on a node cannot be given that node's NVIDIA
 # card, or "": server.py's, which knows the node's switch, the project's
-# setting and what the node's Toolchains tab holds (R102).
+# setting and what the node's Installed page holds (R102).
 gpu_why = None
 room_why = None         # set by server.py: (node id) -> why a build there would run out of disk, or "" (R110)
 container_mem_gb = None  # set by server.py: () -> the memory limit in GB a container with none gets, 0 for none (R110)
@@ -2262,8 +2262,8 @@ def _compose(project, instance, *args):
 # see: a bind mount's SOURCE is resolved by whoever runs the container, and
 # that is the host. `/workspace/alpha` and `/devdata/alpha` mean
 # something here and nothing over there, and docker does not error on a
-# missing bind source, it creates an empty directory and mounts that. On Unraid the
-# root filesystem is RAM, so the failure is an app that starts with no data
+# missing bind source, it creates an empty directory and mounts that. On a host whose
+# root filesystem is RAM the failure is an app that starts with no data
 # and loses it again at reboot, which reads as a bug in the app.
 #
 # So the operator states the mapping once, and it is checked rather than
@@ -2648,8 +2648,16 @@ def _build_env(project, instance=MAIN):
         t = forms.get("file")
         if t:
             out["BB_BUILD_TAG"] = str(t)
-    # The docker group's id on the instance's node (R86), for a compose that
-    # runs a service as a member of it to reach the daemon's socket.
+    return out | _node_env(project, instance)
+
+
+def _node_env(project, instance=MAIN):
+    """What a compose is handed about the node its instance runs on: the
+    docker group's id there (R86, BB_DOCKER_GID), for a compose that runs a
+    service as a member of it to reach the daemon's socket. Every compose
+    call has it, `config` too: a file that requires it (${BB_DOCKER_GID:?})
+    could not be read at all without it (B448)."""
+    out = {}
     with contextlib.suppress(Exception):
         nid = _instance_node(project, instance) if instance else ""
         g = (node_reported(nid) or {}).get("docker_gid") if nid and node_reported else None
@@ -3758,7 +3766,7 @@ def _config(project, instance=MAIN, env_extra=None):
     than making it cheap to ask carelessly: state() does that for one row, and
     overview() for the listing it draws.
     """
-    r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30, env_extra=env_extra)
+    r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30, env_extra=_node_env(project, instance) | (env_extra or {}))
     _cfg_err.said = ""
     if r["code"] != 0:
         # What compose said, kept for the caller that shows it (the
@@ -3918,7 +3926,7 @@ def make_dirs(project, instance=MAIN):
     """Create the bind directories this container can reach. (made, failed).
 
     Owned by whoever BuilderBot runs as, which is the same ownership the
-    per-instance dev-data directory gets and what the Unraid convention
+    per-instance dev-data directory gets and what a NAS host's convention
     expects. `mkdir -p` throughout, so one that already exists is left alone
     and pressing this twice is the same as pressing it once.
 
@@ -4207,7 +4215,7 @@ def taken_ports(project, instance, ports):
 def wiring(cfg):
     """What this compose publishes and what it mounts.
 
-    Shaped the way Unraid's own Containers page shows it, because that is where the
+    Shaped the way a NAS's own Containers page shows it, because that is where the
     operator reads the same facts about every other container on the box: the
     container's side on the left, the host's on the right, and an arrow that
     says which way it goes: one way into the container for a read-only mount,

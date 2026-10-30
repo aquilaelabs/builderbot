@@ -88,6 +88,19 @@ prefs_mod = None
 # a fact about the machine, not the tree, so the briefing's GPU section is
 # decided by it and costs a session on a node without one nothing.
 node_gpu = None
+# What the project's token may do on its git host (R188), from the server
+# (forgeaccess.briefing); bb, which has no server, hands in nothing.
+forge_line = None
+
+
+def forge_said(project):
+    """The git host's lines for the briefing, or ""."""
+    if not forge_line:
+        return ""
+    try:
+        return forge_line(project) or ""
+    except Exception:                                    # noqa: BLE001 - a briefing never fails on it
+        return ""
 _TESTCHANGE = "<!-- BUILDERBOT:TESTCHANGE -->"
 # What a change asked for during a test run does, in the words a session
 # reads: the project's setting (prefs.TEST_CHANGE), one answer per project
@@ -204,6 +217,7 @@ DIALS = (("Add to roadmap", "gate.roadmap", "auto"), ("File bugs", "gate.bugs", 
          ("Add rules", "gate.rules", "auto"), ("Fill in build and test", "gate.settings", "auto"),
          ("Add to the design", "gate.design", "auto"), ("Write the wiki", "gate.wiki", "auto"),
          ("Run its container", "devbuild", "deny"), ("Make VMs", "makevms", "deny"),
+         ("Install a tool pack", "installpacks", "ask"),
          ("Report BuilderBot bugs", "report", "auto"), ("Sign a build", "sign", "ask"),
          ("Manage signing keys", "keys", "ask"), ("Tag and publish a release", "release", "ask"),
          ("Use a lent PC", "pc", "deny"))
@@ -416,7 +430,8 @@ def briefing(project, gates=True):
             if not line.strip() and out and not out[-1].strip():
                 continue
             if line.strip() in (_READS, _DESIGN):
-                said = "\n\n".join(x for x in (identity_line(project), dials_line(project), reads_line(project),
+                said = "\n\n".join(x for x in (identity_line(project), dials_line(project), forge_said(project),
+                                                reads_line(project),
                                                 sees_line(project), packs_line(project)) if x) \
                     if line.strip() == _READS else design_line(project)
                 if said:
@@ -477,14 +492,22 @@ def _packs_on(project):
 
 def packs_line(project):
     """The tool packs a session here may use, said where it learns its
-    project; "" when the project uses none."""
+    project, and the way to ask for one from the vetted catalog (R169 step
+    5) as the project's Install a tool pack dial says."""
     on = _packs_on(project)
+    try:
+        mode = (prefs_mod.get(project) or {}).get("installpacks") or "ask" if prefs_mod and project else "ask"
+    except Exception:                                                # noqa: BLE001
+        mode = "ask"
+    ask = (f"`bb tool search WORDS` looks through the vetted catalog's packs, and `bb tool install NAME --why \"...\"` "
+           f"asks for one ({'refused here' if mode == 'deny' else 'added at once' if mode == 'auto' else 'a person answers on the bell'}: "
+           f"Install a tool pack is {mode}); a session never installs a pack on a node itself.")
     if not on:
-        return ""
+        return ask
     names = ", ".join(f"{(r.get('label') or n)} (`bb tool {n}`)" for n, r in sorted(on.items()))
     return (f"This project's sessions may use the tool packs {names}: `bb tool NAME` lists a pack's verbs, "
             f"and `bb help tool-NAME` prints what the pack says about using them. A person here added each; "
-            f"none is shipped with BuilderBot.")
+            f"none is shipped with BuilderBot. " + ask)
 
 
 def topic(project, slug):

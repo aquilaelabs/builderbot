@@ -59,6 +59,13 @@ GITPOL_MODES = ("allow", "deny")
 # operator, 15 Oct: a test's made-up address held a push fifteen minutes).
 GITPOL_KEY_MODES = {"push": GITPOL_MODES, "main": GITPOL_MODES, "scan": ("hold", "off")}
 GITPOL_DEFAULT = {"push": "allow", "main": "deny", "scan": "hold"}
+# What an agent may do on the git host over what the project's token allows
+# (R188): one per ability in forgeaccess.ABILITIES, which a unit test holds
+# equal, allow or deny, merging off until somebody turns it on.
+FORGEPOL_DEFAULT = {"code_read": "allow", "push": "allow", "workflows": "allow", "pr_read": "allow",
+                    "pr_write": "allow", "merge": "deny", "issues_read": "allow", "issues_write": "allow",
+                    "actions_read": "allow", "actions_write": "allow", "releases_read": "allow",
+                    "releases_write": "allow"}
 GATE_MODES = ("auto", "ask", "deny")
 # The modes a gate takes beyond those three, by kind: the wiki may also be
 # hidden, which keeps it from a session altogether, reading included
@@ -146,8 +153,8 @@ def configure(*, write_json, state):
 # repository split out is back to them. The rest (its build and test, its
 # outputs, its captures and snapshots, its tests' place, its gate on what a
 # session enters into its notebook) stays the repository's.
-GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", "packs_on",
-                "agents_off", "agent_default", "agent_slots", "gitpol", "color", "devbuild", "makevms", "vm_caps",
+GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", "packs_on", "test_node",
+                "agents_off", "agent_default", "agent_slots", "gitpol", "forgepol", "color", "devbuild", "makevms", "vm_caps", "installpacks",
                 "test_change", "gpu", "report", "sign", "keys", "release", "pc", "log_from", "diag")
 # repos.py's answers, handed over by the server: (project_of, members,
 # is_repos). Unset (bb loading this by path), _rp reads the same from the files.
@@ -302,6 +309,10 @@ def _clean_user(rec):
     rec = rec if isinstance(rec, dict) else {}
     out = {k: (rec.get(k) if rec.get(k) in vals else "") for k, vals in USER_CHOICES.items()}
     out.update({k: str(rec.get(k) or "").strip()[:n] for k, n in USER_TEXT.items()})
+    # Any model's pick (R144): a model name as the router lists it, held to
+    # its shape here and to the router's list where it is read.
+    om = str(rec.get("open_model") or "").strip()
+    out["open_model"] = om if agents.OPEN_MODEL.match(om) else ""
     return out
 
 
@@ -408,6 +419,10 @@ def _clean(rec):
             # worked on from either. Everything that reads one node keeps
             # reading `node`; containers may live on any of these.
             "nodes": _nodes_of(rec),
+            # The node its test suites run on (R151): one of its nodes, or
+            # "" for the session's own node, which is what bb tests run and
+            # the gate used before there was a choice.
+            "test_node": str(rec.get("test_node") or "")[:40],
             # The nodes outside that set its containers may also run on: a
             # hosting-only node (nodes.host_only) holds no code and no
             # session, and a container of this project there is built on
@@ -466,6 +481,11 @@ def _clean(rec):
                            if isinstance(rec.get("gitpol"), dict)
                            and (rec.get("gitpol") or {}).get(k) in GITPOL_KEY_MODES[k] else GITPOL_DEFAULT[k])
                        for k in GITPOL_KEYS},
+            # ...and on the git host, over what its token allows (R188).
+            "forgepol": {k: ((rec.get("forgepol") or {}).get(k)
+                             if isinstance(rec.get("forgepol"), dict)
+                             and (rec.get("forgepol") or {}).get(k) in GITPOL_MODES else v)
+                         for k, v in FORGEPOL_DEFAULT.items()},
             "gate": {k: ((rec.get("gate") or {}).get(k)
                          if isinstance(rec.get("gate"), dict)
                          and gate_ok(k, (rec.get("gate") or {}).get(k)) else "auto")
@@ -484,6 +504,10 @@ def _clean(rec):
             # project's VMs (R91 step 4), read as devbuild is: `deny` by
             # default, `ask` puts each in front of a person, `auto` lets it.
             "makevms": _devbuild(rec.get("makevms")),
+            # Whether a session may add a tool pack from the vetted catalog
+            # (R169 step 5): `ask` by default puts it to a person who may
+            # curate, `auto` adds it at the index's pin, `deny` refuses.
+            "installpacks": rec.get("installpacks") if rec.get("installpacks") in DEVBUILD_MODES else "ask",
             "vm_caps": _vm_caps(rec.get("vm_caps")),
             # Where `bb test` runs the tests, one of TESTS_IN. On the node
             # unless the project says otherwise: an image built to ship
@@ -660,7 +684,7 @@ def _agents_off(rec):
     """The coding agents switched off for a project, as stored: ids of the
     agent table's other than Claude's, which a project always runs."""
     got = rec.get("agents_off") if isinstance(rec.get("agents_off"), list) else []
-    ids = [a.id for a in agents.TABLE if a.id != "claude"]
+    ids = [a.id for a in agents.rows() if a.id != "claude"]
     return [i for i in ids if i in {str(x) for x in got}]
 
 
@@ -868,12 +892,12 @@ def set_prefs(project, **kw):
 
 
 def _set_prefs(project, node=None, nodes=None, build=None, test=None,
-              outputs=None, gate=None, gitpol=None,
-              devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
+              outputs=None, gate=None, gitpol=None, forgepol=None,
+              devbuild=None, tests_in=None, test_node=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None, snapshots_on=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
-              pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None, agents_off=None,
+              pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None, installpacks=None, agents_off=None,
               agent_default=None, agent_slots=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
@@ -897,7 +921,7 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 cur["nodes"] = [cur["node"]] + cur["nodes"]
         if agents_off is not None:
             got = agents_off if isinstance(agents_off, list) else [x for x in str(agents_off).split(",") if x]
-            bad = [x for x in got if x not in {a.id for a in agents.TABLE if a.id != "claude"}]
+            bad = [x for x in got if x not in {a.id for a in agents.rows() if a.id != "claude"}]
             if bad:
                 return {"error": f"agents_off names coding agents other than Claude's, not {', '.join(map(str, bad))}"}
             cur["agents_off"] = _agents_off({"agents_off": got})
@@ -970,6 +994,15 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 if v not in GITPOL_KEY_MODES[k]:
                     return {"error": f"{k}: {' or '.join(GITPOL_KEY_MODES[k])}, not {v}"}
                 cur["gitpol"][k] = v
+        if forgepol is not None:
+            if not isinstance(forgepol, dict):
+                return {"error": "forgepol is {ability: allow|deny}"}
+            for k, v in forgepol.items():
+                if k not in FORGEPOL_DEFAULT:
+                    return {"error": f"not an ability on the git host: {k}; one of {', '.join(FORGEPOL_DEFAULT)}"}
+                if v not in GITPOL_MODES:
+                    return {"error": f"{k}: allow or deny, not {v}"}
+                cur["forgepol"][k] = v
         if gate is not None:
             if not isinstance(gate, dict):
                 return {"error": "gate is {roadmap|bugs|rules: auto|ask|deny}"}
@@ -989,6 +1022,10 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
             if makevms not in DEVBUILD_MODES:
                 return {"error": f"makevms is one of {', '.join(DEVBUILD_MODES)}, not {makevms}"}
             cur["makevms"] = makevms
+        if installpacks is not None:
+            if installpacks not in DEVBUILD_MODES:
+                return {"error": f"installpacks is one of {', '.join(DEVBUILD_MODES)}, not {installpacks}"}
+            cur["installpacks"] = installpacks
         if vm_caps is not None:
             if not isinstance(vm_caps, dict):
                 return {"error": "vm_caps is {count, vcpus, mem_mb, disk_gb}"}
@@ -1024,6 +1061,13 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
             if tests_in not in TESTS_IN:
                 return {"error": f"tests_in is one of {', '.join(TESTS_IN)}, not {tests_in}"}
             cur["tests_in"] = tests_in
+        if test_node is not None:
+            # One of the project's own nodes (R151), where its tree is synced
+            # and its session may run a job; "" is the session's own node.
+            tn = str(test_node or "").strip()[:40]
+            if tn and tn not in _nodes_of(cur) and tn != cur.get("node"):
+                return {"error": "the test node is one of the project's nodes: add it under Node first"}
+            cur["test_node"] = tn
         if test_change is not None:
             if test_change not in TEST_CHANGE:
                 return {"error": f"test_change is one of {', '.join(TEST_CHANGE)}, not {test_change}"}
@@ -1076,14 +1120,14 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
-                or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
+                or cur["devbuild"] != "deny" or cur["tests_in"] != "node" or cur["test_node"]
                 or cur["test_change"] != "wait" or cur["gpu"] != "on"
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
                 or cur["snapshot_days"] != SNAPSHOT_DAYS or not cur["snapshots_on"]
                 or cur["sign"] != "ask" or cur["keys"] != "ask" or cur["release"] != "ask"
-                or cur["pc"] != "deny"
+                or cur["pc"] != "deny" or cur["installpacks"] != "ask"
                 or cur["dev_keep"] != DEV_KEEP
-                or cur["gitpol"] != GITPOL_DEFAULT):
+                or cur["gitpol"] != GITPOL_DEFAULT or cur["forgepol"] != FORGEPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose; _clean puts the defaults
             # back on the way out.
@@ -1092,14 +1136,20 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("gate", None)
             if cur["gitpol"] == GITPOL_DEFAULT:
                 rec.pop("gitpol", None)
+            if cur["forgepol"] == FORGEPOL_DEFAULT:
+                rec.pop("forgepol", None)
             if cur["devbuild"] == "deny":
                 rec.pop("devbuild", None)
             if cur["makevms"] == "deny":
                 rec.pop("makevms", None)
+            if cur["installpacks"] == "ask":
+                rec.pop("installpacks", None)
             if cur["vm_caps"] == VM_CAPS:
                 rec.pop("vm_caps", None)
             if cur["tests_in"] == "node":
                 rec.pop("tests_in", None)
+            if not cur["test_node"]:
+                rec.pop("test_node", None)
             if cur["report"] == "auto":
                 rec.pop("report", None)
             if cur["sign"] == "ask":
@@ -1217,7 +1267,7 @@ def configure_dialog(**parts):
 # The dialog's fields that are the asking account's own on the project, not
 # the project's: anybody on it sets these for themselves.
 YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks", "term_scheme",
-         *(f"{a}_{k}" for a in agents.MODELS for k in ("model", "effort")))
+         *(f"{a}_{k}" for a in agents.MODELS for k in ("model", "effort")), "open_model")
 
 
 def project_changes(name, req):
@@ -1270,10 +1320,10 @@ def dialog_save(name, req, uid):
     r = set_prefs(name, node=req.get("node"), nodes=req.get("nodes"),
                   build=req.get("build"),
                   test=req.get("test"), outputs=req.get("outputs"),
-                  gate=req.get("gate"), gitpol=req.get("gitpol"),
+                  gate=req.get("gate"), gitpol=req.get("gitpol"), forgepol=req.get("forgepol"),
                   devbuild=req.get("devbuild"),
-                  makevms=req.get("makevms"), vm_caps=req.get("vm_caps"),
-                  tests_in=req.get("tests_in"),
+                  makevms=req.get("makevms"), vm_caps=req.get("vm_caps"), installpacks=req.get("installpacks"),
+                  tests_in=req.get("tests_in"), test_node=req.get("test_node"),
                   test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
                   snapshot_days=req.get("snapshot_days"), snapshots_on=req.get("snapshots_on"),

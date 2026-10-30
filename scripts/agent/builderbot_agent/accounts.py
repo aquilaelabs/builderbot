@@ -143,10 +143,16 @@ class AccountsMixin:
         rule names, and the session account's groups but the root-like
         ones (kvm for the emulator, render and video for the card)."""
         name = user_of(account)
-        with contextlib.suppress(KeyError):
-            return pwd.getpwnam(name)
         extra = sorted({GROUP} | {g.gr_name for g in grp.getgrall()
                                   if sa in g.gr_mem and g.gr_name not in NOT_GROUPS})
+        with contextlib.suppress(KeyError):
+            have = pwd.getpwnam(name)
+            # One made for its SMB password first (shares.py, R164 step 1)
+            # has the bbu group alone: the session's groups are added.
+            missing = [g for g in extra if name not in (grp.getgrnam(g).gr_mem if g in {x.gr_name for x in grp.getgrall()} else [name])]
+            if missing:
+                subprocess.run(["usermod", "-aG", ",".join(missing), name], capture_output=True, timeout=30, check=False)
+            return have
         p = subprocess.run(["useradd", "-r", "-M", "-U", "-d", home, "-s", "/usr/sbin/nologin",
                             "-G", ",".join(extra), name], capture_output=True, text=True, timeout=30, check=False)
         if p.returncode != 0:

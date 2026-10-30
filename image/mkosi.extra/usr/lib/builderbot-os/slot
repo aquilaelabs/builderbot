@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# The two root slots of a BuilderBot OS disk (R160 step 1), read and set:
+#
+#   slot current         the slot this boot came from (a or b), from the kernel's command line
+#   slot other           the one an update writes
+#   slot next [a|b]      the slot GRUB boots next time (set, or printed when none is named)
+#   slot status          the running release, both slots, which is next, and whether the root is in memory
+#   slot ram [on|off]    whether GRUB loads the slot into memory at boot (the USB edition), read or set
+#   slot trial PREV VER  the next boot is a trial of the slot "next" names, holding VER; PREV is the slot
+#                        to go back to after two boots the health check never marked good
+#   slot good            this boot's slot is healthy: the trial ends, and it stays
+#   slot fell-back       whether the last boot fell back to the slot before (and clears the mark)
+#
+# GRUB keeps the choice in its environment block on the ESP (bb_slot), the one
+# place this tool writes. Counting a new slot's tries and marking it good is
+# R161 step 2's, on top of this.
+set -euo pipefail
+ESP="${BB_ESP:-/boot/efi}"
+ENVF="$ESP/grub/grubenv"
+CMDLINE="${BB_CMDLINE:-/proc/cmdline}"
+RELEASE="${BB_OS_RELEASE:-/usr/lib/builderbot-os/release}"
+
+current() {
+    local w
+    local line
+    read -r line < "$CMDLINE"
+    for w in $line; do
+        case "$w" in bbslot=a|bbslot=b) printf '%s\n' "${w#bbslot=}"; return 0 ;; esac
+    done
+    echo "slot: this boot named no slot (bbslot= is not on the kernel's command line), so it is not a BuilderBot OS boot" >&2
+    return 1
+}
+other() { [ "$(current)" = a ] && echo b || echo a; }
+next() {
+    case "${1:-}" in
+        "")
+            if [ -s "$ENVF" ]; then grub-editenv "$ENVF" list | sed -n 's/^bb_slot=//p' | grep . || echo a
+            else echo a; fi ;;
+        a|b)
+            [ -d "$ESP/grub" ] || { echo "slot: no GRUB at $ESP/grub: is the ESP mounted?" >&2; return 1; }
+            [ -s "$ENVF" ] || grub-editenv "$ENVF" create
+            grub-editenv "$ENVF" set "bb_slot=$1" ;;
+        *) echo "slot next takes a or b" >&2; return 2 ;;
+    esac
+}
+ram() {
+    case "${1:-}" in
+        "")
+            if [ -s "$ENVF" ]; then grub-editenv "$ENVF" list | grep -qx 'bb_toram=1' && echo on || echo off
+            else echo off; fi ;;
+        on|off)
+            [ -d "$ESP/grub" ] || { echo "slot: no GRUB at $ESP/grub: is the ESP mounted?" >&2; return 1; }
+            [ -s "$ENVF" ] || grub-editenv "$ENVF" create
+            if [ "$1" = on ]; then grub-editenv "$ENVF" set bb_toram=1; else grub-editenv "$ENVF" unset bb_toram; fi ;;
+        *) echo "slot ram takes on or off" >&2; return 2 ;;
+    esac
+}
+envget() { [ -s "$ENVF" ] && grub-editenv "$ENVF" list | sed -n "s/^$1=//p" | head -1 || true; }
+needenv() { [ -d "$ESP/grub" ] || { echo "slot: no GRUB at $ESP/grub: is the ESP mounted?" >&2; return 1; }; [ -s "$ENVF" ] || grub-editenv "$ENVF" create; }
+trial() {
+    local prev="${1:-}" ver="${2:-}" nxt
+    case "$prev" in a|b) ;; *) echo "slot trial takes the slot to go back to (a or b) and the version" >&2; return 2 ;; esac
+    needenv || return 1
+    nxt="$(next)"
+    grub-editenv "$ENVF" set bb_trial=1 bb_tries=0 "bb_prev=$prev" "bb_ver_$nxt=$ver"
+    grub-editenv "$ENVF" unset bb_fell_back
+}
+good() {
+    needenv || return 1
+    local cur; cur="$(current 2>/dev/null || true)"
+    grub-editenv "$ENVF" set bb_trial=0 bb_tries=0
+    [ -n "$cur" ] && [ -r "$RELEASE" ] && grub-editenv "$ENVF" set "bb_ver_$cur=$(sed -n 's/^BUILDERBOT_OS_VERSION=//p' "$RELEASE" | head -1)"
+    return 0
+}
+fellback() {
+    if [ "$(envget bb_fell_back)" = 1 ]; then
+        echo yes
+        grub-editenv "$ENVF" unset bb_fell_back 2>/dev/null || true
+    else
+        echo no
+    fi
+}
+status() {
+    local cur nxt inram=no
+    cur="$(current 2>/dev/null || echo '?')"; nxt="$(next)"
+    grep -qw 'bbtoram=1' "$CMDLINE" 2>/dev/null && inram=yes
+    [ -r "$RELEASE" ] && sed 's/^/release: /' "$RELEASE"
+    printf 'booted: slot %s\nnext boot: slot %s\nroot in memory: %s\n' "$cur" "$nxt" "$inram"
+    [ "$(envget bb_trial)" = 1 ] && printf 'trial: slot %s, %s boot(s) so far, back to slot %s after two without the health check\n' "$nxt" "$(envget bb_tries)" "$(envget bb_prev)"
+    [ -n "$(envget bb_ver_a)" ] && printf 'slot a: %s\n' "$(envget bb_ver_a)"
+    [ -n "$(envget bb_ver_b)" ] && printf 'slot b: %s\n' "$(envget bb_ver_b)"
+    return 0
+}
+case "${1:-}" in
+    current) current ;;
+    other) other ;;
+    next) next "${2:-}" ;;
+    ram) ram "${2:-}" ;;
+    trial) trial "${2:-}" "${3:-}" ;;
+    good) good ;;
+    fell-back) fellback ;;
+    status) status ;;
+    *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

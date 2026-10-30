@@ -318,7 +318,7 @@ function dmStatStrip(d){
       sparkSvg(cpuS, 100, "CPU over the last half hour")}</div>
     <div class="tile"><span class="tl">Memory</span><span class="tv">${esc(kb(sum("mem")))}${
       lim ? `<span class="tu">/ ${esc(kb(lim))}</span>` : ""}</span>${
-      lim ? `<span class="dmbar" role="img" aria-label="${Math.round(pct)}% of its limit"><i style="width:${pct.toFixed(1)}%"></i></span>` : ""}</div>
+      lim ? `<span class="dmbar" role="img" aria-label="${Math.round(pct)}% of its limit"><i data-style="width:${pct.toFixed(1)}%"></i></span>` : ""}</div>
     <div class="tile"><span class="tl">Network</span><span class="tv">↓ ${esc(kb(sum("rx")))}</span><span class="ts">↑ ${esc(kb(sum("tx")))}</span></div>
     <div class="tile"><span class="tl">Process${sum("pids") === 1 ? "" : "es"}</span><span class="tv">${esc(String(sum("pids")))}</span></div>
   </div>`;
@@ -1186,7 +1186,7 @@ async function dmAction(project, instance, act, btn){
 // runs on the sandbox VM: a different machine, which is the entire point of
 // the arrangement, and a container publishing 8989 publishes it there. Using
 // the page's own host pointed every port label and every Open link at the
-// Unraid box, where either nothing answers or, worse, something else does.
+// NAS box, where either nothing answers or, worse, something else does.
 //
 // Taken from the address the manager is already told about, with the scheme,
 // the account and any port stripped: ssh://bb@10.0.0.9 is the machine 10.0.0.9.
@@ -1220,7 +1220,7 @@ async function loadWire(d){
     // answering in time, as under a loaded gate) says nothing about the
     // wiring: what was read before stays, and with nothing read before it
     // says it could not (B12), never "publishes nothing".
-    if (!st.wired) throw new Error(dmWireSeen[key] ? "kept" : "the compose file could not be read just now");
+    if (!st.wired) throw new Error(dmWireSeen[key] ? "kept" : st.wired_why ? `compose says: ${st.wired_why}` : "the compose file could not be read just now");
     const ports = st.ports || [], mounts = st.mounts || [];
     const portLine = p => {
       const at = `${daemonHost()}:${p.published || ""}`;
@@ -1441,9 +1441,65 @@ function cUnderPicked(){
   $("cGo").disabled = false;
 }
 
+// Apps a NAS runs (R164 step 2): the catalog the dialog offers, read once,
+// and the pick that fills the name, the compose file and the environment.
+let cApps = null;
+let cAppWant = "";       // the app the Library asked New container to open on (R170)
+// The Library's Install on an app (R170): New container with that app
+// picked and its blanks shown, as if the person had chosen it in the list.
+function openNewContainerApp(id, node = ""){
+  cAppWant = id;
+  // ...on the Library's node when it runs Docker (R170 step 7).
+  if (node) dockerNode = node;
+  openNewContainer();
+}
+async function loadNasApps(){
+  if (cApps) return cApps;
+  try{ cApps = (await (await fetch("/api/nasapps")).json()).apps || []; }
+  catch(e){ cApps = []; }
+  return cApps;
+}
+async function cAppPicked(){
+  const id = $("cApp").value, a = (cApps || []).find(x => x.id === id);
+  $("cAppFields").hidden = !a;
+  $("cAppWhat").textContent = a ? a.what : "";
+  if (!a) return;
+  $("cAppMediaField").hidden = !a.media;
+  $("cAppPort").value = a.port;
+  if (!$("cAppTz").value) $("cAppTz").value = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  if (!$("cName").value) $("cName").value = id;
+}
+async function cAppFill(){
+  const id = $("cApp").value, a = (cApps || []).find(x => x.id === id);
+  if (!a) return;
+  const b = $("cAppFill");
+  busy(b, "Filling in");
+  try{
+    const j = await (await postJSON("/api/nasapps", {app: id, data: $("cAppData").value.trim(), media: $("cAppMedia").value.trim(), ids: $("cAppIds").value.trim(),
+                                                      tz: $("cAppTz").value.trim(), port: parseInt($("cAppPort").value, 10)})).json();
+    if (j.error){ $("cErr").textContent = j.error; $("cErrWrap").hidden = false; return; }
+    $("cErrWrap").hidden = true;
+    $("cYml").value = j.compose; $("cEnv").value = j.env; cYmlTouched = true;
+    if (!$("cName").value) $("cName").value = id;
+    $("cEnvHint").hidden = false;
+    $("cEnvHint").textContent = `${a.name}'s choices: the folders, the user, the time zone and the port${a.secrets?.length ? `, and ${a.secrets.join(" and ")} made for it` : ""}. Saved with the container when you press Create.`;
+    cSeg("yml");
+  }catch(e){ $("cErr").textContent = "the catalog: " + failWords(e); $("cErrWrap").hidden = false; }
+  finally{ unbusy(b, "Fill the definition in"); }
+}
 function openNewContainer(){
   cLock(false);
   cEditing = null;
+  $("cApp").value = ""; $("cAppFields").hidden = true; $("cAppWhat").textContent = "";
+  for (const id of ["cAppData", "cAppMedia", "cAppTz", "cAppPort"]) $(id).value = "";
+  loadNasApps().then(apps => {
+    if ($("cmodal").hidden) return;
+    $("cApp").innerHTML = `<option value="">none: an image, or a compose file of your own</option>` + apps.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+    if (cAppWant && apps.some(a => a.id === cAppWant)){ $("cApp").value = cAppWant; cAppPicked(); }
+    cAppWant = "";
+  });
+  $("cApp").onchange = cAppPicked;
+  $("cAppFill").onclick = cAppFill;
   $("cTabForm").hidden = false;
   $("cEnvHint").hidden = true;
   $("cName").disabled = false;
@@ -1765,6 +1821,7 @@ function dmRowsHtml(ins, job, blind){
         </div>
         <div class="actbar dmacts">
         ${open}
+        ${dmConfigureBtn(d)}
         ${!mayDocker() ? "" : `${d.running ? "" : `<button type="button" class="primary" data-dm="up" ${
           busy || (d.missing_env || []).length ? "disabled" : ""}
           title="${(d.missing_env || []).length
@@ -1821,7 +1878,6 @@ function dmRowsHtml(ins, job, blind){
         // What it uses: one band of four for a container, a table of its
         // services for a stack (the tables rule), each with its own use.
         blind ? "" : many ? dmServicesTable(d, finished) : dmStatStrip(d)}
-        ${managed ? `<div class="sub dim dmmanaged">BuilderBot's own: routes, certificates and Deploy on the ${pageLink("", "nginx page", "#/containers/nginx")}</div>` : ""}
         ${d.relocating ? `<div class="sub ${d.relocating.busy ? "" : d.relocating.archive ? "note" : "bad"} dmreloc">${esc(d.relocating.line)}${
           d.relocating.busy ? '<span class="dots"></span>'
           : d.relocating.archive && mayDocker() && !busy ? ` <a href="#" data-dmunpack>unpack it now</a>` : ""}</div>` : ""}
@@ -2219,6 +2275,7 @@ function dmWireRows(el, list = dockerList){
   // A container's log opens in a tab of the dock: streamed from its node
   // while it runs in an instance (log:ctr:), else read by the controller
   // every few seconds (log:dm:), stopped, on the controller or nobody's.
+  el.querySelectorAll("[data-dmconf]").forEach(b => b.onclick = () => DM_CONFIGURE[b.dataset.dmconf]?.go(dockerNode));
   el.querySelectorAll("[data-dmlog]").forEach(b => b.onclick = () => {
     const row = b.closest("[data-inst]"), name = b.dataset.dmlog;
     const [project, instance] = (row?.dataset.inst || "").split("|");
@@ -2395,7 +2452,7 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   // A project's heading wears its own color when it has one; `null` is
   // the No project heading, which wears none.
   const head = (t, sub, tone) => `<div class="field dmgroup${tone === null ? " none" : ""}"${
-    tone ? ` style="--gc:${tone}"` : ""}><b>${esc(t)}</b>${
+    tone ? ` data-style="--gc:${tone}"` : ""}><b>${esc(t)}</b>${
     sub ? `<span class="dim">${esc(sub)}</span>` : ""}</div>`;
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
   // A deleted project's containers keep its name until it is restored from
@@ -2408,8 +2465,9 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   // and the way onto it said under its heading.
   const notMine = o => !!state?.admin && o !== "System" && !gone(o)
     && (state?.projects || []).some(p => p.name === o && !p.mine);
-  // ...BuilderBot's own (System) after them and before another project's.
-  const rank = o => notMine(o) ? 2 : o === "System" ? 1 : 0;
+  // ...BuilderBot's own (System) pinned above them all (R181, the operator,
+  // 29 Oct), then this account's, then another project's.
+  const rank = o => o === "System" ? -1 : notMine(o) ? 2 : 0;
   const owners = [...new Set([...ins, ...cs].map(r => r.owner || ""))]
     .filter(Boolean).filter(o => !only || only === o)
     .sort((a, b) => rank(a) - rank(b) || byName(projLabel(a), projLabel(b)));
@@ -2476,6 +2534,19 @@ function dmLanLine(name, on){
       data-was="${on ? "1" : ""}"${want ? " checked" : ""}> Reaches the LAN</label></div></div>`;
 }
 
+// A system container's own page (R181): nginx's routes and certificates,
+// the scanners' schedule, the router's settings on the Installed page.
+// Its row is any container's row with this one press more.
+const DM_CONFIGURE = {
+  nginx: {page: "nginx", go: nid => { if (nid) NODE_SET.nginx(nid); railGo("containers", "nginx"); }},
+  scanners: {page: "scanners", go: () => railGo("containers", "scanners")},
+  router: {page: "installed", go: nid => openInstalledOn(nid, "", "service:model-router")},
+};
+function dmConfigureBtn(r){
+  const c = DM_CONFIGURE[r?.system];
+  return c && railAllows(c.page) ? `<button type="button" data-dmconf="${esc(r.system)}" title="its settings, on a page of their own">Configure</button>` : "";
+}
+
 function dmOtherRowsHtml(cs){
   return cs.map(c => dmOtherWrap(c, `
       <div class="grow">
@@ -2488,6 +2559,7 @@ function dmOtherRowsHtml(cs){
           c.ports.length ? ` · ${c.ports.map(esc).join(", ")}` : ""}</div>
         </div>
         <div class="actbar dmacts">
+        ${dmConfigureBtn(c)}
         ${!mayDocker() ? "" : `<button type="button" data-ctl="${
           c.state === "running" ? "stop" : "start"}" data-ctr="${esc(c.name || c.id)}"
           title="${c.state === "running" ? "Stop" : "Start"} it: docker ${c.state === "running" ? "stop" : "start"} ${esc(c.name || c.id)}">${
@@ -2543,8 +2615,9 @@ function dmImage(img){
 // phone finds it without scrolling past every container (R119 step 5).
 function dmBar(b){
   const ghost = !b, dead = ghost ? " disabled" : "";
-  return `<div class="field docbarrow dmpick">${
-      nodePick("dmNode", ghost ? null : b.nodes, dockerNode || b?.nodes[0]?.id)}<input${ghost ? "" : ` id="dmSearch"`} type="search"
+  // The node is the Containers group's header's (R178): the search takes
+  // the picker's room.
+  return `<div class="field docbarrow dmpick"><input${ghost ? "" : ` id="dmSearch"`} type="search"
         placeholder="${isPhone() ? "search" : "name, image, port or project"}" autocomplete="off" aria-label="narrow the containers: name, image, port or project" value="${esc(dmSearch)}"${dead}><span class="sp"></span>
       ${dmViewSeg(dead)}
       ${mayDocker() ? `<span class="actbar">${
@@ -2801,16 +2874,6 @@ function renderDockerInto(i){
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   const ck = el.querySelector("#bDockerCheck");
   if (ck) ck.onclick = () => dmCheck(ck, dockerList?.node || dockerNode || "", () => { dockerRev++; loadDocker(); });
-  const pk = el.querySelector("#dmNode");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (pk) pk.onchange = () => navPush(() => {
-    dockerNode = pk.value;
-    dockerNodeKeep();
-    // The last-known answer first: instant, honestly stale (the blind path
-    // says so), and a fresh ask behind it.
-    dockerList = dockerSeen[dockerNode] || null;
-    dockerRev++; drawPanes(); loadDocker();
-  });
   const nb = el.querySelector("#bDockerNew");
   if (nb) nb.onclick = openNewContainer;
   // A chip narrows the list to one project's group (the chips rule): a

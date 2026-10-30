@@ -27,7 +27,7 @@ const api = async (path, body) => (await fetch(base + path, body === undefined
 
 // A tab of its own under Containers on the rail, beside the containers
 // (the operator, 18 Oct), for an account that reads the Nodes tab.
-ok(await page.evaluate(() => railGroups().some(g => g.key === 'containers' && g.tools.map(([k]) => k).join() === 'docker,vms,nginx')
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'containers' && g.tools.map(([k]) => k).join() === 'docker,vms,nginx,scanners')
                               && !railGroups().some(g => g.key === 'machines' && g.tools.some(([k]) => k === 'nginx')) && railAllows('nginx')),
    'the rail offers nginx under Containers, beside the containers, and not under Machines');
 await page.evaluate(() => openNginxTab());
@@ -36,15 +36,15 @@ const sandbox = await page.evaluate(() => (nginxList || []).find(n => n.name ===
 ok(sandbox && !sandbox.deployed && sandbox.routes.length === 0 && !Object.keys(sandbox.certs || {}).length,
    `the tab lists the sandbox node with no nginx on it yet (${JSON.stringify(sandbox && [sandbox.deployed, sandbox.routes])})`);
 // One node at a time, picked in the bar like Toolchains (the operator, 11 Oct).
-ok(await page.$eval('.nginxtab .docbarrow label.pick select#ngNodeSel', s => [...s.options].some(o => o.textContent === 'sandbox')),
+ok(await page.$eval('.pane .bar label.pick select#ndPick', s => [...s.options].some(o => o.textContent === 'sandbox')),
    'the bar picks the node, as Toolchains does');
-await page.selectOption('.nginxtab #ngNodeSel', sandbox.node);
+await page.selectOption('.pane .bar #ndPick', sandbox.node);
 const sect = `.nginxtab [data-ngnode="${sandbox.node}"]`;
 await page.waitForSelector(sect, { timeout: 10000 });
 ok(await page.$eval(sect, s => /not deployed/.test(s.querySelector('.toolstate .pill').textContent)
-     && document.querySelector('.nginxtab .docbarrow [data-ngdeploy]') && !s.querySelector('[data-ngremove]')
+     && s.querySelector('.pghead [data-ngdeploy]') && !document.querySelector('.nginxtab .docbarrow:not([hidden])') && !s.querySelector('[data-ngremove]')
      && !s.querySelector('[data-ngsave]') && !s.querySelector('[data-ngadd]') && !s.querySelector('#ngCert')),
-   '...its state row says so, with Deploy alone, in the bar with every header button: no routes or certificates before nginx is there (R181)');
+   '...its state row says so, with Deploy alone in its head and no bar (R178): no routes or certificates before nginx is there (R181)');
 
 // Routes kept before Deploy, as the Enroll dialog's tick has them for a node
 // that has not said hello yet: the server keeps them, and Deploy brings
@@ -94,7 +94,7 @@ ok(/PEM/.test((await api('/api/nginx', { action: 'save', node: sandbox.node, rou
    '...and a certificate that is not one');
 
 // Deploy: the container is written from the routes and built on the node.
-await page.click('.nginxtab .docbarrow [data-ngdeploy]');
+await page.click('.nginxtab .pghead [data-ngdeploy]');
 await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.deployed, sandbox.node, { timeout: 20000 });
 const rec = JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['nginx-sandbox'];
 const written = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
@@ -317,16 +317,33 @@ await page.click('#bBell');
 // ...and the Docker row says so with Update, the word every row's update uses.
 await page.evaluate(() => openDocker());
 await page.waitForSelector('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dm="nginx-update"]', { timeout: 20000 });
-// System's row keeps what a person needs and loses what the nginx tab owns
+// System's row keeps what a person needs and loses what the nginx page owns
 // (the operator, 13 Oct; R207): Down, Remove and the update (Up while it is
 // stopped: a running row wears none), no Edit, Rebuild or Copy or move, and
-// a line saying where its settings are.
+// Configure, which opens that page (R181, the operator, 29 Oct: its env is
+// the curated page's, never the row's).
 const sysBtns = await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => ({
   has: [...r.querySelectorAll('.dmacts [data-dm]')].map(b => b.dataset.dm), rel: !!r.querySelector('[data-dmrel]'),
-  line: r.querySelector('.dmmanaged')?.textContent || '' }));
+  conf: r.querySelector('.dmacts [data-dmconf="nginx"]')?.textContent.trim() || '' }));
 ok(['down', 'remove', 'nginx-update'].every(b => sysBtns.has.includes(b)) && !sysBtns.has.includes('edit') && !sysBtns.has.includes('rebuild') && !sysBtns.rel
-   && /nginx page/.test(sysBtns.line),
-   `BuilderBot's nginx row keeps Down, Remove and the update and loses Edit, Rebuild and Copy or move (${sysBtns.has.join(', ')}; ${sysBtns.rel ? 'copy or move' : 'no copy or move'})`);
+   && sysBtns.conf === 'Configure',
+   `BuilderBot's nginx row keeps Down, Remove and the update, loses Edit, Rebuild and Copy or move, and carries Configure (${sysBtns.has.join(', ')}; ${sysBtns.rel ? 'copy or move' : 'no copy or move'})`);
+// System's section is pinned above every project's (R181).
+ok(await page.$eval('.dmtab', t => t.querySelector('.dmcard .dmgroup b')?.textContent === 'System'),
+   'System\'s containers are the first section of the Containers page');
+// Configure opens the nginx page, off the group's sub-nav, with a small top
+// header whose Back names the page it came from and returns there.
+await page.click('.dmtab .row[data-inst="nginx-sandbox|main"] [data-dmconf="nginx"]');
+await page.waitForFunction(() => tabOf(panes[0])?.kind === 'nginx' && location.hash.startsWith('#/containers/nginx'), null, { timeout: 10000 });
+ok(await page.evaluate(() => {
+  const bar = document.querySelector('.pane .bar.page');
+  return /Containers/.test(bar.querySelector('.backhead [data-shellback]')?.textContent || '')
+    && /nginx/.test(bar.querySelector('.backhead .backof')?.textContent || '')
+    && ![...bar.querySelectorAll('[data-subnav]')].some(b => b.dataset.subnav === 'nginx' || b.dataset.subnav === 'scanners');
+}), 'the nginx page wears a top header with Back to Containers, and nginx and Scanners are off the sub-nav');
+await page.click('.pane .bar.page [data-shellback]');
+await page.waitForFunction(() => tabOf(panes[0])?.kind === 'docker', null, { timeout: 10000 });
+ok(await page.evaluate(() => /^#\/containers(\/|$)/.test(location.hash) && !location.hash.includes('nginx')), '...and Back returns to the Containers page');
 ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)
      && r.querySelector('[data-dm="nginx-update"]').textContent.trim() === 'Update'),
    'the Containers page\'s row of a node\'s nginx says the line is out, with Update as on every row');
@@ -429,8 +446,8 @@ ok(!ghost || !!(await api('/api/v1/jobs?active=1')).jobs?.some(j => j.project ==
 // The Enroll dialog's tick: a node enrolled with it gets nginx on its first
 // hello, with the routes saved for it beforehand.
 await page.evaluate(() => openNodesTab());
-await page.waitForSelector('.nodestab #ndEnroll', { timeout: 15000 });
-await page.click('.nodestab #ndEnroll');
+await page.waitForSelector('.pane .bar #ndEnroll', { timeout: 15000 });
+await page.click('.pane .bar #ndEnroll');
 await page.waitForSelector('#ndBody #ndEnNginx', { timeout: 10000 });
 await page.fill('#ndBody #ndEnName', 'vpsbox');
 await page.check('#ndBody #ndEnNginx');

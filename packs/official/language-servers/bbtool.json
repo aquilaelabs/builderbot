@@ -1,0 +1,54 @@
+{
+ "about": "Python and TypeScript language servers, so a session sees type errors as it edits rather than at the next build.",
+ "label": "Language servers (Python, TypeScript)",
+ "layout": {
+  "bin": [
+   "node_modules/.bin"
+  ],
+  "env": {},
+  "tool": "node_modules/.bin/pyright-langserver"
+ },
+ "name": "language-servers",
+ "platforms": [
+  "linux/*",
+  "darwin/*"
+ ],
+ "shipped": {
+  "probe": "language-servers",
+  "reports": "pyright",
+  "requires": [
+   "node"
+  ],
+  "source": {
+   "download": {
+    "bytes": 46000000,
+    "resolver": "approximate"
+   },
+   "kind": "command",
+   "requires": "npm",
+   "run": [
+    "sh",
+    "-c",
+    "npm install --prefix \"$1\" --no-audit --no-fund --loglevel=error pyright@latest typescript-language-server@latest typescript@5",
+    "--",
+    "{dir}"
+   ]
+  },
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "pyright (MIT)",
+   "url": "https://github.com/microsoft/pyright/blob/main/LICENSE.txt"
+  },
+  {
+   "label": "typescript-language-server (Apache 2.0)",
+   "url": "https://github.com/typescript-language-server/typescript-language-server/blob/master/LICENSE"
+  },
+  {
+   "label": "TypeScript (Apache 2.0)",
+   "url": "https://github.com/microsoft/TypeScript/blob/main/LICENSE.txt"
+  }
+ ],
+ "tier": "official"
+}

@@ -74,3 +74,24 @@ inside() {
         --home /home/builder --cwd /workspace/labp --env "$d/env" -- /bin/bash /workspace/labp/.inview.sh 2>&1 \
         || echo "enter-rc=$?"
 }
+
+# start_update REF: the repository's REF unpacked beside the install and the
+# installed release's --update run from it (R90 step 5), in the background;
+# /root/update.rc says how it ended.
+start_update() {
+    set -e
+    rm -rf /root/bb-next && mkdir -p /root/bb-next && cd /root/bb-next
+    curl -fsSL "https://github.com/aquilaelabs/builderbot/archive/$1.tar.gz" | tar -xz --strip-components=1
+    setsid bash -c 'bash /opt/builderbot/nodes/install-controller.sh --update --from /root/bb-next > /root/update.log 2>&1; echo $? > /root/update.rc' \
+        < /dev/null > /dev/null 2>&1 &
+    echo started
+}
+
+# release: the release the install runs now (its link and its stamp).
+release() {
+    readlink /opt/builderbot
+    sed -n 's/^BB_VERSION=//p' /opt/builderbot/build.env
+    sed -n 's/^STATE_VERSION=//p' "$(sed -n 's/^DASHBOARD_STATE=//p' /etc/builderbot-controller/controller.env)/state.json" 2>/dev/null \
+        || python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version",""))' \
+            "$(sed -n 's/^DASHBOARD_STATE=//p' /etc/builderbot-controller/controller.env)/state.json" 2>/dev/null || true
+}

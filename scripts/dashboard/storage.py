@@ -32,6 +32,22 @@ def node_view(n, may_see):
     hidden = {**other, "total": sum(other.values())} if any(other.values()) else None
     out = {"node": n["id"], "name": n.get("name") or n["id"], "live": n.get("live"),
             "host_only": bool((n.get("config") or {}).get("host_only")),
+            # The controller's own machine (R90) and its disks as the census
+            # lists them (R162 step 1): the Storage page's Disks section.
+            "own": bool((n.get("config") or {}).get("own")),
+            "disks": (n.get("reported") or {}).get("disks") or [],
+            "shares": (n.get("reported") or {}).get("shares") or [],
+            "snapshots": (n.get("reported") or {}).get("snapshots") or {},
+            "ext_mounts": (n.get("reported") or {}).get("ext_mounts") or [],
+            "store_backups": (n.get("reported") or {}).get("store_backups") or [],
+            "key_modes": {},
+            "array": (n.get("reported") or {}).get("array") or {},
+            "mergerfs": bool((((n.get("reported") or {}).get("features") or {}).get("storage") or {}).get("mergerfs")),
+            "snapraid": bool((((n.get("reported") or {}).get("features") or {}).get("storage") or {}).get("snapraid")),
+            "smb": bool((((n.get("reported") or {}).get("features") or {}).get("shares") or {}).get("smb")),
+            "nfs": bool((((n.get("reported") or {}).get("features") or {}).get("shares") or {}).get("nfs")),
+            "pools": (n.get("reported") or {}).get("pools") or [],
+            "zfs": bool((((n.get("reported") or {}).get("features") or {}).get("storage") or {}).get("zfs")),
             "measured": bool(st.get("at")), "at": int(st.get("at") or 0), "took_s": int(st.get("took_s") or 0),
             "age_s": max(0, int(time.time()) - int(st.get("at") or 0)) if st.get("at") else None,
             "filesystems": st.get("filesystems") or [], "stores": st.get("stores") or {},

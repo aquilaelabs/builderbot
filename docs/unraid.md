@@ -104,11 +104,11 @@ Get the template onto the flash drive, from the Unraid terminal:
 
 ```bash
 curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-builderbot.xml \
-  https://raw.githubusercontent.com/aquilaelabs/builderbot/main/unraid/builderbot.xml
+  https://raw.githubusercontent.com/aquilaelabs/builderbot/main/platforms/unraid/builderbot.xml
 ```
 
 **Or copy it over.** The flash drive is an SMB share: open
-`unraid/builderbot.xml` on GitHub → **Raw** → save, then drop it into
+`platforms/unraid/builderbot.xml` on GitHub → **Raw** → save, then drop it into
 `\\<TOWER>\flash\config\plugins\dockerMan\templates-user\` as
 `my-builderbot.xml`.
 
@@ -125,7 +125,7 @@ dropdown pick **builderbot**. You get a form with everything already wired:
   person picks the zone the dashboard shows times in under the gear menu
 
 The coding agents are not configured here: they run on the nodes, and each
-person signs in on each node (its Agents page, under Build) with their own
+person signs in on each node (the Installed page, under Machines) with their own
 account for the agent they use (Claude, ChatGPT or Copilot).
 Each account's commit identity is set on its Profile page. Hit **Apply**. Unraid pulls the image and starts it.
 
@@ -212,7 +212,7 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 
 The controller runs no emulator, carries no SDK and claims no GPU: `bb emu`
 on a project runs on that project's node, whose toolchain store holds the
-emulator (Toolchains page) and its images (Emulator page) and whose own
+emulator (the Library) and its images (Emulator page) and whose own
 `/dev/kvm` and card do the work. A node is a machine you enroll from the
 Nodes page (**Enroll node**, or **Create sandbox VM**) on a VM or a spare
 Linux box.
@@ -249,10 +249,10 @@ looking at (thumbtack the ones you use to keep them on top),
 and browser terminals backed by tmux.
 
 Every tool is a page on the rail down the left edge, in groups: Home,
-Projects (with Analysis), Build (Toolchains, Emulator, Phone, CI runner,
-Apps), Containers (Containers, nginx), Machines (Controller settings,
-Nodes, Storage), Sessions, Jobs, People (Users, Roles), Settings (Profile)
-and Help. A page your account's grants forbid is not drawn. On a phone the
+Projects (with Analysis), Build (Library, Emulator, Phone, CI runner),
+Containers (Containers, VMs), Controller (Settings, Network, Keys, Audit),
+Machines (Nodes, Storage, Installed), Sessions, Jobs (with Schedules),
+People (Users, Roles), Settings (Profile) and Help. A page your account's grants forbid is not drawn. On a phone the
 rail is a bar of five across the foot in the same order (Home, Projects,
 Build, Containers, More), and
 every page is the one page area, with the terminals and the chat in the dock
@@ -509,7 +509,7 @@ Headless works out of the box; there is no display server in the container.
 
 Nothing Android is in the image. A project builds on its node: the JDK, the
 SDK (`android-tools`, platforms, build-tools) and the emulator are recipes in
-the node's toolchain store, installed from the dashboard's Toolchains page
+the node's toolchain store, installed from the dashboard's Library
 with that node picked. From a session:
 
 ```bash

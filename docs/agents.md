@@ -2,8 +2,9 @@
 
 A session on a project runs a coding agent in a terminal on a node: Claude
 (Anthropic's Claude Code), ChatGPT (OpenAI's Codex CLI), Copilot (GitHub's
-Copilot CLI) or Grok (xAI's Grok Build), each used the same way and held to the same briefing and
-guards. This page says what each agent is to BuilderBot, where it is
+Copilot CLI), Grok (xAI's Grok Build) or Any model (OpenCode, through a
+node's model router), each used the same way and held to the same briefing
+and guards. This page says what each agent is to BuilderBot, where it is
 installed and signed in to, and how each is wired.
 
 ## One table of agents
@@ -22,11 +23,9 @@ transcripts are read from.
 | ChatGPT | Codex CLI | an OpenAI account (ChatGPT) | `codex-update` | `codex-login`, `codex-logout` | yes |
 | Copilot | Copilot CLI | a GitHub account with a Copilot plan | `copilot-update` | `copilot-login`, `copilot-logout` | yes |
 | Grok | Grok Build | a SuperGrok or X Premium+ account | `grok-update` | `grok-login`, `grok-logout` | yes |
-| Any model | an open agent, in a later release | none: a model router would hold the keys | | | not yet |
+| Any model | OpenCode | none: a node's model router holds the keys | `opencode-update` | | yes |
 
-A row whose sessions are not wired yet is read by nothing that names a
-session: `open-alpha` is a scratch terminal until the open agent lands, and
-no Start offers it. A session's name carries its agent (`claude-alpha`,
+A session's name carries its agent (`claude-alpha`,
 `codex-alpha`), so one person may run a Claude session and a Codex session
 on one project at once, and two people may run different agents on it.
 
@@ -40,7 +39,7 @@ node it shows (a picker where the project works on several):
   asking you) and its **Open**, **Restart** and **End**.
 - **Start.** A line for each agent installed on that node, the project's own
   first: **New** starts a conversation, or **Sign in** where you have no
-  sign-in to it there, which opens the Agents page at that agent's section.
+  sign-in to it there, which opens that agent's own page on the node, at its sign-in.
 - **Resume.** Your conversations on the project, newest first, each with its
   agent, when it was and its first words; one running in a session of yours
   is marked so and not offered, since two sessions would write over it.
@@ -93,19 +92,24 @@ While one of yours runs, the button reads **Manage agent**.
   Grok session with no sign-in there says so and where to sign in, as
   Claude's does.
 
-## The Agents page
+## The Library and the Installed page
 
-**Build, then Agents**, beside Toolchains: one node at a time, picked in the
-bar, and a section per coding agent installed there.
+**Build, then Library** has a card per coding agent under Coding agents,
+for the node picked in the Build group's header
+([toolchains.md](toolchains.md#the-library)): what it is, its version
+against the latest, and Install or Update. **Machines, then Installed**
+holds what that node has: a row per agent installed there, which opens on
+your sign-in, what you added to the agent and Remove.
 
-- **The version.** Each section says what the node's session account runs
+- **The version.** Each card and row says what the node's session account runs
   against the newest release: Claude Code's from Anthropic's download
   service, Codex CLI's and Copilot CLI's from the npm registry, Grok Build's
   from its stable channel (`x.ai/cli/stable`), asked once
   after the controller starts, weekly, when a node starts, and on Check for
-  updates on the Toolchains page. A node behind is a row in the bell, which
-  opens this page when only agents are behind.
-- **Install, Update, Remove.** An administrator's, or whoever may install
+  updates in the Library. A node behind is a row in the bell, which
+  opens the Library on that node.
+- **Install, Update, Remove.** Install and Update on the Library's card,
+  Remove on the Installed page's row; an administrator's, or whoever may install
   toolchains on that node. Each ends that agent's sessions on the node
   first, then runs the vendor's own installer as the session account
   (`claude.ai/install.sh`, `chatgpt.com/codex/install.sh`,
@@ -117,18 +121,19 @@ bar, and a section per coding agent installed there.
 - **Your sign-in on that node.** A sign-in is one account's on one node and
   never travels to another. Claude's flow prints a link and waits for the
   code the page gives back. Codex's, Copilot's and Grok's are device flows: the
-  section shows the link and a one-time code, which you enter on OpenAI's,
+  row shows the link and a one-time code, which you enter on OpenAI's,
   GitHub's or xAI's page; nothing is pasted back. Codex's device login has to be
   switched on in the ChatGPT account's security settings first.
 
-- **Your plugins and MCP servers.** Each section lists what you added to
-  that agent on the node, as the node last said: Claude Code's plugins, and
+- **Your plugins and MCP servers.** Each agent's own page on a node (Open on
+  its Installed row) lists what you added to that agent on the node, as the node last said: Claude Code's plugins, and
   every agent's MCP servers by name (never their settings). They are changed
   in a session, for you alone; Profile no longer lists them.
 
 The Nodes page keeps one line per node saying which agents are installed
-there and which you are signed in to, with **Agents**, the way here. A
-project's Start sends a person here when they have no sign-in on its node.
+there and which you are signed in to. A project's Start sends a person to
+that agent's own page on its node, at its sign-in, when they have no
+sign-in there.
 
 ## The guards
 
@@ -195,7 +200,36 @@ token). The
 controller keeps that per account, per node, per agent, and holds no
 credential of any of them.
 
-## Not built yet
+## Any model, through a router
 
-The model router and the open agent that drives any model through it
-come in a later release.
+The fifth agent signs in to nobody. The **Model router** is a card of the
+Library's under Services, and it is set up on the node's Installed page:
+with a node picked, its page there (Configure on its row) takes the
+provider keys you give it, other OpenAI-compatible endpoints, Ollama
+beside it where you turn it on, and the projects allowed to use it;
+Install deploys LiteLLM there as a written container once something is
+behind it, Save on a deployed one rebuilds it with the change, and Remove
+takes it off. On the Containers page it is a row of the System section. Each allowed project is handed the router's
+address and a key of its own at a session's start, so its spend is its
+own. Start's **Any model** offers the router's models with their context
+and price where the router knows them (`Read the models` on its page reads
+them), and OpenCode's own card says whether the router on that node is
+there for it, and bb-tty
+starts OpenCode with a config written for the session: the router as its
+one provider, the briefing as an instructions file, and its permissions.
+Each model is marked: one walked with OpenCode and BuilderBot's tools
+(`router.WALKED_MODELS`) plain, the rest **untested** and offered all the
+same, and one whose context cannot hold the briefing and the house rules
+(the block a session is handed, counted by the server) says **too small
+for the briefing**, with Start's line under the picker saying by how much.
+While an Any model session runs, its tab on the dock says what its project
+has spent through the router so far (the key is the project's, so the
+spend is) and, for a model Ollama runs on the node, its tokens per second
+as the router's log last measured it (**Read the spend** on its page
+reads both). Its guards are a plugin of BuilderBot's that bb-tty writes into the
+account's OpenCode plugins folder, calling `bb-agent-hook open` before a
+tool (a refusal throws, so the tool does not run), on a prompt, at a
+permission ask, at the turn's end and after a summary, and exporting the
+conversation into the tree's transcript folder at each turn's end, where
+bb transcripts and the Sessions view read it. A project no router allows
+is told so at Start.

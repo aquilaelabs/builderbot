@@ -23,7 +23,13 @@ import urllib.parse
 
 import bbapi
 
-argv = sys.argv[1:]
+import dash  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dashboard"))
+import records  # noqa: E402
+
+# `--format json|yaml|markdown` on list or show (R167): the record `json`
+# prints, in that form; a design is one record of its pages and themes.
+fmt, argv = dash.format_flag(sys.argv[1:])
 verb = argv[0] if argv else "list"
 auth = os.environ["BB_DESIGN_AUTH"]
 proj = os.environ["BB_DESIGN_PROJECT"]
@@ -90,7 +96,7 @@ if verb == "save":
 if verb == "show":
     which = " ".join(argv[1:]).strip() or "language"
 elif verb in ("list", "file", "json", "schema"):
-    which = verb
+    which = "json" if fmt != "text" and verb in ("list", "json") else verb
 elif verb in ("-h", "--help"):
     print(USAGE)
     raise SystemExit(0)
@@ -103,4 +109,8 @@ if not isinstance(r, dict):
 if r.get("error"):
     fail(r["error"])
 text = str(r.get("text") or "")
+if fmt not in ("text", "json") and which == "json":
+    rec = json.loads(text)
+    pages = rec.get("pages") if isinstance(rec, dict) and isinstance(rec.get("pages"), list) else [rec]
+    text = records.dump(records.document("design", pages, proj), fmt)
 sys.stdout.write(text + ("" if text.endswith("\n") else "\n"))

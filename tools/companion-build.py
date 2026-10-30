@@ -15,7 +15,7 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AGENT = os.path.join(REPO, "scripts", "agent", "builderbot_agent")
-APP = os.path.join(REPO, "windows", "bbcompanion")
+APP = os.path.join(REPO, "apps", "windows", "bbcompanion")
 AGENT_MODULES = ("__init__.py", "base.py", "controller.py", "wssync.py")
 
 

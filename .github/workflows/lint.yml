@@ -208,7 +208,7 @@ jobs:
             echo "compose file is valid"
             python3 - <<'EOF'
           import xml.dom.minidom
-          xml.dom.minidom.parse("unraid/builderbot.xml")
+          xml.dom.minidom.parse("platforms/unraid/builderbot.xml")
           print("unraid template is well-formed")
           EOF
           } 2>&1 | tee -a "$CI_LOG"

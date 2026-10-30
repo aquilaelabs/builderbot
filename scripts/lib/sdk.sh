@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The toolchain manager: everything behind `bb toolchains` and the dashboard's Tools tab.
+# The toolchain manager: everything behind `bb toolchains` and the dashboard's Library and Installed page.
 #
 # Sourced by bb, which keeps the rest of the CLI. It is a file of its own
 # because it is a third of that script and answers a question none of the rest
@@ -103,7 +103,7 @@ sdkmgr() {
 #
 # sdkmanager installs nothing into a root whose licenses have not been
 # accepted, and the refusal names the package rather than the license. They
-# are Google's terms, and a person accepts them: the Toolchains page names
+# are Google's terms, and a person accepts them: the Library names
 # them, links them and asks before it queues the install, and the server
 # keeps who accepted. The job that page queues then records that acceptance
 # here, in the store, the way sdkmanager keeps it.
@@ -120,8 +120,8 @@ sdk_android_licenses() {
     local root; root="${ANDROID_HOME:-$(sdk_dir android)}"
     [ ! -d "$root/licenses" ] || return 0
     [ -z "${CLAUDECODE:-}${BB_AGENT:-}" ] \
-        || die "the Android SDK installs under Google's terms, which a person accepts: install it from the Toolchains page, which asks"
-    log "recording the android SDK licenses accepted on the Toolchains page, for ${root}"
+        || die "the Android SDK installs under Google's terms, which a person accepts: install it from the Library, which asks"
+    log "recording the android SDK licenses accepted in the Library, for ${root}"
     mkdir -p "$root"
     # `yes` dies of SIGPIPE when sdkmanager stops reading. Expected, not a
     # failure; hence the || true inside the pipeline's first stage.
@@ -223,7 +223,7 @@ sdk_write_env() {
 # bb emu all go to it), so answering with this container's store told a
 # session about a machine its project does not use. Worse on this box, where
 # this toolchain store and the node's toolchain store are ONE store under two names
-# (/sdk here through Unraid's FUSE layer, /mnt/SDK there over NFS, the same
+# (/sdk here through the host's user-share layer, /mnt/SDK there over NFS, the same
 # store id): the two listings read like two machines' toolchains and were the
 # same bytes.
 #
@@ -374,7 +374,7 @@ sdk_status_local() {
     # ...and every other toolchain of the catalog this store holds, with the
     # program it is used through. The list above is the build toolchains
     # by name; ffmpeg, the document readers or pytorch installed from the
-    # Toolchains tab were on PATH and in the store and missing from here,
+    # Library were on PATH and in the store and missing from here,
     # so a session asking what this machine has was told they were not
     # (B435, a session that went looking for PyTorch).
     local meta; meta="$(sdk_meta_file)"
@@ -432,7 +432,7 @@ sdk_nvidia_line() {
         else echo "$inst, running the card: nvidia-smi says how much of its memory is free"
         fi
     elif [ -n "$inst" ]; then echo "$inst installed; it takes the card when the machine restarts"
-    else echo "not installed: nouveau has the card; the operator installs the driver on the Toolchains page"
+    else echo "not installed: nouveau has the card; the operator installs the driver from the Library"
     fi
 }
 
@@ -451,7 +451,7 @@ sdk_nvidia_container_line() {
         v="$(nvidia-ctk --version 2>/dev/null | sed -n 's/.*version \([^ ]*\).*/\1/p' | head -1)"
         echo "toolkit ${v:-installed}: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)"
     else
-        echo "no container toolkit: a container here cannot reserve the card; the operator installs it on the Toolchains page"
+        echo "no container toolkit: a container here cannot reserve the card; the operator installs it from the Library"
     fi
 }
 
@@ -479,9 +479,9 @@ sdk_builds_with() {
     if [ -n "$plats" ]; then
         newest="${plats##* }"
         printf '  %-14s %s\n' platforms "$plats"
-        printf '  %-14s %s\n' compileSdk "up to ${newest}: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains page"
+        printf '  %-14s %s\n' compileSdk "up to ${newest}: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one from the Library"
     else
-        printf '  %-14s %s\n' platforms "none: nothing compiles here until the operator adds one on the Toolchains page"
+        printf '  %-14s %s\n' platforms "none: nothing compiles here until the operator adds one from the Library"
     fi
     [ -n "$tools" ] && printf '  %-14s %s\n' build-tools "${tools% }"
     local nv; nv="$(sdk_nvidia_line)"
@@ -900,8 +900,8 @@ sdk_update() {
             ;;
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here: every android:*
-   toolchain installs through it, and it comes from android-tools. On a node, tick
-   Android command-line tools on the Tools tab with that node picked; an android:*
+   toolchain installs through it, and it comes from android-tools. On a node, install
+   Android command-line tools from the Library with that node picked; an android:*
    toolchain should bring it along, and if it did not then this store has a
    cmdline-tools directory with nothing in it, which is not the same thing."
             # A versioned row updates by installing the newest beside what is
@@ -935,7 +935,7 @@ sdk_update() {
 sdk_operator_only() {
     [ -n "${CLAUDECODE:-}${BB_AGENT:-}" ] || return 0
     die "installing SDKs is the operator's decision, and this is an agent's session.
-Ask them to do it from the dashboard's Toolchains page, or to
+Ask them to do it from the dashboard's Library, or to
 run: bb toolchains $*
 If you ARE the operator at this keyboard: env -u CLAUDECODE -u BB_AGENT bb toolchains $*"
 }
@@ -1201,8 +1201,8 @@ sdk_android_id() {
 sdk_install_android() {
     local what="$1" pkg
     command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here: every android:*
-   toolchain installs through it, and it comes from android-tools. On a node, tick
-   Android command-line tools on the Tools tab with that node picked; an android:*
+   toolchain installs through it, and it comes from android-tools. On a node, install
+   Android command-line tools from the Library with that node picked; an android:*
    toolchain should bring it along, and if it did not then this store has a
    cmdline-tools directory with nothing in it, which is not the same thing."
     pkg="$(sdk_android_id "$what")"
@@ -1235,7 +1235,7 @@ sdk_verified_said() {
 # catalog row's source.checksum, answered by sdkmeta.py. A mismatch removes
 # the file and stops the install, naming both digests. A row whose publisher
 # states nothing says so on the install, and DIR keeps how it was checked
-# (.bb-verified), which the Toolchains page reads.
+# (.bb-verified), which the Installed page reads.
 sdk_verify_download() {
     local what="$1" file="$2" url="$3" version="$4" d="$5" said algo want where got
     said="$(sdk_meta checksum "$what" "$url" "$version")" \
@@ -1358,7 +1358,7 @@ sdk_install_git() {
         [ "$("${g[@]}" rev-parse HEAD)" = "$commit" ] \
             || die "${what}: ${url} answered $("${g[@]}" rev-parse --short HEAD) where ${commit:0:12} was approved"
         # The commit's hash is the check on what was fetched (R137): what the
-        # Toolchains page says of a pack's row.
+        # Installed page says of a pack's row.
         printf 'sha1\t%s\tthe git commit an administrator approved\n' "$commit" > "$d/.bb-verified" 2>/dev/null || true
         sdk_mark_exec "$what" "$d"
     else

@@ -297,7 +297,7 @@ sys.exit(2)
 const SCREEN_PORT = 17684 + Math.floor(Math.random() * 1000);
 // A terminal through the controller, as the page opens one (R133): its
 // screen, what is typed into it, and the reason it closes with.
-const { connect: wsConnect } = createRequire(import.meta.url)(`${REPO}/vscode/lib/ws.js`);
+const { connect: wsConnect } = createRequire(import.meta.url)(`${REPO}/apps/vscode/lib/ws.js`);
 const termRun = async (arg, type, hdr) => {
   const sock = await wsConnect(URL.replace(/\/$/, '').replace(/^http/, 'ws') + '/termws?arg='
     + encodeURIComponent(arg) + '&cols=120&rows=30', { headers: hdr });
@@ -1209,8 +1209,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and with no account named it signs nobody out');
       rmSync(`${base}/.local/bin/claude`);
       const none = run('u_0badf00d');
-      ok(none.code !== 0 && /on the node's Agents page/.test(none.out),
-         '...and with none anywhere the refusal names the Agents page as the way out');
+      ok(none.code !== 0 && /card in the Library/.test(none.out),
+         '...and with none anywhere the refusal names Claude Code\'s card in the Library as the way out');
     }
 
     // A token for the project alone (a relayed verb's) is nobody's account,
@@ -1778,7 +1778,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(first?.options.map(o => o.pkg).join(',') === 'nvidia-driver-610,nvidia-driver-595' && first.recommended === 'nvidia-driver-595',
          `...with the branches apt offers, newest first, the transitional one left out, and the recommended one (${first?.options.map(o => o.pkg + ' ' + o.version).join(', ')}; ${first?.recommended})`);
       const nodisp = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
-      ok(/install it on that node's Toolchains page first/.test(nodisp.error || ''),
+      ok(/install it on the Library with that node picked first/.test(nodisp.error || ''),
          `the display is not set up on a machine with no driver: it installs none itself (${nodisp.error})`);
       const q = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-610', node: minted.id });
       ok(q.ok && /^j_/.test(q.job || ''), `a branch picked on the row queues a toolchain job (${q.job || q.error})`);
@@ -2406,7 +2406,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         argv: ['sh', '-c', 'flutter build apk'] });
       // alpha can push in the fixtures, so the refusal names CI as the way
       // out; the no-push-rights branch says so instead.
-      ok(/has no flutter/.test(gap.error || '') && /Toolchains page/.test(gap.error || '')
+      ok(/has no flutter/.test(gap.error || '') && /Install it from the Library/.test(gap.error || '')
          && /let CI build it/.test(gap.error || ''),
          `a build needing a toolchain the node lacks is refused up front (${gap.error})`);
       const have = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
@@ -2421,7 +2421,9 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
 
     // bb run and bb build, from a session's shell
     const port = new globalThis.URL(URL).port;
-    const env = { ...process.env, DASHBOARD_AUTH: 'test:test', DASHBOARD_PORT: port,
+    // The harness may itself run inside a session, whose BB_TOKEN bb would
+    // take over the test account's password (B412).
+    const env = { ...process.env, DASHBOARD_AUTH: 'test:test', DASHBOARD_PORT: port, BB_TOKEN: '',
                   DASHBOARD_STATE: `${DIR}/state`, BB_PROJECT: 'alpha', CLAUDECODE: '1' };
     const out = execFileSync('bash', [`${REPO}/scripts/bb`, 'run', '--node', 'agentbox', '--', 'sh', '-c', 'echo hi from bb run'],
       { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
@@ -2597,7 +2599,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
       return v.items?.some(i => i.name === 'zig' && i.installed) ? v : null;
     }, 30000);
     ok(view && view.node === minted.id && view.root === PK,
-       'the Tools tab reads that node\'s own toolchain store');
+       'the node\'s toolchain read is that node\'s own toolchain store');
     ok(view && view.items.find(i => i.name === 'zig')?.installed === true
        && view.items.find(i => i.name === 'android:ndk')?.installed === true,
        'a toolchain present in the store reads as installed, whatever the census summarizes');
@@ -2692,7 +2694,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     // The fixture carries the sandbox stamp (bb-sandbox is stubbed) but the
     // agent is not root, so the controller queues the job and the agent is
     // the one to refuse: exit 77, naming the owner and the packages.
-    // ...and on the Tools tab's own payload, per row: what the row's repair
+    // ...and on the toolchain read's own payload, per row: what the row's repair
     // is drawn from. The packages the census says are missing sit on the
     // recipe's row with the node's sandbox flag beside them, and a row whose
     // needed toolchain is not on this node says which, so the link on the
@@ -2941,7 +2943,8 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
     ok(i2 && /already on this node \(6 bytes\)/.test(i2.log),
        '...and the next run of the same build fetches nothing: the node uses its copy');
     const cli = execFileSync('bash', [`${REPO}/scripts/bb`, 'emu', 'list'],
-      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...process.env, DASHBOARD_AUTH: 'test:test',
+      // ...with no token of the harness's own session leaking in (B412).
+      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...process.env, DASHBOARD_AUTH: 'test:test', BB_TOKEN: '',
         DASHBOARD_PORT: new globalThis.URL(URL).port, DASHBOARD_STATE: `${DIR}/state`, BB_PROJECT: 'alpha' } });
     ok(/bb emu list on agentbox/.test(cli) && /API levels with a system image here/.test(cli) && /succeeded/.test(cli),
        `bb emu from a shell goes to the project's node and streams the answer back (${cli.replace(/\s+/g, ' ').slice(0, 120)})`);
@@ -3132,9 +3135,9 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     // loop now rather than before the next job is taken (B644), so for a few
     // seconds the row is behind the machine.
     await until(async () => (await nodeById(minted.id))?.reported?.session?.up ? true : null, 30000);
-    // From the node's Agents page, where Claude Code is a row (R145, R95).
+    // From the Library, where Claude Code is a card (R145, R95, R170).
     const cu = await api('/api/agents', { action: 'install', node: minted.id, agent: 'claude' });
-    ok(cu.ok && /^j_/.test(cu.job), `Install on the Agents page queues the claude-update job on this node (${cu.job || cu.error})`);
+    ok(cu.ok && /^j_/.test(cu.job), `Install on Claude Code's card in the Library queues the claude-update job on this node (${cu.job || cu.error})`);
     const cfin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${cu.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
@@ -3159,12 +3162,12 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
     const ag = await api(`/api/agents?node=${encodeURIComponent(minted.id)}`);
     const row = (ag.rows || []).find(m => m.name === 'codex-cli');
     ok(row && row.label === 'Codex CLI' && row.for === 'ChatGPT' && (ag.rows || [])[0]?.agent === 'claude',
-       `the node's Agents page has a Codex CLI row after Claude Code's (${row ? row.state : (ag.rows || []).map(m => m.name).join(', ')})`);
+       `the node's coding agents have a Codex CLI row after Claude Code's (${row ? row.state : (ag.rows || []).map(m => m.name).join(', ')})`);
     const tc = await api(`/api/toolchains?node=${encodeURIComponent(minted.id)}`);
     ok(!(tc.machine || []).some(m => ['claude-code', 'codex-cli', 'copilot-cli'].includes(m.name)),
-       `...and its Toolchains page draws no coding agent (${(tc.machine || []).map(m => m.name).join(', ')})`);
+       `...and its toolchain read carries no coding agent among the machine's rows (${(tc.machine || []).map(m => m.name).join(', ')})`);
     const refused = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['codex-cli'] });
-    ok(/Agents page/.test(refused.error || ''), `...nor installs one, naming the way there (${refused.error || 'queued'})`);
+    ok(/in the Library/.test(refused.error || ''), `...nor installs one, naming the way there (${refused.error || 'queued'})`);
     const cx = await api('/api/agents', { action: 'install', node: minted.id, agent: 'codex' });
     ok(cx.ok && /^j_/.test(cx.job), `Install queues the codex-update job on this node (${cx.job || cx.error})`);
     const xfin = await until(async () => {
@@ -3387,8 +3390,8 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
     await page.evaluate(() => openNodesTab());
     // The tab shows one node, chosen in the bar, so pick this one before
     // looking for its row.
-    await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
-    await page.selectOption('.nodestab #ndPick', minted.id);
+    await page.waitForSelector('.pane .bar #ndPick', { timeout: 15000 });
+    await page.selectOption('.pane .bar #ndPick', minted.id);
     await page.waitForSelector(`.nodestab .ndrow[data-node="${minted.id}"] .ndlive`,
                                { timeout: 15000 });
     const row = await page.$eval(`.nodestab .ndrow[data-node="${minted.id}"]`,
@@ -3406,43 +3409,21 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
     // node.json with what each project owns there, and says whether it can,
     // which this agent, not root, cannot: said under the switch in red.
     {
+      // Every session is kept to its own project's network on every node,
+      // with no switch since R146 (the operator, 26 Oct): the row's
+      // Sessions section carries no session-network checkbox, and the
+      // node's census says whether it can keep them, and why not here.
       const sw = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="sessnet"]`;
       const save = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd="sess-save"]`;
       await openSection(page, 'nodes:sessions', `.nodestab .ndrow[data-node="${minted.id}"]`);
-      await page.waitForSelector(sw, { timeout: 15000 });
-      // On to begin with: every node keeps each session to its own network
-      // unless switched off (the operator, 26 Oct; the switch goes in 0.9.0).
-      ok(await page.$eval(sw, e => e.checked), 'the Sessions section offers the switch, on to begin with');
-      await page.click(sw);
-      await sleep(1500);
-      ok(!('session_net' in ((await nodeById(minted.id)).config || {})) && !(await page.$eval(sw, e => e.checked)),
-         'unticking it writes nothing by itself, and the untick survives a repaint');
-      await page.click(sw);
-      await page.click(save);
-      const kept = await until(() => {
-        const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
-        return st.session_net?.on === true ? st : null;
-      }, 30000, 500);
-      ok(kept && kept.session_net.own && typeof kept.session_net.own === 'object',
-         `the node hears it on its next poll and keeps it in node.json, with what each project owns there (${JSON.stringify(kept?.session_net).slice(0, 90)})`);
-      // The census that has heard the switch: the one before it already
-      // carries a reason, from the agent's first look, with wanted false.
-      // Said at the agent's next turn rather than its next ten-minute hello.
+      await page.waitForSelector(save, { timeout: 15000 });
+      ok(!(await page.$(sw)), 'the Sessions section offers no session-network switch: every session is kept to its own network (R146)');
       const said = await until(async () => {
         const n = await nodeById(minted.id);
-        return n?.reported?.session_net?.wanted === true ? n.reported.session_net : null;
+        return n?.reported?.session_net && 'can' in n.reported.session_net ? n.reported.session_net : null;
       }, 45000, 500);
-      ok(said && said.can === false && said.wanted === true && /root/.test(said.why),
-         `...and says whether it can keep sessions there, and why not (${said?.why})`);
-      await page.waitForFunction(id => /Not in force: the agent does not run as root here/.test(
-        document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''), minted.id, { timeout: 30000 });
-      ok(await page.$$eval(`.nodestab .ndrow[data-node="${minted.id}"] .sub.bad`, es => es.some(e => /Not in force/.test(e.textContent))),
-         '...which the row says under the switch, in red');
-      await page.click(sw);
-      await page.click(save);
-      const cleared = await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).session_net?.on === false ? true : null,
-                                  30000, 500);
-      ok(cleared, '...and off, saved the same way, reaches the node the same way');
+      ok(said && said.can === false && /root/.test(said.why || ''),
+         `...and the node says whether it can keep sessions there, and why not (${said?.why})`);
       // The same Save carries whether a session here may ask for root.
       const ra = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="rootasks"]`;
       ok(await page.$eval(ra, e => e.checked), 'root asks are on by default, beside it');
@@ -3481,10 +3462,10 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
                                { timeout: 10000 });
     // One node at a time: the new pending one is in the picker, and its own
     // page says what it is waiting for.
-    const opt = await page.$$eval('.nodestab #ndPick option',
+    const opt = await page.$$eval('.pane .bar #ndPick option',
       os => os.filter(o => /second/.test(o.textContent)).map(o => o.value));
     ok(opt.length === 1, 'the newly minted node joins the picker');
-    await page.selectOption('.nodestab #ndPick', opt[0]);
+    await page.selectOption('.pane .bar #ndPick', opt[0]);
     await page.waitForFunction(id => /waiting for enrollment/.test(
       document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
       opt[0], { timeout: 10000 });
@@ -3936,9 +3917,13 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
   const win = /^(\d+\.\d+)\./.exec(av)?.[1] || '';
   const proj = readFileSync(`${REPO}/VERSION`, 'utf8').trim();
   const minor = proj.split('.').slice(0, 2).join('.');
+  // ...or the minor a branch builds towards (R112: VERSION stays at the
+  // last release until the bump, and a version line one minor up is what a
+  // dev build reads), never further.
+  const ahead = `${minor.split('.')[0]}.${+minor.split('.')[1] + 1}`;
   ok(/^\d+\.\d+\.\d+$/.test(av),
      `the agent's version is WINDOW.BUILD (${av || 'unset'})`);
-  ok(win === minor,
+  ok(win === minor || win === ahead,
      `...and its window is the project's minor: bump one and you bump both (${
        win} against ${minor} from VERSION ${proj})`);
   // The agent's is the only other copy of the window there is. There used

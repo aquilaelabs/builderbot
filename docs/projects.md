@@ -327,16 +327,50 @@ once, at startup, since nothing else could be linked when they were made.
 
 ## An access token for one project
 
-Cloning a private repository asks for an optional **access token**. It is
-written in git's own credential-store format to `/config/gitcreds/<project>`,
-mode `0600`, and named from that repository's `.git/config` and nowhere else,
-with git's empty-value reset ahead of it, so the globally configured helper is
-never asked and no container-wide token authenticates the fetch.
+Cloning a private repository asks for an optional **access token**. The
+token is yours: it goes into your own key store (sealed under your account's
+key, on Profile), and the project's file at `/config/gitcreds/<project>`
+names that entry and nothing secret. git is handed it by `git-credential-bb`,
+named from that repository's `.git/config` and nowhere else, with git's
+empty-value reset ahead of it, so the globally configured helper is never
+asked and no container-wide token authenticates the fetch.
+
+The token is also what an agent works the git host with, through `bb
+forge`: pull requests, issues, CI runs and their logs, and releases on
+GitHub, GitLab, Gitea or Forgejo, each run on the controller with the token,
+which never reaches a session. The controller measures what the token may
+do without changing anything (when it is stored, when Measure is pressed
+on the Permissions view and once a day), and the project's Permissions view, **On the git host**, lists
+each ability with what the token says and an Allow or Deny over it: Deny
+takes the ability away whatever the token allows, and merging starts at
+Deny. Every session is told at its start what it may do there and what to
+ask for. *Which permissions?* beside the token field opens
+[git-hosts.md](git-hosts.md), the table of abilities with what to tick for
+each on every host.
 
 That last part is the point. A token minted to reach one private repo usually
 reaches every repo it was scoped to; in the environment it also reaches them
 from every project and every session. Here it opens the one project you gave it
 to, and stays with that project whatever it is renamed to.
+
+**Every git action is a person's, with their own token.** Each person who
+pushes or pulls on a project gives it their own token (one token may serve
+several projects, and two people may give tokens with different scopes), so
+the forge's log says who did what. The project keeps none of its own: its
+settings list who has given one, never the token, and your own store's
+tokens for the host are offered there with **Give it to this project**;
+**Take it back** withdraws yours. You keep one token for each git host
+and sign-in: a new one for the same host and account replaces the one
+before in place, and every project using it moves to the new one. A token
+is used only while its person is
+signed in, on any browser or device (the phone app counts): your sessions'
+`bb git`, your presses in the Git view, the release you cut and the wiki
+you sync all run with yours, and signed out everywhere, a session of yours
+is told that `bb git` waits for you. The Git view's line says whose token a
+press would use. Work that is nobody's in the moment (watching CI) takes
+the token of anyone on the project signed in now, and pauses, said on the
+project, while nobody who gave one is. A project's token from before 0.9.0
+stays its owner's for that project.
 
 A project that already has push rights can be given a token from its host's
 settings, in its menu, including one that pushes with a **deploy key**. Setting one there

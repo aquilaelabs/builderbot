@@ -14,7 +14,7 @@ how the companion keeps itself current (R270 step 9). Nothing here runs a
 file it fetched.
 
     configure(state=, version=, setting=, write_json=, audit=)
-    view()                     the Settings and Apps pages' reading
+    view()                     the Settings section's and the Library's reading
     check_now()                look again, in the background
     path(name, file)           a held file's path, or None
     start()                    the boot look and the daily one
@@ -115,7 +115,7 @@ def base_version(v):
 def view():
     """{apps: [...], checked, problem, release, matched, checking, version}:
     each app with whether it is offered, the files held of it and their
-    sha256, for the Settings section and the Apps page."""
+    sha256, for the Settings section and the Library's companion cards."""
     idx = _index()
     held = idx.get("apps") or {}
     out = []

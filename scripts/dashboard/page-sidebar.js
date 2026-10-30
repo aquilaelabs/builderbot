@@ -42,8 +42,8 @@ const heldWhy = p => p.held || (!gitReadyFor(p) && !myLiveSession(p.name)
 function wireProjectRows(root){
   root.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
   root.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
-  // Install opens the node's Agents page at that agent, where it is installed (R95).
-  root.querySelectorAll("[data-tcinst]").forEach(b => b.onclick = () => openNodeClaude(b.dataset.tcinst, b.dataset.agent || "claude"));
+  // Install opens the Library on the node at that agent's card, where it is installed (R95, R170).
+  root.querySelectorAll("[data-tcinst]").forEach(b => b.onclick = () => openLibraryOn(b.dataset.tcinst, b.dataset.agent || "claude"));
   // The chain is the remote, whichever state the project is in: linking one
   // that has no remote, and the credential half (and the way off it) for
   // one that has.
@@ -182,8 +182,8 @@ function pJobWire(){
   const stop = $("bJobStop"), okd = $("bJobOk");
   if (stop) stop.onclick = () => pJobAct("abort");
   if (okd)  okd.onclick  = () => pJobAct("dismiss");
-  // The toolchains tab owns the timer; starting it here too means the Projects
-  // card animates whether or not that tab has ever been opened.
+  // page-toolchains.js owns the timer; starting it here too means the Projects
+  // card animates whether or not a page of toolchains has ever been opened.
   if (stop && !tcDotsTimer) tcDotsTimer = setInterval(tcTickDots, 400);
   // While a job runs the two things that would start another are dead, the
   // same rule the toolchain buttons follow: the server answers 409 anyway,
@@ -324,7 +324,7 @@ function pickProjectColor(btn){
   pop.setAttribute("role", "radiogroup");
   pop.setAttribute("aria-label", `your color for ${projectName(key)}`);
   pop.innerHTML = PROJECT_COLORS.map(([n, tone]) => `<button type="button" role="radio" data-color="${n}" aria-checked="${n === cur}"
-      aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
+      aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` data-style="--pc:${tone}"` : ""}></button>`).join("");
   // On a card's back the swatches take the repositories' place, its height
   // held while they are open (askInline's way).
   const back = line.closest(".pcback");

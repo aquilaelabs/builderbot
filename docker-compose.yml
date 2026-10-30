@@ -1,4 +1,4 @@
-# BuilderBot: Claude Code workstation + GitHub Actions runner for Unraid.
+# BuilderBot: Claude Code workstation + GitHub Actions runner for a NAS.
 #
 #   docker compose up -d
 #   docker exec -it builderbot claude
@@ -26,6 +26,12 @@ services:
         IMAGE_BUILT: ${BB_BUILD_AT:-}
         IMAGE_VERSION: ${BB_BUILD_VERSION:-}
     pull_policy: ${BUILDERBOT_PULL:-missing}
+    # The dashboard locks its memory from swap, where the keys it holds
+    # would otherwise be written (R158 step 6): the default limit is a few
+    # kilobytes, and the Doctor says when it was too low.
+    ulimits:
+      memlock: -1
+      core: 0
     # Same name the Unraid template uses, so every `docker exec -it
     # BuilderBot ...` command in the docs works under either install method.
     container_name: BuilderBot
@@ -115,6 +121,8 @@ services:
       # Unraid template mounts it, so a dev instance of BuilderBot names its
       # own directory in its env and reads a scan the same way (26 Sep); with
       # no scanner the directory is empty and the Analysis view says so.
+      # Deprecated in 0.9.0 (the Scanners page runs BuilderBot's own on each
+      # node and takes their reports up); still read, gone the release after.
       - ${SCANNER_REPORTS_PATH:-/mnt/user/appdata/scanners/reports}:/reports:ro
 
       # Optional: send the persistent log somewhere else (e.g. an array
@@ -122,9 +130,9 @@ services:
       # stay in config/logs.
       # - /mnt/user/logs/builderbot:/logs
 
-      # Cosmetic, Unraid only: Unraid's container-icon cache. With this
+      # Cosmetic, a NAS host's container-icon cache. With this
       # mounted rw the container drops <name>-icon.png in on every start, and
-      # Unraid stops trying to download an icon it cannot reach: it only
+      # the host stops trying to download an icon it cannot reach: it only
       # fetches the Icon URL when its cache is empty.
       # - /var/lib/docker/unraid/images:/unraid-icons
 
@@ -148,7 +156,7 @@ services:
     ports:
       - "${DASHBOARD_PORT:-7680}:${DASHBOARD_PORT:-7680}"
 
-    # Tells the Unraid Compose Manager plugin to adopt this container.
+    # Tells the host's Compose Manager plugin to adopt this container.
     labels:
       net.unraid.docker.managed: composeman
 

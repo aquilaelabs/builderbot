@@ -17,8 +17,8 @@ class ReleaseAsk(unittest.TestCase):
     def setUp(self):
         self.ran = []
         self.was = phone.releaser
-        phone.releaser = lambda project, comp, asker, principal: (
-            self.ran.append((project, comp, asker, principal))
+        phone.releaser = lambda project, comp, asker, principal, dev=False: (
+            self.ran.append((project, comp, asker, principal) + (("dev",) if dev else ()))
             or ({"released": {"tag": "v0.5.4", "sha": "eb9d75f", "pushed": True,
                               "forge": {"url": "https://github.com/o/app/releases/tag/v0.5.4"}}}, 200))
         self.addCleanup(setattr, phone, "releaser", self.was)
@@ -44,6 +44,13 @@ class ReleaseAsk(unittest.TestCase):
         out = phone.outcome(r["id"])["out"]
         self.assertIn("v0.5.4 tagged on eb9d75f and pushed", out)
         self.assertIn("releases/tag/v0.5.4", out)
+
+    def test_a_dev_ask_runs_the_dev_release(self):
+        # B453: Approve on a --dev ask cut the plain release.
+        r = phone.ask_release("the dev build", "app", "", dict(PLAN, tag="v0.5.4-dev.9"), "u_00000002", "ada",
+                              asker_name="sean", principal="session:app", dev=True)
+        phone.decide(r["id"], True, "u_00000002", name="ada", admin=False)
+        self.assertEqual(self.ran, [("app", "", "sean", "session:app", "dev")])
 
     def test_deny_runs_nothing(self):
         r = phone.ask_release("0.5.4", "app", "", PLAN, "u_00000002", "ada")

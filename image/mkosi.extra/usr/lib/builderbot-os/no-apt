@@ -1,0 +1,9 @@
+#!/bin/sh
+# In place of apt and apt-get on a BuilderBot OS disk: its packages are the
+# image's, pinned to a Debian snapshot when it was built, and the root they
+# are in is read-only under a tmpfs, so a package installed here would be
+# gone at the next boot without a word. An update brings the next image
+# whole (docs/image.md); a tool a project needs is a toolchain, installed
+# from the Toolchains page onto the node's store.
+echo "$(basename "$0"): not on BuilderBot OS. Packages come with the image, and an update brings the next ones; a tool for a project is a toolchain (the Toolchains page)." >&2
+exit 1

@@ -63,6 +63,15 @@ import registry
 # shielded the way the ssh keys are. Those are served by a root-owned agent and
 # cannot be read; this is a 0600 file owned by the same user a shell runs as.
 TOKEN_RE = re.compile(r"[A-Za-z0-9_.-]{8,255}")
+# Told when a project's token is stored or forgotten (R188): the server
+# measures the new one on the git host, or drops the old one's measure.
+token_changed = None
+
+
+def _changed(project, gone=False):
+    if token_changed:
+        with contextlib.suppress(Exception):
+            token_changed(project, gone)
 
 
 def write_token(project, token, host, scheme="https", user="", uid=""):
@@ -92,8 +101,11 @@ def write_token(project, token, host, scheme="https", user="", uid=""):
     # project is linked to it (the operator, 27 Oct); with nobody, or no
     # install key to seal their store with, it is the project's own.
     if uid:
-        return gitcreds.keep_for(project, uid, line, user or "")
+        got = gitcreds.keep_for(project, uid, line, user or "")
+        _changed(project)
+        return got
     gitcreds.write_line(project, line)
+    _changed(project)
     return gitcreds.helper(project)
 
 
@@ -118,6 +130,7 @@ def token_helpers(project, uid=""):
 
 def forget_token(project):
     gitcreds.forget(project)
+    _changed(project, gone=True)
 
 
 def unscope(dest):
@@ -299,6 +312,9 @@ def rename(req):
     # The project's git access linked to the asking account's own token for
     # its remote's host (R154); `_uid` is the server's, never the page's.
     link_mine = bool(req.get("link_account")) and not token and not clear
+    # The asking account's own token no longer given to the project (R159);
+    # the others who gave theirs stay.
+    unlink_mine = bool(req.get("unlink_mine")) and not token and not clear and not link_mine
     # The same repository's new address, after its owner was renamed on the
     # host (set_address); "" leaves the remote where it points.
     address = _field(req, "address").strip()
@@ -316,7 +332,7 @@ def rename(req):
                          "digits, dots, dashes and underscores, no spaces"}, 400
     was = registry.label(old)
     renaming = bool(shown) and shown != was
-    if not renaming and not token and not auth and not clear and not address and not link_mine:
+    if not renaming and not token and not auth and not clear and not address and not link_mine and not unlink_mine:
         return {"error": f"{was} is already its name"}, 400
     moved, failed = [], []
     if renaming:
@@ -354,6 +370,13 @@ def rename(req):
         gitcreds.link_account(old, uid, fid)
         _scope_to_token(src, token_helper(old))
         moved.append(f"its git access, your {host} token")
+    elif unlink_mine:
+        uid = str(req.get("_uid") or "")
+        if not gitcreds.unlink_person(old, uid):
+            return {"error": "you have not given this project a token"}, 400
+        if not gitcreds.givers(old) and not token_helper(old):
+            unscope(src)
+        moved.append("your token, no longer given to it")
     elif clear:
         forget_token(old)
         unscope(src)
@@ -1047,7 +1070,7 @@ def trash_restore(req):
 
 
 def _rmtree_share(path, tries=5):
-    """rmtree on the projects share, which is FUSE on Unraid (B39): a file
+    """rmtree on the projects share, which is FUSE on a NAS host (B39): a file
     deleted while something holds it open becomes a .fuse_hidden one that
     vanishes, or turns up, while the tree is being taken apart. A file
     already gone is deleted as far as this is concerned, and a directory
@@ -2457,6 +2480,34 @@ def _stored_token(project):
     line = gitcreds.read_line(project)
     m = re.match(r"https?://[^:@/]*:([^@]*)@", line)
     return urllib.parse.unquote(m.group(1)) if m else ""
+
+
+def forge_target(name):
+    """What the git host is asked about for this project (R188): {forge,
+    host, repo, scheme, token} from its remote and its stored token, or
+    {error} saying what is missing. The token is the controller's to use
+    and never leaves it."""
+    if not PROJECT_NAME.fullmatch(name or ""):
+        return {"error": "unknown project"}
+    d = WORKSPACE / name
+    if not d.is_dir():
+        return {"error": "unknown project"}
+    written = run(["git", "-C", str(d), "config", "--get", "remote.origin.url"], timeout=15)
+    url = written["out"].strip() if written["code"] == 0 else ""
+    if not url:
+        return {"error": "this project has no remote"}
+    host, repo = forges.host_of(url), repo_path_of(url)
+    forge = forges.forge_of(host)
+    stored = token_target(name) or {}
+    tok = _stored_token(name)
+    if not forge.get("kind"):
+        return {"error": f"{host or 'its host'} has no API BuilderBot knows: git alone reaches it"}
+    if not tok:
+        return {"error": "this project has no access token: link one under its settings, Git"}
+    if not repo:
+        return {"error": "could not read the repository from this project's remote"}
+    return {"forge": forge, "host": stored.get("host") or host, "repo": repo,
+            "scheme": stored.get("scheme") or "https", "token": tok}
 
 
 # What git and ssh print around every refusal, whatever it was: the line

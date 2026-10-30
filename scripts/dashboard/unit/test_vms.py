@@ -6,6 +6,8 @@ own table, reading a publisher's checksum file, and refusing anything outside
 the shapes it takes."""
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -42,6 +44,14 @@ class Controller(unittest.TestCase):
     def new(self, **kw):
         return vms.create("user:test", "web", {"name": "db", "os": "debian 13", "keys": [KEY], **kw}, ["n1"])
 
+    def test_a_vm_may_belong_to_the_machine_rather_than_a_project(self):
+        # R165 step 3: keyed under the machine's own name, on any VM host a
+        # person may use, listed by that name and by no project's.
+        r = vms.create("user:test", vms.MACHINE, {"name": "ha", "os": "debian 13", "keys": [KEY]}, ["n1"])
+        self.assertNotIn("error", r, r)
+        self.assertEqual([v["key"] for v in vms.view([vms.MACHINE])], ["machine/ha"])
+        self.assertEqual(vms.view(["web"]), [])
+
     def test_a_vm_s_hardware_is_checked_before_its_node_sees_it(self):
         # R100: a thread another VM is pinned to is refused unless shared, a
         # memory ceiling under its start is refused (none is its start), the
@@ -77,6 +87,42 @@ class Controller(unittest.TestCase):
         self.assertTrue(r.get("ok"), r)
         spec = self.f.jobs[-1][2]
         self.assertEqual((spec["hw"], spec["autostart"]), ({"cpuset": [0, 1], "net": "lan"}, True))
+
+    def test_a_usb_device_is_given_to_a_vm_and_taken_back(self):
+        # R116: named as the node's census names it; an administrator's;
+        # refused for one the host uses, one not here, and one another VM
+        # here holds; a take names what the VM holds, plugged in or not.
+        r = self.new()
+        self.assertTrue(r.get("ok"), r)
+        vms.vm_done({"node": "n1", "spec": {"action": "create", "domain": "bbvm-web-db"}, "error": ""}, "succeeded")
+        stick = {"vendor": "0x0781", "product": "0x5583", "name": "SanDisk Ultra Fit", "serial": "4C53", "port": "1-3", "bus": 1, "use": []}
+        boot = {"vendor": "0x0781", "product": "0x5583", "name": "SanDisk Ultra Fit", "serial": "BOOT", "port": "1-4", "bus": 1,
+                "use": ["the host boots from it (sda1 is /)"]}
+        mouse = {"vendor": "0x046d", "product": "0xc52b", "name": "Receiver", "serial": "", "port": "1-5", "bus": 1, "use": []}
+        self.f.nodes["n1"]["reported"]["vm_host"] = {"usb": [stick, boot, mouse], "pci": [], "cpus": [], "iommu": False}
+        self.f.nodes["n1"]["reported"]["vms"] = [{"name": "bbvm-web-db", "state": "running", "usb": []},
+                                                 {"name": "bbvm-web-other", "state": "stopped", "usb": [{"vendor": "0x046d", "product": "0xc52b", "serial": "", "port": "1-5"}]}]
+        act = lambda a, usb, admin=True: vms.act("user:t", "web", "db", a, {"usb": usb, "_admin": admin})  # noqa: E731
+        self.assertIn("administrator", act("usb-give", stick, admin=False)["error"])
+        self.assertIn("vendor and product", act("usb-give", {"vendor": "0781"})["error"])
+        self.assertIn("boots from it", act("usb-give", {"vendor": "0x0781", "product": "0x5583", "serial": "BOOT"})["error"])
+        self.assertIn("not plugged into box", act("usb-give", {"vendor": "0x1234", "product": "0x5678"})["error"])
+        self.assertIn("take it back", act("usb-give", {"vendor": "0x046d", "product": "0xc52b", "port": "1-5"})["error"])
+        r = act("usb-give", {"vendor": "0x0781", "product": "0x5583", "serial": "4C53"})
+        self.assertTrue(r.get("ok"), r)
+        spec = self.f.jobs[-1][2]
+        self.assertEqual((spec["action"], spec["usb"]["serial"], spec["usb"]["port"], spec["usb"]["name"]),
+                         ("usb-give", "4C53", "1-3", "SanDisk Ultra Fit"))
+        self.assertEqual(self.f.audits[-1][1], "vm-usb-give")
+        self.assertIn("does not hold", act("usb-take", {"vendor": "0x1234", "product": "0x5678"})["error"])
+        self.f.nodes["n1"]["reported"]["vms"][0]["usb"] = [{"vendor": "0x0781", "product": "0x5583", "serial": "4C53", "port": "1-3", "name": "SanDisk Ultra Fit"}]
+        self.f.nodes["n1"]["reported"]["vm_host"]["usb"] = [boot]      # pulled out: still taken back by name
+        r = act("usb-take", {"vendor": "0x0781", "product": "0x5583", "serial": "4C53"})
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(self.f.jobs[-1][2]["action"], "usb-take")
+        # The view names what each VM holds.
+        row = next(v for v in vms.view(["web"]) if v["name"] == "db")
+        self.assertEqual(row["usb"][0]["name"], "SanDisk Ultra Fit")
 
     def test_a_refused_job_leaves_the_agent_s_reason_on_the_row(self):
         # B191: the agent's refusal from the job's log, not "exit 64".
@@ -311,8 +357,39 @@ class Census(unittest.TestCase):
                              "vm_pool": {"free_mb": 39000, "total_mb": 60000, "path": "/x"}})
         self.assertEqual(got["vms"], [{"name": "bbvm-web-db", "state": "running", "ip": "10.232.0.12", "vcpus": 2,
                                        "mem_mb": 2048, "snapshots": ["clean"], "screen": False, "iso": "",
-                                   "autostart": False, "hw": {"cpuset": [], "devices": [], "net": "project"}}])
+                                   "autostart": False, "hw": {"cpuset": [], "devices": [], "net": "project"}, "usb": []}])
         self.assertEqual(got["vm_pool"], {"free_mb": 39000, "total_mb": 60000})
+
+    def test_the_domains_builderbot_did_not_make_reach_the_record_by_name_state_and_size(self):
+        # R165 step 1: read-only on the VMs page, so only what names and
+        # sizes one is kept, each to its shape.
+        import nodes
+        got = nodes._census({"vms_other": [{"name": "win11", "state": "running", "vcpus": 4, "mem_mb": 8192, "disk": "/x"},
+                                           {"name": "bad name!", "state": "running"}, "junk",
+                                           {"name": "old-box", "state": "shut <b>off</b>", "vcpus": "2"}]})
+        self.assertEqual(got["vms_other"], [{"name": "win11", "state": "running", "vcpus": 4, "mem_mb": 8192},
+                                            {"name": "old-box", "state": "shut boffb", "vcpus": 0, "mem_mb": 0}])
+        self.assertEqual(vms.others.__doc__ is not None, True)
+
+    def test_a_usb_device_s_name_and_use_reach_the_record(self):
+        # R116: the fields that name a device again and say what the host
+        # does with it, each kept to its shape; a VM's devices as named; the
+        # IOMMU feature's two facts.
+        import nodes
+        got = nodes._census({"vm_host": {"usb": [{"vendor": "0x0781", "product": "0x5583", "name": "SanDisk <b>Ultra</b>", "serial": "4C53 0001",
+                                                   "port": "1-3.2", "bus": 1, "dev": 7, "speed": "5000", "driver": "usb-storage,uas", "ctl": "0000:00:14.0",
+                                                   "use": ["sda1 is mounted at /mnt/x", 7]}],
+                                         "pci": [{"addr": "0000:00:14.0", "class": "0x0c0330", "vendor": "0x8086", "device": "0x1234",
+                                                  "group": "7", "driver": "xhci_hcd", "host": "sda1 is mounted at /mnt/x"}]},
+                             "vms": [{"name": "bbvm-web-db", "state": "running", "usb": [{"vendor": "0x0781", "product": "0x5583", "serial": "4C53",
+                                                                                            "port": "bad port", "name": "Stick"}, "junk"]}],
+                             "features": {"vmhost": {"installed": True, "kvm": True}, "iommu": {"installed": True, "on": False}}})
+        u = got["vm_host"]["usb"][0]
+        self.assertEqual((u["name"], u["serial"], u["port"], u["bus"], u["speed"], u["driver"], u["ctl"], u["use"]),
+                         ("SanDisk bUltra/b", "4C530001", "1-3.2", 1, "5000", "usb-storage,uas", "0000:00:14.0", ["sda1 is mounted at /mnt/x"]))
+        self.assertEqual(got["vm_host"]["pci"][0]["host"], "sda1 is mounted at /mnt/x")
+        self.assertEqual(got["vms"][0]["usb"], [{"vendor": "0x0781", "product": "0x5583", "serial": "4C53", "port": "", "name": "Stick"}])
+        self.assertEqual(got["features"]["iommu"], {"installed": True, "on": False})
 
 
 class Agent(unittest.TestCase):
@@ -320,6 +397,38 @@ class Agent(unittest.TestCase):
         import agentpkg
         self.agent = agentpkg.load("builderbot_agent_vms")
         self.av = sys.modules[self.agent.Agent.__module__.rsplit(".", 1)[0] + ".vms"]
+
+    def test_the_domains_it_did_not_make_are_listed_and_never_ours(self):
+        # R165 step 1: a name without the prefix, or with it and without the
+        # agent's marker, is somebody else's; one with both is BuilderBot's
+        # and stays out of this list.
+        from unittest import mock
+        def virsh(argv, timeout=0, **kw):
+            verb = argv[len(self.av.VIRSH)]
+            if verb == "list":
+                return "bbvm-web-db\nwin11\nbbvm-fake\nbad/name\n"
+            name = argv[len(self.av.VIRSH) + 1]
+            if verb == "dumpxml":
+                return f"<domain><metadata><bb:vm xmlns:bb='{self.av.META_NS}'/></metadata></domain>" if name == "bbvm-web-db" else "<domain/>"
+            if verb == "dominfo":
+                return {"win11": "State:          running\nCPU(s):         4\nMax memory:     8388608 KiB\n",
+                        "bbvm-fake": "State:          shut off\nCPU(s):         1\nMax memory:     1048576 KiB\n"}.get(name, "")
+            return ""
+        with mock.patch.object(self.av, "_run", side_effect=virsh), mock.patch.object(self.av.shutil, "which", return_value="/usr/bin/virsh"):
+            self.assertEqual(self.av.vms_other(), [{"name": "win11", "state": "running", "vcpus": 4, "mem_mb": 8192},
+                                                   {"name": "bbvm-fake", "state": "stopped", "vcpus": 1, "mem_mb": 1024}])
+
+    def test_on_the_controllers_own_machine_a_vm_job_runs_as_the_agent(self):
+        # R165 step 1: the wall's file says the machine is the controller's
+        # own, and there the job keeps root rather than dropping to the jobs
+        # account, which is out of libvirt's group on that machine.
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            wall = os.path.join(d, "wall")
+            with mock.patch.dict(os.environ, {"BB_WALL_FILE": wall}):
+                self.assertFalse(self.av.own_here())
+                open(wall, "w").close()
+                self.assertTrue(self.av.own_here())
 
     def test_a_publisher_s_checksums_are_read_in_each_style(self):
         h = "a" * 64
@@ -470,6 +579,132 @@ class Agent(unittest.TestCase):
         self.assertIsNone(hw.clean({"share": {"path": "/etc", "tag": "project"}}, 2, 2048)[0])
         self.assertIsNone(hw.clean({"devices": [{"type": "pci", "addr": "1:2"}]}, 2, 2048)[0])
 
+    def test_a_usb_device_is_read_off_sysfs_named_again_and_written_as_a_hostdev(self):
+        # R116 steps 1 and 3: the census from a sysfs laid out as the
+        # kernel's (a stick behind a controller, with a mounted partition;
+        # a receiver; a hub left out), the device found again by serial or
+        # port, the hostdev XML, and the numbers refreshed after a replug.
+        hw = sys.modules[self.av.__name__.rsplit(".", 1)[0] + ".vmhw"]
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, True)
+        pci = os.path.join(root, "devices/pci0000:00/0000:00:14.0")
+        def dev(path, **files):
+            os.makedirs(path, exist_ok=True)
+            for k, v in files.items():
+                with open(os.path.join(path, k), "w") as f:
+                    f.write(v + "\n")
+        dev(f"{pci}/usb1/1-3", idVendor="0781", idProduct="5583", manufacturer="SanDisk", product="Ultra Fit", serial="4C53",
+            busnum="1", devnum="7", speed="5000", bDeviceClass="00")
+        dev(f"{pci}/usb1/1-3/1-3:1.0/host4/target4:0:0/4:0:0:0/block/sdb")
+        os.makedirs(f"{root}/bus/usb/devices", exist_ok=True)
+        os.symlink("/nonexistent/usb-storage", f"{pci}/usb1/1-3/1-3:1.0/driver")
+        dev(f"{pci}/usb1/1-4", idVendor="046d", idProduct="c52b", product="Receiver", busnum="1", devnum="8", speed="12", bDeviceClass="00")
+        dev(f"{pci}/usb1/1-5", idVendor="05e3", idProduct="0610", product="Hub", busnum="1", devnum="9", bDeviceClass="09")
+        for d in ("1-3", "1-4", "1-5"):
+            os.symlink(f"{pci}/usb1/{d}", f"{root}/bus/usb/devices/{d}")
+        os.makedirs(f"{root}/bus/pci/devices", exist_ok=True)
+        dev(pci, **{"class": "0x0c0330", "vendor": "0x8086", "device": "0x1234"})
+        os.symlink(pci, f"{root}/bus/pci/devices/0000:00:14.0")
+        os.makedirs(f"{root}/kernel/iommu_groups/7/devices", exist_ok=True)
+        os.symlink(f"{root}/kernel/iommu_groups/7", f"{pci}/iommu_group")
+        from unittest import mock
+        with mock.patch.object(hw, "_mounts", return_value={"/dev/sdb1": "/mnt/x"}), mock.patch.object(hw, "_lan_pci", return_value=""):
+            got = hw.host_hw(root)
+        usb = {u["port"]: u for u in got["usb"]}
+        self.assertEqual(sorted(usb), ["1-3", "1-4"], "the hub is the host's own")
+        st = usb["1-3"]
+        self.assertEqual((st["name"], st["serial"], st["bus"], st["dev"], st["speed"], st["driver"], st["ctl"]),
+                         ("SanDisk Ultra Fit", "4C53", 1, 7, "5000", "usb-storage", "0000:00:14.0"))
+        self.assertEqual(st["use"], ["sdb1 is mounted at /mnt/x"])
+        self.assertEqual(usb["1-4"]["use"], [])
+        ctl = got["pci"][0]
+        self.assertEqual((ctl["addr"], ctl["group"], ctl["host"]), ("0000:00:14.0", "7", "sdb1 is mounted at /mnt/x"), "the controller carries what the host uses")
+        self.assertTrue(got["iommu"])
+        # Named again: by serial among alike ones, by port with no serial.
+        twins = [dict(st, serial="A", port="1-1", dev=3), dict(st, serial="B", port="1-2", dev=4), dict(st, serial="", port="1-6", dev=5), dict(st, serial="", port="1-7", dev=6)]
+        self.assertEqual(hw.usb_find(twins, {"vendor": st["vendor"], "product": st["product"], "serial": "B"})["dev"], 4)
+        self.assertEqual(hw.usb_find(twins, {"vendor": st["vendor"], "product": st["product"], "serial": "", "port": "1-7"})["dev"], 6)
+        self.assertIsNone(hw.usb_find(twins, {"vendor": "0x0000", "product": "0x0000"}))
+        self.assertIsNone(hw.usb_want({"vendor": "0781", "product": "0x5583"}))
+        self.assertIsNone(hw.usb_want({"vendor": "0x0781", "product": "0x5583", "port": "../x"}))
+        # The hostdev: optional at start, and by its numbers when alike.
+        x = hw.usb_hostdev(st).replace('"', "'").replace(" />", "/>")
+        self.assertIn("<source startupPolicy='optional'><vendor id='0x0781'/><product id='0x5583'/></source>", x)
+        self.assertIn("<address bus='1' device='7'/>", hw.usb_hostdev(st, by_address=True).replace('"', "'").replace(" />", "/>"))
+        dom = f"<domain><devices>{hw.usb_hostdev(st, by_address=True)}</devices></domain>"
+        kept = [{"vendor": "0x0781", "product": "0x5583", "serial": "4C53", "port": "1-3"}]
+        self.assertIsNone(hw.usb_refresh(dom, kept, [st]), "still where it was")
+        moved = hw.usb_refresh(dom, kept, [dict(st, dev=12)])
+        self.assertIn('device="12"', moved)
+        self.assertIsNone(hw.usb_refresh(dom, kept, []), "pulled out: its numbers stay, and the source is optional")
+
+    def test_a_usb_give_attaches_live_and_keeps_the_device_by_name(self):
+        # R116 step 3: give runs virsh attach-device --persistent with the
+        # hostdev, keeps the device by name beside the disk, and says now or
+        # at the next start; take detaches it; the refusals say why.
+        from unittest import mock
+        hw = sys.modules[self.av.__name__.rsplit(".", 1)[0] + ".vmhw"]
+        vmdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, vmdir, True)
+        os.makedirs(os.path.join(vmdir, "disks"))
+        a = object.__new__(self.agent.Agent)
+        a.state = {}
+        said, ran = [], []
+
+        class Job:
+            def say(self, x):
+                said.append(x)
+        stick = {"vendor": "0x0781", "product": "0x5583", "name": "SanDisk Ultra Fit", "serial": "4C53", "port": "1-3", "bus": 1, "dev": 7, "use": []}
+        boot = dict(stick, serial="BOOT", port="1-4", dev=8, use=["the host boots from it (sda1 is /)"])
+        state = {"domstate": "running\n"}
+
+        def run(argv, **kw):
+            ran.append(argv)
+            out = state["domstate"] if "domstate" in argv else ""
+            return subprocess.CompletedProcess(argv, 0, out, "")
+        with mock.patch.object(self.av, "VM_DIR", vmdir), mock.patch.object(self.av.subprocess, "run", side_effect=run), \
+                mock.patch.object(self.av, "_run", return_value="bbvm-web-db\nbbvm-web-other\n"), \
+                mock.patch.object(hw, "host_hw", return_value={"usb": [stick, boot], "pci": [], "cpus": [], "iommu": False}), \
+                mock.patch.object(self.av, "lan_iface", return_value="eth0"):
+            who = {}
+            give = lambda usb: a._vm_usb(Job(), {"usb": usb}, "bbvm-web-db", who, give=True)  # noqa: E731
+            self.assertEqual(give({"vendor": "0781"}), ("failed", 64))
+            self.assertEqual(give({"vendor": "0x0781", "product": "0x5583", "serial": "BOOT"}), ("failed", 75))
+            self.assertIn("boots from it", said[-1])
+            self.assertEqual(give({"vendor": "0x1111", "product": "0x2222"}), ("failed", 66))
+            self.assertEqual(give({"vendor": "0x0781", "product": "0x5583", "serial": "4C53", "name": "SanDisk Ultra Fit"}), ("succeeded", 0))
+            attach = next(x for x in ran if "attach-device" in x)
+            self.assertEqual(attach[-1], "--persistent")
+            with open(attach[-2]) as f:
+                xml = f.read()
+            self.assertIn('bus="1" device="7"', xml, "two alike here: by its numbers")
+            self.assertEqual(self.av.usb_kept("bbvm-web-db")[0]["serial"], "4C53")
+            self.assertIn("now, and keeps it at its next start", said[-1])
+            # Another VM holds it now: refused by name.
+            self.av.usb_keep("bbvm-web-other", [{"vendor": "0x0781", "product": "0x5583", "serial": "BOOT", "port": "1-4"}])
+            self.av.usb_keep("bbvm-web-db", [])
+            self.assertEqual(give({"vendor": "0x0781", "product": "0x5583", "serial": "BOOT"}), ("failed", 75))
+            self.av.usb_keep("bbvm-web-other", [])
+            self.av.usb_keep("bbvm-web-db", [{"vendor": "0x0781", "product": "0x5583", "serial": "4C53", "port": "1-3", "name": "SanDisk Ultra Fit"}])
+            # Taken back, the stick pulled out meanwhile: struck off the list.
+            state["domstate"] = "shut off\n"
+            with mock.patch.object(hw, "host_hw", return_value={"usb": [boot], "pci": [], "cpus": [], "iommu": False}):
+                self.assertEqual(a._vm_usb(Job(), {"usb": {"vendor": "0x0781", "product": "0x5583", "serial": "4C53"}}, "bbvm-web-db", who, give=False),
+                                 ("succeeded", 0))
+            self.assertIn("detach-device", ran[-1])
+            self.assertEqual(self.av.usb_kept("bbvm-web-db"), [])
+            self.assertIn("the host's again", said[-1])
+            # The start of a VM given a device by its numbers points the
+            # hostdev at where the device is now.
+            self.av.usb_keep("bbvm-web-db", [{"vendor": "0x0781", "product": "0x5583", "serial": "4C53", "port": "1-3", "name": "SanDisk Ultra Fit"}])
+            dom = f"<domain><devices>{hw.usb_hostdev(stick, by_address=True)}</devices></domain>"
+            with mock.patch.object(hw, "host_hw", return_value={"usb": [dict(stick, dev=12), boot], "pci": [], "cpus": [], "iommu": False}), \
+                    mock.patch.object(self.av.subprocess, "run", side_effect=lambda argv, **kw: ran.append(argv) or subprocess.CompletedProcess(argv, 0, dom if "dumpxml" in argv else "", "")):
+                self.assertEqual(a._vm_start(Job(), {}, "bbvm-web-db", who), ("succeeded", 0))
+            self.assertTrue(any("define" in x for x in ran[-4:]), ran[-4:])
+            with open(os.path.join(vmdir, "disks", "bbvm-web-db.xml")) as f:
+                self.assertIn('device="12"', f.read())
+
     def test_the_domain_carries_its_marker_and_a_screen_on_the_loopback(self):
         x = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00")
         self.assertIn("<bb:vm xmlns:bb='https://builderbot.dev/vm/1' project='web'/>", x.replace('"', "'"))
@@ -558,3 +793,9 @@ class Ask(unittest.TestCase):
         self.assertEqual(seen["shown"][-7:], ["--pin", "2,3", "--mem-max", "none", "--share", "data", "--ro"])
         phone.ask_vm("bigger", "web", {"action": "disk-grow", "name": "db", "disk": "vdb", "gb": 60}, "s")
         self.assertEqual((seen["shown"][-2:], seen["extra"]["vm"]["gb"], seen["extra"]["vm"]["disk"]), (["vdb", "60G"], 60, "vdb"))
+        # A USB device to a VM (R116), as bb vm usb names it.
+        phone.ask_vm("the stick", "web", {"action": "usb-give", "name": "db", "usb": {"vendor": "0x0781", "product": "0x5583", "serial": "4C53"}}, "s")
+        self.assertEqual(seen["shown"], ["vm", "usb", "db", "give", "0781:5583:4C53"])
+        self.assertEqual(seen["extra"]["vm"]["usb"]["serial"], "4C53")
+        phone.ask_vm("back", "web", {"action": "usb-take", "name": "db", "usb": {"vendor": "0x0781", "product": "0x5583", "port": "1-3"}}, "s")
+        self.assertEqual(seen["shown"], ["vm", "usb", "db", "take", "0781:5583", "--port", "1-3"])

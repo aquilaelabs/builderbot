@@ -2,7 +2,7 @@
 // and adding or removing one there. Its own classic script beside index.html,
 // per the new-surface rule (docs/nodes.md §13).
 //
-// Not the Toolchains tab. A toolchain is one thing at one version; a system
+// Not a toolchain's card in the Library. A toolchain is one thing at one version; a system
 // image exists at every API level at once, and which one to have is a
 // question about what is being tested. The images live on the toolchain store
 // all the same, so an image job and a toolchain job take turns on one
@@ -191,11 +191,11 @@ function renderEmulatorInto(i){
   if (!d){
     // Its template (R218 step 16): the bar and the add list's label are the
     // page's own; the node's images are on their way.
-    surf.setBar(skNodeBar([]));
+    surf.setBar("");
     // In the page's order: its head, its tiles, the images it holds,
     // then the ones to add.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
-    surf.list.innerHTML = skTpl(`${pageHead({cls: "tchead", facts: [["System images", GHOST]]})}
+    surf.list.innerHTML = skTpl(`${pageHead({facts: [["System images", GHOST]]})}
       <div class="field"><div class="tiles">${tile("images")}${tile("AVDs", "built on them")}${tile("free", "on the store")}</div></div>
       ${emuSections(`<div class="tcs">${skRows(2)}</div>`, "", `<div class="tcs">${skRows(2)}</div>`)}`);
     return;
@@ -217,13 +217,13 @@ function renderEmulatorInto(i){
     : job.running ? "another job is writing to this store"
     : stale ? staleWhy(pnode)
     : d.sdkmanager === false ? `${d.name} needs the Android command-line tools first` : "";
-  // The one node switcher (page-docs.js nodePick, R121).
-  surf.setBar(nodeBar(nodePick("emuNodeSel", pnodes, emuNode)));
+  // The node is the Build group's header's (R178).
+  surf.setBar("");
   surf.list.innerHTML = `
     ${
     // Its node as a head (the operator, 25 Oct): where the images an
     // emulator boots are kept; its free space is the tile's (R218 step 24).
-    pageHead({title: d.name || "", cls: "tchead",
+    pageHead({
       pills: d.root && !d.wrong_platform ? "" : `<span class="pill warn">${d.wrong_platform ? "another platform" : "no store yet"}</span>`,
       facts: [["System images", d.root && !d.wrong_platform ? d.root : ""],
               ["Platform", d.wrong_platform ? `${d.platform}: the Android tools are packaged for ${d.wrong_platform}` : ""]]})}
@@ -266,14 +266,9 @@ function renderEmulatorInto(i){
 
   // Its sections stand open at a desk and take turns on a phone.
   wireSections(el);
-  const sel = el.querySelector("#emuNodeSel");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (sel) sel.onchange = () => navPush(() => { emuNode = sel.value; emu = null; emuTicked.clear();
-                                  try{ localStorage.setItem("bb.emunode", emuNode); }catch(e){ /* private */ }
-                                  emuRev++; drawPanes(); loadEmulator(); });
 
   const toTc = el.querySelector("#emuToTc");
-  if (toTc) toTc.onclick = e => { e.preventDefault(); tcNode = emuNode; openToolchains(); };
+  if (toTc) toTc.onclick = e => { e.preventDefault(); openLibraryOn(emuNode); };
   const fl = el.querySelector("#imgFlavor");
   if (fl) fl.onchange = () => { emuFlavor = fl.value; emuRev++; drawPanes(); };
   el.querySelectorAll(".tc.emnew input").forEach(b => b.onchange = () => {

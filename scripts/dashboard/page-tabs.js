@@ -190,10 +190,18 @@ const TOOL_ICONS = {
     <path d="M2.5 5.5h7.5"/><path d="M8 3.3l2.2 2.2L8 7.7"/>
     <path d="M13.5 10.5H6"/><path d="M8.2 8.3L6 10.5l2.2 2.2"/>
     <rect x="11" y="2.5" width="2.5" height="11" rx="0.6"/></svg>`,
+  // A magnifier over lines of code, for the Scanners page (R145).
+  scanners: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="3.8"/><path d="M9.3 9.3L13.5 13.5"/><path d="M4.8 5.8h3.4M4.8 7.6h2.2"/></svg>`,
   // A screen inside a screen: a machine run on a machine, for the VMs page.
   vms: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><rect x="4.5" y="5" width="7" height="4" rx="0.6"/>
     <path d="M5.5 14h5"/><path d="M8 11.5V14"/></svg>`,
+  // A ledger's lines, for the Audit page (R158 step 8).
+  audit: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h10v11H3z"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg>`,
+  // Two points joined, for the Network page (R165 step 4).
+  network: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="2"/><circle cx="12" cy="4" r="2"/><circle cx="12" cy="12" r="2"/><path d="M5.8 7.2 10.2 4.8M5.8 8.8l4.4 2.4"/></svg>`,
+  // A box with its one light, for This machine (R90 step 8).
+  machine: `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="9" rx="1"/><path d="M5 12.5v1.5M11 12.5v1.5M5 6.5h3"/><circle cx="11" cy="6.5" r=".8"/></svg>`,
   // A clock, for the Schedules page (R117).
   keys: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="8" r="2.5"/><path d="M7.5 8H14M11.5 8v2.5M13.5 8v2"/></svg>`,
   debug: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 5.5a2.5 2.5 0 0 1 5 0v4a2.5 2.5 0 0 1-5 0z"/><path d="M8 7v5M3 6.5h2.5M10.5 6.5H13M3 10h2.5M10.5 10H13M6 3.5 5 2M10 3.5 11 2"/></svg>`,
@@ -213,16 +221,31 @@ const TABKINDS = {
   notebook:     { multi: true, label: t => "Notebook: " + projLabel(t.arg),
               icon: TOOL_ICONS.notebook,
               render: (i, t) => renderNotebookInto(i, t.arg), live: "always" },
-  toolchains: { multi: false, label: () => "Toolchains",
+  // The Library (R170): one list of everything a BuilderBot installs or
+  // runs, for one node; its own read, the node list, and the sign-in,
+  // which rides the status poll (an agent's row carries it).
+  library:  { multi: false, label: () => "Library",
               icon: TOOL_ICONS.toolchains,
-              render: (i) => renderToolchainsInto(i), live: () => tcRev,
-              open: () => loadToolchains() },
-  // The coding agents on a node (R95 step 15): its own read, the node
-  // list, and the sign-in, which rides the status poll.
-  agents:   { multi: false, label: () => "Agents",
-              icon: TOOL_ICONS.agents,
-              render: (i) => renderAgentsInto(i), live: () => agentsLiveKey(),
-              open: () => loadAgents() },
+              render: (i) => renderLibraryInto(i), live: () => `${libRev}/${nodesRev}/${signinRev()}`,
+              open: () => loadLibrary() },
+  // What is installed on a node (R172): the Library's read kept to what is
+  // there, its own node, and the sign-in, which rides the status poll.
+  installed: { multi: false, label: () => "Installed",
+              icon: TOOL_ICONS.nodes,
+              render: (i) => renderInstalledInto(i), live: () => `${instRev}/${nodesRev}/${signinRev()}`,
+              open: () => loadInstalled() },
+  // A Library entry's own page (R183): the Library's read, one card of it,
+  // opened by its Details and named for the entry.
+  entry:     { multi: false, label: () => entryLabel(),
+              icon: TOOL_ICONS.toolchains,
+              render: (i) => renderEntryInto(i), live: () => `${libRev}/${nodesRev}/${entryKey}`,
+              open: () => { if (!lib) loadLibrary(); } },
+  // An installed thing's own page (R181 step 2): Installed's read, one row
+  // of it, opened by a press and named for the thing.
+  thing:     { multi: false, label: () => thingLabel(),
+              icon: TOOL_ICONS.nodes,
+              render: (i) => renderThingInto(i), live: () => `${instRev}/${nodesRev}/${signinRev()}/${thingKey}`,
+              open: () => { if (!inst) loadInstalled(); } },
   // nodesRev and jobsRev as well as its own: a node's images arrive on its
   // census, and an image job moves the queue.
   emulator: { multi: false, label: () => "Emulator",
@@ -281,6 +304,11 @@ const TABKINDS = {
               icon: TOOL_ICONS.nginx,
               render: (i) => renderNginxInto(i), live: () => `${nginxRev}/${nodesRev}`,
               open: () => loadNginx() },
+  // The Scanners page (R145): BuilderBot's own scanners on each node.
+  scanners: { multi: false, label: () => "Scanners",
+              icon: TOOL_ICONS.scanners,
+              render: (i) => renderScannersInto(i), live: () => `${scannersRev}/${nodesRev}/${jobsRev}`,
+              open: () => loadScanners() },
   // The VMs page (R91): its records, and the census a node's hello carries.
   vms:      { multi: false, label: () => "VMs",
               icon: TOOL_ICONS.vms,
@@ -321,6 +349,21 @@ const TABKINDS = {
               icon: TOOL_ICONS.keys,
               render: (i) => renderKeysInto(i), live: () => keysRev,
               open: () => loadKeys() },
+  // Who did what to this install (R158 step 8).
+  audit:    { multi: false, label: () => "Audit",
+              icon: TOOL_ICONS.audit,
+              render: (i) => renderAuditInto(i), live: () => auditRev,
+              open: () => loadAudit() },
+  network:  { multi: false, label: () => "Network",
+              icon: TOOL_ICONS.network,
+              render: (i) => renderNetworkInto(i), live: () => settingsLive() + nodesRev,
+              open: () => loadNodes() },
+  machine:  { multi: false, label: () => "This machine",
+              icon: TOOL_ICONS.machine,
+              // ...and on the held start and the stick's report, which ride the
+              // status poll: Start and the hold-next box show what they did.
+              render: (i) => renderMachineInto(i), live: () => `${nodesRev}/${JSON.stringify(state?.held || {})}/${state?.firstboot?.at || 0}`,
+              open: () => loadNodes() },
   settings: { multi: false, label: () => "Controller settings",
               render: (i) => renderSettingsInto(i), live: settingsLive,
               open: () => loadApps() },
@@ -333,9 +376,6 @@ const TABKINDS = {
   profile:  { multi: false, label: () => "Profile",
               render: (i) => renderProfileInto(i), live: () => `${profileRev}/${keyMineRev}`,
               open: () => loadProfile() },
-  apps:     { multi: false, label: () => "Apps",
-              render: (i) => renderAppsInto(i), live: () => devAppsRev,
-              open: () => loadApps() },
   findings: { multi: false, label: () => "Analysis",
               icon: TOOL_ICONS.findings,
               render: (i) => renderFindingsInto(i),
@@ -496,7 +536,7 @@ function renderGuarded(spec, i, t){
   }
   catch(e){
     const el = $("doc" + i);
-    if (el) el.innerHTML = `<div class="hint bad" style="padding:var(--row-y) var(--row-x)">
+    if (el) el.innerHTML = `<div class="hint bad" data-style="padding:var(--row-y) var(--row-x)">
       this tab's renderer failed: the rest of the page is fine.
       ${esc(String(e && e.message || e))}</div>`;
     setTimeout(() => { throw e; });

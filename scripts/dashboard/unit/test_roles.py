@@ -170,11 +170,12 @@ class Model(unittest.TestCase):
     def test_a_global_role_may_hold_its_node_areas_on_named_nodes(self):
         # The operator, 7 Oct: making projects on one node, and node areas
         # scoped as they were before R152.
+        # Toolchains, the area's name before 0.9, is read as Install (R174).
         r = roles.set_role("creator", "global", {"newprojects": "write", "toolchains": "write", "controller": "read"},
                            nodes=["n1"])
         # The list from before R260 reads as each node area on those nodes at
         # its own level.
-        self.assertEqual(r["only"], {"newprojects": {"n1": "write"}, "toolchains": {"n1": "write"}})
+        self.assertEqual(r["only"], {"newprojects": {"n1": "write"}, "install": {"n1": "write"}})
         c = {"name": "c", "role": "user", "roles": ["creator"], "projects": []}
         self.assertTrue(roles.granted(c, "create", node="n1"))
         self.assertFalse(roles.granted(c, "create", node="n2"), "not a node it names")
@@ -186,6 +187,40 @@ class Model(unittest.TestCase):
         self.assertEqual(roles.CAP_AREA["create"], ("newprojects", "write"), "its own area, not Controller's")
         self.assertEqual(roles.set_role("p", "projects", {"projects": "read"}, nodes=["n1"])["only"], {},
                          "only a Global role names nodes")
+
+    def test_install_configure_and_curate_are_three_areas(self):
+        # R174 (the operator, 28 Oct): Install and Configure node by node,
+        # Curate the catalog's, which every node shares.
+        self.assertEqual(roles.CAP_AREA["toolchains-write"], ("install", "write"))
+        self.assertIn("configure", roles.NODE_AREAS)
+        self.assertNotIn("curate", roles.NODE_AREAS)
+        roles.set_role("tinker", "global", {"install": "write", "configure": "write"}, only={"configure": {"n1": "write"}})
+        t = {"name": "t", "role": "user", "roles": ["tinker"], "projects": []}
+        self.assertTrue(roles.granted(t, "configure", node="n1"))
+        self.assertFalse(roles.granted(t, "configure", node="n2"))
+        self.assertTrue(roles.granted(t, "toolchains-write", node="n2"))
+        self.assertFalse(roles.granted(t, "curate"))
+        self.assertTrue(roles.granted(ADMIN, "curate"), "the built-in administrator holds every area")
+
+    def test_migration_0017_splits_toolchains(self):
+        import importlib.util
+        here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "statemigrations", "0017_install_curate_configure.py")
+        spec = importlib.util.spec_from_file_location("m17", here)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "roles.json"), "w") as f:
+                json.dump({"roles": {
+                    "builder": {"scope": "global", "perms": {"toolchains": "write", "containers": "write"}, "only": {"toolchains": {"n1": "write", "n2": "read"}}},
+                    "reader": {"scope": "global", "perms": {"toolchains": "read"}, "only": {}},
+                    "other": {"scope": "projects", "perms": {"projects": "write"}, "only": {}}}}, f)
+            m.run({"state": d})
+            m.run({"state": d})
+            got = json.load(open(os.path.join(d, "roles.json")))["roles"]
+        self.assertEqual(got["builder"]["perms"], {"containers": "write", "install": "write", "configure": "write"})
+        self.assertEqual(got["builder"]["only"], {"install": {"n1": "write", "n2": "read"}, "configure": {"n1": "write"}})
+        self.assertEqual(got["reader"]["perms"], {"install": "read"}, "no Configure without writing containers too")
+        self.assertEqual(got["other"]["perms"], {"projects": "write"})
 
     def test_an_area_held_instance_by_instance(self):
         # The operator, 16 Oct: an area's row opens on its nodes or runners,

@@ -14,7 +14,7 @@ import time
 from .jobs import pump
 from .base import (
     AGENT_INSTALLS,
-    AGENT_PREFIXES,
+    agent_prefixes,
     AGENTS_DIR,
     CLAUDE_INSTALL,
     CLAUDE_DIR,
@@ -23,7 +23,7 @@ from .base import (
     FIREWALL_EVERY_S,
     IDLE_UNIT,
     NFT_BIN,
-    RESPAWNABLE,
+    respawnable,
     SESSION,
     ROOT_BUNDLE_DIR,
     SESSION_BIN,
@@ -519,8 +519,8 @@ class SessionsMixin:
         server is not up, which is the normal state of a node nobody has
         opened a terminal on yet."""
         # When each session started, too: a toolchain installed after that
-        # is not on its PATH until it is reopened, and the Tools tab says so
-        # on the row. Before the title, which is free text and goes last.
+        # is not on its PATH until it is reopened, and the Installed page says
+        # so on the row. Before the title, which is free text and goes last.
         out = self._tmux(["list-panes", "-a", "-F",
                           "#{session_name}\t#{pane_active}\t#{session_attached}\t"
                           "#{pane_current_path}\t#{session_created}\t#{pane_title}"])
@@ -695,7 +695,7 @@ class SessionsMixin:
             if op.get("respawn"):
                 cmd = (self._tmux(["display-message", "-p", "-t", sess,
                                    "#{pane_start_command}"]) or "").strip()
-                if re.fullmatch(RESPAWNABLE, cmd):
+                if respawnable(cmd):
                     # Word by word. tmux runs more than one argument as the
                     # program and its arguments, so the view's launcher line
                     # handed over whole names a program nobody has, and the
@@ -760,7 +760,7 @@ class SessionsMixin:
             env.update({"HOME": os.path.expanduser("~"), "USER": who_name, "LOGNAME": who_name})
         home = env.get("HOME") or os.path.expanduser("~")
         pin_dir = how.get("pin_dir") or os.path.join(AGENTS_DIR, how["id"])
-        # Taken off, from the node's Agents page (R145): the pinned copy a
+        # Taken off, from the Installed page (R145): the pinned copy a
         # session runs and the account's own install under its home.
         if spec.get("action") == "remove":
             gone = []
@@ -1071,7 +1071,7 @@ class SessionsMixin:
                 continue
             # The account's prefix alone off: a second slot ends in ~2 (R143).
             base = re.sub(r"^u_[0-9a-f]{8}~", "", name)
-            if base.startswith(AGENT_PREFIXES) and time.time() - last > limit * IDLE_UNIT:
+            if base.startswith(agent_prefixes()) and time.time() - last > limit * IDLE_UNIT:
                 log(f"sessions: ending {name} (idle {limit} minute(s), the controller's rule)")
                 self._tmux(["kill-session", "-t", "=" + name])
 

@@ -49,7 +49,7 @@ const colorTone = name => (PROJECT_COLORS.find(([n]) => n === name) || [])[1] ||
 // nothing for a project with none.
 const colorAttrs = name => {
   const tone = colorTone(name);
-  return tone ? {cls: " pc", style: ` style="--pc:${tone}"`} : {cls: "", style: ""};
+  return tone ? {cls: " pc", style: ` data-style="--pc:${tone}"`} : {cls: "", style: ""};
 };
 // This account's color for a project (the operator, 18 Oct: a person's own,
 // set from its card), or "", by its project's key or any of its repositories.
@@ -111,12 +111,13 @@ function rnPrefsOf(p){
                snapshots_on: p?.prefs?.snapshots_on === false ? "0" : "1",
                dev_keep: String(p?.prefs?.dev_keep ?? 3),
                gate: gateKey(p?.prefs?.gate),
-               tests_in: p?.prefs?.tests_in || "node",
+               tests_in: p?.prefs?.tests_in || "node", test_node: p?.prefs?.test_node || "",
                test_change: p?.prefs?.test_change || "wait",
                gpu: p?.prefs?.gpu || "on",
                reply: p?.yours?.reply || "", asks: p?.yours?.asks || "", term_scheme: p?.yours?.term_scheme || "",
                devbuild: devClaudeMode(p?.name || rnFor),
                makevms: p?.prefs?.makevms || "deny",
+               installpacks: p?.prefs?.installpacks || "ask",
                vm_caps: rnVmCapsOf(p),
                report: p?.prefs?.report || "auto",
                sign: p?.prefs?.sign || "ask",
@@ -302,12 +303,8 @@ function rnDrawReach(focus){
     rnDrawReach();
   });
   if (focus) box.querySelector(".rnreach:last-child [data-reach]")?.focus();
-  // Whether it does anything yet: only where a node filters (its row's switch).
-  const off = ns.filter(n => !n.config?.session_net).map(n => n.name);
-  $("rnReachHint").textContent = !ns.length ? ""
-    : off.length === ns.length ? `${off.join(", ")} lets sessions reach the whole network now, so this applies once it keeps each session to its own project's.`
-    : off.length ? `Applies on the nodes that keep sessions to their own network; ${off.join(", ")} does not yet.`
-    : "An address for the whole machine, or address:port for one service.";
+  // Every node keeps each session to its own project's network (R146).
+  $("rnReachHint").textContent = !ns.length ? "" : "An address for the whole machine, or address:port for one service.";
 }
 
 // What Save sends: the rows with an address, in the stored shape.
@@ -360,7 +357,7 @@ function rnFillNodesMore(){
 // sees, a listbox row each, ticked from the settings. Read-only there by
 // construction (users.with_reads), so the hint under it can say so plainly.
 // ---- the Toolchains group (R77) -------------------------------------------
-// The toolchains installed on the project's node, as its Toolchains page
+// The toolchains installed on the project's node, as the Installed page
 // lists them, and every tool pack: a row each, ticked when its sessions may
 // use it. Fetched when the settings open; null until it has arrived.
 let rnToolsList = null;
@@ -456,6 +453,27 @@ function rnTermPreview(){
   box.innerHTML = termPreview(termPalette(scheme, (look.colors || {})[scheme]), look);
 }
 
+// The test node picker (R151): the session's own node, then each of the
+// project's nodes by name as the Node picker names them; the field is
+// drawn only when the project has a node to pick.
+function rnFillTestNode(p){
+  const sel = $("rnTestNode"), f = $("rnTestNodeF");
+  if (!sel || !f) return;
+  const names = new Map([...($("rnNode")?.options || [])].map(o => [o.value, o.textContent]));
+  const ids = [...new Set([p?.prefs?.node, ...(p?.prefs?.nodes || [])].filter(Boolean))];
+  // Filled again while the dialog is open (the nodes landing, a poll): a
+  // pick made since stays, as long as it is this project's and still offered;
+  // the saved value otherwise.
+  const picked = sel.dataset.proj === (p?.name || "") && sel.options.length ? sel.value : null;
+  // Named off the Node picker's options, else off the nodes list, else by
+  // id (B418: a dialog opened before the picker was drawn listed ids).
+  const named = id => names.get(id) || (nodesList || []).find(n => n.id === id)?.name || id;
+  sel.innerHTML = `<option value="">the session's own node</option>` + ids.map(id => `<option value="${esc(id)}">${esc(named(id))}</option>`).join("");
+  sel.dataset.proj = p?.name || "";
+  sel.value = picked !== null && (picked === "" || ids.includes(picked)) && picked !== (p?.prefs?.test_node || "") ? picked
+    : ids.includes(p?.prefs?.test_node) ? p.prefs.test_node : "";
+  f.hidden = ids.length === 0;
+}
 function rnFillPrefsRest(p){
   $("rnBuildCmd").value = p?.prefs?.build || "";
   $("rnTestCmd").value = p?.prefs?.test || "";
@@ -465,6 +483,7 @@ function rnFillPrefsRest(p){
   const canDevTest = !!(p?.has_compose || (p?.prefs?.tests_in || "node") !== "node");
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.tests_in || "node";
+  rnFillTestNode(p);
   $("rnTestChange").value = p?.prefs?.test_change || "wait";
   $("rnGpu").value = p?.prefs?.gpu || "on";
   $("rnReply").value = p?.yours?.reply || "";
@@ -502,6 +521,7 @@ function rnFillPrefsRest(p){
   pick("rnGateDocker", GATE_MODES, devClaudeMode(rnFor)).closest("label").hidden = state?.can?.["docker-write"] === false;
   // ...and its VMs' (R91), the VMs area's to change, deny unless set.
   pick("rnGateVms", GATE_MODES, p?.prefs?.makevms || "deny").closest("label").hidden = state?.can?.["vms-write"] === false;
+  pick("rnGatePacks", GATE_MODES, p?.prefs?.installpacks || "ask").closest("label").hidden = state?.can?.curate === false;
   rnVmCapsSet(rnVmCapsOf(p));
   $("rnVmCapsRow").hidden = state?.can?.["vms-write"] === false;
   rnDrawPrefs();
@@ -739,6 +759,7 @@ function renameProject(name, mode = "all"){
   // is the way a project moves from one host to another, since linking
   // refuses a repo that already has one.
   $("rnUnlink").hidden = !(git && p?.linked);
+  rnGitDoor = !!git;
   unbusy($("rnUnlink"), `Unlink from ${p?.forge_name || "its remote"}`);
   // The bin, on the gear's door only: the chain's is about the remote.
   // Not drawn for a role that does not give it (the operator, 21 Oct).
@@ -1124,21 +1145,37 @@ function rnDrawStore(name){
   let host = "";
   try{ host = new URL(String(o.url || "").replace(/^git@([^:]+):/, "https://$1/")).host.toLowerCase(); }catch(e){ host = ""; }
   const mine = (o.store || []).filter(f => f.host === host);
-  const lk = o.linked || {};
-  const said = lk.uid ? `<div class="hint">Its token is kept in ${lk.mine ? "your" : esc(lk.name) + "'s"} key store.</div>` : "";
-  const rows = mine.filter(f => !(lk.mine && lk.id === f.id)).map(f => `<div class="setrow ctlrow"><span class="grow">Your ${
+  // Who has given the project a token (R159): each a person, their token
+  // used for their own work while they are signed in; yours removable.
+  const givers = o.givers || [], me = givers.find(g => g.mine);
+  const who = givers.map(g => `<div class="setrow ctlrow"><span class="grow">${g.mine ? "Your" : esc(g.name) + "'s"} ${
+    esc(g.host || host)} token${g.login ? `, as ${esc(g.login)}` : ""}${g.live ? "" : `<span class="dim"> (signed out: not in use)</span>`}</span>${
+    g.mine ? `<button type="button" data-rnunlink="1">Take it back</button>` : ""}</div>`).join("");
+  const said = givers.length
+    ? `<div class="hint">${givers.length === 1 ? "One person has" : givers.length + " people have"} given this project a token; each is used for their own pushes and pulls while they are signed in${
+        me ? "" : ", and yours is not among them"}.</div>`
+    : `<div class="hint">Nobody has given this project a token: pushes and pulls wait until somebody does.</div>`;
+  const rows = mine.filter(f => !(me && me.id === f.id)).map(f => `<div class="setrow ctlrow"><span class="grow">Your ${
     esc(f.host)} token${f.login ? `, as ${esc(f.login)}` : ""}</span>
-    <button type="button" data-rnstore="${esc(f.id)}">Use for this project</button></div>`).join("");
-  const none = "";
-  box.innerHTML = said + rows + none;
-  box.hidden = !(said || rows || none);
+    <button type="button" data-rnstore="${esc(f.id)}">${me ? "Use this one instead" : "Give it to this project"}</button></div>`).join("");
+  box.innerHTML = said + who + rows;
+  box.hidden = !(said || who || rows);
   box.querySelectorAll("[data-rnstore]").forEach(b => b.onclick = async () => {
     busy(b, "Linking");
     try{
       const j = await (await postJSON("/api/rename", {name, link_account: b.dataset.rnstore})).json();
       if (j.error) notify(j.error, true);
-      else notify(`${projLabel(name)} now uses that token`);
+      else notify(`${projLabel(name)} uses your token for your pushes and pulls`);
     }catch(e){ notify("link: " + failWords(e), true); }
+    rnLoadAuth(name);
+  });
+  box.querySelectorAll("[data-rnunlink]").forEach(b => b.onclick = async () => {
+    busy(b, "Taking back");
+    try{
+      const j = await (await postJSON("/api/rename", {name, unlink_mine: true})).json();
+      if (j.error) notify(j.error, true);
+      else notify(`your token is no longer given to ${projLabel(name)}`);
+    }catch(e){ notify("take back: " + failWords(e), true); }
     rnLoadAuth(name);
   });
 }
@@ -1344,7 +1381,7 @@ function closeRename(){
 const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "tools", "build", "claude", "yours"];
 // Which section each of rnPrefWas's fields is in, and what it is called.
 const RN_WAS = {
-  node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"],
+  node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"], test_node: ["runs", "Test node"],
   reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"],
   tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
@@ -1392,10 +1429,11 @@ function rnEnc(){
           capture_days: $("rnCaptureDays").value.trim(), snapshot_days: $("rnSnapDays").value.trim(),
           snapshots_on: $("rnSnapOn").checked ? "1" : "0",
           dev_keep: $("rnDevKeep").value.trim(), gate: gateKey(rnGateNow()),
-          tests_in: $("rnDevTest").value || "node", test_change: $("rnTestChange").value || "wait",
+          tests_in: $("rnDevTest").value || "node", test_node: $("rnTestNode")?.value || "", test_change: $("rnTestChange").value || "wait",
           gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
           term_scheme: $("rnTermScheme").value || "",
-          devbuild: $("rnGateDocker").value || "deny", makevms: $("rnGateVms").value || "deny", vm_caps: rnVmCapsNow(), report: $("rnGateReport").value || "auto",
+          devbuild: $("rnGateDocker").value || "deny", makevms: $("rnGateVms").value || "deny", vm_caps: rnVmCapsNow(),
+          installpacks: $("rnGatePacks").value || "ask", report: $("rnGateReport").value || "auto",
           sign: $("rnGateSign").value || "ask", release: $("rnGateRelease").value || "ask",
           keys: $("rnGateKeys").value || "ask", pc: $("rnGatePc").value || "deny", version: $("rnGateVersion").value || "locked"};
 }
@@ -1431,13 +1469,20 @@ const rnDirty = () => RN_SECTS.filter(s => rnSectChanges(s).said.length);
 // The bars, put in once and then kept in step with what is typed: dead
 // rather than gone while there is nothing to save, so nothing moves under a
 // thumb (sectBar's rule).
+// Opened from the git host's door (the chain) the dialog is the Repository
+// section alone, and its Save and Revert sit in the foot beside Unlink (the
+// operator, 30 Oct), not on a line of their own above it.
+let rnGitDoor = false;
 function rnBars(){
   if (rnFor === null) return;
   const enc = rnEnc(), running = !!myLiveSession(rnFor);
   for (const sect of RN_SECTS){
     const body = document.querySelector(`details.rngroup[data-sect="rn:${sect}"] > .body`);
     if (!body) continue;
-    let bar = body.querySelector(":scope > .rnbarf > .rnbar");
+    // By its name, wherever it sits: the foot holds the repository's on
+    // the git door; and the box moves out of the dialog into the Settings
+    // view, so it is looked for in the page, not the dialog.
+    let bar = document.querySelector(`.rnbar[data-rnbar="${sect}"]`);
     if (!bar){
       body.insertAdjacentHTML("beforeend", `<div class="field rnbarf"><div class="actbar sectbar rnbar" data-rnbar="${sect}">
         <span class="state"></span><span class="sp"></span>
@@ -1451,6 +1496,9 @@ function rnBars(){
     // has the Settings view, which says what the remote is and opens its
     // door (rnRepoSum, B813).
     bar.parentElement.hidden = sect === "repo" && (!$("rnGitNone").hidden || !$("rnRepoSum").hidden);
+    const foot = $("rnUnlink")?.parentElement, wrap = bar.parentElement;
+    if (sect === "repo" && rnGitDoor && foot && wrap.parentElement !== foot) foot.insertBefore(wrap, $("rnDelete"));
+    else if (!(sect === "repo" && rnGitDoor) && wrap.parentElement !== body) body.appendChild(wrap);
     if (bar.dataset.busy) continue;
     const {said, start} = rnSectChanges(sect, enc);
     const ask = running && start.length > 0;
@@ -1481,7 +1529,7 @@ function rnRevertSect(sect){
   } else if (sect === "runs"){
     delete $("rnNodesMore").dataset.drawn;
     rnFillNode();
-    $("rnGpu").value = w.gpu; $("rnDevTest").value = w.tests_in;
+    $("rnGpu").value = w.gpu; $("rnDevTest").value = w.tests_in; if ($("rnTestNode")) $("rnTestNode").value = w.test_node || "";
   } else if (sect === "files"){
     rnFtpDraft = {}; rnDrawFtp();
   } else if (sect === "tools"){
@@ -1501,6 +1549,7 @@ function rnRevertSect(sect){
     const g = String(w.gate).split(",");
     Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
     $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild; $("rnGateVms").value = w.makevms; rnVmCapsSet(w.vm_caps);
+    $("rnGatePacks").value = w.installpacks;
     rnFillAgents(w.agents_off, w.agent_default);
     $("rnAgentSlots").value = w.agent_slots;
     $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;
@@ -1606,7 +1655,7 @@ async function rnSubmit(sect, end = false){
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
                               tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default, agent_slots: v.agent_slots,
                               build: v.build, test: v.test, gate: v.gate,
-                              tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks, term_scheme: v.term_scheme,
+                              tests_in: v.tests_in, test_node: v.test_node, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks, term_scheme: v.term_scheme,
                               devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(v.capture_days !== "" ? {capture_days: +v.capture_days} : {}),

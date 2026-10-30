@@ -28,6 +28,8 @@ USAGE = """usage: bb vm [list]
        bb vm grow NAME [vda|vdb|vdc|vdd] GB | disk-add NAME GB | eject NAME
        bb vm hardware NAME [--pin 2,3|none] [--share-cpus] [--mem-max 8G|none] [--share PATH|none] [--ro]
        bb vm autostart NAME on|off
+       bb vm devices [NODE]
+       bb vm usb NAME give|take VENDOR:PRODUCT[:SERIAL] [--port 1-3]
        bb vm ip NAME | ssh NAME [COMMAND...]"""
 
 
@@ -76,8 +78,13 @@ def hw_said(v):
         sh = hw["share"]
         bits.append(f"sees {sh['path']}{' read-only' if sh.get('ro') else ''} as \"{sh.get('tag')}\" "
                     f"(mount -t virtiofs {sh.get('tag')} /mnt)")
-    if hw.get("devices"):
-        bits.append(f"{len(hw['devices'])} device(s) passed through")
+    usb = v.get("usb") or []
+    if usb:
+        bits.append("USB: " + ", ".join(u.get("name") or f"{u['vendor'][2:]}:{u['product'][2:]}" for u in usb))
+    rest = [d for d in hw.get("devices") or [] if d.get("type") != "usb"
+            or not any(u.get("vendor") == d.get("vendor") and u.get("product") == d.get("product") for u in usb)]
+    if rest:
+        bits.append(f"{len(rest)} device(s) passed through")
     if v.get("autostart"):
         bits.append("starts with its host")
     return " · ".join(bits)
@@ -268,6 +275,46 @@ def cmd_hardware(args):
     print(f"[builderbot] {name}'s hardware: queued" + (f" as {job}" if job else "") + "; it takes effect at its next start")
 
 
+def cmd_devices(args):
+    """The USB devices on this project's VM hosts (R116), each with what
+    holds it, for a session to name one in bb vm usb."""
+    d = read()
+    hosts = [h for h in d.get("hosts") or [] if not args or h.get("name") == args[0] or h.get("id") == args[0]]
+    if not hosts:
+        die(f"no VM host called {args[0]}" if args else "no VM host yet")
+    for h in hosts:
+        usb = (h.get("hw") or {}).get("usb") or []
+        print(f"{h['name']}: {len(usb)} USB device(s)" if usb else f"{h['name']}: no USB device reported")
+        for u in usb:
+            holder = next((v for v in d.get("vms") or [] if v.get("node") == h["id"]
+                           and any(k.get("vendor") == u.get("vendor") and k.get("product") == u.get("product")
+                                   and (not k.get("serial") or k.get("serial") == u.get("serial")) for k in v.get("usb") or [])), None)
+            held = f"in {holder['project']}/{holder['name']}" if holder else ("the host's: " + "; ".join(u["use"])) if u.get("use") else "free"
+            print(f"  {u['vendor'][2:]}:{u['product'][2:]}{':' + u['serial'] if u.get('serial') else ''}  {u.get('name') or '?':<40} "
+                  f"port {u.get('port') or '?':<8} {held}")
+
+
+def cmd_usb(args):
+    """A USB device to a VM, or back (R116 step 6): always held for a person
+    on the bell, since a device can be a disk or a key."""
+    if len(args) < 3 or args[1] not in ("give", "take"):
+        die(USAGE)
+    name, verb, dev = args[0], args[1], args[2]
+    m = re.fullmatch(r"([0-9a-f]{4}):([0-9a-f]{4})(?::([\w.:+/-]{1,64}))?", dev)
+    if not m:
+        die(f"a device is VENDOR:PRODUCT[:SERIAL] in hex, as bb vm devices lists it: not {dev}")
+    usb = {"vendor": "0x" + m.group(1), "product": "0x" + m.group(2), "serial": m.group(3) or ""}
+    rest = list(args[3:])
+    if rest[:1] == ["--port"] and len(rest) > 1:
+        usb["port"] = rest[1]
+    elif rest:
+        die(USAGE)
+    r = post({"action": f"usb-{verb}", "name": name, "usb": usb, "why": f"{verb} {dev} {'to' if verb == 'give' else 'from'} {name}"})
+    job = answered(r, f"{dev} {'to' if verb == 'give' else 'back from'} {name}")
+    print(f"[builderbot] {dev} {'to' if verb == 'give' else 'back from'} {name}: queued" + (f" as {job}" if job else "")
+          + "; a running VM has it now, a stopped one from its next start")
+
+
 def cmd_autostart(args):
     if len(args) != 2 or args[1] not in ("on", "off"):
         die(USAGE)
@@ -319,6 +366,10 @@ def main():
         return cmd_hardware(args)
     if verb == "autostart":
         return cmd_autostart(args)
+    if verb == "devices":
+        return cmd_devices(args)
+    if verb == "usb":
+        return cmd_usb(args)
     if verb == "ip":
         return cmd_ip(args)
     if verb == "ssh":

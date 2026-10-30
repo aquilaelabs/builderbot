@@ -47,15 +47,34 @@ const DRIVERS = {
     open: () => page.evaluate(() => openDocker()),
     readyWhen: '.dmtab .dmpick',
   },
-  toolchains: {
-    open: () => page.evaluate(() => openToolchains()),
-    readyWhen: '.tctab .tc',
+  // The Library (R170): a section per kind, or the empty band on a box
+  // with no agent node.
+  library: {
+    open: () => page.evaluate(() => openLibrary()),
+    readyWhen: '.librarytab .libgroup[data-libgroup="toolchain"], .librarytab .empty',
   },
-  // The coding agents on a node (R95 step 15): a section per agent, or the
-  // empty band on a box with no agent node.
-  agents: {
-    open: () => page.evaluate(() => openAgentsTab()),
-    readyWhen: '.agentstab [data-agnode] details.sect, .agentstab .empty',
+  // What is installed on a node (R172): a section per kind with anything there.
+  installed: {
+    open: () => page.evaluate(() => openInstalledTab()),
+    readyWhen: '.installedtab details.sect, .installedtab .empty',
+  },
+  // A Library entry's own page (R183): the first toolchain's on the node.
+  entry: {
+    open: () => page.evaluate(async () => {
+      if (!lib || !lib.rows) await loadLibrary();
+      const r = (lib?.rows || []).find(x => x.kind === 'toolchain' && !x.wrong_platform);
+      openEntry(libNode, r ? `toolchain:${r.name}` : 'agent:claude-code');
+    }),
+    readyWhen: '.entrytab details.sect, .entrytab .notice',
+  },
+  // An installed thing's own page (R181 step 2): Claude Code's on the node.
+  thing: {
+    open: () => page.evaluate(async () => {
+      if (!inst || !inst.rows) await loadInstalled();
+      const r = (inst?.rows || []).find(x => x.kind === 'agent');
+      openThing(instNode, r ? `agent:${r.name}` : 'agent:claude-code');
+    }),
+    readyWhen: '.thingtab details.sect, .thingtab .notice',
   },
   emulator: {
     // The harness's sandbox node reports a store, so the tab draws its head.
@@ -81,6 +100,11 @@ const DRIVERS = {
   settings: {
     open: () => page.evaluate(() => openSettingsTab()),
     readyWhen: '.settingstab .snav .rrow',
+  },
+  // The Network page (R165 step 4): Connection and Reach from outside, under its own list.
+  network: {
+    open: () => page.evaluate(() => openNetworkTab()),
+    readyWhen: '.networktab .snav .rrow',
   },
   // The Phone and the CI runner, tools of their own again (R121).
   phone: {
@@ -132,13 +156,25 @@ const DRIVERS = {
   // The Schedules page (R117): the built-in scan's row is always there.
   schedules: {
     open: () => page.evaluate(() => openSchedulesTab()),
-    readyWhen: '.schedulestab .schedrow',
+    readyWhen: '.schedulestab .schedrow, .schedulestab .empty',
   },
   // The Keys page (R154): the install key's section and what is kept under
   // it, drawn whether the box has a key or none.
   keys: {
     open: () => page.evaluate(() => openKeysTab()),
     readyWhen: '.keystab details[data-sect="keys:kept"]',
+  },
+  // The Audit page (R158 step 8): the trail's section, with rows or the
+  // empty band, drawn for an account that reads the controller's area.
+  // This machine (R90 step 8): on the harness's container controller it
+  // says it has none, which is the page's own empty.
+  machine: {
+    open: () => page.evaluate(() => openMachineTab()),
+    readyWhen: '.machinetab .ndrow, .machinetab .empty',
+  },
+  audit: {
+    open: () => page.evaluate(() => openAuditTab()),
+    readyWhen: '.audittab .auditrow, .audittab .empty',
   },
   storage: {
     // A section per node, or the empty band on a box with none (R169).
@@ -149,6 +185,11 @@ const DRIVERS = {
     // A section per node, or the empty band on a box with none (R171).
     open: () => page.evaluate(() => openNginxTab()),
     readyWhen: '.nginxtab [data-ngnode], .nginxtab .empty',
+  },
+  // The Scanners page (R145): the schedule's section is always there.
+  scanners: {
+    open: () => page.evaluate(() => openScannersTab()),
+    readyWhen: '.scannerstab details[data-sect="scanners:schedule"] > summary .sst',
   },
   vms: {
     // A card per project with VMs, or the empty band where there is none
@@ -170,11 +211,6 @@ const DRIVERS = {
   profile: {
     open: () => page.evaluate(() => openProfileTab()),
     readyWhen: '.profiletab .snav .rrow',
-  },
-  apps: {
-    // Its section is always there, an app's rows or the line saying none is offered.
-    open: () => page.evaluate(() => openAppsTab()),
-    readyWhen: '.appstab details.sect[data-sect="apps:list"]',
   },
 };
 
@@ -251,7 +287,11 @@ async function measure(kind){
     // (the operator, 26 Oct), so it stands at the page's x, not the column's.
     const inCol = e => !!e.closest('.ssplit') && !e.closest('.snav') && !(innerWidth > 900 && e.closest('.ssplit > .pghead'));
     const colLefts = [...new Set(bands.filter(inCol).map(leftOf))];
-    const lefts = [...new Set(bands.filter(e => !inCol(e)).map(leftOf))];
+    // A view's lone button beside its tiles shares the glance's line (the
+    // operator, 29 Oct): not a band of its own.
+    const besideGlance = e => e.matches('.nbhead') && [...e.parentElement.children].some(o => o.matches('.nbglance')
+      && o.getBoundingClientRect().top < e.getBoundingClientRect().bottom - 2 && o.getBoundingClientRect().bottom > e.getBoundingClientRect().top + 2);
+    const lefts = [...new Set(bands.filter(e => !inCol(e) && !besideGlance(e)).map(leftOf))];
     // Which band sits at each x, for the failure: three numbers say a view is
     // ragged and nothing about where, and the fix is in one band's CSS.
     const who = {};
@@ -328,7 +368,9 @@ async function bring(kind){
   // `notebook:<view>` is the notebook's tab with that view showing.
   const view = kind.startsWith('notebook:') ? kind.slice('notebook:'.length) : '';
   const had = await page.evaluate(k => {
-    const t = tabs.find(x => x.kind === k);
+    // Among the notebooks, alpha's: another project's would be focused and
+    // then asked for a view it never draws.
+    const t = tabs.find(x => x.kind === k && (k !== 'notebook' || x.arg === 'alpha'));
     if (t){ focusTab(t.id); return true; }
     if (tabs.length >= 11){
       const old = tabs.find(x => x.kind !== 'term' && x.kind !== k);
@@ -387,7 +429,10 @@ async function bring(kind){
 // ...nor a list of rows you open (the Roles tab's accounts and roles, R255
 // step 9: the rows-you-open rule), whose rows are rows that happen to be
 // pressed, not verbs.
-const NOT_A_BAR = ['nbtabs', 'nbgroups', 'nbsub', 'foot', 'pagemore', 'pseg', 'rlist'];
+// ...and a row of chips (the chips rule, R216): a view's groups, one in
+// force, never a set of verbs. No fixture drew two groups before the
+// Library's kinds (R170), which is when the row first met this check.
+const NOT_A_BAR = ['nbtabs', 'nbgroups', 'nbsub', 'foot', 'pagemore', 'pseg', 'rlist', 'chips'];
 
 async function language(){
   return page.evaluate(({ NOT_A_BAR }) => {
@@ -455,6 +500,8 @@ async function language(){
     const tight = [...box.querySelectorAll('.sub, .hint, .note, p, dl.facts, .notice')].filter(t => {
       const n = t.nextElementSibling;
       if (!n || !vis(t) || !vis(n) || !t.textContent.trim() || !n.matches('.actbar, .acts') || !n.querySelector('button')) return false;
+      // Beside them, not under them: a head's one action in its corner.
+      if (n.getBoundingClientRect().left >= t.getBoundingClientRect().right - 2) return false;
       return n.getBoundingClientRect().top - t.getBoundingClientRect().bottom < 8;
     }).map(t => `${named(t)} "${t.textContent.trim().slice(0, 20)}"`);
     return { loose, order, layout: [...new Set(layout)], reds: [...reds], sects, alien, flat, tight };
@@ -485,8 +532,9 @@ async function spanning(){
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
     const ROWS = '.actbar, .ctlrow, .setcell .ctl, .setfoot, .tcnode, .chips';
     // A tab strip is navigation, and the phone rule for one is the opposite
-    // of a control's: it wraps into rows of equal-width tabs, every one of
-    // them visible (the design language, The notebook).
+    // of a control's: its tabs share the row while they fit, and past that
+    // it scrolls under a finger with its edges faded as the dock's line does
+    // (the operator, 29 Oct).
     const NAV = '.nbtabs, .switch, .subnav, .rlist';
     const vis = e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0;
     const out = [];
@@ -496,6 +544,10 @@ async function spanning(){
       // the action at the tab's right edge), so its union spans by design.
       // Its controls are measured one by one below, like any lone control.
       if (row.classList.contains('docbarrow')) continue;
+      // A row of chips scrolls sideways where the width runs out (the chips
+      // rule: never a row per group), so its union runs past the cap by
+      // design; each chip is still a fraction of the width.
+      if (row.classList.contains('chips')) continue;
       // A full action bar on a phone (four buttons or more) shares the row
       // between its buttons on purpose (the phone rule both-sizes: at 344px
       // four did not fit), so its union spans by design; each button is
@@ -846,6 +898,37 @@ for (const kind of kinds){
   ok(shape.loose.length === 0, `[${kind}] its top says what it knows in a head, not in loose words${shape.loose.length ? `; loose: ${shape.loose.join(' | ')}` : ''}`);
   ok(shape.between.length === 0, `[${kind}] nothing stands between its sections${shape.between.length ? `; between: ${shape.between.join(', ')}` : ''}`);
   ok(shape.late.length === 0, `[${kind}] its pills are at its top, before its first section${shape.late.length ? `; after it: ${shape.late.join(', ')}` : ''}`);
+  // No button on a line of its own at a page's top (the operator, 29 Oct:
+  // "a line in one, weird text above the button on the other"): a bar, a
+  // control row or a band over the list holding nothing but buttons, or a
+  // head's one action left under its facts rather than in its corner.
+  const lone = await page.evaluate(() => {
+    const doc = [...document.querySelectorAll('.pane .doc.on')].find(d => d.checkVisibility());
+    if (!doc) return [];
+    const vis = e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }) && e.getBoundingClientRect().height > 0;
+    const onlyButtons = row => {
+      const texts = [...row.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
+      // One button with nothing beside it: a row of several (History,
+      // Reorder, Add to roadmap) is a control row and keeps its line.
+      const btn = [...row.querySelectorAll('button, a.btn')].filter(vis);
+      return btn.length === 1 && !row.querySelector('input:not([type=checkbox]):not([hidden]), select, textarea')
+        && texts.every(e => e.closest('button, a.btn'));
+    };
+    const out = [];
+    doc.querySelectorAll(':is(.doctab, .doctab > .doclist, .nbview) > :is(.docbarrow, .nbhead, .field)').forEach(r => {
+      // ...unless it shares its line with something (the tiles at its left).
+      const b = r.getBoundingClientRect();
+      const shares = [...r.parentElement.children].some(o => o !== r && vis(o) && o.getBoundingClientRect().top < b.bottom - 2 && o.getBoundingClientRect().bottom > b.top + 2);
+      if (vis(r) && !shares && !r.closest('.pghead') && onlyButtons(r)) out.push(`${r.className.split(' ').slice(0, 3).join('.')}: ${r.textContent.replace(/\s+/g, ' ').trim().slice(0, 40)}`);
+    });
+    doc.querySelectorAll('.pghead > .actbar').forEach(a => {
+      const b = [...a.children].filter(vis);
+      if (vis(a) && b.length === 1 && b[0].matches('button, a.btn') && getComputedStyle(a.parentElement).display !== 'grid')
+        out.push(`head: ${b[0].textContent.trim().slice(0, 30)} under its facts`);
+    });
+    return out;
+  });
+  ok(lone.length === 0, `[${kind}] no button stands on a line of its own at its top${lone.length ? `; alone: ${lone.join(' | ')}` : ''}`);
   const L = await language();
   ok(!L.err, `[${kind}] measurable for the button language (${L.err || 'ok'})`);
   if (!L.err){

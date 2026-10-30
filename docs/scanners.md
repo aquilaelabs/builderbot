@@ -1,12 +1,13 @@
-# Setting up the static analysis stack
+# The scanners
 
-BuilderBot does not scan code itself. A scanner run on the host reads every
-project on the share and writes its findings as SARIF into a reports folder;
-the controller reads that folder, read-only, at `/reports`, and shows what is
-there on the Analysis page, in each project's Analysis view and to a session
-through `bb findings` ([building.md](building.md#static-analysis-reports)).
-This page sets up the three scanners BuilderBot's own stack runs, and a
-script that runs them.
+BuilderBot runs its own static analysis stack on each node that holds
+projects, from the **Scanners** page: Configure on a node's scanners row in
+the Containers page's System section opens it.
+Nothing is scanned on the controller and nothing of the controller's is
+mounted on a node: each node runs the scanners over the projects whose node
+it is and sends what they found up to the controller over the agent's own
+API, where the Analysis page, each project's Analysis view and `bb findings`
+read it ([building.md](building.md#static-analysis-reports)).
 
 | Scanner | What it finds |
 |---|---|
@@ -16,40 +17,43 @@ script that runs them.
 
 ## What it needs
 
-Docker on a machine that sees the share BuilderBot's `/workspace` is, and a
-folder for the reports. Nothing else: the script is plain `docker run`, so it
-runs as it is on Unraid (no Compose plugin, no checkout of BuilderBot) and on
-any Linux host with Docker. Each scanner's container lives only while it
-runs.
+Docker on the node, which every node that runs builds has. Each scanner is
+a one-shot container that lives only while it runs; the images and their
+rule and vulnerability caches stay on the node between runs.
 
 ## Set it up
 
-1. Point BuilderBot at the reports folder: `SCANNER_REPORTS_PATH` in its
-   env file (or the Unraid template's *Scanner reports* path) names the
-   folder on the host, mounted read-only at `/reports`
-   ([reference.md](reference.md)). The default is
-   `/mnt/user/appdata/scanners/reports`. Restart the container after a change.
-2. Put `tools/scan.sh` on the host. On Unraid: the User Scripts plugin, Add
-   New Script, and paste the file's contents in. Set the three paths at its
-   top if the shares differ from Unraid's defaults: `SCANNER_SOURCE_PATH`,
-   the share the projects are on, which the scanners read and never write;
-   `SCANNER_REPORTS_PATH`, the same folder as step 1; and
-   `SCANNER_CACHE_PATH`, where the scanners keep their rules and
-   vulnerability database between runs. Each can come from the environment
-   instead.
-3. Run it once by hand (Run Script, or `sh scan.sh`). Each scanner runs in
-   turn, a few minutes each on a large share and Trivy longest on its first
-   run while it fetches its database, and says where it wrote its report.
-   The Analysis page shows the findings on its next look.
-4. Run it weekly: the Schedules page beside Jobs carries it as a built-in
-   schedule ([machines.md](machines.md#schedules)), off until you turn it on
-   with the node it runs on and its two paths, then Sundays at 4:00. The User
-   Scripts plugin's Custom schedule (`0 4 * * 0`) or a cron line elsewhere do
-   the same off BuilderBot. Every run replaces the reports, and `bb findings
-   history` says what changed between them.
+1. **Deploy.** The page lists every node. Press **Deploy** on a node that
+   holds projects, or the bar's **Deploy on N nodes** for all of them at
+   once: the controller writes the compose project to the node (the three
+   scanners as services, their versions pinned to the newest known) and the
+   node pulls the images, a job on the Jobs page. A node that hosts
+   containers only holds no project and is not offered.
+2. **Schedule.** One timetable runs every node's scanners: daily, weekly
+   (Sundays at 4:00, the default) or monthly at 4:00, or a cron line of your
+   own under Custom. **Turn on** starts it; **Run now on every node** runs
+   it once, and each node's section has **Run now** for that node alone. A
+   run is one job per node, one at a time there; one missed while the
+   controller was down runs once when it is back, said as late.
+3. **Read what they found.** Each run writes one SARIF per scanner on the
+   node and sends it up as it finishes; the Analysis page shows it on its
+   next look, grouped by project, and `bb findings history` says what
+   changed between runs. A run that fails is on the bell with its log.
 
-`scan.sh semgrep` runs one of them; a scanner that fails leaves its last
-report where it was and the script exits non-zero, naming it.
+A project is scanned on its node, never on its extra nodes, so nothing is
+scanned twice; a project moved to another node is scanned there next run.
+The page's last section, **Not covered**, lists each project no scanner
+reaches, with why: no node, a node that hosts containers only, or a node
+with no scanners deployed.
+
+## Keeping them current
+
+The versions a node runs are pinned when it is deployed. The controller
+reads Docker Hub and PyPI once a week for newer releases (**Check versions**
+reads them now); a node behind says so in its section and on the bell, and
+**Update** pins the newer versions there and pulls them. **Remove** takes
+the scanners off a node, with their images and caches, and forgets the
+reports it sent.
 
 ## Answering a finding
 
@@ -57,13 +61,12 @@ A finding that is not a problem is answered in the code, beside it, with
 the reason: `# nosemgrep: RULE-ID (why this is safe)` on the flagged line
 for Semgrep. The stack never runs Semgrep with its suppressions turned off,
 and BuilderBot drops a finding the code marks this way, so the reason lives
-with the line it is about and the Analysis page keeps to what is open. A
-finding that is a problem goes on the project's bug tracker like any other.
+with the line it is about and the Analysis page keeps to what is open.
 
-## The versions
+## A scanner of your own, on the host
 
-`tools/scan.sh` pins each scanner's image or package version at its top
-(`SEMGREP_VERSION`, `TRIVY_VERSION`, `MOBSFSCAN_VERSION`, each overridable
-from the environment). Move them on purpose: a new Semgrep can add rules, and a
-report that grows overnight should be because the code changed, not the
-scanner.
+A scanner you run yourself can still hand BuilderBot its SARIF this
+release: `SCANNER_REPORTS_PATH` (deprecated in 0.9.0 and removed in the
+release after) names a folder on the host, mounted read-only at `/reports`
+and read beside what the nodes send up. Reports must be SARIF 2.1.0, their
+paths naming each project's directory.

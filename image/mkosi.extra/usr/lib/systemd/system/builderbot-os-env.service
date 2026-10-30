@@ -1,0 +1,25 @@
+[Unit]
+Description=BuilderBot OS: the boot's own settings for the controller, from the ESP and the kernel's command line
+ConditionKernelCommandLine=bbslot
+DefaultDependencies=no
+After=boot-efi.mount local-fs.target
+Before=builderbot-controller.service systemd-networkd.service getty.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/builderbot-os/env
+# A prepared configuration on the stick, taken off it before the controller
+# starts (R161 step 8); a blank one is nothing.
+ExecStart=-/usr/lib/builderbot-os/firstboot-take
+# The stick's hostname and static address (R161 step 12), before the network
+# comes up; a stick that names none keeps DHCP.
+ExecStart=-/usr/lib/builderbot-os/net
+# The data partition grown to its disk, up to BB_DATA_MAX (R161 step 13).
+ExecStart=-/usr/lib/builderbot-os/grow
+# The console's welcome above the login prompt (R185): the logo, the release
+# and the dashboard's address.
+ExecStart=-/usr/lib/builderbot-os/welcome
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

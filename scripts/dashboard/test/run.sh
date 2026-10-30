@@ -133,7 +133,7 @@ fi
 # So the run happens from a copy on local disk: the same bytes, uncommitted
 # work included, with the network out of the way. Left behind: the android
 # BUILD output, which is 73MB of the 87 and is nobody's input (appapi.mjs does
-# read android/api-surface.json and app/build.gradle.kts, so android itself
+# read apps/android/api-surface.json and app/build.gradle.kts, so the app itself
 # comes along); dist/, for the same reason; and .git, because nothing here runs
 # git against this repository, only against the fixtures it makes.
 # What a run ended by its process group left behind (B347): its copy of
@@ -187,7 +187,7 @@ if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ]; then
     git -C "$_src" -c safe.directory="$_src" ls-files -oi --exclude-standard --directory 2>/dev/null \
         | sed -n 's#/$##; /^\.bb-map$/d; s#^#./#p' > "$_skip" || : > "$_skip"
     { tar -C "$_src" -cf - --warning=no-file-changed --exclude=./.git --exclude=./dist \
-        --exclude=./android/app/build --exclude=./android/build -X "$_skip" . || [ $? -eq 1 ]; } \
+        --exclude=./apps/android/app/build --exclude=./apps/android/build -X "$_skip" . || [ $? -eq 1 ]; } \
         | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
     rm -f "$_skip"
     printf '[dashboard-test] running from %s, a copy, so an edit to the tree meanwhile does not reach this run\n' "$_dst" >&2
@@ -226,7 +226,7 @@ NODE_PATH="$(bash "$DASH/../bb" capture shot --print-node-path 2>/dev/null \
             || printf '%s' "${NODE_PATH:-/usr/lib/node_modules}")"
 export NODE_PATH
 node -e "require.resolve('playwright')" 2>/dev/null \
-    || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH); on a node they are the playwright recipe in the toolchain store, installed from the Tools tab"
+    || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH); on a node they are the playwright recipe in the toolchain store, installed from the Library"
 CHROME="$(bash "$DASH/../bb" capture shot --print-chromium 2>/dev/null || true)"
 [ -x "${CHROME:-}" ] || die "no Playwright chromium: install it with: bb toolchains install playwright"
 command -v tmux >/dev/null || die "tmux is not installed"
@@ -876,7 +876,7 @@ cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
 # Stub: deterministic `bb doctor`, the emulator's image listings, and a
 # `bb toolchains` that makes and removes directories instead of downloading
-# gigabytes, which is enough for the Toolchains tab to watch a toolchain
+# gigabytes, which is enough for the Library to watch a toolchain
 # appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
 # The emulator's system images: the index of what could be added (with

@@ -871,12 +871,14 @@ def current_tag(project, comp=""):
     return name, ""
 
 
-def release_plan(project, comp=""):
+def release_plan(project, comp="", dev=False):
     """What a release here would tag, without doing it: {tag, sha, target}
     or {error}, from the same refusals release() makes first. A session's
     ask is made from this (bb version release, R138), so the person asked
     reads which tag on which commit, and a release that could not happen is
-    refused before anybody is asked."""
+    refused before anybody is asked. With `dev` the tag is the dev build's
+    (R179), as release() names it; planned as the plain one, a dev release
+    was refused because the last release's tag already existed."""
     tgt, err = target(project, comp)
     if err:
         return {"error": err}
@@ -888,6 +890,14 @@ def release_plan(project, comp=""):
     sha = _git(project, "rev-parse", "--short=7", "HEAD")
     if sha is None:
         return {"error": no_history(project)}
+    if dev:
+        # The dev build's own number, as its stamp reads it: the branch's
+        # line where that is newer than VERSION (R112), so a 0.9.0 branch
+        # after 0.8.2 shipped tags v0.9.0-dev.N, never v0.8.2-dev.N.
+        pp = parts(project, comp) or {}
+        if not pp.get("ordinal"):
+            return {"error": "a dev release needs the commit's ordinal, which this tree has no history for"}
+        tgt = f"{pp.get('target') or tgt}-dev.{pp['ordinal']}"
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
         # Tagged here and pushed by hand after the release's push failed:
@@ -899,7 +909,9 @@ def release_plan(project, comp=""):
     if (_git(project, "status", "--porcelain") or "").strip():
         return {"error": "there are uncommitted changes in the project directory: commit or "
                          "discard them first, so the tag marks what is actually in the commit"}
-    if why := no_upgrade_snapshot(project, comp, tgt):
+    # A dev build is no release an install upgrades from, so it needs no
+    # snapshot, as release() has it; planned with one, it was refused.
+    if not dev and (why := no_upgrade_snapshot(project, comp, tgt)):
         return {"error": why}
     return {"tag": name, "sha": sha, "target": tgt}
 
@@ -941,8 +953,11 @@ def _remote_has_tag(project, name, env=None):
     return r.returncode == 0 and f"refs/tags/{name}" in r.stdout
 
 
-def release(project, comp="", env=None, may_push=True, push=True):
-    """Cut the release: an annotated tag on this commit, pushed.
+def release(project, comp="", env=None, may_push=True, push=True, dev=False):
+    """Cut the release: an annotated tag on this commit, pushed. With `dev`
+    (R179) the tag is the dev build's, vX.Y.Z-dev.N, a pre-release on the
+    dev channel: no bump, no changelog section, no snapshot gate, and the
+    forge's release page is CI's to make (marked a pre-release there).
 
     THE TWO GESTURES, and why there are two. A bump moves the number and
     closes the changelog under it, in one commit: that is deciding what this
@@ -974,6 +989,14 @@ def release(project, comp="", env=None, may_push=True, push=True):
     sha = _git(project, "rev-parse", "--short=7", "HEAD")
     if sha is None:
         return {"error": no_history(project)}
+    if dev:
+        # The dev build's own number, as its stamp reads it: the branch's
+        # line where that is newer than VERSION (R112), so a 0.9.0 branch
+        # after 0.8.2 shipped tags v0.9.0-dev.N, never v0.8.2-dev.N.
+        pp = parts(project, comp) or {}
+        if not pp.get("ordinal"):
+            return {"error": "a dev release needs the commit's ordinal, which this tree has no history for"}
+        tgt = f"{pp.get('target') or tgt}-dev.{pp['ordinal']}"
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
         # Which commit it is on, because "it already exists" and "it is on
@@ -998,7 +1021,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
     if (_git(project, "status", "--porcelain") or "").strip():
         return {"error": "there are uncommitted changes: commit or discard them "
                          "first, so the tag marks what is actually in the commit"}
-    if why := no_upgrade_snapshot(project, comp, tgt):
+    if not dev and (why := no_upgrade_snapshot(project, comp, tgt)):
         return {"error": why}
     # The commit that SHIPS is not always the commit you are standing on.
     #
@@ -1783,16 +1806,20 @@ def verb(name, act, req, who, principal):
         # tag. A person's from here; a session asks through its own
         # dial (Agents may: Tag and publish a release, R138), whose Allow
         # comes back through this same branch.
+        dev = req.get("dev") is True
         r = release(name, comp=comp, env={**CREDS_ENV(), **GIT_ENV(who, name)},
-                    may_push=MAY_PUSH(name))
+                    may_push=MAY_PUSH(name), dev=dev)
         if r.get("error"):
             return r, 400
         # A tag on GitHub gets GitHub's release beside it (R123): titled with
         # the version, the changelog's section as its notes, the builds of
         # that commit attached. Only once the tag is there, and a forge that
-        # says no leaves the tag as the release, with its reason.
-        if r.get("pushed") and FORGE:
+        # says no leaves the tag as the release, with its reason. A dev tag's
+        # page is CI's (R179): made a pre-release by the image workflow.
+        if r.get("pushed") and FORGE and not dev:
             r["forge"] = FORGE(name, r["tag"], r["target"], r["sha"], comp)
+        if dev:
+            r["dev"] = True
         AUDIT(principal, "version-release", name,
               {"tag": r.get("tag"), "pushed": bool(r.get("pushed")),
                "forge": (r.get("forge") or {}).get("url") or ""})

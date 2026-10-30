@@ -1,6 +1,7 @@
 """Behind `bb rules check` (cmd_rules in bb): each rule's check command, run
 HERE in this tree on whichever machine the session is on (roadmap R31).
-The rules themselves arrive in RULES_JSON, from `bb rules --json`, which
+The rules themselves arrive in the file RULES_JSON_FILE names (or in
+RULES_JSON itself, for a short list), from `bb rules --json`, which
 a node relays; this needs neither /config nor rules.py, only git, the
 tree and the command.
 
@@ -14,7 +15,11 @@ import subprocess
 import sys
 
 tree, argv = sys.argv[1], sys.argv[2:]
-rules = json.loads(os.environ.get("RULES_JSON") or "[]")
+if os.environ.get("RULES_JSON_FILE"):
+    with open(os.environ["RULES_JSON_FILE"], encoding="utf-8") as f:
+        rules = json.loads(f.read() or "[]")
+else:
+    rules = json.loads(os.environ.get("RULES_JSON") or "[]")
 
 
 def patch_scope(files):

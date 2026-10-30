@@ -160,7 +160,7 @@ controller's PUID:PGID, so a file it saves on the projects share is owned
 exactly as one saved from the controller is; a different uid would leave the
 share with files the rest of the array does not expect. `provision-linux.sh`
 installs tmux, jq and git for it (the coding agents are installed
-later, from the node's Agents page), and a `/etc/profile.d` entry so a login shell as that
+later, from the Library), and a `/etc/profile.d` entry so a login shell as that
 account has the role, the controller's address and `bb` (from the bundle the
 agent keeps under the toolchain store at `.bb/current`): the same
 environment a dashboard session gets, which is what makes proving the node
@@ -171,8 +171,8 @@ at `/workspace` for any of it to have a tree to work in: one more row in
 the node's mounts on the Nodes page (Storage).
 
 **An agent's login is one account's, on one node.** Each person signs in on
-each node they work on, from that agent's section of the node's Agents page
-(Sign in), and the login stays in that account's home on that machine: two
+each node they work on, from that agent's row of the Installed page with
+the node picked (Sign in), and the login stays in that account's home on that machine: two
 accounts on one node are two homes and two logins, and a login on one node
 does nothing for another. Nothing is copied between machines and the
 controller holds no credential: a refresh rotates the refresh token, so two
@@ -613,11 +613,11 @@ docker exec -u builder BuilderBot ssh-keygen -R <vm-ip>
 `bb-sandbox sdk` is the one verb that reads rather than configures, and the
 one that needs no root: it hands you the controller's own `bb`, the copy
 the agent unpacks into the toolchain store to run jobs with, so `bb-sandbox
-sdk versions` at this console answers with exactly what the Toolchains page shows
+sdk versions` at this console answers with exactly what the Installed page shows
 for this node, from the same generator. Read-only verbs only; installing
 from here would go around the one-install-at-a-time rule the controller
 keeps across every machine sharing a store, so it says so and points at the
-Toolchains page. Nothing to run until a toolchain job has put a `bb` there.
+Library. Nothing to run until a toolchain job has put a `bb` there.
 
 **2. Enroll it as a node.** On the dashboard's Nodes page, **Enroll node**
 mints a one-time token; run `provision-linux.sh --controller URL --token bbe_…` on

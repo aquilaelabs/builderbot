@@ -1,9 +1,12 @@
 # Machines: the controller, nodes and storage
 
-The Machines group on the rail: **Nodes**, every machine work runs on, and
-**Storage**, what a node's disks hold; with them here, **Controller
-settings**, in the Home group, what the controller owns and applies live. **Jobs**, the queue of work placed on
-the nodes, is a page of its own on the rail. This doc covers enrolling and
+The Machines group on the rail: **Nodes**, every machine work runs on,
+**Storage**, what a node's disks hold, and **Installed**, what the Library
+put on a node. Beside it, the **Controller** group holds what the
+controller owns: **This machine** on a bare-metal install, **Settings**
+(Controller settings), **Network**, **Keys** and **Audit**. **Jobs**, the
+queue of work placed on the nodes, and **Schedules** are a group of their
+own on the rail. This doc covers enrolling and
 running nodes, their stores and their network, the controller's settings and
 logs, and the jobs. The design behind nodes is
 [nodes.md](nodes.md); the sandbox VM a node usually is,
@@ -18,27 +21,35 @@ nothing enrolled the page says so and offers the one thing there is to do.
 (It does keep a node record of its own, which is how a share it mounts is
 recognized as the same store a node mounts; that is plumbing, not a node on
 the page.) A controller installed bare metal can be a node of itself
-([install.md](install.md#bare-metal)): its machine is then an ordinary row
-here, marked **this machine**, offered in a project's node pickers as such
-and in no container picker, its session network always on, and the Doctor
-says whether the wall between its sessions and the controller holds. The
-page shows one node, picked in its bar beside **Create
-sandbox VM** and **Enroll node**: a header with its state, and where it dials in from, which is the address of its
-last hello, so a node whose address moves is followed within a minute, its
-screen relay rebound onto the new address by its agent and the session-port
-rule on the node rewritten if the controller's own address is what moved,
-and its agent (with
-**Update agent** when this container ships a newer one, busy until the node
-comes back on it), then **sections**, each a fold with its status on the
-heading so a phone reads the headings and opens one: Health (the meters:
-cpu, memory, the card's load and its own memory where an NVIDIA driver
-answers, and each store's room; the toolchains its census found, which is what a project bound to it can
-build), Projects (the projects bound to it), Sessions (whether it runs them,
-and which are open), GPU (where it has a card), Features (what the machine has
-beyond the base, each with **Install** or **Uninstall**: VM host, and the
-hosting firewall on a hosting-only node), Coding agents (one line saying
-which are installed there, with the way to the node's **Agents** page, where
-each is installed, updated, removed and signed in to), Storage (mounts and stores), Network, and Advanced, which
+([install.md](install.md#bare-metal)): its machine is then
+[This machine](#this-machine) in the Controller group rather than a node
+here, offered in a project's node pickers as such, its session network
+always on, and the Doctor says whether the wall between its sessions and
+the controller holds. The
+page shows one node, picked in the Machines header over it: one band for
+Nodes, Storage and Installed, with the node pulldown where a project's name
+is, when it was seen, where it dials in from (the address of its last
+hello, so a node whose address moves is followed within a minute) and its
+agent beside it, and **Create sandbox VM** and **Enroll node** at the right
+of the sub-nav's line. The pick holds across the three pages, and the Build
+and Containers groups wear the same header. Under it, nothing names the
+node again: the agent's bar (with **Update agent** when this container
+ships a newer one, busy until the node comes back on it), then
+**sections**, each a fold with its status on the heading so a phone reads
+the headings and opens one, the small jump chips over them: Health (the
+meters: cpu, memory, the card's load and its own memory where an NVIDIA
+driver answers, and each store's room; the toolchains its census found,
+which is what a project bound to it can build), Repositories (the
+projects bound to it), Sessions (whether it runs them, which are open, and
+one line saying which coding agents are installed there and which you are
+signed in to: the Library installs them and the **Installed** page signs
+in), GPU (where it has a card), USB (on a VM host: each USB device with
+what holds it, **Give to a VM** and **Take back**, and its controllers;
+[vms.md](vms.md#usb-devices)), Features (what the machine has beyond the
+base, each with **Install** or **Uninstall**: VM host, the IOMMU on a VM
+host's kernel command line, and the hosting firewall on a hosting-only
+node; and a row each for what the Library installs, the GPU driver, the
+Android emulator and the model router, pointing there), Storage (mounts and stores), Network, and Advanced, which
 holds the node's **name** (Rename changes what it is called everywhere here:
 the pickers, the project cards and the label a runner installed from then on registers
 with; a runner already installed keeps the label it registered with until
@@ -112,7 +123,7 @@ what moved to a node is the agents and not the terminal. A node's sessions ride 
 heartbeat onto the Sessions page, with the node named, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: its Health section lists the toolchains its census found,
-and the Toolchains page's node picker is where more are added. (Underneath, the
+and the Library, with the node picked, is where more are added. (Underneath, the
 node still refuses a job asking for something it did not enroll with: the
 enforcement of docs/nodes.md §15 door 7, but every node enrolls with the
 full set, so it is a mechanism rather than a setting.)
@@ -125,7 +136,7 @@ the page says so; the verbs behind those controls are an administrator's on
 the server as well.
 
 **Create sandbox VM** is the step before all of this when there is no
-machine yet. **Pick what runs it**: Unraid, Proxmox VE, libvirt/KVM, QEMU on
+machine yet. **Pick what runs it**: the VM manager whose XML the form writes (nodes/unraid-vm.xml), Proxmox VE, libvirt/KVM, QEMU on
 its own, VMware, Hyper-V or VirtualBox, and it writes that machine: the same
 cores, memory, disk and installer everywhere, in whatever that manager reads
 (a domain XML, a `qm create`, a `virt-install`, a `.vmx`, a PowerShell
@@ -273,7 +284,7 @@ offered to a node that did not enroll as a sandbox.
 ## Storage
 
 **Storage**, under Machines, is what a node's disks hold, and whose. It shows
-one node at a time, picked in its bar: a line saying when it was measured,
+one node at a time, picked in the Machines header: a line saying when it was measured,
 its filesystems as a stack of meters, its stores and Docker's share, then
 each project's folders on it (the synced copy, the build cache, artifacts, a
 dev instance's data, emulators, the accounts' build caches), largest first,
@@ -281,9 +292,271 @@ with every project this account may not see folded into one line. The
 numbers are the agent's hourly walk, said with their age; **Measure now**
 asks for a fresh one, which the node's next report brings.
 
+**Storage and shares as features.** On the controller's own machine its
+Features section offers two more: *Storage* (ZFS, mergerfs, SnapRAID and
+SMART, for the pools, the array and the disks' health) and *Shares*
+(Samba and NFS, serving what the Storage page makes), each installed with
+exactly its packages and removed with them, refused while a pool or a
+share still stands; on BuilderBot OS the packages are the image's. The
+row says which of each one's tools answer.
+
+**Shares** (R162): the own machine's SMB and NFS shares as BuilderBot's own
+two files say them (an include of `smb.conf`, and `exports.d`): each a
+folder on a pool, served over SMB to named users of the machine or to
+everybody as a guest, over NFS to named clients (an address, a network, a
+name, `*`), read-only or not, with the address to map it by and Remove;
+and a form for a new one. Every press is a job the machine's root agent
+runs: it writes the two files whole, checks Samba accepts them, and tells
+Samba and NFS to read again. The SMB password an account sets for itself is
+R164's.
+**Pools** (R162): under the disks, the own machine's ZFS pools as `zpool`
+says them (size and what is used, health, the members by layout, the last
+scrub, errors), each with Scrub, Export and Destroy (which takes the pool's
+name again); and a form for a new pool: a name, a layout (a mirror, raidz2,
+raidz1 or a single disk) and the disks it takes, each named by model, size
+and serial, those that hold something taken only with wipe ticked, and the
+whole said again before anything is written. Every press is a system job
+the machine's root agent runs from its table (`zpool` on the disks'
+`/dev/disk/by-id` links), never the controller's account; the system disk
+is never offered. Nothing here is on another node: pools are the controller's
+own machine's.
+
+**On the bell** (R164): a disk SMART calls failing, a disk at 55 °C or
+over, a pool not online and an array slot whose disk is gone are each a
+row on the bell (kind disk, which Where the bell reaches you can send by
+email or a push), read off the census on every poll so a row leaves the
+moment it stops being true, and keyed on what is wrong so a dismissal
+holds until that changes. Each links to the Storage page, where Replace
+and the rest are.
+
+**Array** (R162): an array of mixed disks beside the pools, for disks of
+mixed sizes: each data disk its own xfs or btrfs filesystem mounted at
+`/mnt/disks/dN`, pooled into one tree at `/mnt/array` by mergerfs (the
+policy picked says where a new file lands: the emptiest disk, the disk its
+folder is on, fill up, or the first with room), with parity on one or two
+disks at `/mnt/parity/pN` kept by SnapRAID. Parity is periodic, not real
+time: a file written since the last sync is unprotected until the next,
+which the section says; the usual pair is a sync daily and a scrub weekly,
+saved from the section as rows on the Schedules page (one of the machine's
+own jobs, its log on the Jobs page), with Sync now, Scrub and Check on the
+section. A parity disk is at least as large as the largest data disk,
+which both the page and the agent hold to. Add a disk formats it and
+takes the next slot; Replace on a slot formats the new disk and rebuilds
+that slot from parity (a data disk) or the parity on it (a parity disk),
+hours during which the array is readable, or unprotected, as the job says.
+The record is BuilderBot's own (`/etc/builderbot/array.json`), from which
+`snapraid.conf` and the array's fstab lines (by filesystem UUID, `nofail`)
+are written whole. Destroying the array unmounts it and forgets it: every
+data disk keeps its files, readable on any Linux. There is no cache tier and no mover (see Pools by purpose below).
+
+**Other disks and shares** (R162): under the shares, a disk plugged into
+the machine (USB, eSATA) or a remote SMB share or NFS export, mounted at
+`/mnt/other/NAME` by itself as a backup target or a source to copy in,
+never pooled and never written to by anything but what a person does with
+it. The record is the controller's (`extmounts.json`, an SMB share's
+password sealed under the install key as every secret is) and goes to the
+own machine's agent in its hello, which mounts what the record says and
+unmounts what it no longer says, within a minute; a disk's row says when
+it is not plugged in. Eject (Unmount, for a share) turns the row off: the
+agent unmounts it and the row says the disk is safe to pull; Remove
+forgets it, nothing on it touched.
+
+**Backups** (R162): under the other disks and shares, what the machine
+copies where: a folder on it (a pool's mount, the array, a disk or share
+under `/mnt/other`, or the controller's state) to another of those, by
+rsync, each run its own dated folder under `DEST/NAME` hard-linked to the
+run before so a run costs only what changed, `latest` the newest whole
+run, the oldest pruned past the runs kept, and a run that fails leaving no
+half folder. Run now is a system job; a daily or weekly schedule from the
+row is a row on the Schedules page like the snapshots' and the array's.
+The last run of each (when, whether it succeeded, the size of all its runs)
+comes with the census: the row says it, Home's backups tile says the last
+good run, and a run that failed or a scheduled backup with no good run in
+two days is a row on the bell (kind backup). A destination under `/mnt`
+that is not mounted is refused, so a copy never lands on the system disk.
+A cloud store (restic or rclone to S3 or B2) is not here yet: a share on
+another machine mounted under Other disks and shares is the way off the
+box today.
+
+**Pools by purpose** (R162): there is no cache tier and no mover. A
+pool of solid-state disks holds the hot data and the array the shares,
+media and backups, and a share names the one place it lives on when it is
+made (the pool or the array, picked on the form, its folder under it),
+nothing moved behind a person's back; writes go to that place at its
+speed, the array's parity being periodic. A pool of one disk has no
+redundancy, so where the array stands the Backups section offers one press
+that backs it up to the array nightly (seven runs kept), and a dead disk is
+restored from last night's run. A special vdev or a SLOG on a single disk
+is never offered: losing one loses the pool.
+
+**People on shares** (R164): an SMB share's users are BuilderBot's own
+accounts, named on the share by account name (each becomes its own Unix
+user on the machine, `bbu-` and the account's id, made when first named)
+or by role (`role:NAME` on the API; the form offers each role, and it
+names everybody holding the role at that moment, not later joiners), with
+the machine's own Unix users still accepted by name. A person reaches a
+share with their account's name and an SMB password of their own, set on
+Profile under Your shares, which also lists the shares named to them and
+the address to map each by; the password is kept only as the NT hash
+Samba keeps, handed to the own machine's agent in its hello and imported
+into Samba's database there, never written in a job or shown again. A
+share ticked as a Mac's Time Machine target is offered to the Finder as
+one (`fruit:time machine`), found by mDNS as Samba registers it.
+
+**Encryption** (R162): a new pool can be made with ZFS native encryption
+(`aes-256-gcm`, a passphrase). Where its key lives is the person's choice,
+said on the form with what each protects against: kept on the machine,
+sealed under the install key as every secret is, so the pool unlocks at
+every boot and the disks are unreadable pulled from the machine; or asked
+for on the Storage page after every boot, which also covers the whole
+machine being taken, at the cost of a person at the page after each boot
+while the pool and its shares wait. The choice is changed later from the
+pool's row (Keep its key here, Stop keeping its key here). The passphrase
+never rides a job: the controller hands it to the own machine's agent in
+its hello (a kept key every time, an offered one until the pool reports
+open), the agent keeps it in memory only and gives it to `zpool` and
+`zfs load-key` on their stdin. A locked pool is a row on the bell, a share
+on it says its pool is locked rather than vanishing, and Safe mode boots
+with every pool locked. Nothing recovers a pool without its passphrase.
+Each array disk under LUKS is not here yet.
+
+**Snapshots** (R162): under the pools, each pool's snapshots as `zfs`
+lists them, counted by kind (hourly, daily, weekly, manual) with the
+newest ten named, and Snapshot now, which takes one of every dataset at
+once. Each named one has Roll back (the pool as it was then; the name is
+typed again, since everything written since is gone, and every later
+snapshot with it) and Delete. A schedule per pool and kind, saved from the
+form (the pool, how often, how many of that kind to keep), is a row on the
+Schedules page like any other, its timetable in words and its last run's
+log on the Jobs page, except that it runs one of the machine's own jobs
+from the root agent's table rather than a script: when it runs, the
+oldest of its kind past what is kept goes. Snapshots are named
+`bb-KIND-DATE-TIME`; ones made by hand with other names are left alone and
+not counted.
+
+**Disks** (R162): on the controller's own machine the page opens with the
+machine's disks as its agent lists them (`lsblk`, and `smartctl` where it
+is installed): each by name, model, size, serial, spinning or solid state,
+what each partition holds (a filesystem and where it is mounted, a ZFS
+pool's member, swap, nothing), the system disk marked, and SMART's health,
+temperature and hours. A failing disk is said in the bad tone. The list
+only reads: a disk is written by the Pools and Array sections' own forms,
+each of which names the disks it takes again before anything is written.
+
+## Installed
+
+**Installed**, under Machines beside Nodes and Storage (R172), is what the
+Library put on one node, picked in the Machines header, and how each is set there: a
+section per kind with anything on the node (coding agents, toolchains,
+tool packs, services), each a row with **Open** beside its name, and
+**Configure** where it asks for anything, both opening that thing's own
+page: what the Library's card does not show, since the Library is the
+catalog. The page is one a press opens, with a small top header whose
+**Back** names the page you came from, and it has an address of its own
+(`#/machines/installed/NODE/KIND:NAME`), so a link lands on it. An agent's
+page holds your sign-in on that node and what you added to the agent there,
+and Remove. A toolchain's page says where it is on the store, which system packages it
+uses and which this machine lacks (Install them now where the agent
+administers the machine), what it needs that is not there, how its
+download was checked, and Remove; the machine's own NVIDIA driver and
+container toolkit are rows here too, with their state in the census's
+words. A pack that asks for anything per node (its manifest's `config`
+block, [tool-packs.md](tool-packs.md#writing-one)) has **Configure** on its
+page: the fields drawn from the block, a secret shown only as set (typed to
+replace, `clear` to take it out), Save keeping the answers sealed on the
+controller and handing them to the node for the pack's verbs. A service,
+the **Model router**, is configured the same way (the provider keys, other
+OpenAI-compatible endpoints, Ollama beside it, the projects allowed) and
+holds its models and spend, Ollama's pulled models, Install once
+something is behind it, and Remove; the Library's card for it only
+installs. Over the rows, the system packages the node lacks for what its
+store holds, with the one press that installs them.
+
+## This machine
+
+On a controller installed bare metal ([install.md](install.md#bare-metal)),
+**This machine**, first in the rail's Controller group (`#/controller/machine`),
+is the computer the controller runs on: its head says what it is (its name,
+system, cores and memory, the release this install runs and how long it
+has been up, its agent and whether the wall between its sessions and the
+controller is in force), then the **Updates** section (the release running
+against the newest, **Check now**, **Update**: [Controller settings](#controller-settings)),
+then the machine as a node, drawn exactly as a node's page draws any node:
+its health, the projects on it, its sessions, GPU, USB, features,
+storage, network and the advanced verbs, reboot and power off
+among them. The machine is not a row on the Nodes page and not in its
+picker; a project still picks it as its node, shown as **This machine** in
+every project's node picker, so its sessions, builds and containers run
+there as on any node. The container edition has no machine of its own and
+does not draw the page (R90 step 8, R56 step 8).
+
+**A held start** (R56 step 9). Not by default: after a shutdown that was
+not clean (the service writes a marker on a clean stop and the next start
+misses it), when **hold the next start** was ticked before a restart (the
+checkbox beside Restart and Shut down, under Controller settings' Power and
+in this machine's Reboot or shut down row; that one boot), or on the first
+start of a stick's prepared configuration that asks for it, so its disks are
+seen before anything mounts, the install comes up with the dashboard,
+its agent and the network and nothing else: no agent session starts (a
+shell still opens), and the pools, shares, apps, VMs and containers the
+installed OS adds are held by their own modules until **Start** is pressed
+here. A band on every page says it is held and why. Safe mode at the boot
+menu and a disk the array names gone missing are the installed OS's own
+reasons to hold (R161, R162).
+
+Under Name and time, **Spin down disks** (R164) stops the spinning
+disks but the system's after the idle time picked (`hdparm -S`, five
+minutes to two hours, or never); a solid-state disk is left alone, and the
+agent sets it again after every boot, since the timer is the drive's own.
+
+**Reporting** (R164): a Reporting section on the controller's own
+machine's row keeps what every heartbeat samples (CPU, memory, the
+network's bytes in and out, the disks' bytes read and written, the CPU's
+temperature and the hottest disk's) for weeks at falling resolution:
+five-minute means for two days and hourly means for two months, one small
+file per node under the state (`history.py`), drawn over six hours, a day,
+a week or a month as the hour's charts are drawn, one measure each. The
+rates come from the agent's cumulative counters, so an agent restart is one
+skipped point, never a spike. The hour's charts above it are the samples
+themselves and are unchanged.
+
+**Power** (R164): with the UPS feature installed (NUT, for a USB UPS;
+the Features section installs it on the controller's own machine), a
+Power section shows the UPS as NUT reads it: on line or on battery, the
+charge as a meter, the minutes left and the load. The machine on its
+battery, a low battery, a battery to replace and a UPS that does not
+answer are rows on the bell (kind power), and NUT's monitor shuts the
+machine down cleanly when the UPS says the battery is low, which is the
+feature's own configuration (`/etc/nut`, written once and left alone where
+a person changed it).
+
+**The system's own updates** (R164): on a bare-metal install that is not
+BuilderBot OS, Updates under Controller settings also counts the system's
+own package updates (apt, once an hour as root), says how many are
+security ones and whether the last update asked for a restart, and Apply
+updates runs apt on the machine by its root agent with the configuration
+files kept as they are, restarting after when the box was ticked and the
+update asked for it; Restart now is there when one is needed. Security
+updates waiting and a restart needed are rows on the bell (kind host).
+BuilderBot OS has none of this: its updates are whole images.
+
+## Network
+
+**Network**, in the rail's Controller group (`#/controller/network`), is how
+this controller is reached, in every edition (R165 step 4): the address the
+page is at and its port, what it is served over, and which nodes dial in,
+each with where it dials in from, when it was last seen and how it reaches
+the controller (this network, the public hostname, WireGuard). Under them,
+two groups moved here out of Controller settings: **Connection** (http, or
+https with the install's own certificate or a Let's Encrypt one for the
+hostname; the certificate's fingerprint a phone or the companion pins, and
+its download) and **Reach from outside** (the home tunnel the controller
+runs itself, with its setup steps). On a bare-metal install the machine's
+own ports, addresses and bridge are This machine's Network section.
+
 ## Controller settings
 
-**Controller settings**, beside Home in the rail's Home group (`#/home/settings`),
+**Controller settings**, Settings in the rail's Controller group (`#/controller/settings`),
 drawn only for an account that may read the controller, is what the
 **controller** owns and can apply live. Its bar carries the container's uptime
 and the build it is serving. Its sections, each with its own Apply and Revert:
@@ -292,6 +565,39 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
 - **BuilderBot bug reports**: what sessions and people reported about
   BuilderBot itself, each with its delete, **Download diagnostics** and
   **Clear reports**.
+- **Updates** (a controller installed bare metal, R90): the release this
+  install runs and the newest published, checked on its cadence under
+  Update checks (weekly unless set) and on **Check now**; **Update** runs the installer's update through this machine's
+  own node, the bundle verified and the state copied aside, and the install
+  comes back by itself if the new release does not answer. On BuilderBot OS
+  the same press writes the release's image into the slot not in use and
+  names it for the next boot, the restart yours ([image.md](image.md)), and
+  **Update from the folder** takes the files from a folder on the machine.
+  The container edition has no such section: its image is pulled by the
+  host. On a controller started for development with its dev switch on the section
+  carries a **Channel** pulldown, Releases or Dev builds
+  ([versions.md](versions.md#two-channels)); everywhere else the releases
+  are the only channel and no pulldown is drawn.
+- **Power** (a controller installed bare metal, the OS and the USB edition
+  among them, R175): Restart and Shut down for the machine the controller
+  runs on, through its own node's reboot and power-off verbs with This
+  machine's words and ask, dead with why while its agent is away or a
+  system job runs there. The container edition has neither this nor
+  Updates: its image and its container are its Docker manager's.
+- **Backup** and **Backup copies** (R161): the backup password, under which
+  a sealed copy of the configuration is written after every change onto the
+  machine's pools and under the state (the five newest kept), Back up now,
+  the copies listed with Download for those under the state; a fresh
+  install's first page restores one ([image.md](image.md)).
+- **Update window**: a newer release applied by itself at an hour, daily or
+  one weekday, the way Update does it; off by default.
+- **Update checks** (R176): how often BuilderBot asks by itself for what is
+  newer, each check daily, weekly (the default), monthly or off, with when it
+  last ran and **Check now** beside it: a newer BuilderBot (a bare-metal
+  install's), the container images, nginx, the scanners and the Library (the
+  toolchains' and coding agents' newest versions and the vetted catalog's
+  index). Off leaves only Check now. A node's own check of what it holds is
+  its **Version check** on its row's Advanced section, weekly unless set.
 - **Idle sessions**: the idle rule, which ends any agent's session after N minutes
   with nothing typed or written, here and on every node, where the node
   itself enforces it so the rule holds while this container is down.
@@ -305,15 +611,16 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   container rebuild is refused under it, and the bell says so), the memory
   level past which the bell warns, and a memory limit for every container
   whose compose file sets none ([nodes.md](nodes.md#room-a-node-keeps-for-itself)).
-- **Apps**: which of the apps a person installs this controller offers on
-  the Apps page ([reference.md](reference.md#the-apps-a-person-installs)).
-- **Reach from outside**: the home tunnel the controller runs itself (R176,
-  `tunnel.py`): the hostname a node off the LAN dials, the tunnel's token from
-  Zero Trust (a secret, said to be set and never shown back), and an optional
-  Cloudflare API token with which the hostname's record and the tunnel's two
-  rules (the agent's API to the controller, everything else 404) are written
-  on Apply rather than clicked; the section's line says whether cloudflared
-  is in the image, running and registered.
+- **Vetted catalog**: the address the Library reads the vetted catalog's
+  signed index from, and the import of a mirror of it made by
+  `tools/catalog-mirror.py` for a controller without the network
+  ([tool-packs.md](tool-packs.md)).
+- **Apps**: which of the apps a person installs this controller offers as
+  Library cards ([reference.md](reference.md#the-apps-a-person-installs)).
+- **Mail**: the SMTP server BuilderBot sends through (its port, security,
+  sign-in and the From address, the password sealed under the install key),
+  for a person who asked on their Profile for the bell by email (R149,
+  `reach.py`); nothing is sent until a server is set.
 - **Maintenance**: the owner's alone. While *Maintenance mode* is on, only
   the owner signs in and is answered, from the page, the phone app or a
   session of theirs. Everybody else is told BuilderBot is down for
@@ -323,6 +630,12 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   each with whose it is, its project, whether it is working or waiting, and
   its node. Nodes are not accounts and keep running, and a band under the
   header reminds the owner it is on.
+- **Move this controller** (R90 step 12, R175): the move armed (the token
+  shown once, every node told from its next hello, however long it takes),
+  what the bundle carries ticked with each piece's size, Download the
+  bundle packed fresh each press, Ask the new home, Forget it, Mark as
+  moved; and, on a controller a move landed on, where it came from and
+  whether the old one has been told ([install.md](install.md#moving-a-controller)).
 - **Reset BuilderBot**, last.
 
 The page says plainly what still comes from the environment and why (the
@@ -450,8 +763,8 @@ the queue's counts, and `/metrics` answers with one in Prometheus text.
 
 ## Schedules
 
-**Schedules**, beside Jobs in its group, is an administrator's own cron, as
-Unraid's User Scripts are: each schedule a name, when it runs (hourly, daily,
+**Schedules**, beside Jobs in its group, is an administrator's own cron:
+each schedule a name, when it runs (hourly, daily,
 weekly, monthly, or cron's five fields under Custom, said in words: `0 4 * * 0`
 is Sundays at 4:00), where it runs, and a script. It runs on the controller,
 as the controller's account with everything that account can read, or on a
@@ -471,10 +784,7 @@ administrators hold and no other role is given unless somebody says so, and
 a session's token is refused at it whatever it asks; bb has no verb for
 schedules, and a schedule's runs are not among the jobs a session reads.
 
-The static analysis scan ([scanners.md](scanners.md)) is built in: off until
-it is turned on, which asks for the node it runs on and where that node sees
-the projects and the reports folder the controller reads at `/reports`; then
-Sundays at 4:00 until its timetable is changed. On the container edition that
-is a node with Docker that sees the share; on a bare-metal install, the
-controller's own node.
+The static analysis scan is not a schedule here since 0.9.0: it is the
+Scanners page's own ([scanners.md](scanners.md)), which deploys BuilderBot's
+scanners to each node and runs them on one timetable.
 

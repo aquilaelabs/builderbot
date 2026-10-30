@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# The console's welcome at every boot (R185): BuilderBot's logo, the release
+# this slot runs and the address the dashboard answers at, above the login
+# prompt. Written to /run/issue.d, which the console's getty reads with
+# /etc/issue (blank in the image, so Debian's own line goes); its \4 is the
+# getty's own placeholder for this machine's IPv4 address, filled in and
+# redrawn as the network comes up, so the address is right without this
+# step knowing it. The logo carries no backslash, an escape in an issue file.
+set -euo pipefail
+LIB="${BB_OS_LIB:-/usr/lib/builderbot-os}"
+OUT="${BB_ISSUE_DIR:-/run/issue.d}/10-builderbot.issue"
+ENV="${BB_CONTROLLER_ENV:-/etc/builderbot-controller/controller.env}"
+ver="$(sed -n 's/^BUILDERBOT_OS_VERSION=//p' "$LIB/release" 2>/dev/null | head -n 1 || true)"
+port="$(sed -n 's/^DASHBOARD_PORT=//p' "$ENV" 2>/dev/null | tail -n 1 | tr -dc '0-9' || true)"
+mkdir -p "$(dirname "$OUT")"
+{
+    printf '\n'
+    sed 's/\\/\\\\/g' "$LIB/logo"
+    printf '\n        BuilderBot OS%s, slot %s\n' "${ver:+ $ver}" "$("$LIB/slot" current 2>/dev/null || echo "?")"
+    printf '        Open http://\\4:%s/ in a browser on this network.\n\n' "${port:-7680}"
+} > "$OUT.new"
+mv -f "$OUT.new" "$OUT"

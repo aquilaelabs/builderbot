@@ -82,9 +82,27 @@ KEYS = {
     # Zero Trust, and an API token with which the hostname's record and the
     # tunnel's rules are written rather than clicked. The two tokens are
     # secrets: kept here, never shown back, only said to be set.
-    "tunnel_host": {"default": "", "kind": "text", "applied": "now"},
+    "tunnel_host": {"default": "", "kind": "text", "shape": "host", "applied": "now"},
+    # The vetted catalog's address (R169 step 2): where index.json and index.sig are read from.
+    "catalog_url": {"default": "https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/", "kind": "text", "shape": "url", "applied": "now"},
     "tunnel_token": {"default": "", "kind": "secret", "applied": "now"},
     "cf_api_token": {"default": "", "kind": "secret", "applied": "now"},
+    # The dashboard's own connection (R158 step 2, tls.py): http, self (the
+    # install's own certificate) or acme (Let's Encrypt for the hostname,
+    # by DNS-01 through the Cloudflare API token); "" is self where a
+    # hostname is set and http otherwise. The hostname is the controller's
+    # own public name; the email is the ACME account's.
+    # The mail server the bell's rows go out through (R149, reach.py):
+    # Controller settings, Mail; the password sealed like the tokens.
+    "smtp_host": {"default": "", "kind": "text", "shape": "host", "applied": "now"},
+    "smtp_port": {"default": "", "kind": "text", "shape": "port", "applied": "now"},
+    "smtp_security": {"default": "starttls", "kind": "text", "shape": "word", "applied": "now"},
+    "smtp_user": {"default": "", "kind": "text", "shape": "line", "applied": "now"},
+    "smtp_password": {"default": "", "kind": "secret", "applied": "now"},
+    "smtp_from": {"default": "", "kind": "text", "shape": "line", "applied": "now"},
+    "tls_mode": {"default": "", "kind": "text", "shape": "word", "applied": "now"},
+    "tls_host": {"default": "", "kind": "text", "shape": "host", "applied": "now"},
+    "tls_email": {"default": "", "kind": "text", "shape": "email", "applied": "now"},
     # The apps this controller offers its people (R272 step 3, apps.py):
     # each one on fetches that app from the release matching this
     # controller's version, checks it and serves it from /apps; off, it is
@@ -97,6 +115,24 @@ KEYS = {
     # from the page, a phone or a session; every other account is told why
     # and stays signed in for after. Nodes are not accounts and keep running.
     "maintenance_mode": {"default": False, "kind": "bool", "applied": "now"},
+    # The update window (R160 step 4): when a newer release is applied by
+    # itself, never by default; the day (daily, or one weekday) and the hour.
+    # The backup password (R161 step 4): the copies of the state on the
+    # machine's pools are sealed under a key it derives; eight characters
+    # at least, sealed here like every secret.
+    "backup_password": {"default": "", "kind": "secret", "applied": "now"},
+    "update_window": {"default": "", "kind": "choice", "applied": "now",
+                      "choices": ["", "daily", "mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
+    # The release channel (R179): normal is the releases as published; dev
+    # takes the pre-releases CI publishes from a dev build too, and may be
+    # picked only on a controller started in debug mode with the dev switch
+    # on. Reset to normal at a start without debug mode, as the switches are.
+    "release_channel": {"default": "normal", "kind": "choice", "applied": "now", "choices": ["normal", "dev"]},
+    # How often each check runs by itself (R176, checks.py): weekly unless
+    # an administrator says otherwise; Check now beside each runs it at once.
+    **{f"check_{k}": {"default": "weekly", "kind": "choice", "applied": "now", "choices": ["daily", "weekly", "monthly", "off"]}
+       for k in ("release", "images", "nginx", "scanners", "catalog")},
+    "update_hour": {"default": 4, "kind": "number", "min": 0, "max": 23, "applied": "now"},
     # The room a node keeps for itself (R110): the disk left free under
     # which the bell warns and a build, a test or a container's rebuild is
     # refused (a tenth of a disk smaller than ten times this), the memory
@@ -116,10 +152,18 @@ KEYS = {
 # project's Debug grants) is put back off, so setting it to 1 again starts
 # from nothing granted.
 DEBUG_KEYS = ("debug_mode", "offer_unvetted")
+# ...and what only those allow, put back at a start without them.
+DEBUG_ONLY = ("release_channel",)
 
 
 def debug_available():
     return os.environ.get("DEBUG_MODE", "").strip() == "1"
+
+
+def dev_channel_ok():
+    """Whether the dev release channel may be picked here (R179): debug mode
+    on and the dev switch on."""
+    return debug_available() and _parse("offer_unvetted", load().get("offer_unvetted")) is True
 
 
 def reset_debug():
@@ -127,12 +171,30 @@ def reset_debug():
     DEBUG_MODE=1. Whether anything was on."""
     with _lock:
         d = load()
-        on = [k for k in DEBUG_KEYS if d.get(k) is True]
-        for k in DEBUG_KEYS:
+        on = [k for k in DEBUG_KEYS if d.get(k) is True] + [k for k in DEBUG_ONLY if d.get(k) not in (None, KEYS[k]["default"])]
+        for k in DEBUG_KEYS + DEBUG_ONLY:
             d.pop(k, None)
         if on:
             write_json(FILE, d)
     return bool(on)
+
+
+def boot_channel():
+    """The release channel a boot asked for (BB_RELEASE_CHANNEL, from a
+    stick's builderbot.env, R161 step 12), taken at start on a controller in
+    debug mode: dev turns the dev switch on and picks the dev channel, so a
+    stick made for it follows the pre-releases from its first start. Nothing
+    without DEBUG_MODE=1, and nothing for any other word. Whether it moved
+    anything."""
+    if not debug_available() or os.environ.get("BB_RELEASE_CHANNEL", "").strip() != "dev":
+        return False
+    with _lock:
+        d = load()
+        if d.get("offer_unvetted") is True and d.get("release_channel") == "dev":
+            return False
+        d.update(offer_unvetted=True, release_channel="dev")
+        write_json(FILE, d)
+    return True
 
 
 def configure(*, write_json, state):
@@ -152,8 +214,14 @@ def load():
         return {}
 
 
+URL_RE = re.compile(r"^https?://[^\s/?#]+(/[^\s]*)?$")
+WORD_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 HOST_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)+$")
 SECRET_MAX = 8000
+SHAPE_WORDS = {"host": "a hostname like bb.example.com", "url": "an address like https://example.com/catalog/",
+               "port": "a port from 1 to 65535", "word": "one of the choices the page offers",
+               "email": "an email address like you@example.com", "line": "one line"}
 
 
 def _parse(key, raw):
@@ -175,8 +243,30 @@ def _parse(key, raw):
     if kind == "text":
         if isinstance(raw, bool) or raw is None:
             return None
-        v = str(raw).strip().lower()[:253]
-        return v if v == "" or HOST_RE.match(v) else None
+        # Each text has its own shape (B445): a hostname, an address, a
+        # port, a word, an email, or one line as typed.
+        shape = spec.get("shape", "host")
+        v = str(raw).strip()
+        if v == "":
+            return v
+        if shape == "host":
+            v = v.lower()[:253]
+            return v if HOST_RE.match(v) else None
+        if shape == "url":
+            return v if len(v) <= 400 and URL_RE.match(v) else None
+        if shape == "port":
+            return v if v.isdigit() and 0 < int(v) < 65536 else None
+        if shape == "word":
+            v = v.lower()[:40]
+            return v if WORD_RE.match(v) else None
+        if shape == "email":
+            return v if len(v) <= 254 and EMAIL_RE.match(v) else None
+        return v if len(v) <= 300 and v.isprintable() else None
+    if kind == "choice":
+        if isinstance(raw, bool) or raw is None:
+            return None
+        v = str(raw).strip().lower()[:40]
+        return v if v in spec["choices"] else None
     if kind == "secret":
         if isinstance(raw, bool) or raw is None:
             return None
@@ -286,12 +376,15 @@ def set_many(changes):
             return {"error": "the debug and dev options are not available on this controller"}
         if key == "debug_mode":
             return {"error": "debug mode is on while the controller is started with DEBUG_MODE=1, and off otherwise"}
+        if key == "release_channel" and _parse(key, raw) == "dev" and not dev_channel_ok():
+            return {"error": "the dev channel is offered only on a controller in debug mode with the dev switch on"}
         v = _parse(key, raw)
         if v is None:
             kind = KEYS[key]["kind"]
             return {"error": f"{key} takes true or false" if kind == "bool"
-                    else f"{key} is a hostname like bb.example.com" if kind == "text"
+                    else f"{key} is {SHAPE_WORDS[KEYS[key].get('shape', 'host')]}" if kind == "text"
                     else f"{key} is a whole number from {KEYS[key]['min']} to {KEYS[key]['max']}" if kind == "number"
+                    else f"{key} is one of {', '.join(x or 'off' for x in KEYS[key]['choices'])}" if kind == "choice"
                     else f"{key} is one line"}
         parsed[key] = _sealed(v) if KEYS[key]["kind"] == "secret" else v
     with _lock:

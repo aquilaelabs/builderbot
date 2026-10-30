@@ -34,8 +34,13 @@ r = call("/api/v1/jobs", {"action": "run", "project": proj, "role": role, "node"
 if r.get("error"):
     sys.exit(f"[builderbot] ERROR: {r['error']}")
 names = {n["id"]: n["name"] for n in (call("/api/v1/nodes").get("nodes") or [])}
+# Its place on that node (R151 step 5): one job at a time runs there, so a
+# run behind another says how many are ahead rather than looking stuck.
+ahead = [j for j in (call("/api/v1/jobs?active=1").get("jobs") or [])
+         if j.get("node") == r["node"] and j.get("id") != r["job"] and j.get("state") in ("queued", "assigned", "running")]
 print(f"[builderbot] {r['job']} queued on {names.get(r['node'], r['node'])}: "
-      f"snapshot {r['snapshot'][7:19]}, {r['files']} files", flush=True)
+      f"snapshot {r['snapshot'][7:19]}, {r['files']} files"
+      + (f"; {len(ahead)} job{'s' if len(ahead) != 1 else ''} ahead of it there ({', '.join(str(j.get('type')) for j in ahead)})" if ahead else ""), flush=True)
 j, state = waits.follow(auth, r["job"])
 arts = [o for o in (j.get("outputs") or []) if o.get("kind") == "artifact"]
 kept = [o for o in (j.get("outputs") or []) if o.get("kind") == "workspace"]

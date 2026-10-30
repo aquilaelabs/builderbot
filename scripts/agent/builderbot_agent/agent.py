@@ -1,6 +1,7 @@
 """The agent: the loop that says hello, takes jobs and runs them, composed from the parts beside it."""
 import contextlib
 import hashlib
+import hmac
 import os
 import signal
 import subprocess
@@ -11,7 +12,7 @@ from . import AGENT_VERSION
 from .coverage import _COV_OUT, _cov_write
 from .base import BEAT_S, RUNNER_DIAG_KEEP, cap_file, log, log_once, own_digest, own_path, prune_dir
 from .controller import Controller
-from .stores import save_state, use_scope
+from .stores import load_state, save_state, use_scope
 from .toolchains import share_images
 from .sessnet import SessionNet
 from .runners import RunnersMixin, runner_dirs
@@ -26,19 +27,64 @@ from .accounts import AccountsMixin
 from .tokens import TokensMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
+from .scan import ScanMixin
 from .configplane import ConfigPlaneMixin
+from .osimage import OsImageMixin
+from .shares import SharesMixin
+from .pools import PoolsMixin
+from .array import ArrayMixin
+from .power import PowerMixin
+from .extmounts import ExtMountsMixin
+from .backups import BackupsMixin
+from .packconfig import PackConfigMixin
 from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, AccountsMixin,
-            TokensMixin):
+def follow(state, url="", expect=""):
+    """The knock (R90 step 12, R175 step 3): `state["move"]` names where and
+    what to expect, or `url` and `expect` do (the follow verb, run by hand
+    on a node that outlived the old controller). The new address is asked,
+    with the node's own token, for the answer only a holder of the move
+    key gives; right, the state takes the controller there (its address
+    and TLS pin) and is written. (True, "") or (False, why); an empty why
+    is nothing to knock on."""
+    mv = dict(state.get("move") or {})
+    if url and expect:
+        mv = {"url": str(url), "expect": str(expect)}
+    to = str(url or mv.get("url") or "").rstrip("/")
+    if not to or not mv.get("expect"):
+        return False, ""
+    try:
+        ctl = Controller(to, state["token"], "")
+        st, r = ctl.call("moved", {"node": state.get("node_id", "")}, timeout=20)
+    except Exception as e:                                   # noqa: BLE001 (a knock that fails is tried again)
+        return False, f"the move's new address {to} did not answer: {e}"
+    if st != 200 or not isinstance(r, dict):
+        return False, f"the move's new address {to} answered {st}: not the controller yet"
+    # The proof: the challenge the old controller told this node to
+    # expect, which only a holder of the move key (the controller once
+    # restored there) can say back.
+    got = str(r.get("answer") or "")
+    if not got or not hmac.compare_digest(got, str(mv.get("expect") or "")):
+        return False, f"{to} answered the knock with the wrong answer: not the controller that moved"
+    state["controller"] = str(r.get("url") or to).rstrip("/") or to
+    if r.get("pin"):
+        state["pin"] = str(r.get("pin"))
+    state.pop("move", None)
+    save_state(state)
+    return True, ""
+
+
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, OsImageMixin, SharesMixin, PoolsMixin, ArrayMixin, PowerMixin, ExtMountsMixin, BackupsMixin, PackConfigMixin, AccountsMixin,
+            TokensMixin, ScanMixin):
     def __init__(self, state):
         self.state = state
         # Its own directory under the toolchain store, by its node id (R196),
         # before anything reads where its toolchains are.
         use_scope((state.get("stores") or {}).get("toolchains") or "", state.get("node_id"))
         self.ctl = Controller(state["controller"], state["token"], state.get("pin", ""))
+        self.quiet = 0                    # hellos in a row the controller did not answer (R90 step 12: a move's knock)
         self.jobs = {}
         self.lock = threading.Lock()
         self.sampler = Sampler()
@@ -302,6 +348,18 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # kept in node.json. When it moves the layout file and the sudo
             # rule are rewritten and the terminals open the other way from
             # then on; tmux sessions are untouched either way.
+            # A move prepared on the controller (R90 step 12): the new address
+            # and this node's challenge, kept in node.json; when this
+            # controller goes quiet or says it moved, the node knocks there.
+            mv = r.get("move") if isinstance(r.get("move"), dict) else {}
+            want = {"url": str(mv.get("url") or ""), "expect": str(mv.get("expect") or "")} if mv.get("url") and mv.get("expect") else None
+            if want != self.state.get("move"):
+                if want:
+                    self.state["move"] = want
+                    log(f"a move is prepared: this controller goes to {want['url']}; this node knocks there when it goes quiet")
+                else:
+                    self.state.pop("move", None)
+                save_state(self.state)
             au = bool(r.get("account_users"))
             if au != bool(self.state.get("account_users")):
                 self.state["account_users"] = au
@@ -311,11 +369,36 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 self.account_users_pass()
                 self.refresh_session_tool()
                 self.session_renew()
+            # The accounts' SMB passwords on the controller's own machine
+            # (R164 step 1), imported into Samba once per change.
+            if isinstance(r.get("smb_users"), list):
+                self.smb_users_want(r["smb_users"])
+            # What each added pack is configured with here (R172): its env
+            # written into the store for its verbs, once per change.
+            if isinstance(r.get("pack_config"), list):
+                self.pack_config_want(r["pack_config"])
+            # ...and each account's own (R172 step 5), into its home.
+            if isinstance(r.get("pack_people"), list):
+                self.pack_people_want(r["pack_people"])
+            # Other disks and shares on the controller's own machine (R162
+            # step 4): the record mounted and unmounted as it says.
+            if isinstance(r.get("ext_mounts"), list):
+                self.ext_mounts_want(r["ext_mounts"])
+            # ...and the backups it copies (R162 step 5), the record the job names a row of.
+            if isinstance(r.get("store_backups"), list):
+                self.backups_want(r["store_backups"])
+            # ...and the passphrases of its encrypted pools (R162 step 3),
+            # kept in memory and every locked pool among them unlocked.
+            if isinstance(r.get("pool_keys"), list):
+                self.pool_keys_want(r["pool_keys"])
             # The coding agents' sign-ins sealed (R126): the controller's
             # switch, and each account's public key here, kept in node.json.
             ts, pubs = bool(r.get("token_seal")), r.get("token_pubs") if isinstance(r.get("token_pubs"), dict) else {}
-            if ts != bool(self.state.get("token_seal")) or pubs != (self.state.get("token_pubs") or {}):
-                self.state["token_seal"], self.state["token_pubs"] = ts, pubs
+            # ...and the X25519 publics a seal is made with here (R158 step 3).
+            pubs2 = r.get("token_pubs2") if isinstance(r.get("token_pubs2"), dict) else {}
+            if ts != bool(self.state.get("token_seal")) or pubs != (self.state.get("token_pubs") or {}) \
+                    or pubs2 != (self.state.get("token_pubs2") or {}):
+                self.state["token_seal"], self.state["token_pubs"], self.state["token_pubs2"] = ts, pubs, pubs2
                 save_state(self.state)
                 if ts != bool(self.state.get("token_seal_said")):
                     self.state["token_seal_said"] = ts
@@ -418,6 +501,55 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         if cut or trimmed:
             log(f"logs: kept to size: {', '.join(os.path.basename(f) for f in cut) or 'nothing'} cut, "
                 f"{trimmed} old runner diagnostics removed")
+
+    def reread_state(self):
+        """node.json read again while the controller stays quiet: a follow
+        run by hand wrote the new address and pin there, which this process
+        holds a copy from before. True when it took a new controller."""
+        try:
+            fresh = load_state()
+        except SystemExit:
+            return False
+        if not isinstance(fresh, dict) or not fresh.get("controller") or fresh.get("controller") == self.state.get("controller"):
+            return False
+        self.state["controller"] = fresh["controller"]
+        if fresh.get("pin"):
+            self.state["pin"] = fresh["pin"]
+        self.state.pop("move", None)
+        self.ctl = Controller(self.state["controller"], self.state["token"], self.state.get("pin", ""))
+        self.quiet = 0
+        self.hello_at = 0
+        log(f"node.json names another controller: this node follows it to {self.state['controller']}")
+        return True
+
+    def move_hint(self, mv):
+        """A move the controller names in its "moved" answer (R175 step 2):
+        kept in node.json when this node holds none, so a node that was
+        off while the move was armed knocks like the others. True when it
+        was taken."""
+        if not isinstance(mv, dict) or not mv.get("url") or not mv.get("expect") or self.state.get("move"):
+            return False
+        self.state["move"] = {"url": str(mv["url"]), "expect": str(mv["expect"])}
+        save_state(self.state)
+        log(f"the controller moved to {mv['url']} and handed this node its challenge: knocking there")
+        return True
+
+    def knock(self, url=""):
+        """Knock on the controller a move named (R90 step 12): the new
+        address asked, with this node's own token, for the answer only a
+        holder of the move key gives; right, this node re-adopts the
+        controller there (its address and TLS pin taken, node.json written)
+        and goes on as before; wrong or silent, it tries again next time."""
+        ok, why = follow(self.state, url)
+        if not ok:
+            if why:
+                log_once("knock", why)
+            return False
+        self.ctl = Controller(self.state["controller"], self.state["token"], self.state.get("pin", ""))
+        self.quiet = 0
+        self.hello_at = 0
+        log(f"the controller moved: this node follows it to {self.state['controller']}")
+        return True
 
     def hello_again(self, why):
         """Ask the loop for a fresh hello, saying why in the journal: a node
@@ -550,6 +682,24 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 # None: the census is on its way; the work poll below is the
                 # heartbeat meanwhile, and the next turn of the loop asks again.
                 st, r = said if said is not None else (200, {})
+                if st == 410 and isinstance(r, dict) and r.get("moved"):
+                    # The controller moved (R90 step 12): knocked on at once,
+                    # with the challenge its answer carries when this node
+                    # never heard the move while it was armed (R175 step 2).
+                    self.move_hint(r.get("move"))
+                    self.knock(r.get("to") or "")
+                    continue
+                if st != 200 and st != 401:
+                    self.quiet += 1
+                    if self.quiet >= 3 and self.state.get("move"):
+                        self.knock()
+                    elif self.quiet >= 3:
+                        # No move known and the controller quiet: node.json
+                        # may have been pointed elsewhere by hand (the
+                        # follow verb, R175 step 3), so it is read again.
+                        self.reread_state()
+                else:
+                    self.quiet = 0
                 if st == 401:
                     log(f"refused: {r.get('error')}; this node's credential "
                         "is no longer good. Re-enroll with a new token.")
@@ -569,6 +719,9 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             timed("session_check", self.session_check)
             timed("firewall_check", self.session_firewall_check)
             timed("account_users", self.account_users_pass)
+            timed("array", self.array_pass)
+            timed("ext_mounts", self.ext_mounts_pass)
+            timed("spindown", self.spindown_pass)
             timed("tokens", self.token_pass)
             timed("idle_reap", self.session_idle_reap)
             timed("runner_check", self.runner_check)

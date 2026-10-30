@@ -30,8 +30,15 @@ _nb = dash.load("notebook", _here)
 _nb.configure(roadmap_mod=_roadmap, bugs_mod=bugs)
 
 proj, argv = sys.argv[2], sys.argv[3:]
+# `--format json|yaml|markdown` or `--json` on a list or a show (R167).
+fmt, argv = dash.format_flag(argv)
 op = argv[0] if argv else "list"
 rest = argv[1:]
+records = dash.load("records", _here)
+
+
+def dump_records(rs):
+    sys.stdout.write(records.dump(records.document("bugs", rs, proj), fmt))
 
 import ids  # noqa: E402 (bugs.py put its directory on sys.path)
 import pending  # noqa: E402 (the approval queue, roadmap #27)
@@ -169,11 +176,15 @@ if op in ("list", "ls"):
               f"{'' if _b['changes'] == 1 else 's'} unrecorded across this "
               "notebook; bb bug commit, or revert]")
     open_rows = [b for b in rows() if b.get("status") == "open"]
+    if fmt != "text":
+        dump_records(open_rows); sys.exit(0)
     if not open_rows:
         print(f"no open bugs on {proj}; `bb bug all` includes the closed ones")
     for b in open_rows:
         print(line(b))
 elif op == "all":
+    if fmt != "text":
+        dump_records(rows()); sys.exit(0)
     if not rows():
         print(f"nothing in {proj}'s bug tracker")
     for b in rows():
@@ -217,7 +228,30 @@ elif op == "show":
     if b is None:
         print(f"[builderbot] ERROR: no bug {B(n)} here", file=sys.stderr)
         sys.exit(1)
+    if fmt != "text":
+        dump_records([b]); sys.exit(0)
     show(b)
+elif op == "add" and "--from" in rest:
+    # Reports from a file (R167): `bb bug add --from FILE` files each
+    # record as one, with its severity, area, repro and the rest; a
+    # record's id and status are ignored, since a new report takes the
+    # next number and opens.
+    src = rest[rest.index("--from") + 1] if rest.index("--from") + 1 < len(rest) else ""
+    if not src:
+        print("[builderbot] ERROR: --from needs the file after it, or - for stdin", file=sys.stderr); sys.exit(1)
+    try:
+        doc = records.load(sys.stdin.read() if src == "-" else open(src, encoding="utf-8").read())
+    except (OSError, ValueError) as e:
+        print(f"[builderbot] ERROR: {src}: {e}", file=sys.stderr); sys.exit(1)
+    if doc.get("kind") not in (None, "bugs"):
+        print(f"[builderbot] ERROR: {src} holds {doc['kind']} records, not bug reports", file=sys.stderr); sys.exit(1)
+    for rec in doc.get("records") or []:
+        fields = {k: str(rec[k]) for k in ("area", "repro", "expected", "actual", "reproduces") if rec.get(k)}
+        r = bugs.add(proj, str(rec.get("title") or ""), by="claude",
+                     severity=str(rec.get("severity") or "medium"), **fields); bail(r)
+        if r.get("held"):
+            print(f"held for approval as {B(r['held'].get('number'))}: it lands when the operator approves it on the notebook"); continue
+        print(f"filed {B(r['bug']['id'])}: {r['bug']['title']}")
 elif op == "add":
     here = "--here" in rest
     title, flags = pull_flags([a for a in rest if a != "--here"])

@@ -102,7 +102,11 @@ function nbRoadmapView({$, nb}){
   function rowFacts(r, idx){
     const st = idx < 0 ? r : (r.steps || [])[idx] || {};
     const who = b => b === "claude" ? "Claude" : "you";
-    if (idx >= 0) return factGrid([["Done", st.done ? rmDay(st.done) : ""], ["Sent", st.sent ? rmDay(st.sent) : ""]]);
+    // A step from another item says which, by the number it answers to
+    // there (R168): the one a session knows it by.
+    const from = idx >= 0 && Array.isArray(st.sid) && st.sid.length === 2 && String(st.sid[0]) !== String(r.id)
+      ? (st.sid[1] ? `R${st.sid[0]} step ${st.sid[1]}` : `R${st.sid[0]}, folded in`) : "";
+    if (idx >= 0) return factGrid([["Done", st.done ? rmDay(st.done) : ""], ["Sent", st.sent ? rmDay(st.sent) : ""], ["Was", from]]);
     const steps = r.steps || [];
     return factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${who(r.by)}` : ""],
                      ["Target", r.target || ""],
@@ -193,9 +197,11 @@ function nbRoadmapView({$, nb}){
     const send = nb.roadmapOrdering || ro ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : ` aria-disabled="true"`}
       title="${esc(why)}" aria-label="send to ${esc(sendAgent(nb.memProj).name)}"
       aria-pressed="${on ? "true" : "false"}">${SPARK}</button>`;
+    // In reorder mode a step can be dragged onto another item's row (R168):
+    // the same move as Move to, by hand.
     return `<div class="roadmap${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
          idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
-       data-id="${r.id}" data-step="${idx}">
+       data-id="${r.id}" data-step="${idx}"${nb.roadmapOrdering && idx >= 0 && !ro ? ' draggable="true"' : ""}>
     ${idx < 0 ? `<span class="eye fold" aria-hidden="true"></span>` : ""}
     ${idx >= 0 ? (st.done
           ? `<span class="n tick" title="step ${idx + 1}: a session finished this ${nb.stamp(st.done)}">✓</span>`
@@ -219,7 +225,10 @@ function nbRoadmapView({$, nb}){
             : "shelve it: kept at the bottom"
               + (steps.length ? " with its steps" : "") + ", not for now"}"
         >${r.shelved ? "Unshelve" : "Shelve"}</button>` : ""}
-      <button class="ed" type="button" aria-label="reword" title="reword this line">Reword</button>
+      <button class="ed" type="button" aria-label="reword" title="reword this line">Reword</button>${
+        idx >= 0 ? `<button class="mvto" type="button" title="move this step to another item, whole: its details, its marks and its number">Move to</button>`
+        : steps.length ? `<button class="split" type="button" title="move some of its steps to a new item, which points back here">Split</button>` : ""}${
+        idx < 0 ? `<button class="foldin" type="button" title="make this item a step of another, its steps following; Put back under History undoes it">Fold into</button>` : ""}
       <button class="rm danger" type="button" aria-label="drop it"
         title="${idx < 0 ? "take it off the list, with a note saying why"
                            : "drop this step; the one behind it takes its place"}"
@@ -442,6 +451,32 @@ function nbRoadmapView({$, nb}){
       // A step's words reword it; a group's words open its fold (the
       // operator, 29 Sep), and the pencil is what rewords those.
       if (step >= 0 && !ro) row.querySelector(".txt").onclick = reword;
+      // Between items (R168): a step moved to another, an item split into
+      // new ones, or folded into another. Each lands at once, not staged:
+      // what moves is on two items, and the page's staging is per row.
+      const mvto = row.querySelector(".mvto");
+      if (mvto) mvto.onclick = () => pickItem(row, `Move step ${step + 1} to`, "Move", id, to =>
+        postRoadmap({action: "step-mv", id, step, to}).then(j => j && notify(`step ${step + 1} of R${id} is R${to} step ${j.step + 1} now`)));
+      const sp = row.querySelector(".split");
+      if (sp) sp.onclick = () => openSplit(row, id);
+      const fi = row.querySelector(".foldin");
+      if (fi) fi.onclick = () => pickItem(row, `Fold R${id} into`, "Fold", id, into =>
+        postRoadmap({action: "fold", id, into}).then(j => j && notify(`R${id} is R${into} step ${j.folded[1]} now; Put back under History undoes it`)));
+      if (row.getAttribute("draggable") === "true"){
+        row.ondragstart = e => { e.dataTransfer.setData("text/plain", `${id}:${step}`); e.dataTransfer.effectAllowed = "move"; row.classList.add("dragging"); };
+        row.ondragend = () => row.classList.remove("dragging");
+      }
+      if (nb.roadmapOrdering && step < 0 && !ro){
+        row.ondragover = e => { e.preventDefault(); row.classList.add("dropat"); };
+        row.ondragleave = () => row.classList.remove("dropat");
+        row.ondrop = e => {
+          e.preventDefault(); row.classList.remove("dropat");
+          const [fid, fstep] = String(e.dataTransfer.getData("text/plain") || "").split(":").map(Number);
+          if (!fid || isNaN(fstep) || fstep < 0 || fid === id) return;
+          postRoadmap({action: "step-mv", id: fid, step: fstep, to: id})
+            .then(j => j && notify(`step ${fstep + 1} of R${fid} is R${id} step ${j.step + 1} now`));
+        };
+      }
     });
     }
     nb.roadmapItems = rows;
@@ -760,6 +795,56 @@ function nbRoadmapView({$, nb}){
     dropBox(row, {q: "Drop this?", sub: also ? ` · ${also}` : "", max: 4000, place: "after",
                   placeholder: "why it is going (optional, kept in the history)", verb: "Drop it", tone: "danger",
                   go: why => stageRemove(id, step, why)});
+  }
+
+  // Which other item (R168): a pick list of every open item but this one,
+  // under the row, as the other inline asks are; `go` gets its number.
+  function pickItem(row, label, ok, id, go){
+    const others = (nb.roadmapItems || []).filter(x => String(x.id) !== String(id) && x.id > 0);
+    if (!others.length){ notify("there is no other item to move it to", true); return; }
+    const opts = others.map(x => `R${x.id} ${x.text}`.slice(0, 80));
+    askInline(row, {label, ok, options: opts}).then(got => {
+      if (!got) return;
+      const m = /^R(\d+)/.exec(got.trim());
+      const hit = m ? others.find(x => String(x.id) === m[1])
+        : others.find(x => x.text.toLowerCase().startsWith(got.trim().toLowerCase()));
+      if (!hit){ notify(`${got} is not an item on this list`, true); return; }
+      go(hit.id);
+    });
+  }
+
+  // Splitting an item (R168): tick the steps that go, name the new item,
+  // and Split moves them whole; the new item points back here.
+  function openSplit(row, id){
+    if (row.nextElementSibling?.classList.contains("splitbox")) return;
+    row.parentElement.querySelectorAll(".editbox,.dropbox").forEach(b => b.remove());
+    const r = findRow(id), steps = r?.steps || [];
+    const box = document.createElement("div");
+    box.className = "dropbox editbox splitbox ctlown";
+    box.innerHTML = `<div class="q">Split R${id}<span>: the ticked steps move to a new item, whole</span></div>
+    <div class="splitsteps">${steps.map((st, i) => `<label><input type="checkbox" value="${i + 1}"> <span class="n">${i + 1}</span> ${esc(st.text.slice(0, 160))}</label>`).join("")}</div>
+    <input class="title" maxlength="4000" autocomplete="off" spellcheck="false" placeholder="the new item's title">
+    <div class="actbar">
+      <button type="button" class="stop">Cancel</button>
+      <button type="button" class="primary">Split</button></div>`;
+    row.after(box);
+    arriveBox(box);
+    const shut = () => box.remove();
+    box.querySelector(".stop").onclick = shut;
+    box.querySelector(".primary").onclick = async () => {
+      const picked = [...box.querySelectorAll("input[type=checkbox]:checked")].map(c => Number(c.value));
+      const text = box.querySelector(".title").value.trim();
+      if (!picked.length){ notify("tick the steps that go", true); return; }
+      if (!text){ notify("the new item needs a title", true); box.querySelector(".title").focus(); return; }
+      shut();
+      const j = await postRoadmap({action: "split", id, groups: [{text, steps: picked}]});
+      if (j?.held) notify("the split is held for approval on this notebook");
+      else if (j) notify(`R${j.made[0].id} made with ${picked.length} step${picked.length === 1 ? "" : "s"} from R${id}`);
+    };
+    box.querySelector(".title").onkeydown = e => {
+      if (e.key === "Enter"){ e.preventDefault(); box.querySelector(".primary").click(); }
+      if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); shut(); }
+    };
   }
 
   // Rewording, in a box under the row rather than a prompt(). A prompt is one

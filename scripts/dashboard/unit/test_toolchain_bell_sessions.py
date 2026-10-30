@@ -36,7 +36,7 @@ class Sessions(unittest.TestCase):
         toolchains.last_check = lambda nid: ({}, None)
         try:
             bound = {"alpha": "n1", "beta": "n1", "ep.silon": "n1", "gamma": "n1", "far": "n2"}
-            # The coding agents' own row (R95: the Agents page's), not the
+            # The coding agents' own row (R95: the coding agents'), not the
             # toolchains'.
             self.assertFalse([r for r in toolchains.attention(bound) if r["kind"] == "toolchain"])
             return [r for r in toolchains.agent_attention(bound) if r["kind"] == "agents"]

@@ -29,7 +29,7 @@ const call = async (path, body, headers = H) => {
 };
 
 // The page is a tool of the Containers group, between Containers and nginx.
-ok(await page.evaluate(() => railGroups().some(g => g.key === 'containers' && g.tools.map(([k]) => k).join() === 'docker,vms,nginx')),
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'containers' && g.tools.map(([k]) => k).join() === 'docker,vms,nginx,scanners')),
    'the rail offers VMs in the Containers group, between Containers and nginx');
 await page.evaluate(() => openVmsTab());
 await page.waitForSelector('.vmtab .vmnone', { timeout: 15000 });
@@ -97,6 +97,26 @@ const row = await page.$eval('.vmtab [data-vm-key="alpha/db"]', e => ({ text: e.
 ok(/running/.test(row.text) && /ok/.test(row.pill) && /ssh builder@10\.232\.0\.12/.test(row.text) && /Debian 13/.test(row.text)
    && /kvmbox/.test(row.text) && row.stop && row.con && row.snap,
    `once made it runs: its pill, how to reach it, its OS and node, Stop, Console and its snapshot with Revert (${row.text.slice(0, 120)})`);
+// Domains the node's libvirt has that BuilderBot did not make (R165 step
+// 1): an administrator reads them under Not BuilderBot's, by name, state
+// and size, with nothing to press, and the tiles count BuilderBot's own.
+await agent('hello', { census: { ...CENSUS, vms: [{ name: 'bbvm-alpha-db', state: 'running', ip: '10.232.0.12', vcpus: 2, mem_mb: 2048, snapshots: ['clean'] }],
+                                 vms_other: [{ name: 'win11', state: 'running', vcpus: 4, mem_mb: 8192 }, { name: 'old-box', state: 'stopped', vcpus: 1, mem_mb: 512 }] },
+                       version: shipped.version, digest: shipped.digest });
+await page.evaluate(async () => { await loadVms(); });
+await page.waitForSelector('.vmtab .vmothers', { timeout: 15000 });
+const foreign = await page.evaluate(() => ({
+  rows: [...document.querySelectorAll('.vmtab .vmother')].map(r => r.textContent.replace(/\s+/g, ' ').trim()),
+  buttons: document.querySelectorAll('.vmtab .vmothers button').length,
+  running: document.querySelector('.vmtab .tiles')?.textContent.replace(/\s+/g, ' ') || '',
+}));
+ok(foreign.rows.length === 2 && /win11 ?running/.test(foreign.rows[0]) && /4 vCPU · 8 GB/.test(foreign.rows[0]) && foreign.buttons === 0 && /1 running/.test(foreign.running),
+   `the domains BuilderBot did not make are listed read-only under Not BuilderBot's, and not counted (${JSON.stringify(foreign).slice(0, 200)})`);
+await hello([{ name: 'bbvm-alpha-db', state: 'running', ip: '10.232.0.12', vcpus: 2, mem_mb: 2048, snapshots: ['clean'] }]);
+await page.evaluate(async () => { await loadVms(); });
+await page.waitForFunction(() => !document.querySelector('.vmtab .vmothers'), null, { timeout: 15000 });
+ok(true, '...and the list goes with the next census that has none');
+
 // A Stop its system did not take (an installer with no ACPI daemon) is said
 // on the row after a while, pointing at Force stop (B308).
 const ignored = await page.evaluate(async () => {

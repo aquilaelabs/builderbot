@@ -1,0 +1,25 @@
+{
+ "about": "Codex CLI, run by sessions as codex",
+ "agent": {
+  "briefing": "instructions-file",
+  "command": "codex",
+  "guards": "hooks",
+  "latest_url": "https://registry.npmjs.org/@openai/codex/latest",
+  "login_job": "codex-login",
+  "logout_job": "codex-logout",
+  "product": "Codex CLI",
+  "provider": "OpenAI",
+  "reported": "codex",
+  "state": "hooks",
+  "tool": "codex-cli",
+  "transcripts": ".codex/sessions",
+  "update_job": "codex-update"
+ },
+ "label": "ChatGPT",
+ "name": "codex",
+ "platforms": [
+  "linux/*"
+ ],
+ "terms": [],
+ "tier": "official"
+}

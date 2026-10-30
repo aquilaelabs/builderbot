@@ -1,7 +1,7 @@
 // The Claude sign-in, which is one account's on one node: who this account
 // is signed in as there, the flow that signs that node in, the code a
 // person pastes back into it, and signing that node out. Drawn inside the
-// Claude section of the Agents page on that node (R95 step 15), and reached
+// agent's row of the Installed page on that node (R95 step 15, R172), and reached
 // from a project's Claude button when its node has no sign-in yet.
 //
 // One classic script beside index.html (docs/design-language.md, Files):
@@ -135,15 +135,13 @@ function wireSignin(root){
   });
 }
 
-// Open the Agents page on one node with its Claude section unfolded and in
-// view: where a Claude button sends its press when that node has no sign-in
-// of this account's yet.
+// Open the Installed page on one node with the agent's row open on its
+// sign-in and in view (R172): where a Claude button sends its press when
+// that node has no sign-in of this account's yet.
 function openNodeClaude(nodeId, agent = "claude"){
-  // The Agents page on that node (R95 step 15), the agent's section open.
-  sectOpen[`agents:${agent}`] = true;
-  openAgentsOn(nodeId);
+  openInstalledOn(nodeId, agent);
   const show = (tries) => {
-    const s = document.querySelector(`.agentstab [data-agnode="${CSS.escape(nodeId)}"] [data-sect="agents:${CSS.escape(agent)}"]`);
+    const s = document.querySelector(`.installedtab [data-instnode="${CSS.escape(nodeId)}"] .irow.open [data-signin][data-siagent="${CSS.escape(agent)}"]`)?.closest(".irow");
     if (s) return s.scrollIntoView({block: "start", behavior: "smooth"});
     if (tries > 0) setTimeout(() => show(tries - 1), 150);
   };

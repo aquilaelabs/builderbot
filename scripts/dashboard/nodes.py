@@ -328,10 +328,10 @@ def store_id(path, make=True):
     """A stable id for the store at `path`, from a marker inside it.
 
     Two machines mounting one share have no way to recognize each other by
-    path: this container reaches the toolchain store through Unraid's FUSE layer
+    path: this container reaches the toolchain store through the host's user-share layer
     (fstype fuse.shfs, source "shfs") while a node reaches the same bytes
     over NFS (nas:/mnt/user/sdk). Neither string can be derived from the
-    other without knowing it is Unraid, so pairing on the mount cannot work.
+    other without knowing the host, so pairing on the mount cannot work.
 
     A file in the store answers exactly, whatever the transport, and it is
     store-specific rather than machine-specific, so it is the one kind of
@@ -649,6 +649,18 @@ def node_update(principal, node_id, fields):
         clean = {str(k)[:40]: str(v)[:120]
                  for k, v in list(fields["labels"].items())[:24]}
         sets.append("labels = ?"); args.append(json.dumps(clean))
+    if "check_versions" in fields:
+        # Its own version check's cadence (R176): the Library's answers for
+        # this node, asked daily, weekly (the default), monthly or never.
+        v = str(fields["check_versions"] or "")
+        if v not in ("daily", "weekly", "monthly", "off"):
+            return {"error": "a node's version check is daily, weekly, monthly or off"}
+        cfg = dict(n.get("config") or {})
+        if v == "weekly":
+            cfg.pop("check_versions", None)
+        else:
+            cfg["check_versions"] = v
+        sets.append("config = ?"); args.append(json.dumps(cfg))
     if "host_only" in fields:
         on = fields["host_only"] is True
         if on:
@@ -1247,6 +1259,24 @@ def _mb(v):
         return 0
 
 
+
+USB_ID_RE = re.compile(r"0x[0-9a-f]{4}")
+PCI_ADDR_RE = re.compile(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]")
+
+
+def _vm_usb(rows):
+    """The USB devices a VM holds as its node names them (R116): vendor,
+    product, serial, port and name, whitelisted field by field."""
+    out = []
+    for r in (rows or [])[:8] if isinstance(rows, list) else []:
+        if not isinstance(r, dict) or not (USB_ID_RE.fullmatch(str(r.get("vendor"))) and USB_ID_RE.fullmatch(str(r.get("product")))):
+            continue
+        out.append({"vendor": r["vendor"], "product": r["product"],
+                    "serial": re.sub(r"[^\w.:+/-]", "", str(r.get("serial") or ""))[:64],
+                    "port": str(r.get("port") or "") if re.fullmatch(r"\d{1,3}-[\d.]{1,20}", str(r.get("port") or "")) else "",
+                    "name": re.sub(r"[^\w .,:()+/-]", "", str(r.get("name") or ""))[:80]})
+    return out
+
 def _vm_hw(hw):
     """A VM's hardware as its node reported it (R100), kept to its shapes."""
     hw = hw if isinstance(hw, dict) else {}
@@ -1342,14 +1372,14 @@ def _census(c):
                                  and str(v.get("algo") or "") in ("sha1", "sha256", "sha512", "gpg", "none")}
     # Kept only when the agent sent one: a listing that is there and empty
     # is a store with nothing in it (B671), a key that is absent is a node
-    # that has not said, and the Toolchains tab reads the two apart.
+    # that has not said, and the Installed page reads the two apart.
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else None
     if sd is not None:
         out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                              for k in ("top", "android", "incomplete", "roots")}
         # ...and the versions under android's families (B712), kept only
         # when the agent lists them (a node with a toolchain store): the
-        # Toolchains tab reads a version a project pins against this, and a
+        # Library reads a version a project pins against this, and a
         # node that cannot say must not read as a store that lacks it.
         if isinstance(sd.get("versions"), dict):
             out["store_dirs"]["versions"] = {
@@ -1392,6 +1422,9 @@ def _census(c):
     fe = c.get("features") if isinstance(c.get("features"), dict) else {}
     vm = fe.get("vmhost") if isinstance(fe.get("vmhost"), dict) else {}
     fw = fe.get("firewall") if isinstance(fe.get("firewall"), dict) else {}
+    io = fe.get("iommu") if isinstance(fe.get("iommu"), dict) else {}
+    sto = fe.get("storage") if isinstance(fe.get("storage"), dict) else {}
+    sh = fe.get("shares") if isinstance(fe.get("shares"), dict) else {}
     out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
                                   "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20],
                                   # A kernel built without KVM (R97's walk, openSUSE).
@@ -1399,7 +1432,154 @@ def _census(c):
                                   # A shared folder's virtiofsd (R100), which an
                                   # install from before it did not bring.
                                   **({"virtiofs": vm["virtiofs"] is True} if "virtiofs" in vm else {})},
-                       "firewall": {"installed": fw.get("installed") is True}}
+                       "firewall": {"installed": fw.get("installed") is True},
+                       # The IOMMU on the kernel's command line (R116 step 4):
+                       # put there by BuilderBot, and on now, which a restart
+                       # and the firmware decide.
+                       "iommu": {"installed": io.get("installed") is True, "on": io.get("on") is True},
+                       "storage": {k: sto.get(k) is True for k in ("installed", "zfs", "mergerfs", "snapraid", "smart")},
+                       "shares": {k: sh.get(k) is True for k in ("installed", "smb", "nfs")},
+                       "ups": {k: (fe.get("ups") or {}).get(k) is True for k in ("installed", "nut")} if isinstance(fe.get("ups"), dict) else {}}
+    # The machine's disks (R162 step 1), each to its shape: a name, a model,
+    # a serial, a size, what each partition holds, SMART's three facts.
+    if isinstance(c.get("disks"), list):
+        word = lambda v, n: re.sub(r"[^\w .,:/()+-]", "", str(v or ""))[:n]  # noqa: E731
+        out["disks"] = []
+        for dsk in c["disks"][:32]:
+            if not isinstance(dsk, dict) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,32}", str(dsk.get("name") or "")):
+                continue
+            sm = dsk.get("smart") if isinstance(dsk.get("smart"), dict) else {}
+            out["disks"].append({"name": dsk["name"], "model": word(dsk.get("model"), 64), "serial": word(dsk.get("serial"), 64),
+                                 "size_mb": int(dsk["size_mb"]) if isinstance(dsk.get("size_mb"), int) else 0,
+                                 "ssd": dsk.get("ssd") is True, "tran": word(dsk.get("tran"), 16), "removable": dsk.get("removable") is True,
+                                 "by_id": re.sub(r"[^A-Za-z0-9_.:-]", "", str(dsk.get("by_id") or ""))[:120],
+                                 "system": dsk.get("system") is True, "holds": word(dsk.get("holds"), 80),
+                                 "parts": [{"name": word(p.get("name"), 32), "size_mb": int(p["size_mb"]) if isinstance(p.get("size_mb"), int) else 0,
+                                            "holds": word(p.get("holds"), 80)}
+                                           for p in (dsk.get("parts") or [])[:16] if isinstance(p, dict)],
+                                 "smart": {k: v for k, v in (("health", sm.get("health") if sm.get("health") in ("ok", "failing") else None),
+                                                             ("temp_c", int(sm["temp_c"]) if isinstance(sm.get("temp_c"), int) else None),
+                                                             ("hours", int(sm["hours"]) if isinstance(sm.get("hours"), int) else None))
+                                           if v is not None}})
+    # ...and its shares (R162 step 1): a name, a path, SMB's and NFS's halves.
+    if isinstance(c.get("shares"), list):
+        sw = lambda v, n: re.sub(r"[^\w .,:/()*@+-]", "", str(v or ""))[:n]  # noqa: E731
+        out["shares"] = []
+        for sh in c["shares"][:64]:
+            if not isinstance(sh, dict) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}", str(sh.get("name") or "")):
+                continue
+            smb = sh.get("smb") if isinstance(sh.get("smb"), dict) else {}
+            nfs = sh.get("nfs") if isinstance(sh.get("nfs"), dict) else {}
+            out["shares"].append({"name": sh["name"], "path": sw(sh.get("path"), 200),
+                                  "smb": {"on": smb.get("on") is True, "guest": smb.get("guest") is True, "ro": smb.get("ro") is True,
+                                          "tm": smb.get("tm") is True,
+                                          "users": [sw(u, 32) for u in (smb.get("users") or [])[:64] if isinstance(u, str)]},
+                                  "nfs": {"on": nfs.get("on") is True, "ro": nfs.get("ro") is True,
+                                          "clients": [sw(c, 80) for c in (nfs.get("clients") or [])[:64] if isinstance(c, str)]}})
+    # ...and its ZFS pools (R162 step 1): name, sizes, health, the members
+    # by layout, the last scrub and the errors line, each to its shape.
+    if isinstance(c.get("pools"), list):
+        pw = lambda v, n: re.sub(r"[^\w .,:;/()'@+-]", "", str(v or ""))[:n]  # noqa: E731
+        out["pools"] = []
+        for pl in c["pools"][:32]:
+            if not isinstance(pl, dict) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", str(pl.get("name") or "")):
+                continue
+            out["pools"].append({"name": pl["name"],
+                                 **{k: int(pl[k]) if isinstance(pl.get(k), int) else 0 for k in ("size_mb", "alloc_mb", "free_mb")},
+                                 "health": pw(pl.get("health"), 16), "mount": pw(pl.get("mount"), 120),
+                                 "encrypted": pl.get("encrypted") is True, "locked": pl.get("locked") is True,
+                                 "scrub": pw(pl.get("scrub"), 160), "errors": pw(pl.get("errors"), 120),
+                                 "vdevs": [{"type": pw(v.get("type"), 12), "state": pw(v.get("state"), 12),
+                                            "disks": [{"id": pw(d.get("id"), 120), "state": pw(d.get("state"), 12)}
+                                                      for d in (v.get("disks") or [])[:64] if isinstance(d, dict)]}
+                                           for v in (pl.get("vdevs") or [])[:32] if isinstance(v, dict)]})
+    # ...and its snapshots per pool (R162 step 5): counts by kind, the newest.
+    if isinstance(c.get("snapshots"), dict):
+        out["snapshots"] = {}
+        for pool, v in list(c["snapshots"].items())[:32]:
+            if not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", str(pool)) or not isinstance(v, dict):
+                continue
+            kinds = v.get("kinds") if isinstance(v.get("kinds"), dict) else {}
+            out["snapshots"][pool] = {"count": int(v["count"]) if isinstance(v.get("count"), int) else 0,
+                                      "used_mb": int(v["used_mb"]) if isinstance(v.get("used_mb"), int) else 0,
+                                      "kinds": {k: int(kinds[k]) if isinstance(kinds.get(k), int) else 0 for k in ("hourly", "daily", "weekly", "manual")},
+                                      "newest": [{"name": str(x["name"]), "at": int(x["at"]) if isinstance(x.get("at"), int) else 0}
+                                                 for x in (v.get("newest") or [])[:10]
+                                                 if isinstance(x, dict) and re.fullmatch(r"bb-(hourly|daily|weekly|manual)-\d{8}-\d{4}", str(x.get("name") or ""))]}
+    # ...and its array (R162 step 2): the disks by slot with their room,
+    # the merged tree, and SnapRAID's last sync, scrub and check.
+    if isinstance(c.get("array"), dict):
+        ar = c["array"]
+        aw = lambda v, n: re.sub(r"[^\w .,:;/()'@%+-]", "", str(v or ""))[:n]  # noqa: E731
+        mb = lambda v: int(v) if isinstance(v, int) and not isinstance(v, bool) else 0  # noqa: E731
+        rows = lambda key, most: [{"slot": mb(x.get("slot")), "id": aw(x.get("id"), 120), "fs": aw(x.get("fs"), 8),  # noqa: E731
+                                   "size_mb": mb(x.get("size_mb")), "used_mb": mb(x.get("used_mb")), "mounted": x.get("mounted") is True}
+                                  for x in (ar.get(key) or [])[:most] if isinstance(x, dict) and 1 <= mb(x.get("slot")) <= 99]
+        out["array"] = {} if not ar.get("data") else {
+            "policy": aw(ar.get("policy"), 8), "mount": aw(ar.get("mount"), 40), "mounted": ar.get("mounted") is True,
+            "data": rows("data", 24), "parity": rows("parity", 2),
+            **{k: mb(ar.get(k)) for k in ("last_sync", "last_scrub", "last_check")},
+            "status": aw(ar.get("status"), 400), "running": aw(ar.get("running"), 16)}
+    # The machine's time zone (R161 step 3), a name under zoneinfo.
+    if isinstance(c.get("timezone"), str):
+        out["timezone"] = re.sub(r"[^A-Za-z0-9_+./-]", "", c["timezone"])[:64]
+    # ...and its backups' last runs (R162 step 5), each to its shape.
+    if isinstance(c.get("store_backups"), list):
+        mb = lambda v: int(v) if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0  # noqa: E731
+        out["store_backups"] = [{"id": re.sub(r"[^a-z0-9_]", "", str(b.get("id") or ""))[:16], "name": str(b["name"]), "last_at": mb(b.get("last_at")),
+                                 "ok": b.get("ok") is True, "error": re.sub(r"[^\w .,:;/()'@%+-]", "", str(b.get("error") or ""))[:200],
+                                 "size_mb": mb(b.get("size_mb")), "runs": mb(b.get("runs")), "took_s": mb(b.get("took_s"))}
+                                for b in c["store_backups"][:32] if isinstance(b, dict) and re.fullmatch(r"[a-z][a-z0-9-]{0,30}", str(b.get("name") or ""))]
+    # ...and its other disks and shares (R162 step 4), each to its shape.
+    if isinstance(c.get("ext_mounts"), list):
+        out["ext_mounts"] = [{"id": re.sub(r"[^a-z0-9_]", "", str(m.get("id") or ""))[:16], "name": str(m["name"]), "kind": str(m.get("kind") or "")[:4],
+                              "mounted": m.get("mounted") is True, "present": m.get("present") is True,
+                              "size_mb": int(m["size_mb"]) if isinstance(m.get("size_mb"), int) else 0, "used_mb": int(m["used_mb"]) if isinstance(m.get("used_mb"), int) else 0,
+                              "error": re.sub(r"[^\w .,:;/()'@%+-]", "", str(m.get("error") or ""))[:200]}
+                             for m in c["ext_mounts"][:32] if isinstance(m, dict) and re.fullmatch(r"[a-z][a-z0-9-]{0,30}", str(m.get("name") or ""))]
+    # ...and its UPS (R164 step 3) and its own packages' updates, each to its shape.
+    if isinstance(c.get("ups"), dict) and c["ups"]:
+        up = c["ups"]
+        num = lambda k: int(up[k]) if isinstance(up.get(k), int) and not isinstance(up.get(k), bool) and 0 <= up[k] <= 10 ** 7 else None  # noqa: E731
+        out["ups"] = {"model": re.sub(r"[^\w .,()/+-]", "", str(up.get("model") or ""))[:64], "status": re.sub(r"[^A-Z ]", "", str(up.get("status") or ""))[:32],
+                      "words": re.sub(r"[^a-z ,]", "", str(up.get("words") or ""))[:80], "answers": up.get("answers") is True,
+                      "charge": num("charge"), "runtime_s": num("runtime_s"), "load": num("load")}
+    if isinstance(c.get("host_updates"), dict) and c["host_updates"]:
+        hu = c["host_updates"]
+        out["host_updates"] = {k: (int(hu[k]) if isinstance(hu.get(k), int) and not isinstance(hu.get(k), bool) and hu[k] >= 0 else 0)
+                               for k in ("pending", "security", "checked")} | {"reboot": hu.get("reboot") is True}
+    # ...and its disks' spin-down in minutes (R164 step 3), 0 for never.
+    if isinstance(c.get("spindown"), int) and not isinstance(c.get("spindown"), bool) and c["spindown"] in SPINDOWN_MINUTES:
+        out["spindown"] = c["spindown"]
+    # BuilderBot OS on the machine (R160 step 4): the image's version and
+    # snapshot, the slot this boot came from and the one GRUB boots next.
+    if isinstance(c.get("os_image"), dict) and c["os_image"].get("version"):
+        o = c["os_image"]
+        out["os_image"] = {"version": re.sub(r"[^A-Za-z0-9.+-]", "", str(o.get("version") or ""))[:40],
+                     "snapshot": re.sub(r"[^0-9TZ]", "", str(o.get("snapshot") or ""))[:20],
+                     "built": re.sub(r"[^0-9TZ:-]", "", str(o.get("built") or ""))[:24],
+                     "slot": o.get("slot") if o.get("slot") in ("a", "b") else "",
+                     "next": o.get("next") if o.get("next") in ("a", "b") else "",
+                     # On trial, and a fallback said (R161 step 2).
+                     "trial": o.get("trial") is True,
+                     "fell_back": re.sub(r"[^\w .,:;()'-]", "", str(o.get("fell_back") or ""))[:200]}
+    # A stick boot (R161 step 10): its system pool, whether docker and the
+    # VMs may run yet, what still lives on the stick, what it has written.
+    if isinstance(c.get("os_stick"), dict) and c["os_stick"].get("stick") is True:
+        s = c["os_stick"]
+        kb = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None  # noqa: E731
+        out["os_stick"] = {"stick": True, "pool": str(s.get("pool") or "")[:200] if str(s.get("pool") or "").startswith("/") else "",
+                           "ready": s.get("ready") is True,
+                           "on_stick": [x for x in (s.get("on_stick") or []) if x in ("docker", "containerd", "libvirt", "toolchains", "projects")],
+                           "written_kb": kb(s.get("written_kb")), "boot_written_kb": kb(s.get("boot_written_kb"))}
+    # The domains its libvirt has that BuilderBot did not make (R165 step 1):
+    # a name, a state and a size, read-only on the VMs page.
+    if isinstance(c.get("vms_other"), list):
+        out["vms_other"] = [{"name": str(v["name"]), "state": re.sub(r"[^a-z ]", "", str(v.get("state") or ""))[:20],
+                             "vcpus": int(v["vcpus"]) if isinstance(v.get("vcpus"), int) else 0,
+                             "mem_mb": int(v["mem_mb"]) if isinstance(v.get("mem_mb"), int) else 0}
+                            for v in c["vms_other"][:64]
+                            if isinstance(v, dict) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", str(v.get("name") or ""))]
     # ...and the VMs it runs (R91), each as libvirt says, with the room their
     # disks have: whitelisted field by field like the rest.
     if isinstance(c.get("vms"), list):
@@ -1420,6 +1600,9 @@ def _census(c):
                                # its host (R100), whitelisted field by field.
                                "autostart": v.get("autostart") is True,
                                "hw": _vm_hw(v.get("hw")),
+                               # The USB devices it was given from the node's
+                               # page (R116), as they were named.
+                               "usb": _vm_usb(v.get("usb")),
                                # What its guest agent says (R110 step 8): hostname,
                                # OS, kernel, addresses, who is signed in, every
                                # filesystem, whitelisted field by field.
@@ -1434,14 +1617,26 @@ def _census(c):
         hex_ = lambda x: str(x or "")[:8] if re.fullmatch(r"0x[0-9a-f]{1,6}", str(x or "")) else ""  # noqa: E731
         out["vm_host"] = {
             "cpus": [[int(c) for c in pr[:4] if isinstance(c, int)] for pr in (vh.get("cpus") or [])[:256] if isinstance(pr, list)],
+            # ...each USB device with what names it again and what the host
+            # does with it (R116): its serial, its port, its speed, the
+            # driver holding it, the controller it hangs off, and the use.
             "usb": [{"vendor": hex_(u.get("vendor")), "product": hex_(u.get("product")),
-                     "name": re.sub(r"[^\w .,:()+/-]", "", str(u.get("name") or ""))[:80]}
+                     "name": re.sub(r"[^\w .,:()+/-]", "", str(u.get("name") or ""))[:80],
+                     "serial": re.sub(r"[^\w.:+/-]", "", str(u.get("serial") or ""))[:64],
+                     "port": str(u.get("port") or "") if re.fullmatch(r"\d{1,3}-[\d.]{1,20}", str(u.get("port") or "")) else "",
+                     "bus": int(u.get("bus")) if isinstance(u.get("bus"), int) and 0 <= u["bus"] < 1000 else 0,
+                     "speed": re.sub(r"[^0-9.]", "", str(u.get("speed") or ""))[:8],
+                     "driver": re.sub(r"[^\w,-]", "", str(u.get("driver") or ""))[:60],
+                     "ctl": str(u.get("ctl") or "") if PCI_ADDR_RE.fullmatch(str(u.get("ctl") or "")) else "",
+                     "use": [re.sub(r"[^\w .,:()+/-]", "", str(x))[:120] for x in (u.get("use") or [])[:8] if isinstance(x, str)]}
                     for u in (vh.get("usb") or [])[:64] if isinstance(u, dict)],
             "pci": [{"addr": str(d.get("addr")), "class": hex_(d.get("class")), "vendor": hex_(d.get("vendor")),
                      "device": hex_(d.get("device")), "group": re.sub(r"\D", "", str(d.get("group") or ""))[:6],
-                     "driver": re.sub(r"[^\w-]", "", str(d.get("driver") or ""))[:30]}
+                     "driver": re.sub(r"[^\w-]", "", str(d.get("driver") or ""))[:30],
+                     # What the host itself needs of it (R116 step 4), in words.
+                     "host": re.sub(r"[^\w .,:()+/-]", "", str(d.get("host") or ""))[:120]}
                     for d in (vh.get("pci") or [])[:64]
-                    if isinstance(d, dict) and re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]", str(d.get("addr")))],
+                    if isinstance(d, dict) and PCI_ADDR_RE.fullmatch(str(d.get("addr")))],
             "iommu": vh.get("iommu") is True}
     # ...and the installer ISOs fetched onto it (R99).
     if isinstance(c.get("vm_isos"), list):
@@ -1460,8 +1655,8 @@ def _census(c):
         if c.get(k):
             out[k] = str(c[k])[:200]
     # Where the NVIDIA driver stands (R102): installed for this kernel,
-    # loaded now, and which driver has the card, for the Toolchains tab's
-    # driver row.
+    # loaded now, and which driver has the card, for the driver's
+    # row in the Library and on the Installed page.
     # Kept without a card too when the agent says it was left for one that
     # has gone (nocard), so its row can remove it (B168).
     gd = c.get("gpu_driver")
@@ -1941,28 +2136,11 @@ def node_turn_limit(principal, node_id, limit):
 
 
 def node_session_net(principal, node_id, on):
-    """Whether each Claude session on this node reaches only its own
-    project's containers, the controller and the internet (R79). An
-    administrator's, like the rest of the config plane: a session that could
-    turn it off for itself would make it a suggestion. The node hears at once,
-    by a fresh hello, rather than at the next ten-minute one."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node runs sessions"}
-    if own_machine(n) and not on:
-        # The wall (R90): on the controller's own machine a session's own
-        # network is what keeps it off the controller's loopback ports, and
-        # bb-session starts none without it.
-        return {"error": "this is the controller's own machine: its sessions run only in a network of their own, "
-                         "which is what keeps them off the controller's own ports"}
-    conf = dict(n.get("config") or {})
-    conf["session_net"] = bool(on)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-session-net", {"on": bool(on)})
-    ask_hello(node_id)
-    return {"ok": True, "on": bool(on)}
+    """The switch that kept each session to its own project's network went
+    in 0.9.0 (R146, the operator, 26 Oct): every session is, on every node
+    that runs them."""
+    del principal, node_id, on
+    return {"error": "every session is kept to its own project's network now: the switch went in 0.9.0"}
 
 
 def node_vm_of(node_id, host_id):
@@ -2011,79 +2189,58 @@ def node_root_asks(principal, node_id, on):
     return {"ok": True, "on": bool(on)}
 
 
-# Whether dev features are offered (settings' offer_unvetted), set by server.py:
-# accounts as their own users are one until the dev pair has walked them.
-unvetted_ok = lambda: False  # noqa: E731
-
-
 def node_account_users(principal, node_id, on):
-    """Whether each account runs as a Unix user of its own on this node
-    (R125): its home, its tokens, its tmux and its sessions that user's, so
-    a shell as the shared session account reaches none of them. The agent
-    moves each home over once nothing of that account runs the old way, and
-    back the same way when this is turned off. An administrator's."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node runs sessions"}
-    if on and not unvetted_ok():
-        return {"error": "accounts as their own users are a dev feature until walked on the dev pair: "
-                         "Offer dev features in Settings offers them"}
-    conf = dict(n.get("config") or {})
-    if on:
-        conf["account_users"] = True
-    else:
-        conf.pop("account_users", None)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-account-users", {"on": bool(on)})
-    return {"ok": True, "on": bool(on)}
+    """The switch that ran each account as a Unix user of its own went in
+    0.9.0 (R125 step 11, the operator, 26 Oct): every account is, on every
+    node that runs sessions."""
+    del principal, node_id, on
+    return {"error": "every account runs as a user of its own on every node now: the switch went in 0.9.0"}
 
 
 def account_users_on(nid):
-    n = node(nid)
-    return bool(n and (n.get("config") or {}).get("account_users")) and not host_only(nid)
+    """Each account a Unix user of its own on this node (R125): on wherever
+    sessions run, which is every node but a hosting-only one. The config's
+    switch, a dev feature in 0.8.x, is gone (R125 step 11) and a key an
+    older build left is read as on."""
+    return not host_only(nid)
 
 
 def node_token_seal(principal, node_id, on):
-    """Whether the coding agents' sign-ins are kept sealed on this node
-    (R126): the agent seals each with the account's public key and opens it
-    only for a terminal a person opened, so a copy of the node's disk opens
-    nothing. Needs accounts as their own users first (R125). An
-    administrator's; a dev feature until walked."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node runs sessions"}
-    if on and not unvetted_ok():
-        return {"error": "sealed sign-ins are a dev feature until walked on the dev pair: "
-                         "Offer dev features in Settings offers them"}
-    if on and not account_users_on(node_id):
-        return {"error": "sealed sign-ins need each account to be a user of its own there first: "
-                         "turn that on, then this"}
-    if on and not (can_seal and can_seal()):
-        return {"error": "sealed sign-ins need an install key, and this controller has none: "
-                         "one is made at its next start (Controller, Keys), then this"}
-    conf = dict(n.get("config") or {})
-    if on:
-        conf["token_seal"] = True
-    else:
-        conf.pop("token_seal", None)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-token-seal", {"on": bool(on)})
-    return {"ok": True, "on": bool(on)}
+    """The switch that kept the coding agents' sign-ins sealed went in 0.9.0
+    (R126 step 6): they are, on every node that runs sessions."""
+    del principal, node_id, on
+    return {"error": "the coding agents' sign-ins are sealed on every node now: the switch went in 0.9.0"}
 
 
 def token_seal_on(nid):
-    n = node(nid)
-    return bool(n and (n.get("config") or {}).get("token_seal")) and account_users_on(nid)
+    """The coding agents' sign-ins sealed on this node (R126): on wherever
+    sessions run, as long as this controller has an install key to make
+    each account's sealing key from (a fresh install makes one at its first
+    start). The config's switch, a dev feature in 0.8.x, is gone (R126
+    step 6) and a key an older build left is read as on."""
+    return account_users_on(nid) and bool(can_seal and can_seal())
 
 
 # Each account's public key for sealing on a node (R126): the server's,
 # made from the install key (tokenkeys.py). nid -> {uid: hex}, or {} where
 # the controller has no install key and so cannot ever open a seal.
 token_pubs = None
+# The accounts' SMB passwords for the controller's own machine (R164 step
+# 1): users.smb_users, and the resolver of a share's names (users.smb_resolve).
+smb_users = None
+pack_config = None         # nid -> [{pack, store, values, env}] (R172, packconfig.for_node)
+pack_people = None         # nid -> [{uid, pack, env}] (R172 step 5, packconfig.for_people)
+smb_resolve = None
+# The reporting's intake (history.add), on the controller's own machine's samples (R164 step 4).
+history_add = None
+# The other disks and shares the own machine mounts (extmounts.wanted, R162 step 4).
+ext_mounts = None
+# ...and the backups it copies (storebackups.wanted, R162 step 5), with its scheduled names for the bell.
+store_backups = None
+backup_summary = None
+# ...and the passphrases of its encrypted pools (poolkeys.wanted, R162 step 3), given what is unlocked.
+pool_keys = None
+pool_keys_set = None
 # ...and how many of a node's seals are under a key before today's.
 token_stale = None
 # ...and whether there is an install key to make any of it from.
@@ -2101,30 +2258,19 @@ def root_refused(n):
 
 def container_net_on(node_id):
     """Whether each project's containers on this node are kept to their own
-    network (R178): on unless the config switches it off, which is deprecated
-    in 0.8.0 and gone in 0.9.0 (the operator, 26 Oct: which projects reach
-    each other is their Reads, not a node's choice)."""
-    conf = (node(node_id) or {}).get("config") or {}
-    return bool(conf.get("container_net", True))
+    network (R178): on, on every node (the operator, 26 Oct: which projects
+    reach each other is their Reads, not a node's choice). The config's
+    switch, deprecated in 0.8.0, is gone (R146) and a key an older build
+    left is read as on."""
+    del node_id
+    return True
 
 
 def node_container_net(principal, node_id, on):
-    """The switch (R178), an administrator's like the rest of the config
-    plane; the next hello carries it to the agent."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node keeps its containers apart"}
-    conf = dict(n.get("config") or {})
-    conf["container_net"] = bool(on)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-container-net", {"on": bool(on)})
-    _bump()
-    # The next hello carries it: asked for now rather than at the agent's
-    # next ten-minute turn.
-    ask_hello(node_id)
-    return {"ok": True, "on": bool(on)}
+    """The switch went in 0.9.0 (R146): every project's containers are kept
+    to their own network on every node."""
+    del principal, node_id, on
+    return {"error": "every project's containers are kept to their own network now: the switch went in 0.9.0"}
 
 
 def ports_local_on(node_id):
@@ -2161,11 +2307,11 @@ def node_ports_local(principal, node_id, on):
 
 def session_net_on(node_id):
     """Whether each session on a node is kept to its own project's network
-    (R79): on unless the config switches it off, deprecated in 0.8.0 and gone
-    in 0.9.0 (the operator, 26 Oct); a hosting-only node runs no sessions."""
+    (R79): on wherever sessions run; a hosting-only node runs none. The
+    config's switch, deprecated in 0.8.0, is gone (R146) and a key an older
+    build left is read as on."""
     n = node(node_id) or {}
-    conf = n.get("config") or {}
-    return bool(conf.get("session_net", not host_only(n)))
+    return not host_only(n)
 
 
 def session_net_nudge():
@@ -2960,8 +3106,11 @@ def lockdown_over(n):
 
 # The features a node's Features section installs and removes (R91), as
 # bb-sandbox's FEATURE_IDS and the agent's census name them.
-FEATURES = ("vmhost", "firewall")
-FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall"}
+FEATURES = ("vmhost", "firewall", "iommu", "storage", "shares", "ups")
+FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall", "iommu": "the IOMMU",
+                 "storage": "storage", "shares": "shares", "ups": "the UPS"}
+# The installed edition's own (R56 step 2): on the controller's own machine alone.
+OWN_FEATURES = ("storage", "shares", "ups")
 
 
 def node_feature(principal, node_id, fid, op):
@@ -2976,12 +3125,13 @@ def node_feature(principal, node_id, fid, op):
     if fid not in FEATURES or op not in ("install", "remove"):
         return {"error": f"no such feature verb: {op} {fid}"}
     name = FEATURE_NAMES[fid]
-    if op == "install" and fid == "vmhost" and own_machine(n):
-        # The controller's own machine (R90 step 14): VM host puts the job
-        # account in libvirt's group, which is root here, and root holds the
-        # controller's state, as docker-host would (node_update).
-        return {"error": f"{n['name']} is the controller's own machine, so it is no VM host: libvirt's group is root here, "
-                         "and the wall keeps the controller's state from the node's accounts"}
+    # The installed edition's parts (R56 step 2) are the controller's own
+    # machine's, before any other gate: another node is told whose they are.
+    if fid in OWN_FEATURES and not own_machine(n):
+        return {"error": f"{name} is the controller's own machine's (the installed edition's part): {n['name']} is another node"}
+    # The controller's own machine takes VM host too (R165 step 1): there
+    # the VMs run through the root agent and the jobs account stays out of
+    # libvirt's group, which is root on that machine (R90 step 14).
     rep = n.get("reported") or {}
     if n.get("kind") != "agent" or not rep.get("administers"):
         return {"error": f"{n['name']} was not provisioned as a managed node with its agent as root, so {name} cannot be "
@@ -3000,6 +3150,8 @@ def node_feature(principal, node_id, fid, op):
     if op == "install" and fid == "vmhost" and not (fe.get("vmhost") or {}).get("kvm"):
         return {"error": f"{n['name']} has no /dev/kvm, so VMs would run in software, tens of times slower: on a VM, "
                          "its host passes virtualization through (CPU mode host-passthrough, nested KVM on)"}
+    if fid == "iommu" and not str(rep.get("arch") or "").startswith(("x86_64", "amd64")):
+        return {"error": f"the IOMMU switch is for an Intel or AMD machine; {n['name']} is {rep.get('arch') or 'another architecture'}"}
     if op == "install" and fid == "firewall" and not (n.get("config") or {}).get("host_only"):
         return {"error": "the hosting firewall is for a hosting-only node: it would shut the ports the controller "
                          "reaches sessions on"}
@@ -3013,6 +3165,656 @@ def node_feature(principal, node_id, fid, op):
                 {"apply": "feature", "config": {"id": fid, "op": op}, "timeout": 1800})
     if r.get("ok"):
         audit(principal, "node-feature", node_id, {"job": r["job"], "id": fid, "op": op})
+    return r
+
+
+def node_storage_snapshot(principal, node_id, req):
+    """A snapshot of a pool on the controller's own machine (R162 step 5):
+    taken now (and the oldest of its kind pruned past what is kept), a
+    dataset rolled back to one (its name typed again), or one destroyed;
+    a system job on its node. The schedules are the Schedules page's, made
+    from the Storage page."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "snapshots are taken on the controller's own machine (the installed edition's Storage page)"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot take a snapshot"}
+    if not ((rep.get("features") or {}).get("storage") or {}).get("zfs"):
+        return {"error": "no zfs on the machine yet: install Storage on its Features section first"}
+    action = str(req.get("snapshot") or "")
+    pool = str(req.get("pool") or "").strip()
+    if action not in ("take", "rollback", "destroy"):
+        return {"error": "a snapshot action is take, rollback or destroy"}
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", pool) or pool not in {p.get("name") for p in rep.get("pools") or [] if isinstance(p, dict)}:
+        return {"error": f"{pool or 'nothing'} is not a pool {n['name']} lists"}
+    cfg = {"snapshot": action, "pool": pool}
+    if action == "take":
+        kind = str(req.get("kind") or "manual")
+        try:
+            keep = int(req.get("keep") if req.get("keep") is not None else 10)
+        except (TypeError, ValueError):
+            keep = 0
+        if kind not in ("hourly", "daily", "weekly", "manual") or not 1 <= keep <= 200:
+            return {"error": "a snapshot has a kind (hourly, daily, weekly, manual) and keeps 1 to 200 of it"}
+        cfg.update(kind=kind, keep=keep)
+    else:
+        name = str(req.get("name") or "")
+        dataset = str(req.get("dataset") or pool)
+        if not re.fullmatch(r"bb-(hourly|daily|weekly|manual)-\d{8}-\d{4}", name) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}(/[A-Za-z0-9_.-]{1,64}){0,8}", dataset) \
+                or dataset.split("/", 1)[0] != pool:
+            return {"error": "a snapshot is named bb-KIND-DATE-TIME on a dataset of the pool"}
+        cfg.update(name=name, dataset=dataset)
+        if action == "rollback":
+            if str(req.get("confirm") or "") != name:
+                return {"error": "rolling back takes the snapshot's name typed again: everything since it is gone"}
+            cfg["confirm"] = name
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-snapshot", "config": cfg, "timeout": 900})
+    if r.get("ok"):
+        audit(principal, "storage-snapshot", node_id, {"job": r["job"], **cfg})
+    return r
+
+
+ARRAY_ACTIONS = ("create", "add", "replace", "sync", "scrub", "check", "destroy")
+ARRAY_POLICIES = ("mfs", "lfs", "epmfs", "ff")
+ARRAY_LONG = 86400
+
+
+def node_storage_array(principal, node_id, req):
+    """The array on the controller's own machine (R162 step 2): made of
+    data disks and one or two parity disks, a disk added or a slot's disk
+    replaced, SnapRAID's sync, scrub and check run now, or the array
+    destroyed (the word typed again; the disks keep their files); a system
+    job on its node, each argument checked here and again there, every
+    disk one the census lists, a parity disk at least as large as the
+    largest data disk. The schedules are the Schedules page's, made from
+    the Storage page."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "the array is the controller's own machine's (the installed edition's Storage page); another node's disks are its own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot make an array"}
+    sto = (rep.get("features") or {}).get("storage") or {}
+    if not (sto.get("mergerfs") and sto.get("snapraid")):
+        return {"error": "no mergerfs or SnapRAID on the machine yet: install Storage on its Features section first"}
+    action = str(req.get("array") or "")
+    if action not in ARRAY_ACTIONS:
+        return {"error": f"an array action is one of {', '.join(ARRAY_ACTIONS)}"}
+    known = {d["name"]: d for d in rep.get("disks") or [] if isinstance(d, dict)}
+    have = rep.get("array") if isinstance(rep.get("array"), dict) else {}
+    cfg = {"array": action}
+
+    def disks_ok(names):
+        for d in names:
+            if d not in known:
+                return f"{d} is not a disk {n['name']} lists"
+            if known[d].get("system"):
+                return f"{d} is the system disk, which never goes into the array"
+        return ""
+    if action == "create":
+        data = [str(x) for x in (req.get("data") or []) if isinstance(x, str)]
+        parity = [str(x) for x in (req.get("parity") or []) if isinstance(x, str)]
+        fs, policy = str(req.get("fs") or "xfs"), str(req.get("policy") or "mfs")
+        if have.get("data"):
+            return {"error": "an array is on the machine already: add to it, or destroy it first"}
+        if fs not in ("xfs", "btrfs") or policy not in ARRAY_POLICIES:
+            return {"error": "a filesystem is xfs or btrfs and a policy one of mfs, lfs, epmfs, ff"}
+        if not 1 <= len(data) <= 24 or not 1 <= len(parity) <= 2 or len(set(data + parity)) != len(data) + len(parity):
+            return {"error": "an array takes 1 to 24 data disks and 1 or 2 parity disks, each once"}
+        why = disks_ok(data + parity)
+        if why:
+            return {"error": why}
+        biggest = max(int(known[d].get("size_mb") or 0) for d in data)
+        small = [p for p in parity if int(known[p].get("size_mb") or 0) < biggest]
+        if small:
+            return {"error": f"a parity disk is at least as large as the largest data disk; {', '.join(small)} is smaller"}
+        cfg.update(data=data, parity=parity, fs=fs, policy=policy, wipe=req.get("wipe") is True)
+    elif action in ("add", "replace"):
+        new = str(req.get("new" if action == "replace" else "disk") or "")
+        if not have.get("data"):
+            return {"error": "no array on the machine yet"}
+        why = disks_ok([new]) if new else "which disk?"
+        if why:
+            return {"error": why}
+        if action == "replace":
+            which = str(req.get("which") or "")
+            slots = {f"d{x['slot']}" for x in have.get("data") or []} | {f"p{x['slot']}" for x in have.get("parity") or []}
+            if which not in slots:
+                return {"error": f"replace takes the slot to replace, one of {', '.join(sorted(slots))}"}
+            cfg.update(which=which, new=new, wipe=req.get("wipe") is True)
+        else:
+            cfg.update(disk=new, wipe=req.get("wipe") is True)
+    elif action == "destroy":
+        if not have.get("data"):
+            return {"error": "no array on the machine yet"}
+        if str(req.get("confirm") or "") != "array":
+            return {"error": "destroying the array takes the word array typed again"}
+        cfg["confirm"] = "array"
+    elif not have.get("data"):
+        return {"error": "no array on the machine yet"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "storage-array", "config": cfg, "timeout": 900 if action in ("check", "destroy") else ARRAY_LONG})
+    if r.get("ok"):
+        audit(principal, "storage-array", node_id, {"job": r["job"], **cfg})
+    return r
+
+
+pool_keys_offer = pool_keys_forget = None
+
+
+def node_storage_key(principal, node_id, req):
+    """An encrypted pool's key (R162 step 3): unlock (the passphrase typed
+    after a boot, handed to the agent once), keep (the passphrase kept
+    sealed here from now on) or forget (asked after every boot from now
+    on); the own machine's, an administrator's."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "encrypted pools are the controller's own machine's"}
+    act, pool = str(req.get("key") or ""), str(req.get("pool") or "")
+    if act not in ("unlock", "keep", "forget") or not pool_keys_offer or not pool_keys_set or not pool_keys_forget:
+        return {"error": "a key action is unlock, keep or forget"}
+    if not any(p.get("name") == pool and p.get("encrypted") for p in (n.get("reported") or {}).get("pools") or []):
+        return {"error": f"{pool or 'nothing'} is not an encrypted pool {n['name']} lists"}
+    if act == "forget":
+        r = pool_keys_forget(pool)
+    elif act == "keep":
+        r = pool_keys_set(pool, req.get("passphrase"), True)
+    else:
+        r = pool_keys_offer(pool, req.get("passphrase"))
+    if r.get("ok"):
+        audit(principal, "storage-key", node_id, {"pool": pool, "key": act})
+        _bump()
+    return r
+
+
+def node_storage_share(principal, node_id, req):
+    """A share on the controller's own machine (R162 step 1): set (SMB,
+    NFS or both, on a folder under a pool's mount) or removed, a system job
+    on its node whose root agent writes BuilderBot's own two files whole and
+    tells Samba and NFS to read again. Refused anywhere else, and without
+    the shares feature's daemons."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "shares are served from the controller's own machine (the installed edition's Storage page); another node's folders are its own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot serve a share"}
+    sh = (rep.get("features") or {}).get("shares") or {}
+    action = str(req.get("share") or "")
+    name = str(req.get("name") or "").strip()
+    if action not in ("set", "remove"):
+        return {"error": "a share action is set or remove"}
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}", name):
+        return {"error": "a share's name is letters, digits, dots, hyphens and underscores, 63 at most"}
+    cfg = {"share": action, "name": name}
+    if action == "set":
+        path = str(req.get("path") or "").strip()
+        smb = req.get("smb") if isinstance(req.get("smb"), dict) else {}
+        nfs = req.get("nfs") if isinstance(req.get("nfs"), dict) else {}
+        if not (path.startswith(("/mnt/", "/srv/")) and ".." not in path.split("/") and len(path) <= 200):
+            return {"error": "a share's path is a folder under /mnt or /srv"}
+        if not smb.get("on") and not nfs.get("on"):
+            return {"error": "a share is served over SMB, NFS or both"}
+        if smb.get("on") and not sh.get("smb"):
+            return {"error": "no Samba on the machine yet: install Shares on its Features section first"}
+        if nfs.get("on") and not sh.get("nfs"):
+            return {"error": "no NFS server on the machine yet: install Shares on its Features section first"}
+        users = [str(u).strip() for u in (smb.get("users") or []) if isinstance(u, str) and str(u).strip()]
+        # An account's name or role:NAME to the Unix users Samba is told (R164 step 1).
+        if smb_resolve and users:
+            users, why = smb_resolve(users)
+            if why:
+                return {"error": why}
+        clients = [str(c).strip() for c in (nfs.get("clients") or []) if isinstance(c, str) and str(c).strip()]
+        if smb.get("on") and not smb.get("guest") and not users:
+            return {"error": "an SMB share takes the users who may reach it, or everybody as a guest"}
+        if nfs.get("on") and not clients:
+            return {"error": "an NFS share takes the clients it is exported to (an address, a network, a name, or *)"}
+        for u in users:
+            if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", u):
+                return {"error": f"{u!r} is not a user name"}
+        for c in clients:
+            if not re.fullmatch(r"[A-Za-z0-9*][A-Za-z0-9*./:_-]{0,80}", c):
+                return {"error": f"{c!r} is not a client (an address, a network like 192.168.1.0/24, a name, or *)"}
+        cfg.update(path=path, smb={"on": bool(smb.get("on")), "guest": bool(smb.get("guest")), "ro": bool(smb.get("ro")), "tm": smb.get("tm") is True, "users": users[:64]},
+                   nfs={"on": bool(nfs.get("on")), "ro": bool(nfs.get("ro")), "clients": clients[:64]})
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-share", "config": cfg, "timeout": 120})
+    if r.get("ok"):
+        audit(principal, "storage-share", node_id, {"job": r["job"], **cfg})
+    return r
+
+
+def smb_shares_for(uid):
+    """The SMB shares on the controller's own machine a person reaches (R164
+    step 1), for Profile: {host, address, rows: [{name, ro, guest, tm}]} with
+    the address to map each by, or None where no own machine serves any."""
+    me = "bbu-" + uid[2:] if re.fullmatch(r"u_[0-9a-f]{8}", str(uid or "")) else ""
+    for n in node_list():
+        if not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        if not ((rep.get("features") or {}).get("shares") or {}).get("smb"):
+            return None
+        rows = [{"name": sh["name"], "ro": bool(sh["smb"].get("ro")), "guest": bool(sh["smb"].get("guest")), "tm": bool(sh["smb"].get("tm"))}
+                for sh in rep.get("shares") or [] if isinstance(sh, dict) and (sh.get("smb") or {}).get("on")
+                and (sh["smb"].get("guest") or (me and me in (sh["smb"].get("users") or [])))]
+        addrs = ((rep.get("network") or {}).get("addresses") or [])
+        return {"host": str(rep.get("hostname") or n.get("name") or ""), "address": str(addrs[0]).split("/")[0] if addrs else "",
+                "rows": rows}
+    return None
+
+
+POOL_ACTIONS = ("create", "add", "scrub", "replace", "export", "destroy")
+POOL_LAYOUTS = {"single": 1, "mirror": 2, "raidz1": 3, "raidz2": 4}
+
+
+def node_storage_pool(principal, node_id, req):
+    """A ZFS pool on the controller's own machine (R162 step 1): a system
+    job on its node, whose root agent runs zpool from its table with each
+    argument checked here first and again there; the disks named must be
+    ones the machine's census lists and none the system's. Refused anywhere
+    else, and without the storage feature's zpool."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "pools are made on the controller's own machine (the installed edition's Storage page); another node's disks are its own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot make a pool"}
+    if not ((rep.get("features") or {}).get("storage") or {}).get("zfs"):
+        return {"error": "no zpool on the machine yet: install Storage on its Features section first"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    action = str(req.get("pool") or "")
+    name = str(req.get("name") or "").strip()
+    if action not in POOL_ACTIONS:
+        return {"error": f"a pool action is one of {', '.join(POOL_ACTIONS)}"}
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", name):
+        return {"error": "a pool's name is a letter, then letters, digits, hyphens and underscores, 31 at most"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    known = {d["name"]: d for d in rep.get("disks") or [] if isinstance(d, dict)}
+    cfg = {"pool": action, "name": name}
+    if action in ("create", "add"):
+        layout = str(req.get("layout") or "single")
+        disks = [str(x) for x in (req.get("disks") or []) if isinstance(x, str)]
+        if layout not in POOL_LAYOUTS:
+            return {"error": f"a layout is one of {', '.join(POOL_LAYOUTS)}"}
+        if len(disks) < POOL_LAYOUTS[layout] or len(set(disks)) != len(disks):
+            return {"error": f"a {layout} takes {POOL_LAYOUTS[layout]} disk(s) at least, each once"}
+        for d in disks:
+            if d not in known:
+                return {"error": f"{d} is not a disk {n['name']} lists"}
+            if known[d].get("system"):
+                return {"error": f"{d} is the system disk, which never goes into a pool"}
+        cfg.update(layout=layout, disks=disks, wipe=req.get("wipe") is True)
+        # Native encryption (R162 step 3): the passphrase goes to the key
+        # record (kept sealed here, or asked after every boot), never into
+        # the job; the hello hands it to the agent before the job runs.
+        if action == "create" and req.get("encrypt") is True:
+            if not pool_keys_set:
+                return {"error": "encrypted pools are not set up on this controller"}
+            r = pool_keys_set(name, req.get("passphrase"), req.get("keep_key") is True)
+            if r.get("error"):
+                return r
+            cfg["encrypt"] = True
+    elif action == "replace":
+        old, new = str(req.get("old") or "")[:120], str(req.get("new") or "")
+        if not old or new not in known or known[new].get("system"):
+            return {"error": "replace takes the member to replace and a disk the machine lists that is not the system's"}
+        cfg.update(old=old, new=new, wipe=req.get("wipe") is True)
+    elif action == "destroy":
+        if str(req.get("confirm") or "") != name:
+            return {"error": "destroying a pool takes its name typed again"}
+        cfg["confirm"] = name
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-pool", "config": cfg, "timeout": 900})
+    if r.get("ok"):
+        audit(principal, "storage-pool", node_id, {"job": r["job"], **cfg})
+    return r
+
+
+SPINDOWN_MINUTES = (0, 5, 10, 15, 20, 30, 60, 120)
+DISK_HOT_C = 55
+
+
+def storage_attention():
+    """The bell's rows (kind disk) for the controller's own machine's
+    storage (R164 step 3), from the census on every poll so each leaves
+    the moment it stops being true: a disk SMART calls failing (bad), a
+    disk at DISK_HOT_C or more, a pool not online (bad), an array slot not
+    mounted (bad). Keyed on what is wrong, so a dismissal holds until it
+    changes."""
+    out = []
+    for n in node_list():
+        if n.get("kind") != "agent" or not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        for d in rep.get("disks") or []:
+            sm = d.get("smart") or {}
+            who = f"{d.get('model') or 'a disk'} ({d.get('name')}, serial {d.get('serial') or 'none'})"
+            if sm.get("health") == "failing":
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "failing", "bad": True, "key": f"disk:failing:{n['id']}:{d.get('serial') or d.get('name')}",
+                            "said": f"SMART says {who} is failing: replace it before it goes"})
+            elif isinstance(sm.get("temp_c"), int) and sm["temp_c"] >= DISK_HOT_C:
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "hot", "bad": False, "key": f"disk:hot:{n['id']}:{d.get('serial') or d.get('name')}:{sm['temp_c'] // 5 * 5}",
+                            "said": f"{who} is at {sm['temp_c']} °C; {DISK_HOT_C} °C and over shortens its life"})
+        for pl in rep.get("pools") or []:
+            if pl.get("locked"):
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "locked", "bad": False, "key": f"pool:locked:{n['id']}:{pl['name']}",
+                            "said": f"the pool {pl['name']} is locked: its passphrase is asked for on the Storage page, and its shares wait until then"})
+            if pl.get("health") and pl["health"] not in ("online", ""):
+                out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "pool", "bad": True, "key": f"pool:{n['id']}:{pl['name']}:{pl['health']}",
+                            "said": f"the pool {pl['name']} is {pl['health']}{': ' + pl['errors'] if pl.get('errors') and 'no known data errors' not in pl['errors'].lower() else ''}"})
+        ar = rep.get("array") if isinstance(rep.get("array"), dict) else {}
+        for kind, key in (("d", "data"), ("p", "parity")):
+            for x in ar.get(key) or []:
+                if not x.get("mounted"):
+                    out.append({"kind": "disk", "id": n["id"], "node": n["name"], "what": "array", "bad": True, "key": f"array:{n['id']}:{kind}{x.get('slot')}",
+                                "said": f"the array's {kind}{x.get('slot')} ({x.get('id') or 'unknown disk'}) is not mounted: the disk is gone or failed; Replace on the Storage page rebuilds it"})
+    return out
+
+
+def power_attention():
+    """The bell's rows (kind power) for the controller's own machine (R164
+    step 3): on battery (bad, with the minutes left), a low battery (bad),
+    a battery to replace, a UPS that does not answer while its feature is
+    installed; and its own packages (kind host): security updates waiting,
+    and a restart the last update asked for. Keyed on the state, so a
+    dismissal holds until it changes."""
+    out = []
+    for n in node_list():
+        if n.get("kind") != "agent" or not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        up = rep.get("ups") or {}
+        fe = (rep.get("features") or {}).get("ups") or {}
+        if fe.get("installed") and up and not up.get("answers"):
+            out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "silent", "bad": False, "key": f"ups:silent:{n['id']}",
+                        "said": "the UPS does not answer: its USB cable, or NUT's driver (ups.conf names usbhid-ups)"})
+        elif up.get("answers"):
+            st = set((up.get("status") or "").split())
+            left = f", {up['runtime_s'] // 60} min left" if isinstance(up.get("runtime_s"), int) else ""
+            charge = f" at {up['charge']}%" if isinstance(up.get("charge"), int) else ""
+            if "LB" in st or "FSD" in st:
+                out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "low", "bad": True, "key": f"ups:low:{n['id']}",
+                            "said": f"the UPS battery is low{charge}{left}: the machine shuts down cleanly when NUT says so"})
+            elif "OB" in st:
+                out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "battery", "bad": True, "key": f"ups:battery:{n['id']}",
+                            "said": f"the machine runs on the UPS battery{charge}{left}"})
+            elif "RB" in st:
+                out.append({"kind": "power", "id": n["id"], "node": n["name"], "what": "replace", "bad": False, "key": f"ups:replace:{n['id']}",
+                            "said": "the UPS says its battery needs replacing"})
+        hu = rep.get("host_updates") or {}
+        if hu.get("security"):
+            out.append({"kind": "host", "id": n["id"], "node": n["name"], "what": "security", "bad": False, "key": f"host:security:{n['id']}:{hu['security']}",
+                        "said": f"{hu['security']} security update{'s' if hu['security'] != 1 else ''} to the system's own packages wait{'s' if hu['security'] == 1 else ''} ({hu.get('pending', 0)} in all)"})
+        if hu.get("reboot"):
+            out.append({"kind": "host", "id": n["id"], "node": n["name"], "what": "reboot", "bad": False, "key": f"host:reboot:{n['id']}",
+                        "said": "the last update of the system's packages needs a restart to run the new kernel or libraries"})
+    return out
+
+
+def backup_attention():
+    """The bell's rows (kind backup) for the controller's own machine's
+    backups (R162 step 5): one whose last run failed (bad), one scheduled
+    that has not had a good run in two days (or ever); keyed on the state."""
+    out = []
+    if not backup_summary:
+        return out
+    for n in node_list():
+        if n.get("kind") != "agent" or not own_machine(n):
+            continue
+        rep = n.get("reported") or {}
+        sm = backup_summary(rep.get("store_backups") or [])
+        by = {r.get("name"): r for r in rep.get("store_backups") or []}
+        for name in sm.get("failed") or []:
+            out.append({"kind": "backup", "id": n["id"], "node": n["name"], "what": "failed", "bad": True, "key": f"backup:failed:{n['id']}:{name}:{(by.get(name) or {}).get('last_at', 0)}",
+                        "said": f"the backup {name} failed: {(by.get(name) or {}).get('error') or 'see its job'}"})
+        for name in sm.get("stale") or []:
+            last = (by.get(name) or {}).get("last_at", 0)
+            out.append({"kind": "backup", "id": n["id"], "node": n["name"], "what": "stale", "bad": False, "key": f"backup:stale:{n['id']}:{name}:{last // 86400}",
+                        "said": f"the backup {name} has not run in two days" if last else f"the backup {name} is scheduled but has never run"})
+    return out
+
+
+def node_storage_backup(principal, node_id, name):
+    """Run one of the own machine's backups now (R162 step 5): a system job
+    naming the record's row, which the agent copies with rsync; refused
+    anywhere else and while a system job is in flight."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": "backups are copied by the controller's own machine (the installed edition's Storage page)"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot copy a backup"}
+    name = str(name or "").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,30}", name) or not any(b.get("name") == name for b in (store_backups() if store_backups else [])):
+        return {"error": f"{name or 'nothing'} is not a backup on the record"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "storage-backup", "config": {"name": name}, "timeout": 86400})
+    if r.get("ok"):
+        audit(principal, "storage-backup", node_id, {"job": r["job"], "name": name})
+    return r
+
+
+def node_host_update(principal, node_id, reboot=False):
+    """The controller's own machine's own packages updated (R164 step 3):
+    apt on its node by the root agent, a restart after when asked for;
+    refused anywhere else, on BuilderBot OS (whole images), and while a
+    system job is in flight."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": f"{n['name']}'s packages are its own administrator's: This machine updates the controller's own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot update its packages"}
+    if rep.get("os_image"):
+        return {"error": "BuilderBot OS updates as a whole image under Controller settings, never package by package"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    cfg = {"reboot": reboot is True}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "host-update", "config": cfg, "timeout": 7200})
+    if r.get("ok"):
+        audit(principal, "host-update", node_id, {"job": r["job"], **cfg})
+    return r
+
+
+def node_machine(principal, node_id, hostname="", timezone="", spindown=None):
+    """The controller's own machine's name and time zone (R161 step 3, R56
+    step 8): a system job on its node, whose root agent sets them through
+    hostnamectl and timedatectl; refused anywhere else, since another node's
+    name is its own administrator's."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if not own_machine(n):
+        return {"error": f"{n['name']}'s name and time zone are its own to set: This machine sets the controller's own"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot set its name"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    # The shapes before the queue: a name that is not one is told so
+    # without a job in the way.
+    host = str(hostname or "").strip().lower()
+    tz = str(timezone or "").strip()
+    if host and not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", host):
+        return {"error": "a hostname is letters, digits and hyphens, 63 at most"}
+    if tz and not re.fullmatch(r"[A-Za-z0-9_+-]{1,32}(/[A-Za-z0-9_+-]{1,32}){0,2}", tz):
+        return {"error": "a time zone is named as Region/City"}
+    spin = None
+    if spindown is not None and spindown != "":
+        try:
+            spin = int(spindown)
+        except (TypeError, ValueError):
+            spin = -1
+        if spin not in SPINDOWN_MINUTES:
+            return {"error": f"a spin-down is one of {', '.join(str(m) for m in SPINDOWN_MINUTES)} minutes, 0 for never"}
+    if not host and not tz and spin is None:
+        return {"error": "nothing to set"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    cfg = {k: v for k, v in (("hostname", host), ("timezone", tz)) if v}
+    if spin is not None:
+        cfg["spindown"] = spin
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "machine", "config": cfg, "timeout": 120})
+    if r.get("ok"):
+        audit(principal, "machine", node_id, {"job": r["job"], **cfg})
+    return r
+
+
+def node_os_update(principal, node_id, release="", from_dir=""):
+    """Update BuilderBot OS on the controller's own machine (R160 step 4): a
+    system job on its node, whose root agent fetches the release's image
+    files (or takes them from a folder on the machine), checks each against
+    its sha256 and the slot against its build attestation, writes the slot
+    not in use and names it for the next boot; the restart is the person's.
+    Refused anywhere but a machine whose census says it runs the image."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    rep = n.get("reported") or {}
+    if not own_machine(n) or not (rep.get("os_image") or {}).get("version"):
+        return {"error": "updating the image is for a machine that runs BuilderBot OS, on its own node; "
+                         "a bare-metal install on another system updates its controller, a container install pulls its image"}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot write a slot"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    tag = str(release or "").strip()
+    src = str(from_dir or "").strip()
+    if tag and not re.fullmatch(r"v?\d+\.\d+\.\d+", tag):
+        return {"error": "a release is named as its tag, vX.Y.Z"}
+    if src and (not src.startswith("/") or ".." in src.split("/") or len(src) > 300):
+        return {"error": "the folder is a path on the machine, from /"}
+    if not tag and not src:
+        return {"error": "name the release (vX.Y.Z), or a folder on the machine holding its files"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "os-update", "config": ({"release": tag} if tag else {"from": src}), "timeout": 3600})
+    if r.get("ok"):
+        audit(principal, "os-update", node_id, {"job": r["job"], "release": tag, "from": src})
+    return r
+
+
+def node_system_pool(principal, node_id, path=""):
+    """A stick's system pool (R161 step 10): the pool, by its mount point,
+    where docker, containerd, libvirt, the toolchains and the projects write
+    instead of the stick; a system job on the own machine's node, whose root
+    agent moves them there and binds them at every boot. Refused anywhere
+    but a stick boot, and for a mount point no pool or array of its census has."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    rep = n.get("reported") or {}
+    if not own_machine(n) or not (rep.get("os_stick") or {}).get("stick"):
+        return {"error": "a system pool is a stick's: this machine does not run BuilderBot OS from a stick"}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot move a pool"}
+    path = str(path or "").strip()
+    mounts = {p.get("mount") for p in (rep.get("pools") or []) if isinstance(p, dict) and p.get("mount")}
+    if (rep.get("array") or {}).get("mount"):
+        mounts.add(rep["array"]["mount"])
+    if path not in mounts:
+        return {"error": "name a pool or the array this machine has mounted (the Storage page makes one)"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "system-pool", "config": {"path": path}, "timeout": 6 * 3600})
+    if r.get("ok"):
+        audit(principal, "system-pool", node_id, {"job": r["job"], "path": path})
+    return r
+
+
+def node_controller_update(principal, node_id, release=""):
+    """Update a controller installed bare metal (R90 step 5): a system job
+    on its own machine's node, whose root agent runs the installer's
+    --update (the release's bundle fetched and verified, the state gate,
+    the switch, and a rollback by itself when the new build does not
+    answer); the controller's account never does. Refused anywhere else."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if os.environ.get("BB_INSTALL", "") != "bare-metal" or not own_machine(n):
+        return {"error": "updating from here is for a controller installed bare metal, on its own machine's node; "
+                         "the container edition is updated by pulling its image"}
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']}'s agent is not root on a managed machine, so it cannot run the installer"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    tag = str(release or "").strip()
+    if tag and not re.fullmatch(r"v?\d+\.\d+\.\d+", tag):
+        return {"error": "a release is named as its tag, vX.Y.Z"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "controller-update", "config": ({"release": tag} if tag else {}), "timeout": 3600})
+    if r.get("ok"):
+        audit(principal, "controller-update", node_id, {"job": r["job"], "release": tag})
     return r
 
 
@@ -3103,7 +3905,7 @@ def node_door(principal, node_id, on):
 def node_gpu_display(principal, node_id):
     """Set the GPU display up on a node from its row (R20): a system job
     the agent answers with bb-sandbox gpu, which starts a headless X server
-    on the card, on the driver the Toolchains page installed, and says
+    on the card, on the driver the Library installed, and says
     whether a reboot has to follow. The machine's own answer decides: a node with no card gets that
     said, not refused here."""
     n = node(node_id)
@@ -3115,11 +3917,11 @@ def node_gpu_display(principal, node_id):
         return {"error": "only a node provisioned as a BuilderBot sandbox is set up from here: "
                          "on the machine, sudo bb-sandbox gpu"}
     # The display runs on the driver and does not install it (R102): the
-    # Toolchains tab's driver row is the one place it is installed.
+    # driver's card in the Library is the one place it is installed.
     gd = (n.get("reported") or {}).get("gpu_driver")
     if isinstance(gd, dict) and not gd.get("installed"):
         return {"error": f"the NVIDIA driver is not installed on {n['name']}: install it on "
-                         "that node's Toolchains page first; the display runs on it"}
+                         "the Library with that node picked first; the display runs on it"}
     why = node_locked(n)
     if why:
         return {"error": why}
@@ -3210,7 +4012,7 @@ def node_power(principal, node_id, what):
         return {"error": "a system job is already in flight on this node; one at a time"}
     # ...nor under an install: a restart in the middle of apt, or of a
     # toolchain being unpacked, leaves it half on the machine (the operator,
-    # 30 Sep). The Toolchains tab's Abort stops one first.
+    # 30 Sep). The Library's Abort stops one first.
     busy = [j["type"] for j in jobs_for(node_id=node_id, active=True, n=20)
             if j.get("type") in POWER_WAITS]
     if busy:
@@ -3559,6 +4361,12 @@ def token_attention():
     return out
 
 
+# A move prepared, per node (move.for_node), set by the server; {} when none.
+move_for_node = lambda nid: {}  # noqa: E731
+# ...and the node's hello on the controller a move landed on (R175 step 3).
+move_here = lambda nid: None  # noqa: E731
+
+
 def hello(nid, census, addr, version="", digest="", running=None, keep=None, rotates=False):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it: the
@@ -3619,6 +4427,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
     if not was_live:
         _revived(nid)
     ours = agent_file()
+    # A node here after a move landed (R175 step 3): off the not-yet-here list.
+    move_here(nid)
     return {"ok": True, "transports": ["longpoll"],
             "poll": POLL_S, "node": {"id": nid, "name": n["name"],
                                      "state": n["state"],
@@ -3639,10 +4449,31 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             "ports_local": ports_local_on(nid),
             # Each account a Unix user of its own there (R125).
             "account_users": account_users_on(nid),
+            # ...and, on the controller's own machine, the accounts' SMB
+            # passwords as Samba keeps them (R164 step 1): its agent imports
+            # them and removes the ones gone.
+            "smb_users": (smb_users() if smb_users and own_machine(n) else []),
+            # ...and what each added pack is configured with on this node
+            # (R172): its values, the secrets opened, for the pack's verbs.
+            "pack_config": (pack_config(nid) if pack_config else []),
+            # ...and each account's own answers there (R172 step 5), written
+            # into that account's home on the node.
+            "pack_people": (pack_people(nid) if pack_people else []),
+            # ...and the other disks and shares it mounts (R162 step 4).
+            "ext_mounts": (ext_mounts() if ext_mounts and own_machine(n) else []),
+            # ...and the backups it copies (R162 step 5).
+            "store_backups": (store_backups() if store_backups and own_machine(n) else []),
+            # ...and its encrypted pools' passphrases (R162 step 3): the kept ones, and an
+            # offered one until the census says the pool is open; none in Safe mode.
+            "pool_keys": (pool_keys({p["name"] for p in (n.get("reported") or {}).get("pools") or [] if not p.get("locked")})
+                          if pool_keys and own_machine(n) else []),
             # ...and its coding agents' sign-ins sealed there (R126), with
             # each account's public key to seal them with.
             "token_seal": token_seal_on(nid),
-            "token_pubs": (token_pubs(nid) if token_pubs and token_seal_on(nid) else {}),
+            "token_pubs": (token_pubs(nid, True) if token_pubs and token_seal_on(nid) else {}),
+            # The X25519 publics a 0.9 agent seals with (R158 step 3); a
+            # 0.8.x agent reads token_pubs, the format before's.
+            "token_pubs2": (token_pubs(nid) if token_pubs and token_seal_on(nid) else {}),
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
@@ -3665,6 +4496,9 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             # The FTPS servers this node runs for its projects' file access
             # (R151): one per project, rooted at its tree.
             "ftp": [] if host_only(nid) else ftp_for(nid),
+            # A move prepared (R90 step 12): the new address and this node's
+            # challenge, which it keeps and knocks with when this one goes quiet.
+            "move": move_for_node(nid),
             # Its next token, for an agent that rotates (R135 step 4).
             **({"token": rotate_token(nid)} if rotates else {})}
 
@@ -3763,6 +4597,14 @@ def heartbeat(nid, sample, addr, running=0):
         clean["gpu_mem_kinds"] = {k: max(0, min(10**7, int(v))) for k, v in list(s["gpu_mem_kinds"].items())[:16]
                                   if (k in PROC_KINDS or k == "other") and isinstance(v, (int, float))}
     clean["running"] = int(running or 0)
+    # The counters and the temperature the reporting takes its points from
+    # (R164 step 4): two non-negative integers each, a whole degree.
+    for k in ("net", "io"):
+        v = s.get(k)
+        if isinstance(v, list) and len(v) == 2 and all(isinstance(x, int) and not isinstance(x, bool) and x >= 0 for x in v):
+            clean[k] = [min(x, 10**15) for x in v]
+    if isinstance(s.get("temp_c"), int) and not isinstance(s.get("temp_c"), bool) and 0 < s["temp_c"] < 150:
+        clean["temp_c"] = s["temp_c"]
     # How long the agent's last turn spent before its poll, by part (B841):
     # a job queued meanwhile waited for it.
     if isinstance(s.get("turn_ms"), dict):
@@ -3860,6 +4702,11 @@ def heartbeat(nid, sample, addr, running=0):
     ring = _samples.setdefault(nid, [])
     ring.append(clean)
     _trim(ring, clean["at"])
+    # ...and into the weeks-long record (history.py, R164 step 4), on the
+    # controller's own machine, with the hottest disk's reading beside it.
+    if history_add and own_machine(n):
+        temps = [d["smart"]["temp_c"] for d in rep.get("disks") or [] if isinstance(d.get("smart"), dict) and isinstance(d["smart"].get("temp_c"), int)]
+        history_add(nid, clean, max(temps) if temps else None)
     # Each running container's use, once a minute (R218 step 9): name to
     # [cpu %, memory %], whitelisted like everything a node says.
     if isinstance(s.get("ctr_stats"), dict):
@@ -3983,6 +4830,9 @@ def ctr_spark(nid, names=None):
 JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear", "vm",
              # A walk of the node's disks now, for the Storage tab (R169).
              "storage",
+             # The node's own scanners over the projects whose node it is
+             # (R145, the Scanners page).
+             "scan",
              # One project's phone off the node, from the Storage page (R123).
              "avd-remove",
              # The idle phones' quick-boot snapshots, the room keeper's (R129).
@@ -5801,10 +6651,6 @@ def verb(principal, req):
         # its cores. An administrator's, like the rest.
         return node_test_workers(principal, nid, req.get("workers"))
 
-    def session_net():
-        # Whether each session on the node reaches only its own project's
-        # containers (R79). An administrator's, like the rest.
-        return node_session_net(principal, nid, req.get("on") is True)
 
     def ports_local():
         # Whether published ports on the node bind to 127.0.0.1 by default
@@ -5918,8 +6764,6 @@ def verb(principal, req):
     def update_agent():
         return node_update_agent(principal, nid)
 
-    def container_net():
-        return node_container_net(principal, nid, req.get("on") is True)
 
     def cache_clear():
         # Drop a node's build caches, one project's or all (docs/nodes.md
@@ -5976,12 +6820,23 @@ def verb(principal, req):
              "reboot": power, "poweroff": power, "gpu-display": gpu_display,
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
-             "test-workers": test_workers, "session-net": session_net, "ports-local": ports_local,
-             "root-asks": root_asks, "account-users": account_users, "token-seal": token_seal, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
+             "test-workers": test_workers, "ports-local": ports_local,
+             "root-asks": root_asks, "account-users": account_users, "token-seal": token_seal, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
              "lockdown": lambda: node_lockdown(principal, nid),
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
+             "controller-update": lambda: node_controller_update(principal, nid, field(req, "release")),
+             "os-update": lambda: node_os_update(principal, nid, field(req, "release"), field(req, "from")),
+             "system-pool": lambda: node_system_pool(principal, nid, field(req, "path")),
+             "machine": lambda: node_machine(principal, nid, field(req, "hostname"), field(req, "timezone"), req.get("spindown")),
+             "storage-share": lambda: node_storage_share(principal, nid, req),
+             "storage-pool": lambda: node_storage_pool(principal, nid, req),
+             "storage-snapshot": lambda: node_storage_snapshot(principal, nid, req),
+             "storage-array": lambda: node_storage_array(principal, nid, req),
+             "storage-backup": lambda: node_storage_backup(principal, nid, field(req, "name")),
+             "storage-key": lambda: node_storage_key(principal, nid, req),
+             "host-update": lambda: node_host_update(principal, nid, req.get("reboot") is True),
              "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,
@@ -6044,7 +6899,7 @@ def run_job(name, req, principal):
         when = (f", as of what it reported {age // 60}m ago; it has been "
                 "asked for a fresh answer, so a retry shortly may differ"
                 if age and age > 90 else "")
-        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Toolchains page "
+        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Library "
                          f"with {n['name']} picked, "
                          + ("or push and let CI build it."
                             if may_push(name)

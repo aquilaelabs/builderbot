@@ -64,7 +64,7 @@ INDEX_DIR = ".bb-map"
 # bb a session runs while the controller's build lagged the tree. The file
 # is named for the format too, so two bb builds on one tree keep to their
 # own files during the window when both exist.
-FORMAT = 3
+FORMAT = 4
 INDEX_FILE = f"map{FORMAT}.json"
 # vendor: libraries a project carries as they were published (the dashboard's
 # xterm.js, Go's vendor/), minified or not, and not its own code.
@@ -88,7 +88,11 @@ EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx
         ".kt": "js", ".kts": "js", ".java": "js", ".cs": "js", ".go": "js", ".rs": "js",
         ".swift": "js", ".dart": "js", ".c": "c", ".h": "c", ".cc": "c", ".cpp": "c",
         ".hpp": "c", ".cxx": "c", ".hh": "c", ".m": "js", ".mm": "js", ".php": "js", ".scala": "js",
-        ".groovy": "js", ".astro": "html", ".vue": "html", ".svelte": "html"}
+        ".groovy": "js", ".astro": "html", ".vue": "html", ".svelte": "html",
+        # Data and prose (R167): a setting or a key where a file defines it,
+        # and a document's headings, read by markup.py beside this file.
+        ".json": "data", ".yml": "data", ".yaml": "data", ".toml": "data", ".xml": "data",
+        ".md": "data", ".env": "data", ".example": "data"}
 # Source the map does not read, named in an answer that came back empty, so
 # "nothing draws .x" is not read as the whole truth (B578)
 NOT_READ = {".css", ".scss", ".sass", ".less", ".rb", ".erb", ".lua", ".ex", ".exs", ".erl",
@@ -1929,7 +1933,10 @@ def build(root, prior=None):
             # kept as a file the map knows and skips, not as 146 dead names
             text = ""
         try:
-            {"py": scan_python, "js": scan_js, "html": scan_html, "sh": scan_sh, "c": scan_c}[lang](text, sink)
+            if lang == "data":
+                scan_data(text, sink, p.suffix)
+            else:
+                {"py": scan_python, "js": scan_js, "html": scan_html, "sh": scan_sh, "c": scan_c}[lang](text, sink)
         except Exception as e:      # a scanner must never take the map down
             sink.add_def(f"(scan failed: {e})", 1, "error", "")
         files[rel] = {"mtime": mtime, "lang": lang, "scan": SCANNER,
@@ -1941,6 +1948,7 @@ def build(root, prior=None):
         fresh[rel] = sink
         scanned += 1
     sh_known(root, files, fresh)
+    env_reads(root, files, fresh)
     # A use by name is worth a line only for a name the tree defines as a
     # function: every other identifier is a local, and locating those would
     # be most of the tree again. Filtered against every definition the index
@@ -1974,6 +1982,64 @@ def build(root, prior=None):
     except OSError:
         idx["kept"] = False
     return flat(idx)
+
+
+def scan_data(text, sink, suffix):
+    """A data file's keys as definitions (R167): a compose service's
+    environment keys, .env.example's settings, the Unraid template's
+    Config targets, a JSON or TOML file's keys and a Markdown file's
+    headings, each at its line, so `bb map find DASHBOARD_PORT` answers
+    across the five places a setting lands. A key under a path keeps the
+    path as its parent (services/controller/environment); a setting (an
+    env key, a compose environment key, a Config target) is kind `setting`
+    and its reads are found by env_reads."""
+    import markup
+    try:
+        keys = markup.keys_of(text, suffix)
+    except markup.MarkupError as e:
+        sink.add_def(f"(not read: {str(e)[:80]})", 1, "error", "")
+        return
+    if suffix == ".md":
+        for title, line in keys:
+            sink.sections.append({"name": title, "line": line})
+            sink.add_def(title, line, "heading", "")
+        return
+    for path, line in keys:
+        parent, _, leaf = path.rpartition("/")
+        setting = (suffix in (".env", ".example") or "environment" in parent.split("/")
+                   or suffix == ".xml" and re.fullmatch(r"[A-Z][A-Z0-9_]+", leaf) is not None)
+        d = sink.add_def(leaf, line, "setting" if setting else "key", parent)
+        d["path"] = path
+
+
+_ENV_READ = re.compile(r"""(?:environ(?:\.get)?\s*[\[(]\s*["']|getenv\s*\(\s*["']|process\.env\.|\$\{?)([A-Z][A-Z0-9_]{2,})""")
+
+
+def env_reads(root, files, fresh):
+    """Where the code reads a setting (R167): every `os.environ.get("X")`,
+    `getenv("X")`, `$X` and `process.env.X` whose X some data file defines
+    as a setting, recorded as a call of X from `env`, so `bb map who-calls
+    DASHBOARD_PORT` answers. Only the files scanned this build are read
+    again; the rest keep the calls they were given."""
+    names = {d["name"] for e in files.values() for d in e.get("defs", []) if d.get("kind") == "setting"}
+    if not names:
+        return
+    for rel in fresh:
+        if files[rel].get("lang") not in ("py", "sh", "js", "html"):
+            continue
+        try:
+            text = (Path(root) / rel).read_text(errors="replace")
+        except OSError:
+            continue
+        # Only the rows this pass wrote go: a python call on a variable
+        # named env (env.update(...)) is qualified "env" too, and the map
+        # has to keep it (B406).
+        calls = [c for c in files[rel]["calls"] if not (c.get("qual") == "env" and c.get("setting"))]
+        for n, line in enumerate(text.splitlines(), 1):
+            for name in {m.group(1) for m in _ENV_READ.finditer(line)}:
+                if name in names:
+                    calls.append({"name": name, "qual": "env", "file": rel, "line": n, "caller": "", "setting": True})
+        files[rel]["calls"] = calls
 
 
 def sh_known(root, files, fresh):
@@ -3432,7 +3498,8 @@ VERBS = ("bb map find NAME | who-calls NAME | calls NAME | defs FILE | draws ID|
          "state [FILE] | sections FILE | unused [FILE] | addresses [FILE...] | coverage | covered NAME | "
          "uncovered [FILE] | affected --base REF FILES... | languages | build; bb map help says what each does")
 LANG_WORDS = {"py": "python", "c": "C and C++", "js": "brace scanner (C-shaped languages)",
-              "html": "HTML, Astro, Vue and Svelte (markup and scripts)", "sh": "shell"}
+              "html": "HTML, Astro, Vue and Svelte (markup and scripts)", "sh": "shell",
+              "data": "data and prose (keys, settings, headings)"}
 
 
 def languages():
@@ -3444,7 +3511,8 @@ def languages():
     out.insert(0, "indexed, by scanner:")
     out.append("  and a file with no extension whose #! names bash, sh or python")
     out.append("  but never a minified bundle (NAME.min.js, or a script of very long lines)")
-    out.append("anything else is not indexed (.css, .json, .yml, .md, .rb and the rest): grep reads those")
+    out.append("  data and prose: .json .yml .yaml .toml .xml .env .example, their keys and settings; .md, its headings")
+    out.append("anything else is not indexed (.css, .rb and the rest): grep reads those")
     return out
 
 
@@ -3477,6 +3545,14 @@ def main(argv):
         args = args[2:]
     verb = args[0] if args else ""
     rest = args[1:]
+    # `--format json|yaml|markdown` on find, who-calls and defs (R167): the
+    # entries as records, through records.py beside the dashboard.
+    fmt, rest = "text", list(rest)
+    for i, a in enumerate(list(rest)):
+        if a == "--json":
+            fmt = "json"; rest.remove(a)
+        elif a == "--format" and i + 1 < len(rest):
+            fmt = rest[i + 1]; rest = [x for j, x in enumerate(rest) if j not in (i, i + 1)]; break
     if verb in ("-h", "--help", "help"):
         print(__doc__.strip())
         return 0
@@ -3569,6 +3645,18 @@ def main(argv):
     if len(rest) < need[verb]:
         print(f"bb map {verb} needs an argument; bb map -h", file=sys.stderr)
         return 2
+    if fmt != "text" and verb in ("find", "who-calls", "defs"):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dashboard"))
+        import records
+        name = rest[0]
+        if verb == "find":
+            rows = [d for d in idx["defs"] if d["name"] == name]
+        elif verb == "who-calls":
+            rows = [c for c in idx["calls"] if c["name"] == name]
+        else:
+            rows = [d for d in idx["defs"] if d["file"] == name or d["file"].endswith("/" + name)]
+        sys.stdout.write(records.dump(records.document("map", rows, Path(root).name), fmt))
+        return 0
     if verb == "find":
         lines = q_find(idx, rest[0], root)
     elif verb == "who-calls":

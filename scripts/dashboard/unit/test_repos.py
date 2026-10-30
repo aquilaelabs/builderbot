@@ -145,6 +145,17 @@ class Repos(unittest.TestCase):
         self.assertFalse(registry.is_repos(shop))
         self.assertTrue(repos.create("Shop")["ok"], "its name is free again")
 
+    def test_a_test_node_is_one_of_the_project_s_nodes(self):
+        # R151 step 1: the node the suites run on is one of the project's
+        # own, "" for the session's own; stored only when picked.
+        prefs.set_prefs("app", node="n1", nodes=["n1", "n2"])
+        self.assertIn("one of the project's nodes", prefs.set_prefs("app", test_node="n9")["error"])
+        self.assertTrue(prefs.set_prefs("app", test_node="n2").get("ok", True))
+        self.assertEqual(prefs.get("app")["test_node"], "n2")
+        prefs.set_prefs("app", test_node="")
+        self.assertEqual(prefs.get("app")["test_node"], "")
+        self.assertNotIn("test_node", prefs._load()["projects"].get("app") or {}, "the default is not written")
+
     def test_a_repository_reads_its_projects_settings_and_keeps_its_own(self):
         prefs.set_prefs("app", build="make app")
         key = self.project("Shop", "app", "server")

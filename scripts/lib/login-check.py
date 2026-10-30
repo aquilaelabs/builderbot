@@ -145,7 +145,7 @@ if FOR != "claude":
 here, mine = whoami()
 if not here:
     if loud:
-        say(f"not signed in on {NODE}: Sign in under Claude on its Agents page runs the flow here")
+        say(f"not signed in on {NODE}: Sign in on Claude Code's row of the Installed page, with this node picked, runs the flow here")
     # Tell the controller this machine is not one of the signed-in ones, so
     # its row stops naming it.
     bbapi.call("/api/v1/claude-login", {"signed_in": False, "node": NODE_ID}, auth=auth)

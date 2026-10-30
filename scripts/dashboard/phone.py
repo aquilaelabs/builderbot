@@ -67,6 +67,7 @@ container_maker = None
 # A VM's create or action, run on Allow (R91): vms.create or vms.act, as the
 # page runs them, with the asking session's project.
 vm_runner = None
+pack_runner = None         # (project, entry, by) -> a catalog pack added (R169 step 5)
 # signing.start(principal, project, file, route), set by the server: what
 # Allow on a session's `bb sign` runs (R106), queued as the session asked.
 signer = None
@@ -74,7 +75,7 @@ signer = None
 # server: keymaker(action, project, args) -> (payload, status), where
 # action is generate (args: key, route) or map (args: package, key).
 keymaker = None
-# releaser(project, comp, asker_name, principal) -> (payload, status): the
+# releaser(project, comp, asker_name, principal, dev=False) -> (payload, status): the
 # release a session asked for, run as Release on the Artifacts tab runs it
 # (R138). Set by the server.
 releaser = None
@@ -1021,7 +1022,7 @@ def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principa
                   extra={"file": str(file), "route": str(route), "principal": principal, "key": str(key or "")})
 
 
-def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", principal=""):
+def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", principal="", dev=False):
     """A session asking to tag and publish a release, on a project whose
     dial is `ask` (Agents may: Tag and publish a release, R138). It goes to
     the project's owner, who reads the tag and the commit it would mark;
@@ -1035,7 +1036,7 @@ def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", princi
     cmd = ["version", "release", f"{plan['tag']} on {plan['sha']}"] + (["--for", comp] if comp else [])
     return _queue("release", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
                   extra={"comp": str(comp or ""), "tag": plan["tag"], "sha": plan["sha"],
-                         "principal": principal, "asker_name": str(asker_name or "")})
+                         "principal": principal, "asker_name": str(asker_name or ""), "dev": bool(dev)})
 
 
 def ask_release_edit(why, project, plan, to_uid, to_name, asker_name="", principal=""):
@@ -1213,7 +1214,7 @@ def ask_vm(why, project, req, asker_name=""):
              if action == "new" else ["vm", action, name] + ([str(req.get("snapshot"))] if req.get("snapshot") else []))
     keep = {k: req.get(k) for k in ("action", "name", "os", "vcpus", "mem_mb", "disk_gb", "keys", "user", "node",
                                      "snapshot", "note", "force", "node_agent", "ctl", "hw", "autostart", "on",
-                                     "disks", "disk", "gb")
+                                     "disks", "disk", "gb", "usb")
             if req.get(k) not in (None, "")}
     if keep.get("node_agent"):
         shown.append("--node-agent")
@@ -1233,10 +1234,30 @@ def ask_vm(why, project, req, asker_name=""):
         shown += [str(keep["disk"])] * bool(keep.get("disk")) + [f"{keep['gb']}G"]
     if action == "autostart":
         shown.append("on" if keep.get("on") else "off")
+    # A USB device to a VM (R116), as bb vm usb names it.
+    if action in ("usb-give", "usb-take") and isinstance(keep.get("usb"), dict):
+        u = keep["usb"]
+        shown = ["vm", "usb", name, "give" if action == "usb-give" else "take",
+                 f"{str(u.get('vendor') or '')[2:]}:{str(u.get('product') or '')[2:]}" + (f":{u['serial']}" if u.get("serial") else "")]
+        if u.get("port") and not u.get("serial"):
+            shown += ["--port", str(u["port"])]
     if keep.get("autostart") is True and action == "new":
         shown.append("--autostart")
     return _queue("vm", why, [a for a in shown if a], str(req.get("node") or ""), str(req.get("node") or ""), project,
                   "claude", "admins", "the administrators", asker_name, extra={"vm": keep})
+
+
+def ask_pack(why, project, entry, asker_name=""):
+    """A session asking for a tool pack from the vetted catalog (R169 step
+    5), its project's Install a tool pack dial at ask: held for the
+    administrators, since a pack joins every node's catalog. Allow keeps it
+    at the commit the signed index pins, as the Library's Install does."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what the pack is for: a person is answering a question you are asking them"}
+    keep = {k: entry.get(k) for k in ("name", "url", "commit", "sha256", "path", "tier")}
+    return _queue("pack", why, ["tool", "install", str(entry.get("name") or "")], "", "", project,
+                  "claude", "admins", "the administrators", asker_name, extra={"pack": keep})
 
 
 def _find(rid):
@@ -1367,7 +1388,8 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
                      out=str(got.get("error") or got.get("job") or "started"))
         return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "release":
-        res = (releaser(r["project"], r.get("comp") or "", r.get("asker_name") or "", r.get("principal") or "")
+        res = (releaser(r["project"], r.get("comp") or "", r.get("asker_name") or "", r.get("principal") or "",
+                        dev=r.get("dev") is True)
                if releaser is not None else ({"error": "nothing here releases"}, 400))
         got = res[0] if isinstance(res, tuple) else res
         rel = got.get("released") or {}
@@ -1447,6 +1469,13 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
         with _lock:
             r.update(state="done", code=1 if res.get("error") else 0,
                      out=str(res.get("error") or res.get("job") or "done"))
+        return {"error": res["error"]} if res.get("error") else {"ok": True}
+    if r.get("kind") == "pack":
+        # A catalog pack a session asked for (R169 step 5), kept at its pin.
+        res = pack_runner(r.get("project") or "", r.get("pack") or {}, name or "a person") if pack_runner else \
+            {"error": "no tool pack path is wired up here"}
+        with _lock:
+            r.update(state="done", code=1 if res.get("error") else 0, out=str(res.get("error") or "added"))
         return {"error": res["error"]} if res.get("error") else {"ok": True}
     if r.get("kind") == "phone-use":
         # A lent phone's command, allowed by its owner (R120): run as the

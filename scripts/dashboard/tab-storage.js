@@ -19,7 +19,8 @@ let storageErr = "";
 let storageRev = 0;
 let storageMay = false;          // whether this account may measure now
 let storageNode = "";            // the node the tab shows
-let storageDisk = "";            // the disk its chips picked, "" for all (R122)
+let storageDisk = "";
+const storageAskedNodes = new Set();   // nodes read into the node list for the header (R177)            // the disk its chips picked, "" for all (R122)
 
 function openStorageTab(node){
   if (node) storageNode = node;
@@ -144,7 +145,7 @@ function storageDisks(n){
         mine.length ? `<div class="sub">${ours ? `${sgb(ours)} of it is BuilderBot's` : "nothing of it is BuilderBot's yet"}</div>` : ""}${
         pct >= 90 && storageFreeable(n, fs) ? `<div class="sub warn">${esc(storageFreeable(n, fs))}.</div>` : ""}</div>${
       some.map(storageRow).join("")}${
-      none.length ? `<div class="row stnone"><div class="grow"><div class="sub">${esc(andList(none.map(h => h.name)))} hold${none.length === 1 ? "s" : ""} nothing yet</div></div></div>` : ""}`,
+      none.length ? `<div class="empty stnone">${esc(andList(none.map(h => h.name)))} hold${none.length === 1 ? "s" : ""} nothing yet.</div>` : ""}`,
       {cls: pct >= 92 ? "bad" : pct >= 80 ? "warn" : "", item: true});
   };
   // The disks are the node's, as many as it has: big chips pick one (R122),
@@ -159,6 +160,557 @@ function storageDisks(n){
   if (off.length && (!storageDisk || storageDisk === "elsewhere"))
     out.push(docSection("storage", "fs:elsewhere", "Elsewhere", "not measured", off.map(storageRow).join(""), {item: true}));
   return chips + out.join("");
+}
+
+// The controller's own machine's disks (R162 step 1), as its census lists
+// them: each by name, model, size, serial, kind and what it holds, with
+// SMART's health, temperature and hours where the machine has smartctl;
+// the system disk marked. Read before anything is written to one; the
+// pools and the shares come next on this page.
+function storageMachineDisks(n){
+  if (!n.own) return "";
+  const disks = n.disks || [];
+  const body = !disks.length ? `<div class="empty">No disk reported yet${n.live ? ": the next check-in brings them" : ": its agent is not dialing in"}.</div>`
+    : (() => {
+      const cols = [{label: "Disk"}, {label: "Model"}, {label: "Size", w: "6.5rem"}, {label: "Serial"}, {label: "Health", w: "9rem"}, {label: "Holds"}];
+      return tblWrap(cols, disks.map(d => {
+        const sm = d.smart || {};
+        const health = [sm.health === "failing" ? `<span class="pill bad">failing</span>` : sm.health === "ok" ? `<span class="pill ok">ok</span>` : "",
+                        sm.temp_c !== undefined ? `${sm.temp_c} °C` : "", sm.hours !== undefined ? `${Math.round(sm.hours / 24)} d on` : ""].filter(Boolean).join(" · ") || "<span class=\"dim\">no SMART</span>";
+        const holds = d.parts?.length ? d.parts.map(p => `${esc(p.name)}: ${esc(p.holds)}`).join("<br>") : esc(d.holds || "nothing");
+        return `<div class="row${sm.health === "failing" ? " bad" : ""}" data-disk="${esc(d.name)}">${tblLine(cols, [
+          `<span class="name">${esc(d.name)}</span>${d.system ? ` <span class="tag ndown">system</span>` : ""}${d.removable ? ` <span class="pill">removable</span>` : ""}`,
+          esc(d.model || "unnamed"), esc(humanBytes((d.size_mb || 0) * 1048576)), `<code>${esc(d.serial || "none")}</code>`,
+          health, `${holds}<div class="sub dim">${esc([d.ssd ? "solid state" : "spinning", d.tran].filter(Boolean).join(" · "))}</div>`])}</div>`;
+      }).join(""), "stdisks");
+    })();
+  const failing = disks.filter(d => d.smart?.health === "failing").length;
+  return docSection("storage", "disks", "Disks", disks.length ? `${disks.length}${failing ? `, ${failing} failing` : ""}` : "", body, {cls: failing ? "bad" : ""});
+}
+
+// The controller's own machine's shares (R162 step 1): each as BuilderBot's
+// own two files say it (the path, SMB with its users or as a guest, NFS
+// with its clients), with Remove; and a form for a new one, every press a
+// system job the root agent runs, which writes the files whole and tells
+// Samba and NFS to read again. The SMB password an account sets is R164's.
+function storageShares(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.smb && !n.nfs ? `No Samba or NFS on this machine yet: Shares on its ${pageLink("machine", "Features section")} installs them.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const shares = n.shares || [];
+  const lockedMounts = (n.pools || []).filter(p => p.locked && p.mount).map(p => p.mount);
+  const rows = shares.map(s => `<div class="row stack2 stshare" data-share="${esc(s.name)}"><div class="grow">
+      <div class="name">${esc(s.name)} <code>${esc(s.path)}</code>${lockedMounts.some(m => s.path === m || s.path.startsWith(m + "/")) ? ` <span class="pill warn">its pool is locked: unlock it under Pools</span>` : ""}</div>
+      ${s.smb?.on ? `<div class="sub">SMB${s.smb.ro ? ", read-only" : ""}${s.smb.tm ? ", a Time Machine target" : ""}: ${s.smb.guest ? "everybody, as a guest" : (s.accounts || s.smb.users || []).map(esc).join(", ") || "nobody yet"} · \\\\${esc(n.name)}\\${esc(s.name)}</div>` : ""}
+      ${s.nfs?.on ? `<div class="sub">NFS${s.nfs.ro ? ", read-only" : ""}: ${(s.nfs.clients || []).map(esc).join(", ")} · ${esc(n.name)}:${esc(s.path)}</div>` : ""}
+      </div>${admin && !why ? `<span class="acts"><button type="button" class="danger" data-stshare="remove" data-name="${esc(s.name)}">Remove</button></span>` : ""}</div>`).join("");
+  // A share names the one pool it lives on, chosen when it is made (R162
+  // step 6, the operator, 27 Oct): the pools and the array are the places,
+  // and the share's folder sits under the one picked, nothing moved behind
+  // a person's back.
+  const places = [...(n.pools || []).filter(p => p.mount).map(p => [p.mount, `the pool ${p.name} (${p.mount})`]),
+                  ...(n.array?.mounted ? [[n.array.mount || "/mnt/array", `the array (${n.array.mount || "/mnt/array"})`]] : [])];
+  const form = !admin || why ? "" : `<div class="field stnewshare"><div class="hint">New share: a name, the pool or the array it lives on and its folder there, and who reaches it over SMB, NFS or both. A person reaches an SMB share with their account's name and the SMB password they set on Profile; a role names everybody holding it now.</div>
+      <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" id="stShareName" placeholder="media" maxlength="63" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field">${places.length ? `<label class="pick"><span class="pickw">On</span><select id="stSharePool">${optionList(places, places[0][0])}</select></label>` : `<div class="hint">No pool or array here yet: a share is a folder on one.</div>`}
+        <label class="pick"><span class="pickw">Folder</span><input type="text" id="stSharePath" placeholder="${esc(places[0] ? "media, or " + places[0][0] + "/media" : "/mnt/tank/media")}" autocomplete="off" spellcheck="false"></label>
+        <div class="hint">A name is a folder under the place picked (made there when it is missing); a whole path is taken as it is.</div></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stShareSmb" checked> SMB (Windows, a Mac, a phone)</label>
+        <label class="ndcap"><input type="checkbox" id="stShareGuest"> everybody as a guest, no password</label>
+        ${(n.accounts || []).length || (n.roles || []).length ? `<div class="lbox" id="stShareWho">${(n.roles || []).map(r => `<label class="ndcap"><input type="checkbox" data-stsharewho="role:${esc(r)}"> everybody with the role ${esc(r)}</label>`).join("")}${(n.accounts || []).map(a => `<label class="ndcap"><input type="checkbox" data-stsharewho="${esc(a)}"> ${esc(a)}</label>`).join("")}</div>` : ""}
+        <label class="pick"><span class="pickw">Other users</span><input type="text" id="stShareUsers" placeholder="the machine's own users, separated by spaces" autocomplete="off" spellcheck="false"></label>
+        <label class="ndcap"><input type="checkbox" id="stShareTm"> a Mac's Time Machine target</label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stShareNfs"> NFS (Linux, a hypervisor)</label>
+        <label class="pick"><span class="pickw">Clients</span><input type="text" id="stShareClients" placeholder="192.168.1.0/24, or * for any" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stShareRo"> read-only</label></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stshare="set">Share it</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No share yet${n.smb || n.nfs ? ": the form below makes one" : ""}.</div>`}${form}`;
+  return docSection("storage", "shares", "Shares", shares.length ? String(shares.length) : "", body);
+}
+function wireStorageShares(root, n){
+  root.querySelectorAll("[data-stshare]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stshare, body = {action: "storage-share", id: n.node, share: act, name: b.dataset.name || ""};
+    if (act === "set"){
+      body.name = ($("stShareName")?.value || "").trim();
+      body.path = ($("stSharePath")?.value || "").trim() || body.name;
+      // A folder name is under the place picked; a whole path stands as typed.
+      if (body.path && !body.path.startsWith("/")) body.path = `${$("stSharePool")?.value || ""}/${body.path}`;
+      const ro = !!$("stShareRo")?.checked;
+      const who = [...root.querySelectorAll("[data-stsharewho]:checked")].map(i => i.dataset.stsharewho);
+      body.smb = {on: !!$("stShareSmb")?.checked, guest: !!$("stShareGuest")?.checked, ro, tm: !!$("stShareTm")?.checked,
+                  users: [...who, ...($("stShareUsers")?.value || "").split(/[\s,]+/).filter(Boolean)]};
+      body.nfs = {on: !!$("stShareNfs")?.checked, ro, clients: ($("stShareClients")?.value || "").split(/[\s,]+/).filter(Boolean)};
+      if (!body.name || !body.path){ notify("a share takes a name and a folder", true); return; }
+    } else if (!await askYes(`Stop sharing ${body.name}? The folder and what is in it stay; nobody reaches it over SMB or NFS after.`, {title: "Remove the share?", verb: "Remove", danger: true})) return;
+    busy(b, act === "set" ? "Sharing" : "Removing");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act === "set" ? "shared" : "removed"}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+}
+
+// The controller's own machine's ZFS pools (R162 step 1): each as zpool
+// says it (size, used, health, the members by layout, the last scrub), with
+// Scrub, Export and Destroy on its row; and New pool, a form that names the
+// disks by model, size and serial before anything is written, every press
+// a system job the root agent runs from its table.
+function storagePools(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.zfs ? `No zpool on this machine yet: Storage on its ${pageLink("machine", "Features section")} installs it.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const pools = n.pools || [];
+  const free = (n.disks || []).filter(d => !d.system && !(d.parts || []).some(p => p.holds && p.holds !== "nothing") && (!d.holds || d.holds === "nothing"));
+  const used = (n.disks || []).filter(d => !d.system && !free.includes(d));
+  const diskLine = d => `${esc(d.name)}: ${esc(d.model || "unnamed")}, ${esc(humanBytes((d.size_mb || 0) * 1048576))}, serial ${esc(d.serial || "none")}`;
+  const rows = pools.map(p => {
+    const pct = p.size_mb ? (p.alloc_mb || 0) / p.size_mb * 100 : 0;
+    const bad = !["online", ""].includes(p.health);
+    return `<div class="row stack2 stpool${bad ? " bad" : ""}" data-pool="${esc(p.name)}"><div class="grow">
+      <div class="name">${esc(p.name)} <span class="pill${bad ? " bad" : " ok"}">${esc(p.health || "unknown")}</span>${p.mount ? ` <span class="pill">${esc(p.mount)}</span>` : ""}${
+        p.locked ? ` <span class="pill warn">locked</span>` : p.encrypted ? ` <span class="pill">encrypted, ${(n.key_modes || {})[p.name] === "kept" ? "key kept here" : "key asked after each boot"}</span>` : ""}</div>
+      ${p.locked && admin && !why ? `<div class="field"><label class="pick"><span class="pickw">Passphrase</span><input type="password" data-stunlock="${esc(p.name)}" autocomplete="off"></label>
+        <span class="acts"><button type="button" data-stkey="unlock" data-name="${esc(p.name)}">Unlock</button></span><div class="hint">Its shares wait until it is unlocked; the passphrase goes to the machine once and is not kept.</div></div>` : ""}
+      <div class="ndmeters">${meter("used", pct, `${sgb(p.alloc_mb)} / ${sgb(p.size_mb)}`, `${sgb(p.free_mb)} free`)}</div>
+      ${(p.vdevs || []).map(v => `<div class="sub">${esc(v.type === "single" ? "disk" : v.type)}: ${v.disks.map(d => `<code>${esc(d.id.replace(/^\/dev\/disk\/by-id\//, ""))}</code>${d.state && d.state !== "online" ? ` <span class="pill bad">${esc(d.state)}</span>` : ""}`).join(", ")}</div>`).join("")}
+      ${p.scrub ? `<div class="sub dim">${esc(p.scrub)}</div>` : ""}${p.errors && !/no known data errors/i.test(p.errors) ? `<div class="sub bad">${esc(p.errors)}</div>` : ""}
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-stpool="scrub" data-name="${esc(p.name)}">Scrub</button>${actMore([
+        p.encrypted && (n.key_modes || {})[p.name] === "kept" ? `<button type="button" data-stkey="forget" data-name="${esc(p.name)}" title="asked for on this page after every boot from now on">Stop keeping its key here</button>` : "",
+        p.encrypted && (n.key_modes || {})[p.name] !== "kept" ? `<button type="button" data-stkey="keep" data-name="${esc(p.name)}" title="kept sealed on this machine, so the pool unlocks at boot">Keep its key here</button>` : "",
+        `<button type="button" data-stpool="export" data-name="${esc(p.name)}" title="unmount its datasets and let the disks go, to import elsewhere">Export</button>`,
+        `<button type="button" class="danger" data-stpool="destroy" data-name="${esc(p.name)}" title="everything on it is gone">Destroy</button>`])}</span>` : ""}</div>`;
+  }).join("");
+  const form = !admin || why ? "" : `<div class="field stnewpool"><div class="hint">New pool: a name, a layout, and the disks it takes, each wiped. ${free.length ? `${free.length} disk${free.length === 1 ? "" : "s"} hold nothing` : "no disk here holds nothing"}${used.length ? `; ${used.length} hold something and take a tick to wipe` : ""}.</div>
+      <div class="field"><label class="pick"><span class="pickw">Name</span><input type="text" id="stPoolName" placeholder="tank" maxlength="31" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field"><label class="pick"><span class="pickw">Layout</span><select id="stPoolLayout">
+        <option value="mirror">mirror: two or more disks holding the same, one may fail</option>
+        <option value="raidz2">raidz2: four or more disks, any two may fail</option>
+        <option value="raidz1">raidz1: three or more disks, one may fail</option>
+        <option value="single">single: one disk, nothing protects it</option></select></label></div>
+      <div class="field"><div class="lbox" id="stPoolDisks">${[...free, ...used].map(d => `<label class="ndcap"><input type="checkbox" data-stdiskpick="${esc(d.name)}"${used.includes(d) ? ' data-held="1"' : ""}> ${diskLine(d)}${used.includes(d) ? ` <span class="pill warn">holds ${esc((d.parts || []).find(p => p.holds && p.holds !== "nothing")?.holds || d.holds)}</span>` : ""}</label>`).join("") || `<div class="empty">No disk to make a pool from.</div>`}</div></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stPoolWipe"> wipe disks that hold something (what is on them is gone)</label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stPoolEncrypt"> encrypt it (ZFS native encryption, a passphrase)</label>
+        <div id="stPoolKeyF" hidden>
+          <label class="pick"><span class="pickw">Passphrase</span><input type="password" id="stPoolPass" autocomplete="new-password"></label>
+          <label class="pick"><span class="pickw">Again</span><input type="password" id="stPoolPass2" autocomplete="new-password"></label>
+          <label class="ndcap"><input type="checkbox" id="stPoolKeepKey" checked> keep the key on this machine, sealed under its install key, so the pool unlocks at every boot</label>
+          <div class="hint">Kept here, the disks are unreadable pulled from this machine, but the machine as a whole opens them. Not kept, the passphrase is asked for on this page after every boot and the pool and its shares wait until then; that also protects against the whole machine taken. Write the passphrase down: nothing here can recover a pool without it.</div>
+        </div></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stpool="create">Make the pool</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No pool yet${n.zfs ? ": the form below makes one" : ""}.</div>`}${form}`;
+  const sick = pools.filter(p => !["online", ""].includes(p.health)).length;
+  return docSection("storage", "pools", "Pools", pools.length ? `${pools.length}${sick ? `, ${sick} not online` : ""}` : "", body, {cls: sick ? "bad" : ""});
+}
+function wireStoragePools(root, n){
+  const enc = $("stPoolEncrypt"), keyF = $("stPoolKeyF");
+  if (enc && keyF) enc.onchange = () => { keyF.hidden = !enc.checked; };
+  root.querySelectorAll("[data-stkey]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stkey, body = {action: "storage-key", id: n.node, key: act, pool: b.dataset.name};
+    if (act === "unlock"){
+      body.passphrase = root.querySelector(`[data-stunlock="${b.dataset.name}"]`)?.value || "";
+      if (body.passphrase.length < 8){ notify("type the pool's passphrase", true); return; }
+    } else if (act === "keep"){
+      const typed = await askText(`Keep ${b.dataset.name}'s key on this machine?\n\nType its passphrase: it is kept sealed under the install key, and the pool unlocks at every boot from now on.`, {verb: "Keep", label: "The pool's passphrase"});
+      if (typed === null || typed === undefined) return;
+      body.passphrase = String(typed);
+    } else if (!await askYes(`Stop keeping ${b.dataset.name}'s key here? It is asked for on this page after every boot from now on, and the pool and its shares wait until then.`, {title: "Forget the key here?", verb: "Forget", danger: true})) return;
+    busy(b, act === "unlock" ? "Unlocking" : "Saving");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || {unlock: "the passphrase goes to the machine at its next check-in; the pool opens within a minute", keep: "kept: the pool unlocks at boot from now on", forget: "forgotten here: asked after every boot from now on"}[act], !!j.error);
+    await refresh();
+  }));
+  root.querySelectorAll("[data-stpool]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stpool, body = {action: "storage-pool", id: n.node, pool: act, name: b.dataset.name || ""};
+    if (act === "create"){
+      body.name = ($("stPoolName")?.value || "").trim();
+      body.layout = $("stPoolLayout")?.value || "mirror";
+      body.disks = [...root.querySelectorAll("[data-stdiskpick]:checked")].map(i => i.dataset.stdiskpick);
+      body.wipe = !!$("stPoolWipe")?.checked;
+      if (!body.name || !body.disks.length){ notify("a pool takes a name and at least one disk", true); return; }
+      const held = [...root.querySelectorAll("[data-stdiskpick]:checked[data-held]")].length;
+      if (held && !body.wipe){ notify(`${held} of the disks picked hold something: tick wipe to take them`, true); return; }
+      if ($("stPoolEncrypt")?.checked){
+        const p1 = $("stPoolPass")?.value || "", p2 = $("stPoolPass2")?.value || "";
+        if (p1.length < 8){ notify("an encrypted pool takes a passphrase of 8 characters at least", true); return; }
+        if (p1 !== p2){ notify("the passphrase and its repeat differ", true); return; }
+        body.encrypt = true; body.passphrase = p1; body.keep_key = !!$("stPoolKeepKey")?.checked;
+      }
+      const names = body.disks.map(d => { const x = (n.disks || []).find(y => y.name === d); return x ? `${d} (${x.model || "unnamed"}, ${humanBytes((x.size_mb || 0) * 1048576)}, serial ${x.serial || "none"})` : d; });
+      if (!await askYes(`Make the pool ${body.name} as a ${body.layout} of:\n\n${names.join("\n")}\n\nEverything on these disks is gone.${body.encrypt ? `\n\nEncrypted, its key ${body.keep_key ? "kept on this machine" : "asked for after every boot"}; nothing recovers it without the passphrase.` : ""}`, {title: "Make the pool?", verb: "Make it", danger: true})) return;
+    } else if (act === "destroy"){
+      if (!await askYes(`Destroy the pool ${body.name}?\n\nEverything on it is gone; its disks hold nothing after.`, {title: "Destroy the pool?", verb: "Destroy it", danger: true})) return;
+      body.confirm = body.name;
+    } else if (act === "export"){
+      if (!await askYes(`Export the pool ${body.name}? Its datasets are unmounted and the disks let go, to import elsewhere or here again.`, {title: "Export the pool?", verb: "Export"})) return;
+    }
+    busy(b, act === "scrub" ? "Scrubbing" : "Working");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+}
+
+// Snapshots (R162 step 5): each pool's bb- snapshots as the census counts
+// them, the pool's hourly, daily and weekly schedules (the Schedules
+// page's rows, made here as system jobs on the machine), Snapshot now, and
+// the newest ten with Roll back (the name typed again) and Delete.
+const SNAP_KINDS = [["hourly", "Hourly", "0 * * * *"], ["daily", "Daily, at 4:00", "0 4 * * *"], ["weekly", "Weekly, Sundays at 4:00", "0 4 * * 0"]];
+function storageSnapshots(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.zfs ? `No zfs on this machine yet: Storage on its ${pageLink("machine", "Features section")} installs it.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const pools = n.pools || [], snaps = n.snapshots || {}, scheds = n.snapshot_schedules || [];
+  const when = at => at ? new Date(at * 1000).toLocaleString() : "";
+  const rows = pools.map(p => {
+    const v = snaps[p.name] || {count: 0, used_mb: 0, kinds: {}, newest: []};
+    const mine = scheds.filter(x => x.pool === p.name);
+    const kinds = SNAP_KINDS.map(([k, label]) => {
+      const sch = mine.find(x => x.kind === k);
+      return `<span class="pill${sch?.on ? " ok" : ""}" data-snapkind="${k}">${esc(label.split(",")[0].toLowerCase())}: ${sch ? `${sch.keep} kept${sch.on ? "" : ", off"}` : "none"}</span>`;
+    }).join(" ");
+    const newest = (v.newest || []).map(x => `<div class="row stsnap" data-snap="${esc(x.name)}"><div class="grow"><code>${esc(x.name)}</code> <span class="dim">${esc(when(x.at))}</span></div>${
+      admin && !why ? `<span class="acts">${actMore([
+        `<button type="button" data-stsnap="rollback" data-pool="${esc(p.name)}" data-name="${esc(x.name)}" title="the pool as it was then; everything since is gone">Roll back</button>`,
+        `<button type="button" class="danger" data-stsnap="destroy" data-pool="${esc(p.name)}" data-name="${esc(x.name)}">Delete</button>`], true)}</span>` : ""}</div>`).join("");
+    return `<div class="row stack2 stpoolsnaps" data-pool="${esc(p.name)}"><div class="grow">
+      <div class="name">${esc(p.name)} <span class="pill">${v.count} snapshot${v.count === 1 ? "" : "s"}${v.used_mb ? `, ${esc(humanBytes(v.used_mb * 1048576))}` : ""}</span></div>
+      <div class="sub">${kinds}</div>
+      ${newest ? `<div class="rows">${newest}</div>` : `<div class="empty">No snapshot of ${esc(p.name)} yet.</div>`}
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-stsnap="take" data-pool="${esc(p.name)}" title="one of every dataset, kept beside the manual ones">Snapshot now</button></span>` : ""}</div>`;
+  }).join("");
+  const form = !admin || why || !pools.length ? "" : `<div class="field stsnapform"><div class="hint">A schedule: the pool, how often, and how many of that kind to keep; the oldest past that goes when the next is taken.</div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Pool</span><select id="stSnapPool">${optionList(pools.map(p => [p.name, p.name]), pools[0].name)}</select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">How often</span><select id="stSnapKind">${optionList(SNAP_KINDS.map(([k, label]) => [k, label]), "daily")}</select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Keep</span><input type="number" id="stSnapKeep" min="1" max="200" value="7"></label></div>
+      </div>
+      <div class="actbar"><span class="sp"></span>${scheds.length ? actMore(scheds.map(x => `<button type="button" class="danger" data-stsnapsched="${esc(x.id)}">Remove ${esc(x.pool)} ${esc(x.kind)}</button>`), true) : ""}<button type="button" class="primary" data-stsnap="schedule">Save the schedule</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No pool yet: snapshots are a pool's.</div>`}${form}`;
+  const total = pools.reduce((a, p) => a + ((snaps[p.name] || {}).count || 0), 0);
+  return docSection("storage", "snapshots", "Snapshots", pools.length ? `${total}${scheds.length ? `, ${scheds.filter(x => x.on).length} scheduled` : ""}` : "", body);
+}
+function wireStorageSnapshots(root, n){
+  root.querySelectorAll("[data-stsnap]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stsnap;
+    if (act === "schedule"){
+      const pool = $("stSnapPool")?.value || "", kind = $("stSnapKind")?.value || "daily", keep = parseInt($("stSnapKeep")?.value || "0", 10);
+      if (!pool || !(keep >= 1 && keep <= 200)){ notify("a schedule takes a pool and keeps 1 to 200 snapshots", true); return; }
+      const was = (n.snapshot_schedules || []).find(x => x.pool === pool && x.kind === kind);
+      const body = {action: "save", ...(was ? {id: was.id} : {}), name: `Snapshots of ${pool}, ${kind}`, cron: SNAP_KINDS.find(k => k[0] === kind)[2],
+                    node: n.node, on: true, system: {apply: "storage-snapshot", config: {pool, kind, keep}}};
+      busy(b, "Saving");
+      const j = await (await postJSON("/api/schedules", body)).json().catch(() => ({error: "no answer"}));
+      notify(j.error || `${pool}: ${kind} snapshots, ${keep} kept (${j.schedule?.words || ""}); the row is on the Schedules page too`, !!j.error);
+      await refresh();
+      return;
+    }
+    const body = {action: "storage-snapshot", id: n.node, snapshot: act, pool: b.dataset.pool || "", name: b.dataset.name || "", dataset: b.dataset.pool || ""};
+    if (act === "rollback"){
+      const typed = await askText(`Roll ${body.pool} back to ${body.name}?\n\nEverything written to the pool since then is gone, and every snapshot since it with it.`, {verb: "Roll back", label: "The snapshot's name, typed again"});
+      if (typed === null || typed === undefined) return;
+      if (String(typed).trim() !== body.name){ notify("the name typed is not the snapshot's; nothing rolled back", true); return; }
+      body.confirm = body.name;
+    } else if (act === "destroy"){
+      if (!await askYes(`Delete the snapshot ${body.name} of ${body.pool}?`, {title: "Delete the snapshot?", verb: "Delete it", danger: true})) return;
+    } else {
+      body.kind = "manual"; body.keep = 50;
+    }
+    busy(b, act === "take" ? "Taking" : "Working");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act}: the job runs on the machine; the page follows its next check-in`, !!j.error);
+    await refresh();
+  }));
+  root.querySelectorAll("[data-stsnapsched]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const x = (n.snapshot_schedules || []).find(y => y.id === b.dataset.stsnapsched);
+    if (!await askYes(`Remove the ${x?.kind || ""} schedule of ${x?.pool || "the pool"}? The snapshots it took stay.`, {title: "Remove the schedule?", verb: "Remove"})) return;
+    const j = await (await postJSON("/api/schedules", {action: "remove", id: b.dataset.stsnapsched})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "the schedule is gone", !!j.error);
+    await refresh();
+  }));
+}
+
+// The array (R162 step 2): disks of mixed sizes each their own filesystem,
+// one tree over them by mergerfs, parity on one or two disks kept by
+// SnapRAID on a schedule (not in real time: what was written since the last
+// sync is unprotected until the next, said on the section). Each disk by
+// slot with its room, Sync now, Scrub and Check, a disk added or a slot's
+// disk replaced, the sync and scrub schedules (the Schedules page's rows),
+// and a form for a new array that names the disks by model, size and
+// serial and says the whole again before anything is written.
+const ARRAY_POLICIES = [["mfs", "most free space: each new file lands on the emptiest disk"], ["epmfs", "existing path first, then most free space: a folder's files stay together"],
+                        ["lfs", "fill up: one disk fills before the next is used"], ["ff", "the first disk with room"]];
+const ARRAY_KINDS = [["sync", "Sync", "0 4 * * *", "Daily, at 4:00"], ["scrub", "Scrub", "0 5 * * 0", "Weekly, Sundays at 5:00"]];
+function storageArray(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.mergerfs || !n.snapraid ? `No mergerfs or SnapRAID on this machine yet: Storage on its ${pageLink("machine", "Features section")} installs them.`
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const a = n.array || {}, has = (a.data || []).length > 0, scheds = (n.snapshot_schedules || []).filter(x => x.array);
+  const free = (n.disks || []).filter(d => !d.system && !(d.parts || []).some(p => p.holds && p.holds !== "nothing") && (!d.holds || d.holds === "nothing"));
+  const used = (n.disks || []).filter(d => !d.system && !free.includes(d) && !(d.parts || []).some(p => /^(xfs|btrfs) at \/mnt\/(disks|parity)\//.test(p.holds || "")) && !/^(xfs|btrfs) at \/mnt\/(disks|parity)\//.test(d.holds || ""));
+  const diskLine = d => `${esc(d.name)}: ${esc(d.model || "unnamed")}, ${esc(humanBytes((d.size_mb || 0) * 1048576))}, serial ${esc(d.serial || "none")}`;
+  const when = t => t ? ago(t) : "never";
+  const slotRow = (kind, x) => {
+    const pct = x.size_mb ? (x.used_mb || 0) / x.size_mb * 100 : 0;
+    return `<div class="row stslot${x.mounted ? "" : " bad"}" data-slot="${kind}${x.slot}"><div class="grow">
+      <div class="name">${kind}${x.slot} <span class="pill">${kind === "d" ? "data" : "parity"}</span>${x.mounted ? "" : ` <span class="pill bad">not mounted</span>`} <code>${esc(x.id.replace(/^\/dev\/disk\/by-id\//, ""))}</code></div>
+      ${x.mounted ? `<div class="ndmeters">${meter("used", pct, `${sgb(x.used_mb)} / ${sgb(x.size_mb)}`, `${sgb((x.size_mb || 0) - (x.used_mb || 0))} free`)}</div>` : ""}
+      </div>${admin && !why && free.length ? `<span class="acts">${actMore([`<button type="button" data-starray="replace" data-which="${kind}${x.slot}" title="a new disk takes this slot; ${kind === "d" ? "its files are rebuilt from parity" : "parity is rebuilt on it"}">Replace</button>`], true)}</span>` : ""}</div>`;
+  };
+  const pick = (id, held) => `<div class="field"><div class="lbox" id="${id}">${[...free, ...(held ? used : [])].map(d => `<label class="ndcap"><input type="checkbox" data-${id}="${esc(d.name)}"${used.includes(d) ? ' data-held="1"' : ""}> ${diskLine(d)}${used.includes(d) ? ` <span class="pill warn">holds ${esc((d.parts || []).find(p => p.holds && p.holds !== "nothing")?.holds || d.holds)}</span>` : ""}</label>`).join("") || `<div class="empty">No disk free for it.</div>`}</div></div>`;
+  let body;
+  if (has){
+    const kinds = ARRAY_KINDS.map(([k, label]) => { const sch = scheds.find(x => x.array === k); return `<span class="pill${sch?.on ? " ok" : ""}">${label.toLowerCase()}: ${sch ? `${esc(sch.words || "")}${sch.on ? "" : ", off"}` : "not scheduled"}</span>`; }).join(" ");
+    const total = (a.data || []).reduce((s, x) => s + (x.size_mb || 0), 0), usedT = (a.data || []).reduce((s, x) => s + (x.used_mb || 0), 0);
+    body = `<div class="row stack2"><div class="grow">
+        <div class="name">${esc(a.mount || "/mnt/array")} <span class="pill${a.mounted ? " ok" : " bad"}">${a.mounted ? "mounted" : "not mounted"}</span>${a.running ? ` <span class="pill warn">${esc(a.running)} running</span>` : ""}</div>
+        <div class="ndmeters">${meter("used", total ? usedT / total * 100 : 0, `${sgb(usedT)} / ${sgb(total)}`, `${(a.data || []).length} data, ${(a.parity || []).length} parity`)}</div>
+        ${factGrid([["Last sync", when(a.last_sync)], ["Last scrub", when(a.last_scrub)], ["Last check", when(a.last_check)], ["New files land on", (ARRAY_POLICIES.find(p => p[0] === a.policy) || [a.policy, a.policy])[1]]])}
+        <div class="sub">${kinds}</div>
+        ${a.status ? `<div class="sub dim">${esc(a.status)}</div>` : ""}
+        <div class="hint">Parity is periodic: what was written since the last sync is not protected until the next one runs.</div>
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-starray="sync" title="bring the parity up to date now">Sync now</button>${actMore([
+        `<button type="button" data-starray="scrub" title="read a part of the array back against its parity">Scrub</button>`,
+        `<button type="button" data-starray="check" title="SnapRAID's status: what is out of date and what it found">Check</button>`,
+        `<button type="button" class="danger" data-starray="destroy" title="unmounted and forgotten; the disks keep their files">Destroy</button>`])}</span>` : ""}</div>
+      <div class="rows">${(a.data || []).map(x => slotRow("d", x)).join("")}${(a.parity || []).map(x => slotRow("p", x)).join("")}</div>
+      ${admin && !why ? `<div class="field stnewslot"><div class="hint">Add a data disk: it is wiped, takes the next slot, and the parity is synced after${free.length ? "" : "; no disk here is free"}.</div>
+        ${pick("stArrayAdd", true)}
+        <div class="field"><label class="ndcap"><input type="checkbox" id="stArrayWipe2"> wipe disks that hold something (what is on them is gone)</label></div>
+        <div class="actbar"><span class="sp"></span><button type="button" data-starray="add">Add the disk</button></div></div>
+      <div class="field"><div class="hint">A schedule: the parity synced daily and a scrub weekly is the usual pair.</div>
+        <div class="prefrow ctlrow">
+          <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Run</span><select id="stArraySched">${optionList(ARRAY_KINDS.map(([k, label, , said]) => [k, `${label}, ${said.toLowerCase()}`]), "sync")}</select></label></div>
+        </div>
+        <div class="actbar"><span class="sp"></span>${scheds.length ? actMore(scheds.map(x => `<button type="button" class="danger" data-stsnapsched="${esc(x.id)}">Remove the ${esc(x.array)} schedule</button>`), true) : ""}<button type="button" class="primary" data-starray="schedule">Save the schedule</button></div></div>` : ""}`;
+  } else {
+    const form = !admin || why ? "" : `<div class="field stnewarray"><div class="hint">New array: the data disks (any sizes, each wiped and given its own filesystem), one or two parity disks at least as large as the largest data disk, and where new files land.</div>
+      <div class="field"><div class="hint">Data disks</div>${pick("stArrayData", true)}</div>
+      <div class="field"><div class="hint">Parity disks</div>${pick("stArrayParity", true)}</div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Filesystem</span><select id="stArrayFs"><option value="xfs">xfs: the usual choice</option><option value="btrfs">btrfs: checksums per file</option></select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">New files land on</span><select id="stArrayPolicy">${optionList(ARRAY_POLICIES, "mfs")}</select></label></div>
+      </div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stArrayWipe"> wipe disks that hold something (what is on them is gone)</label></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-starray="create">Make the array</button></div></div>`;
+    body = `<div class="empty">No array yet${n.mergerfs && n.snapraid ? ": the form below makes one" : ""}.</div>${form}`;
+  }
+  return docSection("storage", "array", "Array", has ? `${(a.data || []).length} data, ${(a.parity || []).length} parity` : "", `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${body}`,
+                    {cls: has && (!a.mounted || (a.data || []).some(x => !x.mounted)) ? "bad" : ""});
+}
+function wireStorageArray(root, n){
+  const picked = id => [...root.querySelectorAll(`[data-${id}]:checked`)].map(i => i.getAttribute(`data-${id}`));
+  const heldAmong = id => [...root.querySelectorAll(`[data-${id}]:checked[data-held]`)].length;
+  const say = names => names.map(d => { const x = (n.disks || []).find(y => y.name === d); return x ? `${d} (${x.model || "unnamed"}, ${humanBytes((x.size_mb || 0) * 1048576)}, serial ${x.serial || "none"})` : d; });
+  root.querySelectorAll("[data-starray]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.starray;
+    if (act === "schedule"){
+      const kind = $("stArraySched")?.value || "sync", k = ARRAY_KINDS.find(x => x[0] === kind);
+      const was = (n.snapshot_schedules || []).find(x => x.array === kind);
+      const body = {action: "save", ...(was ? {id: was.id} : {}), name: `Array ${kind}`, cron: k[2], node: n.node, on: true, system: {apply: "storage-array", config: {array: kind}}};
+      busy(b, "Saving");
+      const j = await (await postJSON("/api/schedules", body)).json().catch(() => ({error: "no answer"}));
+      notify(j.error || `the array's ${kind}: ${j.schedule?.words || ""}; the row is on the Schedules page too`, !!j.error);
+      await refresh();
+      return;
+    }
+    const body = {action: "storage-array", id: n.node, array: act};
+    if (act === "create"){
+      body.data = picked("stArrayData"); body.parity = picked("stArrayParity");
+      body.fs = $("stArrayFs")?.value || "xfs"; body.policy = $("stArrayPolicy")?.value || "mfs"; body.wipe = !!$("stArrayWipe")?.checked;
+      if (!body.data.length || !body.parity.length){ notify("an array takes at least one data disk and one parity disk", true); return; }
+      if (body.data.some(d => body.parity.includes(d))){ notify("a disk is data or parity, not both", true); return; }
+      const held = heldAmong("stArrayData") + heldAmong("stArrayParity");
+      if (held && !body.wipe){ notify(`${held} of the disks picked hold something: tick wipe to take them`, true); return; }
+      if (!await askYes(`Make the array?\n\nData, each ${body.fs}:\n${say(body.data).join("\n")}\n\nParity:\n${say(body.parity).join("\n")}\n\nEverything on these disks is gone. Parity is kept by SnapRAID on a schedule, not in real time.`, {title: "Make the array?", verb: "Make it", danger: true})) return;
+    } else if (act === "add"){
+      body.disk = picked("stArrayAdd")[0] || ""; body.wipe = !!$("stArrayWipe2")?.checked;
+      if (!body.disk){ notify("pick the disk to add", true); return; }
+      if (heldAmong("stArrayAdd") && !body.wipe){ notify("the disk picked holds something: tick wipe to take it", true); return; }
+      if (!await askYes(`Add ${say([body.disk])[0]} to the array as its next data disk? Everything on it is gone, and the parity is synced after.`, {title: "Add the disk?", verb: "Add it", danger: true})) return;
+    } else if (act === "replace"){
+      body.which = b.dataset.which;
+      const free = (n.disks || []).filter(d => !d.system && !(d.parts || []).some(p => p.holds && p.holds !== "nothing") && (!d.holds || d.holds === "nothing"));
+      const choice = await ask({title: `Replace ${body.which}`, text: `The disk that takes the slot ${body.which}; it is wiped, then ${body.which[0] === "d" ? "its files are rebuilt from parity" : "the parity is rebuilt on it"}, which takes hours.`,
+                                choices: free.map(d => ({label: say([d.name])[0], value: d.name}))});
+      if (!choice) return;
+      body.new = choice;
+    } else if (act === "destroy"){
+      const typed = await askText("Destroy the array?\n\nIt is unmounted and forgotten; every data disk keeps its files, readable on any Linux, and the parity disks are left as they are.", {verb: "Destroy", label: "Type array to go on"});
+      if (typed === null || typed === undefined) return;
+      if (String(typed).trim() !== "array"){ notify("the word typed is not array; nothing destroyed", true); return; }
+      body.confirm = "array";
+    }
+    busy(b, {sync: "Syncing", scrub: "Scrubbing", check: "Checking"}[act] || "Working");
+    const j = await (await postJSON("/api/v1/nodes", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `${act}: the job runs on the machine; its log is on the Jobs page and the page follows the next check-in`, !!j.error);
+    await refresh();
+  }));
+}
+
+// Other disks and shares (R162 step 4): a USB or eSATA disk here, or a
+// remote SMB share or NFS export, mounted at /mnt/other/NAME as a backup
+// target or a source to copy in, never pooled. The record is the
+// controller's; the machine's agent mounts what it says within a minute,
+// and Eject turns a row off so the disk is unmounted before it is pulled.
+function storageOther(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const recs = n.extmounts || [], live = n.ext_mounts || [];
+  const kindWord = {disk: "a disk here", smb: "an SMB share", nfs: "an NFS export"};
+  const rows = recs.map(r => {
+    const st = live.find(x => x.id === r.id) || {};
+    const src = r.kind === "disk" ? r.source : r.kind === "smb" ? `\\\\${r.host}\\${r.path}` : `${r.host}:${r.path}`;
+    const pill = !r.on ? `<span class="pill">unmounted${r.kind === "disk" ? ", safe to pull" : ""}</span>` : st.mounted ? `<span class="pill ok">mounted</span>`
+      : r.kind === "disk" && st.present === false ? `<span class="pill warn">not plugged in</span>` : `<span class="pill warn">not mounted yet</span>`;
+    const pct = st.size_mb ? (st.used_mb || 0) / st.size_mb * 100 : 0;
+    return `<div class="row stack2 stother${st.error && r.on ? " bad" : ""}" data-extmount="${esc(r.id)}"><div class="grow">
+      <div class="name">${esc(r.name)} ${pill}${r.ro ? ` <span class="pill">read-only</span>` : ""} <span class="dim">${esc(kindWord[r.kind] || r.kind)}</span></div>
+      <div class="sub"><code>/mnt/other/${esc(r.name)}</code> from <code>${esc(src)}</code>${r.kind === "smb" ? ` as ${esc(r.user || "a guest")}` : ""}</div>
+      ${st.mounted ? `<div class="ndmeters">${meter("used", pct, `${sgb(st.used_mb)} / ${sgb(st.size_mb)}`, `${sgb((st.size_mb || 0) - (st.used_mb || 0))} free`)}</div>` : ""}
+      ${st.error && r.on ? `<div class="sub bad">${esc(st.error)}</div>` : ""}
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-stother="${r.on ? "off" : "on"}" data-id="${esc(r.id)}" title="${r.on ? "unmount it, so it is safe to pull or to take elsewhere" : "mount it again"}">${r.on ? (r.kind === "disk" ? "Eject" : "Unmount") : "Mount"}</button>${actMore([
+        `<button type="button" class="danger" data-stother="remove" data-id="${esc(r.id)}" title="unmounted and forgotten; nothing on it is touched">Remove</button>`], true)}</span>` : ""}</div>`;
+  }).join("");
+  const spare = (n.disks || []).filter(d => !d.system && (d.removable || d.tran === "usb" || (d.parts || []).some(p => /not mounted/.test(p.holds || "")) || /not mounted/.test(d.holds || "")));
+  const form = !admin || why ? "" : `<div class="field stnewother"><div class="hint">Mount another disk or share here, by itself: a backup target, or a source to copy in. Nothing on it is changed; it is never pooled.</div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">What</span><select id="stOtherKind"><option value="disk">a disk plugged in here (USB, eSATA)</option><option value="smb">an SMB share on another machine</option><option value="nfs">an NFS export on another machine</option></select></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Name</span><input type="text" id="stOtherName" placeholder="backup" maxlength="31" autocomplete="off" spellcheck="false"></label></div>
+      </div>
+      <div class="field" data-stotherk="disk"><label class="pick"><span class="pickw">Disk</span><select id="stOtherDisk">${spare.length ? optionList(spare.map(d => [d.name, `${d.name}: ${d.model || "unnamed"}, ${humanBytes((d.size_mb || 0) * 1048576)}, serial ${d.serial || "none"}`]), spare[0].name) : `<option value="">no disk here is spare</option>`}</select></label></div>
+      <div class="field" data-stotherk="smb nfs" hidden><label class="pick"><span class="pickw">Host</span><input type="text" id="stOtherHost" placeholder="nas.local or 192.168.1.20" autocomplete="off" spellcheck="false"></label>
+        <label class="pick"><span class="pickw" data-stotherpath>Share</span><input type="text" id="stOtherPath" placeholder="media" autocomplete="off" spellcheck="false"></label></div>
+      <div class="field" data-stotherk="smb" hidden><label class="pick"><span class="pickw">User</span><input type="text" id="stOtherUser" placeholder="leave empty for a guest" autocomplete="off" spellcheck="false"></label>
+        <label class="pick"><span class="pickw">Password</span><input type="password" id="stOtherPass" autocomplete="new-password"></label></div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="stOtherRo"> read-only</label></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stother="set">Mount it</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">Nothing else mounted${admin ? ": the form below mounts a disk or a share" : ""}.</div>`}${form}`;
+  return docSection("storage", "other", "Other disks and shares", recs.length ? `${recs.length}, ${recs.filter(r => (live.find(x => x.id === r.id) || {}).mounted).length} mounted` : "", body);
+}
+function wireStorageOther(root, n){
+  const kind = $("stOtherKind");
+  const showKind = () => root.querySelectorAll("[data-stotherk]").forEach(f => { f.hidden = !f.dataset.stotherk.split(" ").includes(kind.value); });
+  if (kind){ kind.onchange = () => { showKind(); const pw = root.querySelector("[data-stotherpath]"); if (pw) pw.textContent = kind.value === "nfs" ? "Path" : "Share"; const p = $("stOtherPath"); if (p) p.placeholder = kind.value === "nfs" ? "/export/media" : "media"; }; showKind(); }
+  root.querySelectorAll("[data-stother]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stother;
+    let body;
+    if (act === "set"){
+      const k = kind?.value || "disk";
+      body = {action: "set", kind: k, name: ($("stOtherName")?.value || "").trim(), ro: !!$("stOtherRo")?.checked};
+      if (k === "disk"){
+        const d = (n.disks || []).find(x => x.name === $("stOtherDisk")?.value);
+        if (!d){ notify("pick the disk to mount", true); return; }
+        body.source = d.by_id || "";
+        if (!body.source){ notify(`${d.name} has no by-id link the machine lists; a virtual disk cannot be mounted this way`, true); return; }
+      } else {
+        body.host = ($("stOtherHost")?.value || "").trim(); body.path = ($("stOtherPath")?.value || "").trim();
+        if (k === "smb"){ body.user = ($("stOtherUser")?.value || "").trim(); body.password = $("stOtherPass")?.value || ""; }
+      }
+      if (!body.name){ notify("a mount takes a name: its folder under /mnt/other", true); return; }
+    } else if (act === "remove"){
+      if (!await askYes("Forget this mount? It is unmounted first; nothing on it is touched.", {title: "Remove the mount?", verb: "Remove", danger: true})) return;
+      body = {action: "remove", id: b.dataset.id};
+    } else body = {action: act, id: b.dataset.id};
+    busy(b, {set: "Saving", remove: "Removing", off: "Unmounting", on: "Mounting"}[act] || "Working");
+    const j = await (await postJSON("/api/extmounts", body)).json().catch(() => ({error: "no answer"}));
+    notify(j.error || {set: "recorded: the machine mounts it within a minute", remove: "forgotten", off: "unmounted within a minute: the row says when it is safe to pull", on: "mounted within a minute"}[act], !!j.error);
+    await refresh();
+  }));
+}
+
+// Backups (R162 step 5): a folder here copied to another place by rsync,
+// each run a dated folder hard-linked to the one before, the oldest pruned
+// past what is kept; Run now, a daily or weekly schedule (the Schedules
+// page's row), the last run from the census, and a form for a new one.
+function storageBackups(n){
+  if (!n.own) return "";
+  const admin = !!state?.can?.admin && n.may_measure;
+  const why = !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const recs = n.backups || [], live = n.store_backups || [], scheds = (n.snapshot_schedules || []).filter(x => x.backup);
+  const places = [...(n.pools || []).map(p => [p.mount, `the pool ${p.name} (${p.mount})`]).filter(x => x[0]),
+                  ...(n.array?.mounted ? [[n.array.mount || "/mnt/array", `the array (${n.array.mount || "/mnt/array"})`]] : []),
+                  ...(n.extmounts || []).filter(m => (n.ext_mounts || []).find(x => x.id === m.id)?.mounted).map(m => [`/mnt/other/${m.name}`, `${m.name} (/mnt/other/${m.name})`]),
+                  ["/var/lib/builderbot-controller", "the controller's state"]];
+  const rows = recs.map(r => {
+    const st = live.find(x => x.id === r.id || x.name === r.name) || {};
+    const sch = scheds.find(x => x.backup === r.name);
+    const pill = !st.last_at ? `<span class="pill">never run</span>` : st.ok ? `<span class="pill ok">last run ${esc(ago(st.last_at))}</span>` : `<span class="pill bad">failed ${esc(ago(st.last_at))}</span>`;
+    return `<div class="row stack2 stbackup${st.last_at && !st.ok ? " bad" : ""}" data-backup="${esc(r.id)}"><div class="grow">
+      <div class="name">${esc(r.name)} ${pill}${sch ? ` <span class="pill${sch.on ? " ok" : ""}">${esc(sch.words || "scheduled")}${sch.on ? "" : ", off"}</span>` : ""}</div>
+      <div class="sub"><code>${esc(r.source)}</code> to <code>${esc(r.dest)}/${esc(r.name)}</code>, ${r.keep} run${r.keep === 1 ? "" : "s"} kept${st.size_mb ? ` · ${esc(humanBytes(st.size_mb * 1048576))} in ${st.runs} run${st.runs === 1 ? "" : "s"}` : ""}${st.took_s ? ` · the last took ${st.took_s < 120 ? `${st.took_s} s` : `${Math.round(st.took_s / 60)} min`}` : ""}</div>
+      ${st.error && !st.ok ? `<div class="sub bad">${esc(st.error)}</div>` : ""}
+      </div>${admin && !why ? `<span class="acts"><button type="button" data-stbackup="run" data-name="${esc(r.name)}">Run now</button>${actMore([
+        `<button type="button" data-stbackup="daily" data-name="${esc(r.name)}">${sch ? "Schedule: daily at 4:00" : "Schedule daily at 4:00"}</button>`,
+        `<button type="button" data-stbackup="weekly" data-name="${esc(r.name)}">Schedule weekly, Sundays at 4:00</button>`,
+        sch ? `<button type="button" data-stsnapsched="${esc(sch.id)}">Remove the schedule</button>` : "",
+        `<button type="button" class="danger" data-stbackup="remove" data-id="${esc(r.id)}" title="forgotten here; the runs already copied stay where they are">Remove</button>`], true)}</span>` : ""}</div>`;
+  }).join("");
+  // A pool of one disk has no redundancy (R162 step 6: an SSD pool holding
+  // the hot data): where the array stands, one press makes its nightly
+  // backup there, and a dead disk is restored from last night's.
+  const lone = (n.pools || []).filter(p => p.mount && (p.vdevs || []).length === 1 && (p.vdevs[0].disks || []).length === 1 && p.vdevs[0].type !== "mirror"
+                                        && !recs.some(r => r.source === p.mount));
+  const presets = !admin || why || !n.array?.mounted || !lone.length ? "" : `<div class="field"><div class="hint">A pool of one disk has nothing to fall back on: nightly to the array, and a dead disk is restored from last night's run.</div>
+      <div class="actbar"><span class="sp"></span>${lone.map(p => `<button type="button" data-stbackup="nightly" data-pool="${esc(p.name)}" data-mount="${esc(p.mount)}">Back up ${esc(p.name)} to the array nightly</button>`).join("")}</div></div>`;
+  const form = !admin || why ? "" : `${presets}<div class="field stnewbackup"><div class="hint">A new backup: a folder here, where its runs go (another pool, the array, a disk or a share under Other disks and shares), and how many runs to keep. Each run is whole and shares what did not change with the run before.</div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Name</span><input type="text" id="stBackupName" placeholder="media" maxlength="31" autocomplete="off" spellcheck="false"></label></div>
+        <div class="setrow col ctlrow"><label class="pick"><span class="pickw">Keep</span><input type="number" id="stBackupKeep" min="1" max="365" value="7"></label></div>
+      </div>
+      <div class="field"><label class="pick"><span class="pickw">Copy</span><input type="text" id="stBackupSrc" list="stBackupPlaces" placeholder="${esc(places[0]?.[0] || "/mnt/tank/media")}" autocomplete="off" spellcheck="false"></label>
+        <label class="pick"><span class="pickw">To</span><input type="text" id="stBackupDest" list="stBackupPlaces" placeholder="/mnt/other/backup" autocomplete="off" spellcheck="false"></label>
+        <datalist id="stBackupPlaces">${places.map(([v, w]) => `<option value="${esc(v)}">${esc(w)}</option>`).join("")}</datalist></div>
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-stbackup="set">Add the backup</button></div></div>`;
+  const body = `${why ? `<div class="sub dim">${esc(why)}</div>` : ""}${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No backup yet${admin ? ": the form below adds one" : ""}.</div>`}${form}`;
+  const bad = recs.filter(r => { const st = live.find(x => x.name === r.name) || {}; return st.last_at && !st.ok; }).length;
+  return docSection("storage", "backups", "Backups", recs.length ? `${recs.length}${bad ? `, ${bad} failed` : ""}` : "", body, {cls: bad ? "bad" : ""});
+}
+function wireStorageBackups(root, n){
+  root.querySelectorAll("[data-stbackup]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.stbackup;
+    if (act === "set"){
+      const body = {action: "set", name: ($("stBackupName")?.value || "").trim(), source: ($("stBackupSrc")?.value || "").trim(), dest: ($("stBackupDest")?.value || "").trim(), keep: parseInt($("stBackupKeep")?.value || "7", 10)};
+      if (!body.name || !body.source || !body.dest){ notify("a backup takes a name, a folder to copy and where its runs go", true); return; }
+      busy(b, "Adding");
+      const j = await (await postJSON("/api/storebackups", body)).json().catch(() => ({error: "no answer"}));
+      notify(j.error || "added: Run now copies it, or give it a schedule", !!j.error);
+      await refresh(); return;
+    }
+    if (act === "remove"){
+      if (!await askYes("Forget this backup? The runs already copied stay where they are.", {title: "Remove the backup?", verb: "Remove", danger: true})) return;
+      const j = await (await postJSON("/api/storebackups", {action: "remove", id: b.dataset.id})).json().catch(() => ({error: "no answer"}));
+      notify(j.error || "forgotten", !!j.error); await refresh(); return;
+    }
+    if (act === "nightly"){
+      // The record and its schedule in one press: the pool to the array's
+      // backups folder, seven nights kept, daily at 4:00.
+      const name = `pool-${b.dataset.pool}`;
+      busy(b, "Adding");
+      const j = await (await postJSON("/api/storebackups", {action: "set", name, source: b.dataset.mount, dest: `${n.array.mount || "/mnt/array"}/backups`, keep: 7})).json().catch(() => ({error: "no answer"}));
+      if (j.error){ notify(j.error, true); await refresh(); return; }
+      const k = await (await postJSON("/api/schedules", {action: "save", name: `Backup ${name}`, cron: "0 4 * * *", node: n.node, on: true,
+                                                        system: {apply: "storage-backup", config: {name}}})).json().catch(() => ({error: "no answer"}));
+      notify(k.error || `${b.dataset.pool} is backed up to the array nightly at 4:00; Run now takes the first copy`, !!k.error);
+      await refresh(); return;
+    }
+    if (act === "daily" || act === "weekly"){
+      const was = (n.snapshot_schedules || []).find(x => x.backup === b.dataset.name);
+      const body = {action: "save", ...(was ? {id: was.id} : {}), name: `Backup ${b.dataset.name}`, cron: act === "daily" ? "0 4 * * *" : "0 4 * * 0", node: n.node, on: true,
+                    system: {apply: "storage-backup", config: {name: b.dataset.name}}};
+      busy(b, "Saving");
+      const j = await (await postJSON("/api/schedules", body)).json().catch(() => ({error: "no answer"}));
+      notify(j.error || `${b.dataset.name}: ${j.schedule?.words || act}; the row is on the Schedules page too`, !!j.error);
+      await refresh(); return;
+    }
+    busy(b, "Copying");
+    const j = await (await postJSON("/api/v1/nodes", {action: "storage-backup", id: n.node, name: b.dataset.name})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "copying: the job runs on the machine; its log is on the Jobs page and the row follows the next check-in", !!j.error);
+    await refresh();
+  }));
 }
 
 function storageProjects(n, where){
@@ -199,9 +751,10 @@ function storagePhones(n){
       p.mb === null || p.mb === undefined ? `<span class="dim">?</span>` : sgb(p.mb)])}</div>`).join(""), "sttbl");
 }
 
-// Measure now, the page's upkeep, in its bar with every header button (the
-// operator, 17 Oct): the walk's numbers arrive with the node's census, which
-// the page follows, so it has no Refresh.
+// Measure now, the page's upkeep, on the head's action row under its facts,
+// as a node's own buttons are on the Nodes page (the operator, 29 Oct): the
+// walk's numbers arrive with the node's census, which the page follows, so
+// it has no Refresh.
 // Given GHOST, the placeholder's: there and dead until the node is known.
 function storageMeasureBtn(n){
   if (n === GHOST) return storageMay ? `<button type="button" disabled>Measure now</button>` : "";
@@ -209,11 +762,6 @@ function storageMeasureBtn(n){
   return `<button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
     n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>`;
 }
-// The bar: the node and Measure now; given nothing, the placeholder's.
-function storageBar(pnodes, n){
-  return nodeBar(nodePick("stNodeSel", pnodes, storageNode), storageMeasureBtn(pnodes ? n : GHOST));
-}
-
 // What the tab says about one node: the state row, then its disks. Given
 // null, the placeholder (R218, the operator 18 Oct: drawn by the page's own
 // code so it cannot drift): the same bands and By project, shimmering where
@@ -225,19 +773,30 @@ function storageBody(n, where){
   const byProject = (count, body) => docSection("storage", "projects", "By project", count,
     `<div class="field"><div class="hint">What each project's folders hold${n ? ` on ${esc(n.name)}` : ""}.${helpIcon("Its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.")}</div></div>
       ${body}`);
-  if (!n) return `${pageHead({title: GHOST, cls: "toolstate", facts: [["Measured", GHOST], ["Walk", GHOST], ...setOn]})}${skRows(2)}${byProject("", skRows(3))}`;
+  if (!n) return `${pageHead({cls: "toolstate", facts: [["Measured", GHOST], ["Walk", GHOST], ...setOn], actions: storageMeasureBtn(GHOST)})}${skRows(2)}${byProject("", skRows(3))}`;
   const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
-  const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
+  // A state is a pill (the voices rule); when it was measured is a fact.
+  const pill = n.measured ? "" : `<span class="pill stat warn">not measured</span>`;
   // The walk as a head's facts (R218 step 27; the operator, 25 Oct), and
   // the memory BuilderBot's work is kept to there (R110 step 4).
-  const fence = !("fence" in n) ? "" : n.fence ? `${humanBytes(n.fence[0] * 1048576)}, ${humanBytes(n.fence[1] * 1048576)} in use`
-    : "not fenced from the system's memory: run its setup again";
-  const head = pageHead({title: n.name || "", pills: pill, cls: "toolstate", facts: [
+  const fence = !("fence" in n) || !n.fence ? "" : `${humanBytes(n.fence[0] * 1048576)}, ${humanBytes(n.fence[1] * 1048576)} in use`;
+  // Not fenced is a warning, said as one over the head, not as a fact.
+  const unfenced = "fence" in n && !n.fence
+    ? `<div class="field"><div class="notice warn">BuilderBot's work on ${esc(n.name || "this node")} is not fenced from the system's memory: run its setup again.</div></div>` : "";
+  const head = pageHead({pills: pill, cls: "toolstate", facts: [
+    ["Measured", n.measured ? age.replace(/^measured /, "") : ""],
     ["Walk", n.measured ? `${n.took_s ? `took ${n.took_s}s, ` : ""}every hour` : "an hour after the agent starts, then every hour"],
-    ["Its work's memory", fence], ...setOn]});
+    ["Its work's memory", fence], ...setOn], actions: storageMeasureBtn(n)});
   return `<div data-stnode="${esc(n.node)}">
-    ${head}
+    ${unfenced}${head}
+    ${storageMachineDisks(n)}
+    ${storagePools(n)}
+    ${storageArray(n)}
+    ${storageSnapshots(n)}
+    ${storageShares(n)}
+    ${storageOther(n)}
+    ${storageBackups(n)}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
     ${(n.phones || []).length ? docSection("storage", "phones", "Phones", `${n.phones.length}, ${sgb(n.phones.reduce((a, p) => a + (p.mb || 0), 0))}`, storagePhones(n)) : ""}
@@ -250,35 +809,40 @@ function renderStorageInto(i){
   if (!d) return;
   if (storageList === null){
     // The page's own bar and body, given nothing.
-    d.setBar(storageBar(null));
+    d.setBar("");
     d.list.innerHTML = skTpl(storageBody(null));
     loadStorage();
     return;
   }
+  // The Machines header picks from the node list (R177): a node this
+  // page knows that the list does not yet (one just enrolled) is read in.
+  const known = new Set((nodesList || []).map(n => n.id));
+  const missing = (storageList || []).filter(n => !known.has(n.node) && !storageAskedNodes.has(n.node));
+  if (missing.length){ missing.forEach(n => storageAskedNodes.add(n.node)); loadNodes(); }
   if (storageErr){
     d.list.innerHTML = `<div class="hint bad">${esc(storageErr)}</div>`;
     return;
   }
   const where = ["workspace", "cache", "artifacts", "appdata", "emulator", "builds"];
   const n = storagePick();
-  const pnodes = storageList.map(x => ({id: x.node, name: x.name, live: x.live}));
-  // One order for every page's top (the operator, 17 Oct): the node and
-  // Measure now in the bar; when it was measured on the status line under it.
-  d.setBar(storageBar(pnodes, n));
+  // The node is the group header's (R177) and Measure now the head's, so
+  // the page's own bar has nothing to carry.
+  d.setBar("");
   d.list.innerHTML = n ? storageBody(n, where)
     : noNodeYet("the disks measured here are a node's");
   wireStorageTab(d.el);
+  if (n) wireStorageShares(d.el, n);
+  if (n) wireStoragePools(d.el, n);
+  if (n) wireStorageSnapshots(d.el, n);
+  if (n) wireStorageArray(d.el, n);
+  if (n) wireStorageOther(d.el, n);
+  if (n) wireStorageBackups(d.el, n);
 }
 
 function wireStorageTab(root){
   // Its sections fold as every page's do: one open at a time on a phone,
   // sliding, where they snapped and stood open together (B171).
   wireSections(root);
-  const psel = root.querySelector("#stNodeSel");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (psel) psel.onchange = () => navPush(() => { storageNode = psel.value;
-                                    try{ localStorage.setItem("bb.stnode", storageNode); }catch(e){ /* private */ }
-                                    storageRev++; drawPanes(); });
   root.querySelectorAll("[data-stdisk]").forEach(c => c.onclick = () => {
     storageDisk = c.dataset.stdisk; storageRev++; drawPanes();
   });

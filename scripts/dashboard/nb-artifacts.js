@@ -58,7 +58,10 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       // What the last build took on its node, workspace and cache (R110
       // step 7): the room the next one is checked against.
       {label: "last build took", value: humanBytes(art.build?.took?.workspace || 0),
-       sub: art.build?.took?.cache ? `cache ${humanBytes(art.build.took.cache)}` : "", omit: !art.build?.took?.workspace}]);
+       sub: art.build?.took?.cache ? `cache ${humanBytes(art.build.took.cache)}` : "", omit: !art.build?.took?.workspace}],
+      // Its status line, on the control row beside Download source (the
+      // operator, 29 Oct: never a button alone on its line).
+      "the code base as a zip, without build output");
     {
       // Where this project compiles, as a section rather than a loose band:
       // this tab is three subjects stacked, where it builds, what it is
@@ -79,9 +82,9 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             ? `<div class="hint">Builds run on <b>${esc(b.name)}</b>${b.tools?.length
                 ? `; it carries ${b.tools.map(esc).join(", ")}`
                 : "; it reports no toolchains yet, so a compile will not find one"}.
-               ${railAllows("toolchains") ? `Add to it from the ${pageLink("toolchains", "Toolchains page")}.`
+               ${railAllows("library") ? `Add to it from the ${pageLink("library", "Library")}.`
                  // Not offered a page their grants keep them from (B114).
-                 : "An account that may open the Toolchains page adds to it there."}</div>`
+                 : "An account that may open the Library adds to it there."}</div>`
             : `<div class="hint">No node: nothing can be compiled for this project here.
                ${esc(b.why || "")}</div>`,
           {cls: b.node ? (b.gap ? "bad" : "") : "warn"});

@@ -1309,7 +1309,10 @@ def save(project, req, who=""):
     with statefile.locked(FILE):
         d = _load()
         rec = _record(d, project)
-        nxt = rec["next"]
+        # A new page's id is past every id on the list as well as the
+        # counter (B408): a page saved with an id of its own, past the
+        # counter, left the next new page colliding with it.
+        nxt = max(rec["next"], 1 + max([p["id"] for p in raw if isinstance(p, dict) and isinstance(p.get("id"), int)] + [0]))
         pages = []
         for p in raw:
             pid = p.get("id") if isinstance(p, dict) else None

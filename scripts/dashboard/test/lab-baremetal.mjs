@@ -16,6 +16,7 @@
 //   BB_LAB_SSH         the private half's path ON THE VM HOST, readable by its
 //                      job account: the walk reaches a VM through jobs there
 //   BB_LAB_REF         the ref of github.com/aquilaelabs/builderbot to install
+//   BB_LAB_REF_NEXT    a newer ref to update to (R90 step 5), optional
 //                      (the branch under test, pushed)
 //   BB_LAB_PROJECT     a project there to make the VMs in (hello)
 //   BB_LAB_SYSTEMS     the catalog's OS ids, comma-separated (ubuntu-24.04)
@@ -179,6 +180,23 @@ for (const os of SYSTEMS){
     const broken = await inVm(ip, 'usermod -aG docker bb; /usr/local/sbin/bb-session check 2>&1; echo "rc=$?"; gpasswd -d bb docker >/dev/null; /usr/local/sbin/bb-session check >/dev/null 2>&1; echo "mended=$?"');
     ok(/rc=2/.test(broken) && /job account \(bb\) is in the docker group/.test(broken) && /mended=0/.test(broken),
        `[${os}] the wall broken, bb-session refuses and says why; mended, it starts sessions again (${oneLine(broken).slice(0, 300)})`);
+    // An update to a newer pushed ref (R90 step 5), when one is named: the
+    // installer's --update from that ref's tree, the install on the new
+    // release and answering. There is no going back by hand.
+    if (process.env.BB_LAB_REF_NEXT){
+      const before = await inVm(ip, SH + '\nrelease\n');
+      await inVm(ip, SH + '\nstart_update ' + process.env.BB_LAB_REF_NEXT + '\n');
+      const urc = await wait(async () => {
+        const out = await inVm(ip, 'cat /root/update.rc 2>/dev/null || true');
+        return /^\d+$/m.test(out) ? out.match(/^(\d+)$/m)[1] : null;
+      }, 30 * 60000, 20000);
+      const utail = await inVm(ip, 'tail -8 /root/update.log 2>/dev/null');
+      const after = await inVm(ip, SH + '\nrelease\n');
+      ok(urc === '0' && after.split('\n')[0] !== before.split('\n')[0],
+         `[${os}] --update from ${process.env.BB_LAB_REF_NEXT} lands on a new release (exit ${urc ?? 'none in 30 minutes'}; ${oneLine(before).slice(0, 80)} to ${oneLine(after).slice(0, 80)}; ${oneLine(utail).slice(-200)})`);
+      const up2 = await inVm(ip, SH + '\nstatus\n');
+      ok(/^(200|302)$/m.test(up2) && /^active$/m.test(up2), `[${os}] the new release answers on its port, under its service`);
+    }
   } finally {
     // BB_LAB_KEEP=1 leaves it for a look after a failure; the next walk
     // removes it first.

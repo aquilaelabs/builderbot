@@ -16,7 +16,21 @@ docker-compose.yml               compose variant of the stack
 .env.example                     annotated compose configuration
 lab/compose.yml                  the lab's Gitea and Forgejo for bb tests lab, a stack of its own beside the dev instance
 lab/.env.example                 the lab's one setting: the address other machines reach it at
-unraid/builderbot.xml            Unraid Docker template (one-click updates)
+platforms/                       each place the container edition installs (R98 step 1), its template and generated files; the installed
+                                 edition's own parts (host/, modules/, installer/, image/) land beside it as they are built (R56)
+  unraid/builderbot.xml          Unraid Docker template (one-click updates)
+image/                           BuilderBot OS, the appliance image the installed editions are made from (R160 step 1): Debian stable by mkosi, pinned to the snapshot in SNAPSHOT, the controller staged in, sealed as a squashfs and laid into a disk with two root slots by build.sh; docs/image.md says what persists and how it boots
+  SNAPSHOT                       the snapshot.debian.org timestamp every package is pinned to
+  mkosi.conf                     the tree: Debian trixie, its packages (the controller's own come from config/controller-packages.tsv)
+  mkosi.postinst                 inside the tree once its packages are in: install-controller.sh --stage, apt diverted, the services enabled
+  mkosi.sandbox/                 apt's settings for a dated snapshot (its Release files are past their date by design)
+  mkosi.extra/                   what is laid into the tree: the initramfs script that mounts /var and /etc's overlay, fstab, the slot tool, the apt stub, the first-boot unit, the boot's own settings and the stick's network file, the data partition grown to its disk, the installer and its unit
+  partitions.sh                  the disk's fixed partition UUIDs, sizes and labels, one place for build.sh, the initramfs, fstab and GRUB
+  grub.cfg                       GRUB's menu on the ESP: the two slots, bb_slot from grubenv naming the one to boot
+  iso-grub.cfg                   the ISO's menu (R160 step 2): the same root booted live, with the installer or without
+  lay-disk                       one disk laid out as BuilderBot OS: the partitions, GRUB for both firmwares, slot A and the data partition; build.sh runs it on a loop device, the installer on a person's disk
+  ovf.xml                        the OVA's descriptor (the VM disk for VMware and VirtualBox, R160 step 3), its marks filled by build.sh
+  build.sh                       the build: mkosi, the squashfs, the disk on a loop device with GRUB for UEFI and BIOS, the stamps
 scripts/
   entrypoint.sh                  the container's boot: uid remap, the timezone, then lib/boot.sh's steps and gosu
   host-boot.sh                   a bare-metal install's boot under systemd: lib/boot.sh's steps, then setpriv to its account (R90)
@@ -66,6 +80,7 @@ scripts/
   lib/browser.mjs                `bb browser`: Chrome or Firefox with an unpacked extension loaded, on its own port and profile, driven and stopped by one verb
   lib/proc-verbs.py              `bb proc`: this account's processes by a word of their command line, listed, ended or waited for, never the call's own shell
   lib/container-verbs.py         `bb container`: status and new
+  lib/pack-verbs.py              `bb tool search` and `bb tool install`: the vetted catalog looked through, a pack asked for as the project's Install a tool pack setting says (R169 step 5)
   lib/vm-verbs.py                `bb vm`: a project's VMs listed, made, started, stopped, snapshotted and removed (R91)
   lib/phone-verbs.py             `bb phone`: status and run
   lib/root-verbs.py              `bb root`: status and run
@@ -80,8 +95,10 @@ scripts/
   lib/git-policy.py              `bb git policy`
   lib/relay.py                   a notebook verb relayed from a node to the controller
   lib/release-edit.py            `bb version release --edit`: the notes and files read where it is typed, the edit asked over the API
+  lib/forge-verbs.py             `bb forge`: a verb and its arguments asked of the controller, which works the git host with the project's token
   lib/controller-stamp.py        the controller's build, for `bb status` and `bb catchup`
   lib/dash.py                    the dashboard's modules loaded by path for the notebook verbs, and the account name and "who wrote it" they share
+  lib/markup.py                  YAML's subset, JSON, TOML, XML and Markdown's headings read in the standard library, for the records and the code map (R167)
   lib/roadmap-verbs.py           `bb roadmap`
   lib/bug-verbs.py               `bb bug`
   lib/brief-verbs.py             `bb brief`: a new project's brief, and bb-tty's take of it for a first session
@@ -94,7 +111,9 @@ scripts/
   lib/rules-check.py             `bb rules check`: a rule's check command, run in this tree
   lib/tests-verbs.py             `bb tests`: the registry verbs
   lib/tests-verdict.py           what went wrong, from a run's log (bb tests last, the end of a run)
+  lib/tests-away.py              which node a project's suites go to (R151): the test node its settings name, its workers from its cores and memory, its queue
   lib/preamble-verbs.py          `bb preamble`
+  lib/router-key.py              `bb router-key`: the model router's address, this project's own key and its models (R144)
   lib/findings-verbs.py          `bb findings history` and `bb findings sample`
   lib/settings-verbs.py          `bb settings`: show, set for build, test and outputs, and node from a controller shell
   lib/projects-adopt.py          `bb projects adopt`: a folder already under the share made a project
@@ -119,7 +138,7 @@ scripts/
     server.py                    the routes, the transport and the gates; each handler one call into a module beside it
     index.html                   the markup, the stylesheet and the wiring that runs at load
     terminal.html                one terminal on a page of its own: a tab popped out of the dock, and the Android app's session screen (R133)
-    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Schedules, nginx, Storage, Toolchains, Agents, Emulator, Phone, Apps, Settings, Keys, Users, Profile, Findings, Projects)
+    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Schedules, nginx, Scanners, Storage, Library, a Library entry's own page, Installed, an installed thing's own page, Toolchains, Agents, Emulator, Phone, Apps, Settings, Keys, Audit, Users, Profile, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws
@@ -137,13 +156,22 @@ scripts/
     prefs.py                     which model and effort a project's sessions run on, per agent
     settings.py                  controller settings, the things that used to be environment variables; switches, a text and two secrets never shown back
     storage.py                   the Storage page's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
+    history.py                   reporting for the controller's own machine (R164 step 4): the heartbeat's samples kept for weeks at falling resolution, one file per node under the state, read by /api/history
+    extmounts.py                 the other disks and shares the controller's own machine mounts (R162 step 4): the record, a share's password sealed, what the hello hands the agent
+    storebackups.py              the backups the controller's own machine copies (R162 step 5): the record, what the hello hands the agent, the summary Home and the bell read
+    poolkeys.py                  the passphrases of the own machine's encrypted pools (R162 step 3): kept sealed, or asked after every boot and offered once; what the hello hands the agent, nothing in Safe mode
+    nasapps.py                   the catalog of ready apps New container offers (R164 step 2): each a compose file pinned to a tag with its blanks in the environment, filled by render
     schedules.py                 the Schedules page's scripts (R117): an administrator's cron in the state, its timetable in words, its timer and the built-in scan
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
     stateversion.py              /config's state version: the start's refusal of a newer or too old one, the copy before a migration, the JSON stores' migrations run
     statemigrations/             numbered migrations for the JSON stores (NNNN_name.py, run(ctx)), each run once as the state moves, never edited once shipped
-    toolchains.py                everything behind the Toolchains page: catalog, sizes, the job worker
+    toolchains.py                everything behind the toolchains in the Library and the Installed page: catalog, sizes, the job worker
     toolpacks.py                 the tool packs a person adds (docs/tool-packs.md): a repository's bbtool.json, pinned to a commit, as catalog rows
+    packconfig.py                what each added pack is configured with per node (R172): the answers to its config block, secrets sealed, handed in the hello
+    library.py                   the Library's one list (R170): the toolchains and packs with what a node's store holds, the coding agents, the apps, the catalog's offers and the companions as rows of one shape
+    catalogindex.py              the vetted catalog's index (R169 step 2): fetched from the catalog's address, its signature checked against config/catalog.pub before an entry is read, a withdrawn pack on the bell
+    catalogmirror.py             the vetted catalog's mirror (R169 step 6): an archive tools/catalog-mirror.py made, imported under Controller settings once its index is the maintainers', answering when the catalog does not and holding each pinned repository as a git bundle
     emulator.py                  everything behind the Emulator page: a node's Android system images
     enrollscript.py              Enroll node as one script: the answers, the token and a WireGuard tunnel inside the provisioner
     memory.py                    everything behind the memory book: what Claude remembers per project
@@ -160,6 +188,7 @@ scripts/
     agents.py                    the coding agents a session may run, one adapter each (R95): how each installs, signs in, is launched, briefed, guarded and read; page-agents.js is the page's copy
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the pins Home shows
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
+    forgeaccess.py               what an agent may do on a project's git host: the abilities, the token measured without changing anything, the project's Allow or Deny, and bb forge's verbs on GitHub, GitLab and Gitea
     systems.py                   the systems a node can be: what Enroll node's pulldown offers, each with its provisioner family and its vetting (R204)
     ftp.py                       a project's file access over FTP and in an editor: the switches, the port, each account's access, and access_for, the one answer both doors give (R151, R159)
     wssync.py                    a node's projects as a synced copy: the index, state, since, get and put for its agent, and conflicts (R162)
@@ -174,6 +203,7 @@ scripts/
     codebase.py                  the code base counted, by language, for the Briefing tab
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     roadmap.py                   the roadmap; `bb roadmap` drives the same file
+    records.py                   the notebook's records whole as JSON, YAML or Markdown, and read back in (R167)
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
     pending.py                   what a session wants to add to the notebook, held for the operator
@@ -196,13 +226,28 @@ scripts/
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
     imagecheck.py                every container's registry images against what their registries serve (R195): a weekly check, Check for updates on the Containers page, Update on a row
     vms.py                       the VM manager (R91): each project's VMs on the nodes with VM host, the OS catalog matched by name, the limits, and the vm jobs
-    gitcreds.py                  a project's git token, one line in /config/gitcreds, sealed under the install key where there is one (R135)
+    gitcreds.py                  who gave a project a token, a line per person in /config/gitcreds naming their key store's entry, and the credential git work is handed: theirs while they are signed in (R135, R159)
+    logins.py                    who is signed in now: a row per browser sign-in the cookie names, and a device signed in as the account, in /config/logins.json (R159)
     git-credential-bb            git's credential helper for that token: opened for the scheme and host it was written for, and nothing kept (R135)
     termws.py                    BuilderBot's own terminal, the controller's half (R133): /termws in a pty here, or carried signed to a node's /term
     tokenkeys.py                 the controller's half of the sealed sign-ins (R126): each account's public key per node, made from the account's own key, and the keys a person's own terminal carries, each seal's by the key it names
     installkey.py                the install key the install made itself (R154): where it is kept, its fingerprint, shown to save, changed with everything kept under it sealed again
     accountkeys.py               each account's own key for its sign-ins on the nodes (R154), in account-keys.json sealed under the install key, changed from Profile
+    router.py                    a model router on a node (R144): LiteLLM with the provider keys and Ollama as a written container, a key per allowed project, the models and the spend read at the router
+    reach.py                     the bell's rows sent elsewhere per person (R149): email over SMTP, a webhook and its presets, each destination's kinds and quiet window, the minute loop holding a repeat while unchanged
+    releasecheck.py              a newer BuilderBot release for a bare-metal install (R90 step 5): asked of GitHub daily, said on the bell and under Controller settings, applied through the own node
+    checks.py                    update checks on one clock (R176): each check's cadence a setting under Controller settings, when it last ran, Check now
+    firstboot.py                 a stick's prepared configuration at its first boot (R161 step 8): the owner and the people made, the setup page skipped where asked, the rest kept waiting, said on This machine
+    held.py                      a held start on a bare-metal install (R56 step 9): held after an unclean stop or when armed for the next restart, lifted by Start on This machine
+    move.py                      moving this controller to another home (R90 step 12): the sealed bundle and its token, the nodes' challenges, the restore under the version gate, the old home marked moved
+    backup.py                    the configuration backed up (R161 step 4): the move's bundle under a password's key, written onto the pools after every change, found and restored at a first run
+    scanners.py                  BuilderBot's own scanners on each node (R145): the compose project of Semgrep, Trivy and mobsfscan deployed and updated per node, one schedule for every node's runs, the SARIF each sends up, and the bell's rows
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
+    acme.py                      an ACME client on the cryptography library: Let's Encrypt certificates for the nginx page by HTTP-01 or DNS-01, renewed (R150)
+    unlocks.py                   a person's tokens opened per use for the window they pick and logged, git's handout of an opened one, and a store under a key of the person's own opened only while unlocked (R158 step 5, R157)
+    hardening.py                 the dashboard's process kept from core files and swap, not dumpable, and wipe() for a key let go (R158 step 6)
+    csp.py                       the page's Content-Security-Policy, its inline blocks allowed by hash and its scripts by integrity, and what a browser refused under it, kept for the Doctor (R158 step 4)
+    tls.py                       the dashboard's own TLS: one port serving https and http by the first byte, the install's own certificate or Let's Encrypt's, its key sealed under the install key (R158 step 2)
     phone.py                     a paired handset on a node: install, push, and the asking
     phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
     db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
@@ -265,6 +310,7 @@ scripts/
     toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
     gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit
     sessnet.py                   each session kept to its own project's network (R79)
+    scan.py                      the scan job (R145): each scanner run as compose with the node's project copies mounted read-only, its SARIF sent up as scan-put
     accounts.py                  each account a Unix user of its own on the node (R125): its user made, its home moved to it and back, the terminal's environment for bb-session tty
     tokenwatch.py                who opens an account's coding-agent token on the node (R125): the files held at 600, a reader that is neither the account nor the agent said on the next hello
     tokens.py                    the coding agents' sign-ins sealed on the node (R126): sealed where a login wrote them, opened into a tmpfs for a person's terminal, wiped after the last session
@@ -280,40 +326,57 @@ scripts/
     work.py                      compose, toolchains, signing, images and system packages, as Agent's methods
     keyops.py                    the controller's signing key work on this node: a keystore checked, a key made or wrapped, a rotation's proof, a release's APK signed (R106)
     configplane.py               the configuration plane: the node's system, storage and network, as root
+    osimage.py                   BuilderBot OS on the machine (R160 step 4): the image, its slot and the next boot's for the census, and the os-update job that writes the other slot
+    disks.py                     the machine's disks for the census (R162 step 1): lsblk's JSON and smartctl's, each whole disk with what its partitions hold
+    shares.py                    the machine's SMB and NFS shares for the census and the storage-share job (R162 step 1): BuilderBot's own two files, read and written whole
+    pools.py                     the machine's ZFS pools for the census and the storage-pool job (R162 step 1): made, grown, scrubbed, a member replaced, exported, destroyed, each disk held to the census
+    array.py                     the machine's array of mixed disks for the census and the storage-array job (R162 step 2): the record, snapraid.conf and the fstab lines rendered from it, made, a disk added or replaced, synced, scrubbed, checked, destroyed
+    power.py                     the machine's UPS through NUT and its own packages' updates for the census, and the host-update job (R164 step 3)
+    extmounts.py                 the other disks and shares the hello names (R162 step 4): each mounted at /mnt/other/NAME or unmounted as the record says, an SMB share's credentials root's alone, the census's rows
+    packconfig.py                what each added pack is configured with here (R172): the hello's rows written as one env file per pack under the store's .bb/config, the session account's alone, which bb tool reads into a verb's environment
+    backups.py                   the storage-backup job (R162 step 5): rsync of a folder to another place, each run hard-linked to the one before, the oldest pruned, the last run for the census
     agent.py                     Agent: hello, the loop and self-update, made of the parts above
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only
   agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
-android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
-vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
-  package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
-  extension.js                   the builderbot: file system, the sign-in, open project, search and the session's terminal
-  lib/client.js                  the controller as the extension speaks to it: sign-in through /login, the Files API, /term
-  lib/ws.js                      a websocket client in Node's own modules, for the terminal
-  lib/term.js                    BuilderBot's own terminal on /termws, from VS Code: the frames the dashboard's dock speaks
-  README.md                      what VS Code shows on the extension's page: setting it up, installing and using it
-windows/                         the Windows companion app (R270): a person's machine keeping a project's folder in step through the device door
-  README.md                      what it does, signing in, picking a project and a folder, building it
-  bbcompanion/__init__.py        the package: what the app is
-  bbcompanion/__main__.py        its command line (sign in, add, remove, run, sign out) and the packaged app's start
-  bbcompanion/core.py            the node agent's own sync on the device door: the projects picked, a long poll per project, what Windows cannot hold left out
-  bbcompanion/names.py           Windows' rules for a file's name: device names, a trailing dot or space, the refused characters, two names one by case
-  bbcompanion/creds.py           the device token in Windows' credential store, or a file only its owner reads elsewhere
-  bbcompanion/settings.py        the projects kept and their folders, the controller's address
-  bbcompanion/pc.py              this PC lent to a project: the verbs its person set up, run on a session's ask, the folder written as the project's path
-  bbcompanion/update.py          kept current by its controller: what it holds asked at start and daily, a newer copy checked and swapped in at the next start
-  bbcompanion/app.py             the window: sign in, the projects and each one's state, Add, Remove, Open folder, Conflicts
+packs/                           the official packs (R169 step 1): every shipped toolchain and every coding agent as a pack in bbtool.json's format, tagged official and bundled for an install with no network, written by tools/packs-export.py from the tables and held to them by bb lint
+tools/catalog-mirror.py          makes the vetted catalog's mirror on a machine with the network: the signed index and a git bundle per repository at every commit it pins, for a controller that cannot reach the catalog (R169 step 6)
+    official/                    one folder per shipped toolchain (a colon in its name a hyphen), its bbtool.json carrying the recipe config/toolchains.json has under shipped
+    agents/                      one folder per coding agent, its bbtool.json carrying the adapter agents.py's table has under agent
+    services/                    one folder per deployed thing of BuilderBot's that is a pack (R172): the model router, its service block and its config block, what its Installed row asks for per node
+apps/                            the companions a person installs (R98 step 1): the phone app, the editor extension and the
+                                 Windows companion, each released by its own workflow and offered as a card in the Library
+  android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
+  vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
+    package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
+    extension.js                   the builderbot: file system, the sign-in, open project, search and the session's terminal
+    lib/client.js                  the controller as the extension speaks to it: sign-in through /login, the Files API, /term
+    lib/ws.js                      a websocket client in Node's own modules, for the terminal
+    lib/term.js                    BuilderBot's own terminal on /termws, from VS Code: the frames the dashboard's dock speaks
+    README.md                      what VS Code shows on the extension's page: setting it up, installing and using it
+  windows/                         the Windows companion app (R270): a person's machine keeping a project's folder in step through the device door
+    README.md                      what it does, signing in, picking a project and a folder, building it
+    bbcompanion/__init__.py        the package: what the app is
+    bbcompanion/__main__.py        its command line (sign in, add, remove, run, sign out) and the packaged app's start
+    bbcompanion/core.py            the node agent's own sync on the device door: the projects picked, a long poll per project, what Windows cannot hold left out
+    bbcompanion/names.py           Windows' rules for a file's name: device names, a trailing dot or space, the refused characters, two names one by case
+    bbcompanion/creds.py           the device token in Windows' credential store, or a file only its owner reads elsewhere
+    bbcompanion/settings.py        the projects kept and their folders, the controller's address
+    bbcompanion/pc.py              this PC lent to a project: the verbs its person set up, run on a session's ask, the folder written as the project's path
+    bbcompanion/update.py          kept current by its controller: what it holds asked at start and daily, a newer copy checked and swapped in at the next start
+    bbcompanion/app.py             the window: sign in, the projects and each one's state, Add, Remove, Open folder, Conflicts
 nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
 nodes/provision-macos.sh            a provisioner for macOS, not offered by default takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 nodes/families/                           the provisioner's family files, one per package family (deb, rhel, arch, suse, alpine, void, gentoo): package names and verbs, where docker comes from; the enroll script carries the picked system's beside the core
-nodes/install-controller.sh               installs the controller bare metal on the provisioner's core, lays the release out by the Dockerfile's COPY lines, and makes the machine a node of itself; --check, --update, --rollback, --remove (R90)
+nodes/install-controller.sh               installs the controller bare metal on the provisioner's core, lays the release out by the Dockerfile's COPY lines, and makes the machine a node of itself; --check, --update, --remove (R90)
 nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes
 nodes/vm/                        the same machine for the other six hypervisors: Proxmox, libvirt, QEMU, VMware, Hyper-V, VirtualBox
 nodes/cloud-init/                the seed a cloud image boots from: meta-data and the user-data that runs the provisioner
 config/skel/                     home directory skeleton
 config/icon.png                  the icon the Unraid template shows
-config/toolchains.json           the toolchains the Toolchains page offers, and how to install each
+config/toolchains.json           the toolchains the Library offers, and how to install each
+config/catalog.pub               the catalog maintainers' Ed25519 public key (R169 step 2): what every install checks the catalog's index.sig against
 config/release-keys/README.md    where each publisher release key came from, and how one is refreshed (R137)
 config/release-keys/node.asc     the Node.js release team keys that sign each release SHASUMS256.txt
 config/release-keys/swift.asc    the Swift signing keys that sign each download
@@ -323,7 +386,10 @@ config/vm-images.json            the operating systems a VM is made from: each p
 config/templates/                briefing.md, assembled per session by preamble.py; nothing is copied into a project
 tools/readme-shots.mjs           the README's pictures (dashboard, notebook, nodes, toolchains, the phone's dashboard and terminal) from a running dashboard, normally the dev instance: default scheme, addresses scrubbed, nothing saved
 tools/bb-ref.sh                  writes the bb block of docs/reference.md from bb help; bb lint holds the two equal
+tools/builderbot-stick.py        the USB stick maker (R161 step 5): a release's stick image onto a removable disk on Windows, a Mac or Linux, checked and read back, Python's own library alone
 tools/api-doc.py                 writes docs/api.md from server.py's route tables; bb lint holds the two equal
+tools/git-hosts-doc.py           writes docs/git-hosts.md from forgeaccess.ABILITIES; bb lint holds the two equal
+tools/packs-export.py            writes the official packs under packs/ from config/toolchains.json and agents.py's table; bb lint's --check holds them to it (R169 step 1)
 tools/check-sysdeps.py           checks every recipe's system packages, and with --controller the controller's own list, against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
@@ -334,11 +400,10 @@ test/nettest/.env.example        the two addresses it needs: the controller's an
 tools/american-spelling.sh       the house rule spelling's check: no British spelling on a line this branch adds
 tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
 tools/upgrade-snapshot.py        a lived-in /config made by this tree's controller through its API, written to scripts/dashboard/test/upgrade/VERSION/ for the upgrade suite; a release runs it
-tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
+tools/vscode-vsix.py             packages apps/vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
 tools/companion-build.py         builds the Windows companion as one .pyz with the four agent modules its sync is (R270)
 tools/app-schemes.py             writes the Android app's twelve color schemes, both halves, from the design record (bb design json | tools/app-schemes.py)
 tools/ratchet.txt                those ceilings, one per file
-tools/scan.sh                    the static analysis stack, run once with plain docker run: Semgrep, Trivy and mobsfscan, versions pinned, SARIF into the reports folder (docs/scanners.md)
 pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python
                                  version, with the None checks off, since a module's configure() fills what it declares as None
 tools/version-stamp              this repo's own stamp hook: a bump moves the compatibility
@@ -346,31 +411,36 @@ tools/version-stamp              this repo's own stamp hook: a bump moves the co
 docs/README.md                   the index of these docs, linked from the README
 docs/reference.md                the configuration reference, every bb command (its bb block written by tools/bb-ref.sh) and signing Android releases
 docs/unraid.md                   step-by-step Unraid walkthrough
+docs/image.md                    BuilderBot OS, the appliance image: what it is, the disk and its slots, what persists, how it boots, how it is built
 docs/install.md                  setup, start to finish: the checklist with the decisions each step needs
 docs/architecture.md             the map: the seven parts, how they reach each other, where each is explained
 docs/api.md                      every /api/ route with its method, handler, first sentence and what it refuses on, written by tools/api-doc.py
+docs/git-hosts.md                what an agent can do on a git host and the token permission each needs, written by tools/git-hosts-doc.py
 docs/how-it-works.md             the overview: what the image carries, its security model and hooks, and which doc explains each part
 docs/dashboard.md                the dashboard: signing in, the rail, Home, the bell, color schemes, the dock and its terminals
 docs/projects.md                 the Projects page: making, linking, archiving and deleting a project, and its repository's access
 docs/notebook.md                 a project's page: its header and its views, from the roadmap and bugs to the wiki and design
 docs/sessions.md                 each agent's sessions: starting one, the Sessions page, a session's view and network, its briefing and rules
 docs/building.md                 builds, tests, CI runners and logs, the scanner's findings, dist/, signing and releases
-docs/toolchains.md               the toolchain store, the Toolchains and Emulator pages, the NVIDIA card, Android, the Phone page
-docs/agents.md                   the coding agents: the agent table, the Agents page, installing and signing in to each on a node (R95)
+docs/toolchains.md               the toolchain store, the Library, the Installed page's toolchains, the Emulator page, the NVIDIA card, Android, the Phone page
+docs/agents.md                   the coding agents: the agent table, the Library and the Installed page, installing and signing in to each on a node (R95)
 docs/tool-packs.md               tool packs: adding one, a project's Toolchains setting, and writing a bbtool.json
 docs/containers.md               the Containers page and nginx: dev instances, how one is reached, networks, image updates
-docs/scanners.md                 setting up the static analysis stack and running it (tools/scan.sh)
+docs/scanners.md                 the Scanners page: BuilderBot's own scanners on each node, their schedule, and the reports
 docs/versions.md                 versions and release lines: bb version line, forward, backport, a patch line's rules
 docs/vms.md                      the VMs page and bb vm: VM host, the OS catalog, the dial, the limits, the network, snapshots, a VM made a node
+docs/nas.md                      the installed edition's storage design (R56): Python the management plane and never the data path, the two storage profiles, what is not built
 docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node
 docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile
 docs/bb-command.md               the bb verbs with more behind them: the test harness, the code map, capture, sound and documents
 docs/privacy.md                  data and privacy: what an install keeps, what it contacts, how to remove it
+docs/security.md                 the threat model: who is trusted for what, what each store protects and does not, and the line each hardening step closes (R158)
 docs/features.md                 everything BuilderBot does, by area, linked from each release's notes
 docs/companion-app.md            the companion app for an Android phone: pairing, its lock, notifications, how it is built
 docs/decisions.md                the design decisions, with their dates and reasons
 docs/layout.md                   this list, held to the tree by bb lint
-docs/screenshots/                the README's pictures, regenerated by tools/readme-shots.mjs
+docs/release-notes/              a release's notes, X.Y.Z.md or X.Y.Z-dev.md for a dev build, which CI publishes the release with
+docs/screenshots/                the README's pictures, regenerated by tools/readme-shots.mjs, and the mark at 512px (mark-512.png) a release's page shows
 docs/start-here.md               the one page for somebody given an account on somebody else's BuilderBot
 docs/journeys.md                 what a person does with BuilderBot, walked for real, dated
 docs/sandbox-vm.md               the Docker sandbox VM: why, how, and pointing this at it
@@ -382,6 +452,7 @@ docs/design-language.md          what the dashboard's surfaces owe each other: h
 .github/actionlint.yaml          this runner's labels, for workflow linting
 .github/workflows/
   build-image.yml                GHCR publish: hosted, cached from :latest, on a push to main that touches the image's inputs
+  os-image.yml                   BuilderBot OS built and booted under QEMU: called by build-image.yml to publish, and on its own for a branch push touching the image
   lint.yml                       the linters, on a pull request, on this runner
   dashboard.yml                  the dashboard's browser suite, on a pull request that changes it, on this runner
   android-app.yml                the companion app's build

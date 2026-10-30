@@ -61,21 +61,75 @@ class OwnRow(unittest.TestCase):
     def test_its_session_network_stays_on_and_it_hosts_no_containers(self):
         mint(self.state, "nas", "--own")
         n = self.row("nas")
+        # The switch went in 0.9.0 (R146): its sessions' own network is a fact.
         r = self.nodes.node_session_net("user:t", n["id"], False)
-        self.assertIn("controller's own machine", r.get("error", ""))
+        self.assertIn("went in 0.9.0", r.get("error", ""))
         self.assertTrue(self.nodes.session_net_on(n["id"]))
-        self.assertTrue(self.nodes.node_session_net("user:t", n["id"], True).get("ok"))
         r = self.nodes.node_update("user:t", n["id"], {"capabilities": ["package-build", "docker-host"]})
         self.assertIn("runs no containers", r.get("error", ""))
         self.assertEqual(self.row("nas")["capabilities"], ["package-build"])
 
-    def test_it_is_no_vm_host(self):
-        # libvirt's group is root on the machine (R90 step 14), so VM host is
-        # refused on it as docker-host is, whatever else the row says.
+    def test_it_may_be_a_vm_host_through_the_root_agent(self):
+        # libvirt's group is root on the machine (R90 step 14), and VM host
+        # is still offered there (R165 step 1): the VMs run through the root
+        # agent and the jobs account stays out of the group, so the gate it
+        # meets is every node's, not one of its own.
         mint(self.state, "nas", "--own")
         n = self.row("nas")
         r = self.nodes.node_feature("user:t", n["id"], "vmhost", "install")
-        self.assertIn("controller's own machine, so it is no VM host", r.get("error", ""))
+        self.assertNotIn("no VM host", r.get("error", ""))
+        self.assertIn("not provisioned as a managed node", r.get("error", ""))
+
+
+class TheImageUpdate(unittest.TestCase):
+    """os-update (R160 step 4) is for a machine whose census says it runs
+    BuilderBot OS; a bare-metal install on another system is told so."""
+    def setUp(self):
+        self.state = tempfile.mkdtemp()
+        sys.path.insert(0, DASH)
+        import nodes
+        self.nodes = nodes
+        nodes.configure(state=self.state)
+
+    def test_it_is_refused_where_the_image_is_not_running(self):
+        mint(self.state, "nas", "--own")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "nas")
+        r = self.nodes.node_os_update("user:t", n["id"], "v0.9.1")
+        self.assertIn("runs BuilderBot OS", r.get("error", ""))
+        r = self.nodes.node_os_update("user:t", "n_nothere", "v0.9.1")
+        self.assertEqual(r.get("error"), "no such node")
+
+
+class TheNameAndTime(unittest.TestCase):
+    """node_machine (R161 step 3) is the own machine's: another node's name
+    is its own administrator's, and the shapes are held before any job."""
+    def setUp(self):
+        self.state = tempfile.mkdtemp()
+        sys.path.insert(0, DASH)
+        import nodes
+        self.nodes = nodes
+        nodes.configure(state=self.state)
+
+    def test_storage_and_shares_are_the_own_machines_features(self):
+        # R56 step 2: another node is told the feature is the installed
+        # edition's; the own machine meets every node's gates after it.
+        mint(self.state, "other", "")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "other")
+        r = self.nodes.node_feature("user:t", n["id"], "storage", "install")
+        self.assertIn("controller's own machine's", r.get("error", ""))
+        mint(self.state, "nas", "--own")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "nas")
+        r = self.nodes.node_feature("user:t", n["id"], "shares", "install")
+        self.assertNotIn("own machine's", r.get("error", ""))
+
+    def test_another_node_is_refused_and_the_own_machine_holds_the_shapes(self):
+        mint(self.state, "other", "")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "other")
+        self.assertIn("its own to set", self.nodes.node_machine("user:t", n["id"], "box")["error"])
+        mint(self.state, "nas", "--own")
+        n = next(x for x in self.nodes.node_list() if x["name"] == "nas")
+        r = self.nodes.node_machine("user:t", n["id"], "box")
+        self.assertNotIn("its own to set", r.get("error", ""))
 
 
 class TheDoctorSaysTheWall(unittest.TestCase):

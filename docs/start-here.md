@@ -10,7 +10,8 @@ it in Help.
 A workstation for coding agents you reach in a browser. Each project on the
 Projects page holds git repositories on a shared disk. A **session** is a coding
 agent working in them (Claude, through Claude Code; ChatGPT, through Codex
-CLI; Copilot, through Copilot CLI; or Grok, through Grok Build), on one of the machines
+CLI; Copilot, through Copilot CLI; Grok, through Grok Build; or any model,
+through OpenCode and a machine's model router), on one of the machines
 behind the dashboard, with a terminal you can watch and type into. A
 project's page holds its **notebook**, where you and the sessions keep the
 plan: the roadmap, the bugs, the house rules and the git view.
@@ -40,13 +41,15 @@ and a session keeps going.
    identity your commits will carry. No session starts until these are set,
    because a commit with no author is a mess somebody else has to clean up.
 3. **Install an agent, then sign in to it**, on each machine your projects
-   work on. A node has no agent until the **Agents** page (under Build, with
-   that node picked) installs one: press Install under Claude, ChatGPT or
-   Copilot. Then press a project's **Start agent**: where you are not signed
-   in on its node yet, it offers **Sign in on** that node, which opens that
-   node's Agents page at that agent's section. Press Sign in there: Claude's
-   gives a link and takes the code back, ChatGPT's and Copilot's give a link
-   and a code to enter at OpenAI or GitHub. The login stays on that machine
+   work on. A node has no agent until the **Library** (under Build, with
+   that node picked in the header) installs one: press Install on Claude
+   Code, Codex CLI, Copilot CLI or Grok Build. Then press a project's **Start
+   agent**: where you are not signed in on its node yet, it offers **Sign in
+   on** that node, which opens that node's **Installed** page (under
+   Machines) on that agent's own page. Press Sign in there: Claude's
+   gives a link and takes the code back, ChatGPT's, Copilot's and Grok's
+   give a link and a code to enter at OpenAI, GitHub or xAI. OpenCode signs
+   in to nobody: it uses the model router an administrator set up. The login stays on that machine
    and is yours: it is not shared with the other people here, nobody else's
    sessions use it, and another node asks for its own the first time you
    work there.
@@ -77,7 +80,7 @@ The four you are most likely to meet:
 - **the node is away**: the machine a project builds on is not answering, so
   nothing runs there until it is back. It is not your doing.
 - **a tool is missing**: builds use what the machine has, and installing more
-  is an administrator's call, on the Toolchains page. Say what you needed.
+  is an administrator's call, from the Library. Say what you needed.
 - **a session may not push here**: the project's git policy keeps pushing with
   a person. Your commit is made; push it from the notebook's Git view.
 
@@ -100,14 +103,19 @@ roadmap, and it never reads your chat history.
 
 ## As an administrator
 
-- **Machines**: this controller's own settings, the nodes where builds,
-  tests, CI, the emulator and sessions run, and what their disks hold.
-  Enroll node gives you the script to run on a machine.
-- **Build**: what each node builds with (Toolchains, and the tool packs you
-  add there), its emulator, a phone lent to it, its CI runner, and the apps
-  people install.
-- **Containers**: what runs on each node's Docker, and the nginx in front of
-  it.
+- **Controller**: the machine the controller runs on (on a bare-metal
+  install), its settings, each waiting for its Apply, how it is reached on
+  the Network page, its keys and its audit log.
+- **Machines**: the nodes where builds, tests, CI, the emulator and
+  sessions run, what their disks hold, and what the Library put on each
+  (Installed). Enroll node gives you the script to run on a machine.
+- **Build**: the Library, where everything a node installs or runs comes
+  from (coding agents, toolchains, tool packs, services and apps), its
+  emulator, a phone lent to it and its CI runner.
+- **Containers**: what runs on each node's Docker and its VMs; the nginx in
+  front of them and the scanners are the System section's rows.
 - **People**: accounts, roles and which projects each one sees.
-- **Settings**: the controller's, each waiting for its Apply. A project's
-  own settings are on its page.
+
+A project's own settings are on its page. The Machines, Build and
+Containers groups each show one node at a time, picked once in the header
+over their pages.

@@ -265,7 +265,7 @@ function resumeConversation(name, id, when, ev, agent = "claude"){
   // Nowhere to start it (placeResumeMenu found no Start agent to open under):
   // said, rather than a press that does nothing.
   if (resumeFor !== name)
-    notify(claude && claudeInstall(p) ? `Claude Code is not installed on ${p.node_name || "this project's node"}: install it from its Agents page, then resume`
+    notify(claude && claudeInstall(p) ? `Claude Code is not installed on ${p.node_name || "this project's node"}: install it from the Library, then resume`
       : "a session cannot start on this project now: its Start agent says why", true);
 }
 
@@ -395,10 +395,10 @@ async function openBrief(name, node, agent = "claude"){
       $(id).innerHTML = optionList(table, cur);
     }
   } else {
-    const t = AGENT_MODELS[agent] || {models: [], efforts: []};
+    const t = agent === "open" ? routerModels(p) : (AGENT_MODELS[agent] || {models: [], efforts: []});
     for (const [id, xs, cur] of [["briefModel", t.models, p?.yours?.[`${agent}_model`] || ""],
                                  ["briefEffort", t.efforts, p?.yours?.[`${agent}_effort`] || ""]]){
-      $(id).innerHTML = optionList([["", `${a.name}'s default`], ...xs.map(v => [v, v])], cur);
+      $(id).innerHTML = optionList([["", `${a.name}'s default`], ...xs.map(v => Array.isArray(v) ? v : [v, v])], cur);
     }
   }
   for (const b of ["briefGo", "briefSkip"]) $(b).disabled = true;
@@ -494,8 +494,10 @@ function resumePicker(p, m, card, anchor, ns, several){
       <button type="button" class="${r.restart ? "danger" : "primary"}" data-start>${r.restart ? "Restart" : "Start"}</button></div>`;
   m.dataset.pick = p.name;
   card.appendChild(m);
-  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
+  const say = () => { if (r.agent === "open"){ const w = routerSays(p, r.model); const el = m.querySelector("#rmSay"); el.textContent = w; el.classList.toggle("warn", !!w); } };
+  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; say(); };
   m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
+  say();
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
   m.querySelector("[data-start]").onclick = async e => {
     const label = r.restart ? "Restart" : "Start";
@@ -536,11 +538,38 @@ function resumePicker(p, m, card, anchor, ns, several){
 // agent, on which node, and that agent's own models and efforts, its
 // default first; Start opens it. Nothing is saved: the pick rides the
 // terminal's argument.
+// Any model's models (R144 step 3): the router's, as the project row
+// carries them, each said with its provider, its context and its price
+// where the router knows them; none when no router allows the project.
+// A model walked with the open agent and BuilderBot's tools is marked; the
+// rest say untested and are offered all the same. One whose context cannot
+// hold the briefing and the house rules says so here and under the picker.
+function routerModels(p){
+  const rows = p?.router?.models || [];
+  const price = m => m.in_cost ? ` $${(m.in_cost * 1e6).toFixed(2)}/$${(m.out_cost * 1e6).toFixed(2)} per M` : "";
+  const ctx = m => m.context ? ` ${Math.round(m.context / 1000)}k` : "";
+  const mark = m => m.walked ? "" : routerTooSmall(p, m) ? " · too small for the briefing" : " · untested";
+  return {models: rows.map(m => [m.id, `${m.id}${ctx(m)}${price(m)}${mark(m)}`]), efforts: []};
+}
+// Whether a model's context is under what the briefing and the house rules
+// take (the server's count, bytes over four, with a quarter kept for the
+// conversation): the picker's mark and Start's sentence.
+function routerTooSmall(p, m){
+  const need = p?.router?.briefing_tokens || 0;
+  return !!(m?.context && need && m.context < need * 1.25);
+}
+function routerSays(p, id){
+  const m = (p?.router?.models || []).find(x => x.id === id);
+  if (!m || !routerTooSmall(p, m)) return "";
+  return `${id}'s context (${Math.round(m.context / 1000)}k) is under what the briefing and the house rules take (about ${
+    Math.round((p.router.briefing_tokens || 0) / 1000)}k): it starts without room for the conversation.`;
+}
+
 function agentPicker(p, m, card, anchor, n, several){
-  const r = resumePick, a = agentById(r.agent), t = AGENT_MODELS[r.agent] || {models: [], efforts: []};
+  const r = resumePick, a = agentById(r.agent), t = r.agent === "open" ? routerModels(p) : (AGENT_MODELS[r.agent] || {models: [], efforts: []});
   const said = agentSlotName(a, r.slot || 1), as = (r.slot || 1) > 1 ? ` as ${said}` : "";
   const opts = (xs, cur) => [`<option value="">${esc(a.name)}'s default</option>`]
-    .concat(xs.map(v => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(v)}</option>`)).join("");
+    .concat(xs.map(v => { const [val, label] = Array.isArray(v) ? v : [v, v]; return `<option value="${esc(val)}"${val === cur ? " selected" : ""}>${esc(label)}</option>`; })).join("");
   m.innerHTML = `<div class="rmhead"><b>${r.restart ? `Restart your ${esc(said)} session`
       : r.sessionId ? `Resume the ${esc(a.name)} conversation` : `A new ${esc(a.name)} conversation`}</b><span class="rmfacts">${
       r.restart ? (r.sessionId ? "ending the one running, resuming its conversation · " : "ending the one running · ")
@@ -555,8 +584,10 @@ function agentPicker(p, m, card, anchor, n, several){
       <button type="button" class="${r.restart ? "danger" : "primary"}" data-start>${r.restart ? "Restart" : "Start"}</button></div>`;
   m.dataset.pick = p.name;
   card.appendChild(m);
-  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
+  const say = () => { if (r.agent === "open"){ const w = routerSays(p, r.model); const el = m.querySelector("#rmSay"); el.textContent = w; el.classList.toggle("warn", !!w); } };
+  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; say(); };
   m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
+  say();
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
   m.querySelector("[data-start]").onclick = async e => {
     const label = r.restart ? "Restart" : "Start";
@@ -635,8 +666,8 @@ function placeResumeMenu(){
     const line_ = (who, state, presses) => line(who, state, presses, "", pick);
     if (claude ? !claudeSigned(n) : n.id && !agentOn(a.id, n.id))
       return line_(a.name, "not signed in here", claude
-        ? `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its Claude sign-in">Sign in</button>`
-        : `<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its ${esc(a.name)} sign-in">Sign in</button>`);
+        ? `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Installed page, at its Claude sign-in">Sign in</button>`
+        : `<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Installed page, at its ${esc(a.name)} sign-in">Sign in</button>`);
     const slot = freeSlot(p.name, a.id);
     const cap = Math.min(AGENT_MAX_SLOTS, p.prefs?.agent_slots || 3);
     if (!slot) return line_(a.name, `${cap} running, the most here: end one to start another`, "");

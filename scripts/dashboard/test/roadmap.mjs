@@ -1558,15 +1558,15 @@ const spread = await ultra.evaluate(() => {
 });
 ok(spread.pane > 1500 && spread.nb <= 1100,
    `the notebook keeps a reading width in a ${spread.pane}px pane (${spread.nb}px)`);
-await ultra.evaluate(() => openToolchains());
-await ultra.waitForSelector('.doc .tc', { timeout: 20000 });
+await ultra.evaluate(() => openLibrary());
+await ultra.waitForSelector('.doc .librarytab .lcard', { timeout: 20000 });
 ok(await ultra.evaluate(() => {
-     const p = document.querySelector('.doc.on .tc');
-     return p && p.getBoundingClientRect().width <= 1100; }),
-   '...and so does the Toolchains page, where the bin was furthest from its row');
+     const g = document.querySelector('.doc.on .librarytab .libgroups');
+     return g && g.getBoundingClientRect().width <= 1100; }),
+   '...and so does the Library, its cards held to a reading width');
 await closePage(ultra);
 // The two pages are one account, and an account's tabs are one layout: the
-// Toolchains tab the wide page opened could become the active tab here too,
+// Library tab the wide page opened could become the active tab here too,
 // and under a whole run's load that landed before the Save below was
 // pressed, with the notebook's footer behind it (B396). The notebook first.
 // Opening it straight away was not enough (B414): this page adopts the
@@ -2218,6 +2218,67 @@ ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb 
   page.errors.splice(seen, page.errors.length - seen, ...page.errors.slice(seen).filter(e => !/403/.test(e)));
   ok(fin.status === 200 && Array.isArray(fin.body.finished) && add.status === 403,
      `a project not taken on still lists its finished items, and stays closed to a change (${fin.status}, add ${add.status})`);
+}
+
+// Steps between items (R168): Move to on a step's row, Split and Fold into
+// on an item's, each landing at once; a moved step says where it was.
+{
+  bbRoadmap('add', 'r168 a plan to cut up', '--step', 'keep this', '--step', 'move this', '--step', 'split this');
+  bbRoadmap('add', 'r168 the other item', '--step', 'its own');
+  const rows = read().projects.alpha;
+  const src = String(rows.find(r => r.text === 'r168 a plan to cut up').id), dst = String(rows.find(r => r.text === 'r168 the other item').id);
+  // The list as the checks above left it is narrowed and paged: the search
+  // brings these two to the front, whatever chip is on.
+  await page.evaluate(() => openNotebook('alpha', 'roadmap'));
+  await page.evaluate(() => { const n = getNotebook('alpha'); n.roadmapChip = ''; n.roadmapVer = ''; n.roadmapFind = 'r168'; });
+  await page.evaluate(() => getNotebook('alpha').reload());
+  await page.waitForSelector(`#roadmapList .grp[data-id="${src}"]`, { timeout: 10000 });
+  // A group's steps are behind its fold: opened outright, as a press would.
+  const unfold = id => page.evaluate(i => { const g = document.querySelector(`#roadmapList .grp[data-id="${i}"]`); if (g) g.open = true; }, id);
+  await unfold(src); await unfold(dst);
+  await page.waitForSelector(`#roadmapList .roadmap[data-id="${src}"][data-step="1"]`, { timeout: 10000 });
+  await rowOpen(`#roadmapList .roadmap[data-id="${src}"][data-step="1"]`);
+  await page.click(`#roadmapList .roadmap[data-id="${src}"][data-step="1"] .mvto`);
+  await page.waitForSelector('#roadmapList .askline input', { timeout: 5000 });
+  await page.fill('#roadmapList .askline input', `R${dst}`);
+  await page.click('#roadmapList .askline [data-askok]');
+  await page.waitForFunction(id => document.querySelector(`#roadmapList .roadmap[data-id="${id}"][data-step="1"] .txt`)?.textContent === 'move this',
+                             dst, { timeout: 10000 });
+  await unfold(dst);
+  const after = read().projects.alpha;
+  const moved = after.find(r => String(r.id) === dst).steps[1];
+  ok(moved.text === 'move this' && String(moved.sid[0]) === src && moved.sid[1] === 2
+     && after.find(r => String(r.id) === src).moved?.[0]?.to === Number(dst),
+     `Move to puts a step on the other item with its id, and the item it left says where (${JSON.stringify(moved.sid)})`);
+  await rowOpen(`#roadmapList .roadmap[data-id="${dst}"][data-step="1"]`);
+  ok(/R\d+ step 2/.test(await page.$eval(`#roadmapList .roadmap[data-id="${dst}"][data-step="1"] .dfacts`, f => f.textContent)),
+     'the moved step says which item and number it was');
+  // Split: tick the last step, name the new item.
+  await rowOpen(`#roadmapList .roadmap[data-id="${src}"][data-step="-1"]`);
+  await page.click(`#roadmapList .roadmap[data-id="${src}"][data-step="-1"] .split`);
+  await page.waitForSelector('#roadmapList .splitbox', { timeout: 5000 });
+  // Ticked and pressed outright: the box is still arriving (arriveBox) when
+  // a press would wait on it, and the handler reads the boxes as they are.
+  await page.$eval('#roadmapList .splitbox input[value="2"]', b => { b.checked = true; });
+  await page.$eval('#roadmapList .splitbox .title', t => { t.value = 'r168 the cut-off part'; });
+  await page.$eval('#roadmapList .splitbox .primary', b => b.click());
+  await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap[data-step="-1"] .txt')].some(t => t.textContent === 'r168 the cut-off part'),
+                             null, { timeout: 10000 });
+  const cut = read().projects.alpha.find(r => r.text === 'r168 the cut-off part');
+  ok(cut && cut.steps.length === 1 && cut.steps[0].text === 'split this' && /Split from R/.test(cut.info || '')
+     && read().projects.alpha.find(r => String(r.id) === src).steps.length === 1,
+     'Split makes a new item of the ticked steps, pointing back at the old one');
+  // Fold the new item into the other one.
+  await unfold(cut.id);
+  await rowOpen(`#roadmapList .roadmap[data-id="${cut.id}"][data-step="-1"]`);
+  await page.click(`#roadmapList .roadmap[data-id="${cut.id}"][data-step="-1"] .foldin`);
+  await page.waitForSelector('#roadmapList .askline input', { timeout: 5000 });
+  await page.fill('#roadmapList .askline input', `R${dst}`);
+  await page.click('#roadmapList .askline [data-askok]');
+  await page.waitForFunction(id => !document.querySelector(`#roadmapList .roadmap[data-id="${id}"]`), cut.id, { timeout: 10000 });
+  const folded = read().projects.alpha.find(r => String(r.id) === dst).steps.map(s => s.text);
+  ok(!read().projects.alpha.find(r => String(r.id) === String(cut.id)) && folded.join('|') === 'its own|move this|r168 the cut-off part|split this',
+     `Fold into makes the item a step of the other, its own step following (${folded.join('|')})`);
 }
 
 ok(page.errors.length === 0, 'zero console errors');

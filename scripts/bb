@@ -10,7 +10,7 @@ set -euo pipefail
 # commands with the installed image's older helpers.
 # shellcheck source=lib/common.sh
 . "$(dirname "$(readlink -f "$0")")/lib/common.sh"
-# The toolchain manager (`bb toolchains` and everything the Tools tab drives) is a
+# The toolchain manager (`bb toolchains` and everything the Library and the Installed page drive) is a
 # third of this script's length and none of its subject, so it lives next door.
 # shellcheck source=lib/sdk.sh
 . "$(dirname "$(readlink -f "$0")")/lib/sdk.sh"
@@ -74,7 +74,7 @@ bb version unbump      take the last unreleased bump or set back; its
                    stays. Once: the bump before it is not taken back too.
                    A section dated under the wrong number is fixed with
                    unbump, then set to the number meant
-bb version release --why "..." [--without-apk]
+bb version release --why "..." [--without-apk] [--dev]
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
                    credentials. The project's settings say whether an agent may
@@ -82,7 +82,9 @@ bb version release --why "..." [--without-apk]
                    the project's owner, with --why as the reason. A release
                    whose Android APK could not be signed is refused before the
                    tag, saying why; --without-apk goes on, and bb sign release
-                   signs it once that is put right
+                   signs it once that is put right. --dev tags the dev
+                   build instead (vX.Y.Z-dev.N, no bump, no changelog section),
+                   which CI publishes as a pre-release on the dev channel
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
                    change the published release under the same setting, each
                    edit its own ask: the notes replaced whole (- reads stdin),
@@ -370,6 +372,15 @@ bb roadmap target N X.Y.Z             the release one is meant for (`none` clear
                                       `target N.M X.Y.Z` (or N M) is step M's own, `none`
                                       sends it back to its item's, and --target lists an item
                                       for any step meant for that release
+bb roadmap step mv N M TO [POS]       step M of N moved whole to item TO (at POS); N says where
+                                      it went, and `show N.M` finds it by its old number
+bb roadmap split N --into "TITLE" M...   N's steps M... moved to a new item, --into repeated
+                                      for each; `fold N INTO M[.K]` makes N a step of M
+                                      (its words on step K's details), N leaving the list
+bb roadmap refs       the R numbers and steps the list's own words name that find nothing
+bb roadmap --format json|yaml|markdown   the records whole, on list and show (--json for short),
+                      as bb bug, rules, wiki, design and map print theirs; `add --from FILE`
+                      adds the records in a file, `apply FILE` writes an edited show back
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
@@ -387,6 +398,11 @@ bb tests run [ARGS]  run the project's test command, time it, and record the run
                    and the fact that nothing after it ran. A crash prints no `FAIL` line and no totals, so a
                    run that only said "failures above" cost four whole runs to read once. ARGS go to the
                    command, so `bb tests run auth cards` times and records those two files and nothing else
+                   else. On the test node the project's settings name (Test node, beside its
+                   nodes; R151) the suites run there as a job, this tree snapshotted, with as
+                   many workers as its cores and memory allow, the lines streamed here and the
+                   run recorded as a local one; bb dashboard test and the gate go there too
+
 bb tests last      that verdict again off the last run's log, running nothing
 bb tests log [-f]  the last run's output, whole; -f follows a run still going. The
                    Tests view's Open the run's output sends this into the project's shell
@@ -432,6 +448,7 @@ bb rules pending   rules a session added that are waiting for your approval
 bb rules audit [DAYS]   your conversations here over DAYS (7): the commands a rule
                    refuses, run or tried, and the code map asked against grep
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb router-key      the model router's address, this project's own key and its models, for an Any model session
 bb help TOPIC      one topic of the session briefing in full (start, where, map, build, tidy,
                    speed, capture, asks, notebook, versions, git, android, gpu, containers);
                    bb help topics lists them, bb help VERB one verb's lines
@@ -540,6 +557,13 @@ bb vm hardware NAME [--pin 2,3|none] [--share-cpus] [--mem-max 8G|none] [--share
                    device passed through are a person's, on the VMs page
 bb vm autostart NAME on|off
                    whether it starts when its node boots
+bb vm devices [NODE]
+                   the USB devices on the project's VM hosts (R116), each
+                   with what holds it: the host, a VM, or nothing
+bb vm usb NAME give|take VENDOR:PRODUCT[:SERIAL] [--port 1-3]
+                   a USB device to a VM, or back: a running VM has it now,
+                   a stopped one from its next start; always held for a
+                   person on the bell, since a device can be a disk or a key
 bb vm ip NAME | ssh NAME [COMMAND...]
                    its address, and ssh in as its account
 bb container       what container asks are waiting on an administrator
@@ -572,6 +596,23 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
                    kept, a run id for one, `--project NAME` from elsewhere);
                    for a project on GitHub's own runners, its runs and the end
                    of each failed job's log, read by the controller from GitHub
+bb forge whoami    what this project's token may do on its git host (GitHub,
+                   GitLab, Gitea), as measured, and what to ask for; `measure`
+                   asks the host again
+bb forge pr|issue|run|release ACTION [ARGS]
+                   the git host worked through the controller with the
+                   project's token, which never reaches a session: pr list,
+                   view N, create --title --head --base [--body] [--draft],
+                   comment N --body, review N --approve|--request-changes|
+                   --body, close N, merge N [--method merge|squash|rebase];
+                   issue list, view N, create --title [--body] [--label a,b],
+                   comment N --body, close N, label N NAME...; run list
+                   [--branch B], view ID, log ID [--lines N] [--job], rerun
+                   ID [--failed], dispatch WORKFLOW --ref B [-f NAME=VALUE];
+                   release list, view TAG. --state open|closed|all on a list,
+                   --json for the host's answer whole. Each needs what the
+                   token allows and the project's Permissions, On the git
+                   host, permit (docs/git-hosts.md)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -671,6 +712,12 @@ bb capture prune [--days N] [NAME...]
                    controller sweeps them when the Artifacts view draws: name
                    yours here to let them go sooner
 bb tool            the tools toolchains add to a session, each under its own name
+bb tool search [WORDS...]  the vetted catalog's tool packs and apps, each with
+                   its tier and what it is, and whether it is added here
+bb tool install NAME --why "..."  ask for a pack from the vetted catalog, as the
+                   project's Install a tool pack setting says: refused, asked
+                   of a person on the bell, or added now; a person installs
+                   it on a node from the Library
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,
                    annotate, diff, svg2png and optimize, into dist/img/, and
@@ -898,7 +945,7 @@ cmd_login() {
         HOME="$(user_home "$uid")" && export HOME
         PATH="$pinned/$ag:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
         command -v "$ag" >/dev/null 2>&1 \
-            || die "$ag is not installed on this machine: Install under its section on the node's Agents page puts one down"
+            || die "$ag is not installed on this machine: Install on its card in the Library, with this node picked, puts one down"
         case "$1:$ag" in
             --flow:codex)   codex login --device-auth || die "the sign-in did not complete" ;;
             --flow:copilot) COPILOT_AUTO_UPDATE=false copilot login --device-code || die "the sign-in did not complete" ;;
@@ -956,7 +1003,7 @@ cmd_login() {
         # installed on a machine whose sessions ran it fine (24 Sep).
         PATH="$pinned:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
         command -v claude >/dev/null 2>&1 \
-            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Install under Claude on the node's Agents page puts down one copy every account runs"
+            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Install on Claude Code's card in the Library, with this node picked, puts down one copy every account runs"
         claude auth login || die "the sign-in did not complete"
         claude_login_check --loud || true
         return 0
@@ -975,7 +1022,7 @@ cmd_login() {
     # where sessions are, which is a node (R47). Sign in on a node's row
     # starts the flow there and takes the code back; this says the same.
     command -v claude >/dev/null 2>&1 \
-        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in under Claude on that node's Agents page, or by running this on the node itself"
+        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in on Claude Code's row of the Installed page with that node picked, or by running this on the node itself"
     # `claude auth login` is the flow built for this and does not leave a
     # session behind afterwards. The older path (start a session and use its
     # slash command) is the fallback for an image whose claude predates the
@@ -1281,7 +1328,7 @@ cmd_emu() {
                 -h|--help|"") echo "usage: bb emu create <api>: an AVD for that API level (36, 37.0), its system image and platform installed first if missing"; [ -n "$api" ]; return ;;
                 *[!0-9.]*) die "bb emu create <api>: an API level is a number like 36 or 37.0, not '${api}'" ;;
             esac
-            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this node's toolchain store: say so in your reply; the operator adds android-tools on the Toolchains page with this node picked"
+            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this node's toolchain store: say so in your reply; the operator adds android-tools from the Library with this node picked"
             # Google names a level "37.0" or "36.1" in its index some years,
             # and a person says 37: the level given is looked up against what
             # the index offers, so `bb emu create 37` installs android-37.0
@@ -1307,7 +1354,7 @@ cmd_emu() {
                 if [ -w "$plat" ] || { [ ! -e "$plat" ] && [ -w "${ANDROID_HOME:-/opt/android-sdk}" ]; }; then
                     sdkmgr --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
                 else
-                    log "platforms;android-${api} is not on this node's store, which a session cannot write: a build that compiles against ${api} needs it from the Toolchains page; the phone does not"
+                    log "platforms;android-${api} is not on this node's store, which a session cannot write: a build that compiles against ${api} needs it from the Library; the phone does not"
                 fi
             fi
             if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
@@ -1401,7 +1448,7 @@ cmd_emu() {
             ;;
         start)
             command -v emulator >/dev/null 2>&1 \
-                || die "no emulator in this node's toolchain store: tick android:emulator on the Toolchains page with this node picked"
+                || die "no emulator in this node's toolchain store: install android:emulator from the Library with this node picked"
             if adb devices 2>/dev/null | grep -q '^emulator-'; then
                 log "an emulator is already running"; adb devices; return 0
             fi
@@ -2597,8 +2644,15 @@ cmd_rules() {
                  = "$(git -C "$tree" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]; then
             tree="$top"
         fi
-        RULES_JSON="$rules_json" python3 "$BB_LIB/rules-check.py" "$tree" "$@"
-        return $?
+        # Through a file: one environment variable holds 128 KB at most, and
+        # a project's rules grow past that (B434).
+        local rules_file rc
+        rules_file="$(mktemp)"
+        printf '%s' "$rules_json" > "$rules_file"
+        RULES_JSON_FILE="$rules_file" python3 "$BB_LIB/rules-check.py" "$tree" "$@"
+        rc=$?
+        rm -f "$rules_file"
+        return "$rc"
     fi
     # `bb rules audit [DAYS]` (R200): this account's conversations on the
     # project, counted against the rules that refuse, through the
@@ -2651,6 +2705,44 @@ bb_repo_top() {
     local top; top="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
     [ -x "$top/scripts/dashboard/test/run.sh" ] && export BB_REPO="$top"
     return 0
+}
+
+# The project's test node (R151): when its settings name a node that is not
+# this machine, the suites go there as a job (this tree snapshotted, the way
+# bb run sends a build), the lines stream back, and the run's record and
+# coverage come back as a local run's do. tests_away_node prints the node's
+# id, its name, the workers its cores and memory have room for, and how many
+# jobs are ahead of a new one there; nothing when the suites run here.
+tests_away_node() {
+    local proj="$1" want
+    want="$(BB_PROJECT="$proj" "$0" settings --json 2>/dev/null | python3 -c 'import json, sys
+try:
+    print((json.load(sys.stdin) or {}).get("test_node") or "")
+except Exception:
+    print("")' 2>/dev/null)" || want=""
+    [ -n "$want" ] || return 0
+    BB_AUTH_HEADER="$(bb_auth_or_die)" BB_PROJECT="$proj" BB_TEST_NODE_WANT="$want" python3 "$BB_LIB/tests-away.py"
+}
+# The harness on the test node: PROJ, then the harness's own arguments. The
+# worker count is the node's; with BB_COVERAGE the merged counters come back
+# as the job's output and land in .bb-map/coverage.json here.
+tests_away_run() {
+    local proj="$1"; shift
+    local -a away
+    mapfile -t away < <(tests_away_node "$proj")
+    [ "${#away[@]}" -ge 4 ] || die "tests: the test node could not be read; bb nodes says what this session sees"
+    local nid="${away[0]}" nname="${away[1]}" workers="${away[2]}" ahead="${away[3]}"
+    log "tests: on $nname, $proj's test node (its settings): $workers worker(s) for its cores and memory${ahead:+; $ahead job(s) ahead of this one there}"
+    local -a outs=()
+    [ -z "${BB_COVERAGE:-}" ] || outs=(--out ".bb-map/coverage.json")
+    local rc=0
+    BB_PROJECT="$proj" cmd_run --role test --node "$nid" "${outs[@]}" --timeout 7200 -- \
+        env BB_TEST_WORKERS="$workers" BB_TEST_TIMING=1 ${BB_COVERAGE:+BB_COVERAGE="$BB_COVERAGE"} bash scripts/dashboard/test/run.sh "$@" || rc=$?
+    if [ -n "${BB_COVERAGE:-}" ]; then
+        local back; back="$(ls -t dist/*coverage*.json 2>/dev/null | head -1 || true)"
+        if [ -n "$back" ]; then mkdir -p .bb-map && cp "$back" .bb-map/coverage.json && log "tests: the covered run's counters are back in .bb-map/coverage.json"; fi
+    fi
+    return "$rc"
 }
 
 cmd_tests() {
@@ -2909,7 +3001,13 @@ cmd_tests() {
         BB_TESTS_PROJECT="$proj" "$0" tests projection "$@" 2>/dev/null || true
         want="$(BB_TESTS_PROJECT="$proj" "$0" tests projection --secs "$@" 2>/dev/null || echo 0)"
         t0=$(date +%s)
-        if BB_TEST_TIMING=1 BB_PROJECT="$proj" "$0" test "$@" 2>&1 | tee "$log"
+        if [ -n "$(tests_away_node "$proj" 2>/dev/null | head -1)" ]; then
+            # Its test node (R151): the harness there, the lines streamed here.
+            if tests_away_run "$proj" "$@" 2>&1 | tee "$log"
+            then rc=0
+            else rc="${PIPESTATUS[0]:-1}"
+            fi
+        elif BB_TEST_TIMING=1 BB_PROJECT="$proj" "$0" test "$@" 2>&1 | tee "$log"
         then rc=0
         else rc="${PIPESTATUS[0]:-1}"
         fi
@@ -4264,7 +4362,7 @@ cmd_lint() {
     need() { # need TOOL: false (and say so) when it is not installed
         command -v "$1" >/dev/null 2>&1 && return 0
         if on_node; then
-            printf '  [skip] %s is not in this node'"'"'s store; the Toolchains page installs lint-tools, with this node picked\n' "$1"
+            printf '  [skip] %s is not in this node'"'"'s store; the Library installs lint-tools, with this node picked\n' "$1"
             return 1
         fi
         printf '  [skip] %s is not in this image (predates it? update the container)\n' "$1"
@@ -4588,7 +4686,7 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
     # what compose passes
     # into the container is held against the other three, by name and by
     # default, and every template path against its compose volume.
-    if [ -f docker-compose.yml ] && [ -f .env.example ] && [ -f unraid/builderbot.xml ] && [ -f docs/reference.md ]; then
+    if [ -f docker-compose.yml ] && [ -f .env.example ] && [ -f platforms/unraid/builderbot.xml ] && [ -f docs/reference.md ]; then
         section "settings (compose, .env.example, Unraid template, reference)"
         python3 "$BB_LIB/lint-checks.py" settings || rc=1
     fi
@@ -4600,12 +4698,31 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         python3 tools/api-doc.py --check || rc=1
     fi
 
+    # The git host page against the abilities (R188): the table a token is
+    # measured by and the relay refuses by, so the page cannot drift from it.
+    if [ -f docs/git-hosts.md ] && [ -f tools/git-hosts-doc.py ]; then
+        section "git hosts (docs/git-hosts.md vs forgeaccess.ABILITIES)"
+        python3 tools/git-hosts-doc.py --check || rc=1
+    fi
+
     # The layout page against the tree (R91): a module the page does not
     # name is a newcomer's dead end, and the page drifted a dozen files
     # behind before this held it.
     if [ -f docs/layout.md ]; then
         section "layout (docs/layout.md vs git ls-files)"
         python3 "$BB_LIB/lint-checks.py" layout || rc=1
+    fi
+
+    # The official packs under packs/ against the tables they are written
+    # from (R169 step 1): tools/packs-export.py --write rewrites them.
+    # The word Unraid only where its XML files are the subject (the operator, 28 Oct).
+    if grep -qF '"unraid": unraid' "$BB_LIB/lint-checks.py"; then
+        echo "== unraid: the word only where its XML files are the subject"
+        python3 "$BB_LIB/lint-checks.py" unraid || rc=1
+    fi
+    if [ -f tools/packs-export.py ] && grep -qF '"packs": packs' "$BB_LIB/lint-checks.py"; then
+        section "packs (packs/ vs config/toolchains.json and agents.py)"
+        python3 "$BB_LIB/lint-checks.py" packs || rc=1
     fi
 
     # What a release has run on an install's /config is never edited (R79):
@@ -4681,6 +4798,13 @@ cmd_dashboard() {
             local here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh"
             [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
             [ -x "$here" ] || die "no dashboard test harness at $here"
+            # On the project's test node when its settings name one (R151);
+            # a kept fixture is this machine's, so a run attaching to one
+            # stays here.
+            local tproj; tproj="$(project_here 2>/dev/null || true)"
+            if [ -n "$tproj" ] && [ ! -f "${TMPDIR:-/tmp}/bb-suite.keep" ] && [ -n "$(tests_away_node "$tproj" 2>/dev/null | head -1)" ]; then
+                tests_away_run "$tproj" "$@"; return
+            fi
             exec bash "$here" "$@"
             ;;
         dev)
@@ -5242,7 +5366,7 @@ EOF
 # `bb tool TOOL COMMAND...`: a toolchain's commands live under the toolchain's
 # name, so two toolchains may both have a `render` or a `shot` and none can
 # shadow one of bb's own verbs. The catalog names each recipe's tool
-# (`tool` in config/toolchains.json), the Toolchains tab says so on the row,
+# (`tool` in config/toolchains.json), the Library says so on its card,
 # and the suite holds the catalog to the case below.
 cmd_tool() {
     local tool="${1:-}"; [ $# -gt 0 ] && shift
@@ -5255,13 +5379,18 @@ cmd_tool() {
         # install; the ffmpeg toolchain turns its WAV into OGG and draws the
         # pictures a session checks it by.
         sound)     tool_sound "$@" ;;
+        # The vetted catalog's packs (R169 step 5): looked through, and one
+        # asked for, as the project's Install a tool pack setting says.
+        search|install)
+            local auth; auth="$(bb_auth_or_die)"
+            BB_PACK_AUTH="$auth" exec python3 "$BB_LIB/pack-verbs.py" "$tool" "$@" ;;
         "")
             local t d
             for t in graphics diagrams documents office; do
                 if d="$(sdk_find "$t" 2>/dev/null)" && [ -n "$d" ]; then
                     printf '  %-10s installed here\n' "$t"
                 else
-                    printf '  %-10s not on this node: the Toolchains page installs it\n' "$t"
+                    printf '  %-10s not on this node: the Library installs it\n' "$t"
                 fi
             done
             printf '\n  bb tool graphics info|resize|crop|compose|annotate|diff|svg2png|optimize|favicon ...\n'
@@ -5296,7 +5425,7 @@ gfx_tool() {
     if [ -n "$d" ] && [ -x "$d/bin/$name" ]; then printf '%s' "$d/bin/$name"; return 0; fi
     if command -v "$name" >/dev/null 2>&1; then command -v "$name"; return 0; fi
     ! sdk_off "$recipe" || die "${recipe} is switched off for this project: its settings' Toolchains group turns it on"
-    die "no ${name} here: install the ${recipe} toolchain on the Toolchains page with this node picked"
+    die "no ${name} here: install the ${recipe} toolchain from the Library with this node picked"
 }
 
 # img_out IN VERB [OUT] [EXT]: where a result goes. Named, or dist/img/ by
@@ -5501,7 +5630,7 @@ tool_docs() {
     d="$(sdk_find documents 2>/dev/null)" || d=""
     py="${d:+$d/venv/bin/python}"
     [ -n "$py" ] && [ -x "$py" ] \
-        || die "the documents toolchain is not on this node: install it on the Toolchains page with this node picked"
+        || die "the documents toolchain is not on this node: install it from the Library with this node picked"
     so="$(sdk_find office 2>/dev/null)/bin/soffice" || so=""
     [ -x "$so" ] || so=""
     BB_DOCS_SOFFICE="$so" "$py" "$BB_LIB/docs.py" "$cmd" "$@"
@@ -5635,6 +5764,52 @@ cmd_doctor() {
         else
             printf '  [warn] no install key: the settings'"'"' tokens, the signing keys and the git credentials are kept open in /config; one is made at the next start (docs/reference.md)\n'
         fi
+        # What the dashboard is served over (R158 step 2): https where it
+        # can be had, said here until it is on.
+        case "$(DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - <<'PY' 2>/dev/null
+import json, os
+try:
+    d = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "settings.json")))
+except Exception:
+    d = {}
+v = d.get("settings", d) if isinstance(d, dict) else {}
+m = str((v.get("tls_mode") or {}).get("value") if isinstance(v.get("tls_mode"), dict) else v.get("tls_mode") or "").lower()
+h = str((v.get("tls_host") or {}).get("value") if isinstance(v.get("tls_host"), dict) else v.get("tls_host") or "")
+print(m if m in ("http", "self", "acme") else ("self" if h else "http"))
+PY
+)" in
+            http) printf '  [warn] the dashboard is served over http: what the page carries crosses the LAN in the clear; Controller settings, Connection turns https on (the install'"'"'s own certificate, or Let'"'"'s Encrypt for a hostname)\n' ;;
+            self) printf '  [ok]   the dashboard is served over https with the install'"'"'s own certificate (pinned by its fingerprint on the Connection section)\n' ;;
+            acme) printf '  [ok]   the dashboard is served over https with a Let'"'"'s Encrypt certificate\n' ;;
+        esac
+        # What the dashboard's process does about the keys it holds (R158
+        # step 6), as it said at its start.
+        if [ -r /run/builderbot-hardening.json ]; then
+            case "$(python3 -c 'import json; d = json.load(open("/run/builderbot-hardening.json")); print("ok" if d.get("core") and d.get("dumpable") and d.get("mlock") else "mlock" if d.get("core") and d.get("dumpable") else "no")' 2>/dev/null)" in
+                ok) printf '  [ok]   the dashboard writes no core dump, cannot be read by another process of its user, and keeps its memory from swap\n' ;;
+                mlock) printf '  [warn] the dashboard writes no core dump and cannot be read by another process of its user, but its memory may be swapped: the memlock limit is too low (docker-compose.yml raises it with ulimits memlock -1; on Unraid --ulimit memlock=-1:-1 in Extra Parameters)\n' ;;
+                no) printf '  [warn] the dashboard could not turn core dumps off or make itself undumpable: a key it holds could land in a core file (docs/security.md)\n' ;;
+            esac
+        fi
+        # What a browser refused under the page's policy (R158 step 4):
+        # nothing the page ships trips it, so a report is something that
+        # was not shipped, or a browser extension writing into the page.
+        local csp_n
+        csp_n=$(DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - <<'PY' 2>/dev/null
+import json, os, time
+try:
+    rows = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "csp-reports.json")))
+except Exception:
+    rows = []
+week = time.time() - 7 * 86400
+rows = [r for r in rows if isinstance(r, dict) and r.get("at", 0) > week]
+print(len(rows), (rows[0].get("directive") or "").split()[0] if rows else "", (rows[0].get("blocked") or "")[:60] if rows else "")
+PY
+)
+        case "${csp_n%% *}" in
+            ""|0) printf '  [ok]   no browser refused anything under the page'"'"'s content security policy this week\n' ;;
+            *) printf '  [warn] a browser refused %s thing(s) under the page'"'"'s content security policy this week, the last %s (the last fifty are in csp-reports.json beside the state): a script or style the page did not ship, or an extension writing into it\n' "${csp_n%% *}" "${csp_n#* }" ;;
+        esac
     fi
     # Claude Code is a node's, so a controller has nothing to check for: a
     # failed check nobody can fix is worse than no check (R47).
@@ -5645,7 +5820,7 @@ cmd_doctor() {
         local ag
         for ag in codex copilot grok; do
             if command -v "$ag" >/dev/null 2>&1; then printf '  [ok]   %s on PATH\n' "$ag"
-            else printf '  [skip] %s is not installed here: the Agents page installs it\n' "$ag"; fi
+            else printf '  [skip] %s is not installed here: the Library installs it\n' "$ag"; fi
         done
     fi
     # A session on a node asks about its own project's tree (B168): inside
@@ -5906,7 +6081,7 @@ cmd_doctor() {
         printf '  [ok]   signed in to Claude on this machine%s\n' \
             "$(python3 "$BB_LIB/doctor-probes.py" login 2>/dev/null)"
     else
-        printf '  [warn] not signed in to Claude on this machine: Sign in on the Agents page\n'
+        printf '  [warn] not signed in to Claude on this machine: Sign in on the Installed page\n'
         printf '         runs the flow here, or `bb login` in this shell\n'
     fi
     # ...and each other agent installed here, said as Claude's is but never a
@@ -5919,7 +6094,7 @@ cmd_doctor() {
             if who="$(python3 "$BB_LIB/doctor-probes.py" signed "$ag" 2>/dev/null)"; then
                 printf '  [ok]   signed in to %s on this machine%s\n' "$nm" "$who"
             else
-                printf '  [skip] not signed in to %s on this machine: Sign in on the Agents page\n' "$nm"
+                printf '  [skip] not signed in to %s on this machine: Sign in on the Installed page\n' "$nm"
             fi
         done
     fi
@@ -5947,6 +6122,16 @@ cmd_version_edit() {
     fi
     export BB_VERSION_AUTH; BB_VERSION_AUTH="$(bb_auth_or_die)"
     BB_WORKSPACE="$WORKSPACE" python3 "$BB_LIB/release-edit.py" "$proj" "$@"
+}
+
+# bb forge (R188): the project's git host worked through the controller,
+# which holds the token (lib/forge-verbs.py, dashboard/forgeaccess.py).
+cmd_forge() {
+    local proj
+    proj="$(project_here)" \
+        || die "not inside a project under ${WORKSPACE}; cd into one first"
+    export BB_FORGE_AUTH; BB_FORGE_AUTH="$(bb_auth_or_die)"
+    python3 "$BB_LIB/forge-verbs.py" "$proj" "$@"
 }
 
 cmd_version() {
@@ -6140,7 +6325,9 @@ fi
 case "${1:-help}" in
     status)   cmd_status ;;
     settings) shift; cmd_settings "$@" ;;
+    router-key) shift; BB_RK_AUTH="$(bb_auth_or_die)" BB_RK_PROJECT="${BB_PROJECT:-$(project_here 2>/dev/null || true)}" python3 "$BB_LIB/router-key.py" "$@" ;;
     version)  shift; cmd_version "$@" ;;
+    forge)    shift; cmd_forge "$@" ;;
     changelog) shift; cmd_changelog "$@" ;;
     projects) shift; cmd_projects "$@" ;;
     shell)    exec bash -l ;;

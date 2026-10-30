@@ -4,6 +4,7 @@ import errno
 import hashlib
 import ipaddress
 import json
+import glob
 import os
 import platform
 import re
@@ -43,7 +44,15 @@ from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
 from . import storage
 from . import vmhw
-from .vms import isos_now, vm_memory, vm_pool, vms_now
+from .disks import disks_now
+from .osimage import os_release, stick_status
+from .shares import shares_now
+from .pools import pools_now, snapshots_now
+from .array import array_now
+from .power import host_updates_now, ups_now
+from .extmounts import extmounts_now
+from .backups import backups_now
+from .vms import isos_now, vm_memory, vm_pool, vms_now, vms_other
 
 
 def _sshd_listening():
@@ -226,7 +235,40 @@ def features_now():
                    "virtiofs": bool(vmhw.virtiofsd()),
                    "libvirt": _run([virsh, "--version"], timeout=10) if virsh else ""},
         "firewall": {"installed": os.path.exists("/etc/builderbot/hosting-fw.nft")},
+        # The IOMMU on the kernel's command line (R116 step 4): put there by
+        # BuilderBot (its marker), and on in the running kernel (its groups),
+        # which a restart and the firmware's VT-d or AMD-Vi decide.
+        "iommu": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "iommu")),
+                  "on": bool(glob.glob("/sys/kernel/iommu_groups/*"))},
+        # The installed edition's parts (R56 step 2): storage (ZFS and the
+        # array's tools) and shares (Samba and NFS), with whether each tool
+        # answers, whichever put it here (the image carries them all).
+        "storage": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "storage")),
+                    "zfs": bool(shutil.which("zpool")), "mergerfs": bool(shutil.which("mergerfs")),
+                    "snapraid": bool(shutil.which("snapraid")), "smart": bool(shutil.which("smartctl"))},
+        "shares": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "shares")),
+                   "smb": bool(shutil.which("smbd")), "nfs": bool(shutil.which("exportfs"))},
+        # ...and a UPS through NUT (R164 step 3), with whether upsc is here.
+        "ups": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "ups")), "nut": bool(shutil.which("upsc"))},
     }
+
+
+def timezone_now():
+    """The system's time zone as its name (Europe/Paris), from /etc/timezone
+    or the /etc/localtime link; "" where neither says."""
+    try:
+        with open("/etc/timezone", encoding="utf-8", errors="replace") as f:
+            tz = f.read().strip()
+            if re.fullmatch(r"[A-Za-z0-9_+./-]{1,64}", tz):
+                return tz
+    except OSError:
+        pass
+    try:
+        link = os.readlink("/etc/localtime")
+        tz = link.split("zoneinfo/", 1)[1] if "zoneinfo/" in link else ""
+        return tz if re.fullmatch(r"[A-Za-z0-9_+./-]{1,64}", tz) else ""
+    except OSError:
+        return ""
 
 
 def census(state):
@@ -243,6 +285,11 @@ def census(state):
         # a selector should not have to parse the display string above.
         "system": platform.system().lower(), "arch": platform.machine(),
         "hostname": socket.gethostname(),
+        # The machine's time zone (R161 step 3, R56 step 8): what the
+        # system keeps, for This machine's Name and time.
+        "timezone": timezone_now(),
+        # The disks' spin-down in minutes as kept (R164 step 3), 0 for never, left out where none was set.
+        **({"spindown": state.get("spindown")} if isinstance(state.get("spindown"), int) else {}),
         "machine": machine_now(),
         "docker": _run(["docker", "version", "--format", "{{.Server.Version}}"])
         if shutil.which("docker") else "",
@@ -273,7 +320,7 @@ def census(state):
         # say before a toolchain install finds out the long way.
         "internet": _internet(),
         # A toolchain store this node holds but cannot write (R85), so the
-        # Toolchains page holds Install with the reason before a job fails.
+        # Library holds Install with the reason before a job fails.
         "store_ro": _store_ro(state),
         # ...or mounted noexec, so the bb bundle and every terminal from it
         # cannot run: the page says why, which the closing terminals do not.
@@ -292,6 +339,8 @@ def census(state):
         "features": features_now(),
         # ...and the VMs it runs, with the room their disks have (R91).
         "vms": vms_now(),
+        # ...and the domains libvirt has that BuilderBot did not make (R165 step 1).
+        "vms_other": vms_other(),
         "vm_pool": vm_pool(),
         # The installer ISOs fetched onto this node (R99).
         "vm_isos": isos_now(),
@@ -301,7 +350,7 @@ def census(state):
         "toolchains": tc,
         "store_dirs": store_dirs(state),
         # Which held recipes need system packages this machine lacks
-        # (roadmap R51): read here, so the Tools tab and the row can say so
+        # (roadmap R51): read here, so the Installed page and the row can say so
         # before a build fails on a missing library.
         "sysdeps": sysdeps_now(state),
         # The android system images the store holds, and the AVDs built on
@@ -317,6 +366,30 @@ def census(state):
         # stamp alone said yes for an agent that could not, and the
         # controller queued system packages it was bound to refuse.
         "administers": os.geteuid() == 0 and os.access(SANDBOX_BIN, os.X_OK),
+        # BuilderBot OS on this machine (R160 step 4): the image, its slot and the next boot's; {} elsewhere.
+        "os_image": os_release(),
+        # ...and a stick boot's (R161 step 10): its system pool, what still
+        # lives on the stick and what the stick has been written; {} elsewhere.
+        "os_stick": stick_status(),
+        # The machine's disks (R162 step 1): what the Storage page lists
+        # for the controller's own machine before anything is written.
+        "disks": disks_now(),
+        # ...and its shares (R162 step 1), as BuilderBot's own files say them.
+        "shares": shares_now(),
+        # ...and its ZFS pools (R162 step 1), as zpool says them.
+        "pools": pools_now(),
+        # ...and each pool's snapshots (R162 step 5), counted by kind, the newest named.
+        "snapshots": snapshots_now(),
+        # ...and its array (R162 step 2): the disks by slot, their room, and
+        # when SnapRAID last synced, scrubbed and checked it.
+        "array": array_now(),
+        # ...and its other disks and shares (R162 step 4), as the record the hello left says.
+        "ext_mounts": extmounts_now(state),
+        # ...and its backups' last runs (R162 step 5).
+        "store_backups": backups_now(state),
+        # ...and its UPS and its own packages' updates (R164 step 3).
+        "ups": ups_now(),
+        "host_updates": host_updates_now(state),
         # Whether a session here sees only its own project (R35).
         "isolation": isolation_now(),
         # ...and reaches only its own project's containers (R79), as the
@@ -508,7 +581,7 @@ def mounts_now():
                 if e.errno == errno.ESTALE:
                     m["stale"] = True
                     m["error"] = ("mounted, but the handle is stale: the export was re-created "
-                                  "under it on the host; re-export it there (Unraid: the share's "
+                                  "under it on the host; re-export it there (on a NAS host: the share's "
                                   "NFS setting off and on, or a pool the mover leaves alone), "
                                   "then Apply storage here")
     return got
@@ -551,7 +624,7 @@ def export_gaps(addr):
     that do not include addr, the address this node is about to move to.
     From `showmount -e` on each server; a server that does not answer, or
     a machine without showmount, contributes nothing rather than a refusal.
-    The Unraid rule the docs prescribe names exactly one address, so a
+    The export rule the docs prescribe names exactly one address, so a
     node that moves without the rule moving loses every share at once."""
     if not addr or not _have("showmount"):
         return []
@@ -707,6 +780,75 @@ def distro_now():
     return d
 
 
+
+def _net_bytes():
+    """[bytes in, bytes out] over every interface but lo, cumulative since
+    boot (/proc/net/dev); [0, 0] where it cannot be read."""
+    rx = tx = 0
+    try:
+        with open("/proc/net/dev", encoding="utf-8") as f:
+            for line in f.read().splitlines()[2:]:
+                name, _, rest = line.partition(":")
+                if name.strip() == "lo" or name.strip().startswith(("veth", "docker", "br-", "virbr")):
+                    continue
+                cols = rest.split()
+                rx += int(cols[0]); tx += int(cols[8])
+    except (OSError, ValueError, IndexError):
+        return [0, 0]
+    return [rx, tx]
+
+
+def _io_bytes():
+    """[bytes read, bytes written] over the whole disks, cumulative since
+    boot (/proc/diskstats, sectors of 512 bytes); [0, 0] where unreadable."""
+    rd = wr = 0
+    try:
+        with open("/proc/diskstats", encoding="utf-8") as f:
+            for line in f:
+                cols = line.split()
+                if len(cols) < 10 or not re.fullmatch(r"(sd[a-z]+|vd[a-z]+|nvme\d+n\d+|mmcblk\d+)", cols[2]):
+                    continue
+                rd += int(cols[5]) * 512; wr += int(cols[9]) * 512
+    except (OSError, ValueError):
+        return [0, 0]
+    return [rd, wr]
+
+
+def _cpu_temp():
+    """The CPU's temperature in whole degrees from hwmon (coretemp, k10temp
+    and the like) or the thermal zones, the hottest reading; None without."""
+    best = None
+    try:
+        for hw in glob.glob("/sys/class/hwmon/hwmon*"):
+            try:
+                with open(os.path.join(hw, "name"), encoding="utf-8") as f:
+                    name = f.read().strip()
+            except OSError:
+                continue
+            if name not in ("coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz", "soc_thermal"):
+                continue
+            for t in glob.glob(os.path.join(hw, "temp*_input")):
+                try:
+                    with open(t, encoding="utf-8") as f:
+                        v = int(f.read().strip()) // 1000
+                except (OSError, ValueError):
+                    continue
+                if 0 < v < 150 and (best is None or v > best):
+                    best = v
+        if best is None:
+            for t in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
+                try:
+                    with open(t, encoding="utf-8") as f:
+                        v = int(f.read().strip()) // 1000
+                except (OSError, ValueError):
+                    continue
+                if 0 < v < 150 and (best is None or v > best):
+                    best = v
+    except OSError:
+        return None
+    return best
+
+
 class Sampler:
     """CPU as a percentage over the interval since the last sample, which
     is the poll interval, so the number on the row is 'the last 25 seconds'
@@ -778,6 +920,9 @@ class Sampler:
             load1 = 0.0
         return {"cpu_pct": round(100.0 * (dt - di) / dt, 1) if dt > 0 else 0.0,
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
+                # The counters the controller's reporting takes rates from
+                # (R164 step 4), and the CPU's temperature.
+                "net": _net_bytes(), "io": _io_bytes(), "temp_c": _cpu_temp(),
                 "stores": _stores(state.get("stores")), "disks": self._disks(), "fence": self._fence(), "running": running,
                 **({"vm_mem": vm_memory()} if shutil.which("virsh") else {}),
                 "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),

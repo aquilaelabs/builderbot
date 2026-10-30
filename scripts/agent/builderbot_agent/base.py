@@ -149,6 +149,13 @@ AGENT_INSTALLS = {
                     "script": 'curl -fsSL https://x.ai/cli/install.sh | bash -s -- ${BB_PIN:-}',
                     "pin": ("BB_PIN", "{v}"), "env": {"GROK_BIN_DIR": "{home}/.local/bin"},
                     "bin": ".local/bin/grok"},
+    # OpenCode (R144 step 2), the open agent any model runs through: its
+    # install script takes the version as VERSION and the folder as
+    # OPENCODE_INSTALL_DIR (read off the script on 28 Oct).
+    "opencode-update": {"id": "open", "command": "opencode", "product": "OpenCode", "reported": "opencode",
+                        "script": "curl -fsSL https://opencode.ai/install | bash",
+                        "pin": ("VERSION", "{v}"), "env": {"OPENCODE_INSTALL_DIR": "{home}/.local/bin"},
+                        "bin": ".local/bin/opencode"},
 }
 # Claude Code's row in the same shape, for the claude-update job: kept out of
 # AGENT_INSTALLS, which the census and the session PATH read for the agents
@@ -188,7 +195,7 @@ SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
 # carries no dashboard module; unit/test_agents.py holds the two to each
 # other. The session prefixes, the launchers a respawn may run and the
 # process kinds a busy machine is read by are all made from it.
-AGENT_IDS = ("claude", "codex", "copilot", "grok")
+AGENT_IDS = ("claude", "codex", "copilot", "grok", "open")
 # The pane a respawn may run again: bb-tty's launcher of a coding agent
 # (claude-run.sh, codex-run.sh, copilot-run.sh, grok-run.sh; a second slot's
 # claude-2-run.sh, R143), in the project's cache
@@ -213,6 +220,95 @@ APT_BIN = os.environ.get("BUILDERBOT_APT_BIN", "apt-get")
 IDLE_UNIT = float(os.environ.get("BUILDERBOT_IDLE_UNIT", "60"))
 # The session names a coding agent runs under (claude-<project>).
 AGENT_PREFIXES = tuple(f"{a}-" for a in AGENT_IDS)
+_pack_ids = {"stamp": None, "ids": ()}
+
+
+def pack_agent_ids():
+    """The coding agents vetted packs bring (R169 step 10), by the rows of
+    the root bundle's config/toolpacks.json that carry an adapter: read
+    again only when the file changes. Never a shipped agent's id."""
+    path = os.path.join(ROOT_BUNDLE_DIR, "current", "config", "toolpacks.json")
+    try:
+        st = os.stat(path)
+        stamp = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return ()
+    if stamp != _pack_ids["stamp"]:
+        ids = ()
+        try:
+            with open(path, encoding="utf-8") as f:
+                rows = json.load(f).get("toolchains") or []
+            ids = tuple(sorted(r["name"] for r in rows if isinstance(r, dict) and isinstance(r.get("agent"), dict)
+                               and re.fullmatch(r"[a-z][a-z0-9]{1,15}", str(r.get("name") or "")) and r["name"] not in AGENT_IDS))
+        except (OSError, ValueError, AttributeError, TypeError):
+            pass
+        _pack_ids.update(stamp=stamp, ids=ids)
+    return _pack_ids["ids"]
+
+
+def agent_prefixes():
+    """Every coding agent's session prefix, the shipped and the packs'."""
+    return AGENT_PREFIXES + tuple(f"{a}-" for a in pack_agent_ids())
+
+
+def respawnable(cmd):
+    """Whether a pane's start command is a coding agent's launcher bb-tty
+    wrote, the shipped agents' or a pack's (R169 step 10)."""
+    if re.fullmatch(RESPAWNABLE, cmd):
+        return True
+    ids = pack_agent_ids()
+    return bool(ids) and bool(re.fullmatch(RESPAWNABLE.replace("|".join(AGENT_IDS), "|".join(AGENT_IDS + ids)), cmd))
+
+
+def harden():
+    """What this process does about the keys it holds (R158 step 6): the
+    boot secret a terminal's seal keys travel under and every opened
+    sign-in pass through here. Core dumps off and the process not dumpable
+    (so a process of the same user cannot read it through ptrace or
+    /proc/PID/mem either), its pages kept from swap where the memlock limit
+    allows (the unit sets it), and what held a key zeroed (wipe) once it is
+    let go. Never fails the agent: what it could not do is logged once."""
+    out = {"core": False, "dumpable": False, "mlock": False}
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        out["core"] = True
+    except (ImportError, ValueError, OSError):
+        pass
+    try:
+        import ctypes
+        import ctypes.util
+        import resource
+        libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
+        out["dumpable"] = libc.prctl(4, 0, 0, 0, 0) == 0
+        # Only with no memlock limit (the unit lifts it): under one,
+        # MCL_FUTURE makes every allocation past the limit fail.
+        if resource.getrlimit(resource.RLIMIT_MEMLOCK)[0] == resource.RLIM_INFINITY:
+            out["mlock"] = libc.mlockall(2 | 4) == 0 or libc.mlockall(2) == 0
+    except (OSError, AttributeError, ImportError, ValueError):
+        pass
+    missed = [k for k, v in out.items() if not v]
+    if missed:
+        log("hardening: could not " + ", ".join({"core": "turn core dumps off", "dumpable": "make the process undumpable",
+                                                 "mlock": "lock memory from swap (the memlock limit)"}[k] for k in missed))
+    return out
+
+
+def wipe(b):
+    """A bytes or bytearray value overwritten with zeros in place, for a key
+    or an opened sign-in let go (R158 step 6); CPython's layout alone."""
+    if isinstance(b, bytearray):
+        for i in range(len(b)):
+            b[i] = 0
+        return True
+    if isinstance(b, bytes) and b and sys.implementation.name == "cpython":
+        try:
+            import ctypes
+            ctypes.memset(id(b) + bytes.__basicsize__ - 1, 0, len(b))
+            return True
+        except (ValueError, OSError):
+            return False
+    return False
 
 
 def has_systemd():

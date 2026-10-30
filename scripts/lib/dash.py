@@ -68,3 +68,22 @@ def wrote(e):
     by = str(e.get("by", "") or "")
     who = str(e.get("who", "") or "")
     return f"{by} {who}".strip() if who else by
+
+
+def format_flag(words):
+    """`--format json|yaml|markdown|text` or `--json` taken out of a verb's
+    words (R167): (format, the words left). Text is what the verb prints
+    today; the rest are records.py's documents."""
+    fmt, out, i = "text", [], 0
+    while i < len(words):
+        if words[i] == "--json":
+            fmt = "json"; i += 1
+        elif words[i] == "--format" and i + 1 < len(words):
+            fmt = words[i + 1].lower(); i += 2
+        elif words[i].startswith("--format="):
+            fmt = words[i].split("=", 1)[1].lower(); i += 1
+        else:
+            out.append(words[i]); i += 1
+    if fmt not in ("text", "json", "yaml", "markdown"):
+        raise SystemExit(f"[builderbot] ERROR: --format takes json, yaml, markdown or text, not {fmt}")
+    return fmt, out

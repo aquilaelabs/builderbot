@@ -18,9 +18,15 @@ plugins_of = None        # (uid, {node id: name}) -> its plugins, as the nodes l
 node_names = None        # () -> {node id: name}
 logs_of = None           # me -> the account's conversations with Claude (transcripts.mine)
 devices = None           # devices.py: the account's signed-in devices (R272), listed and signed out
+logins = None            # logins.py: the account's browser sign-ins (R158 step 8), listed and ended
+reach = None             # reach.py: where the bell reaches the person (R149)
+smtp_set = None          # () -> whether a mail server is set, for the email destination's hint
 mfa = None               # mfa.py: the account's second factors (R127)
 audit = None             # db.audit
 two_factor_required = None   # account -> whether a role of it requires a second factor
+
+
+smb_shares = None
 
 
 def configure(**deps):
@@ -63,8 +69,16 @@ def view(me):
             # The apps signed in as this account on its own machines
             # (R272), newest call first: what Disconnect acts on.
             "devices": devices.listed(acct) if devices else [],
+            # The browsers signed in as this account (R158 step 8), each
+            # bound to the browser it was made in, this one first.
+            "signins": logins.rows(uid, me.get("lid") or "") if logins else [],
             # Its second factors (R127), never a secret, and whether a role
             # of it requires one.
+            # The SMB shares on the controller's own machine this person
+            # reaches (R164 step 1), and whether an SMB password is set;
+            # left out where no own machine serves shares.
+            "smb": ({"set": bool(acct.get("smb_nt")), "at": int(acct.get("smb_at") or 0), **sh}
+                    if (sh := (smb_shares(uid) if smb_shares else None)) is not None else None),
             "two_factor": mfa.summary(uid) if mfa else {"on": False},
             "two_factor_required": bool(two_factor_required and two_factor_required(acct))}, 200
 
@@ -99,7 +113,7 @@ def two_factor(me, act, req, origin):
         return {"challenge": mfa.challenge(uid, "create"), "user": mfa.b64u(uid.encode()), "name": name,
                 "exclude": mfa.passkey_ids(uid)}, 200
     if act == "2fa-passkey-add":
-        r = mfa.passkey_add(uid, origin, req.get("name"), req.get("client"), req.get("att"))
+        r = mfa.passkey_add(uid, origin, req.get("name"), req.get("client"), req.get("att"), prf=req.get("prf") is True)
         if r.get("error"):
             return r, 400
         audit(who, "2fa-add", name, {"what": "passkey", "name": r.get("name")})
@@ -143,6 +157,13 @@ def verb(me, act, req, origin=""):
         r = users.change_password(me["name"], str(req.get("current") or ""),
                                   str(req.get("password") or ""))
         return r, (400 if r.get("error") else 200), None
+    if act == "smb-password":
+        # Set or cleared (R164 step 1); the own machine's agent takes it up
+        # at its next hello, a minute at most.
+        r = users.set_smb_password(me["name"], str(req.get("password") or ""))
+        if r.get("ok") and audit:
+            audit(me["name"], "smb-password", me["name"], {"set": r["set"]})
+        return r, (400 if r.get("error") else 200), None
     if act == "save":
         r = users.profile_set(me["name"], req.get("profile") or {})
         if r.get("error"):
@@ -163,6 +184,33 @@ def verb(me, act, req, origin=""):
         got = two_factor(me, act, req, origin)
         if got:
             return got[0], got[1], None
+    if act == "reach-list":
+        return {"dest": reach.list_for(me.get("uid") or ""), "kinds": [[k, reach.KIND_WORDS[k]] for k in reach.KINDS],
+                "channels": {k: {"label": v["label"], "fields": [[n, lb, sc] for n, lb, sc in v["fields"]]} for k, v in reach.CHANNELS.items()},
+                "mail": bool(smtp_set and smtp_set())}, 200, None
+    if act == "reach-set":
+        r = reach.set_dest(me.get("uid") or "", req)
+        if not r.get("error") and audit:
+            audit(f"user:{me['name']}", "reach-set", r["dest"]["kind"], {})
+        return r, (400 if r.get("error") else 200), None
+    if act == "reach-on":
+        # R173: a destination switched off or on, its settings kept.
+        r = reach.set_on(me.get("uid") or "", str(req.get("id") or ""), req.get("on") is True)
+        return r, (400 if r.get("error") else 200), None
+    if act == "reach-remove":
+        r = reach.remove(me.get("uid") or "", field(req, "id"))
+        return r, (400 if r.get("error") else 200), None
+    if act == "reach-test":
+        r = reach.test(me.get("uid") or "", field(req, "id"), me.get("name") or "")
+        return r, (400 if r.get("error") else 200), None
+    if act == "signin-out":
+        # A browser's sign-in ended from here (R158 step 8): its cookie
+        # answers nothing from its next request.
+        lid = field(req, "id")
+        if not logins or not any(r["id"] == lid for r in logins.rows(me.get("uid") or "")):
+            return {"error": "no such sign-in"}, 404, None
+        logins.drop(me.get("uid") or "", lid)
+        return {"ok": True, "this": lid == (me.get("lid") or "")}, 200, None
     if act == "device-signout":
         r = devices.revoke(users.get(me["name"]) or {}, field(req, "device")) if devices else {"error": "no devices here"}
         return r, (400 if r.get("error") else 200), None

@@ -59,15 +59,29 @@ const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
   twofactor: "an authenticator app, passkeys and recovery codes",
-  mykey: "your key, the tokens you gave repositories, and Purge",
+  mykey: "your key, who holds it, the tokens you gave repositories, Unlock and Lock",
+  uses: "each time a token of yours was opened, and for what",
   terminal: "the size, cursor and colors of your terminals",
-  devices: "your apps, to disconnect",
+  shares: "the shares on this machine you may reach, the address of each, and your SMB password",
+  devices: "your browsers and apps, to sign out",
+  reach: "email, a webhook, ntfy, Gotify, Pushover, Telegram, Discord or Slack, each with what it takes and a quiet window",
 };
 // The apps signed in as this account on its own machines (R272 step 1), the
 // last of Profile's sections (the operator, 19 Oct): a table, a line a device (its name,
 // what it is, when it last called) with Disconnect at its end, which signs
 // that one out.
 const PF_DEVICE_COLS = [{label: "Device"}, {label: "Kind", w: "6rem"}, {label: "Last call", w: "minmax(0,.6fr)"}, {act: true, w: "8rem"}];
+// ...and the browsers signed in as the account (R158 step 8), each bound
+// to the browser it was made in, this one first; Sign out ends one, and a
+// cookie copied elsewhere already opens nothing.
+const PF_SIGNIN_COLS = [{label: "Browser"}, {label: "From", w: "minmax(0,.7fr)"}, {label: "Last used", w: "minmax(0,.6fr)"}, {act: true, w: "8rem"}];
+
+function profileSignins(rows){
+  if (!rows.length) return "";
+  return tblWrap(PF_SIGNIN_COLS, rows.map(r => `<div class="row" data-signin="${esc(r.id)}">${tblLine(PF_SIGNIN_COLS, [
+    esc(r.agent) + (r.mine ? ` <span class="dim">(this one)</span>` : ""), esc(r.ip || ""), esc(r.last ? ago(r.last) : "never"),
+    `<button type="button"${r.mine ? "" : ' class="danger"'} data-pfsignout="${esc(r.id)}">Sign out</button>`])}</div>`).join(""), "pfsignins");
+}
 const PF_DEVICE_KIND = {pc: "PC", phone: "Phone", editor: "Editor"};
 // `of` names the account when an administrator reads it on the Users page
 // (R272 step 8), whose Disconnect asks for that account.
@@ -159,14 +173,69 @@ function renderProfileInto(i){
     ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
     ${keyMineSection()}
     ${sec("terminal", "Your terminal", profileTerminal())}
-    ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
+    ${profile.smb ? docSection("profile", "shares", "Your shares", profile.smb.rows?.length ? String(profile.smb.rows.length) : "", profileShares(profile.smb)) : ""}
+    ${docSection("profile", "reach", "Where the bell reaches you", (pfReach?.dest || []).length ? String(pfReach.dest.length) : "", profileReach())}
+    ${docSection("profile", "devices", "Signed in as you", "", profileSignins(profile.signins || []) + profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   wireProfile(d.el);
   wireDeviceOut(d.el);
+  wireReach(d.el);
   wireTwoFactor(d.el);
   wireKeyMine(d.el);
   wireTerminalLook(d.el);
+  wireShares(d.el);
+}
+
+// Your shares (R164 step 1): the SMB shares on the controller's own machine
+// this account may reach (named on them, or everybody as a guest), each
+// with the address to map it by on Windows and on a Mac, and the SMB
+// password, set here and never shown: the machine keeps what Samba keeps.
+function profileShares(sm){
+  const host = sm.host || "", addr = sm.address || "";
+  const rows = (sm.rows || []).map(r => `<div class="row"><div class="grow">
+      <div class="name">${esc(r.name)}${r.ro ? ` <span class="pill">read-only</span>` : ""}${r.guest ? ` <span class="pill">everybody</span>` : ""}${r.tm ? ` <span class="pill">Time Machine</span>` : ""}</div>
+      <div class="sub"><code>\\${esc(host)}\${esc(r.name)}</code> on Windows, <code>smb://${esc(host)}/${esc(r.name)}</code> on a Mac${addr ? `, or by the address ${esc(addr)}` : ""}</div>
+    </div></div>`).join("");
+  const when = sm.at ? `set ${esc(ago(sm.at))}` : "none set yet: the shares named to you ask for one";
+  return `<div class="row stack2"><div class="grow">
+    ${rows ? `<div class="rows">${rows}</div>` : `<div class="empty">No share names you yet${sm.set ? "" : ", and no SMB password is set"}. An administrator names you on one from the Storage page.</div>`}
+    <div class="logset">
+      <div class="logdays setrow col ctlrow">
+        ${lbl("pfSmb", "SMB password", "what you type when a share asks: your account's name and this; at least 8 characters, kept apart from your sign-in")}
+        <input id="pfSmb" type="password" autocomplete="new-password">
+      </div>
+      <div class="logdays setrow col ctlrow">
+        ${lbl("pfSmb2", "SMB password again")}
+        <input id="pfSmb2" type="password" autocomplete="new-password">
+      </div>
+      <div class="actbar">
+        <span class="state">${when}${sm.set ? ` · sign in to a share as <code>${esc(profile.name)}</code>` : ""}</span>
+        ${sm.set ? `<button type="button" id="pfSmbClear">Clear</button>` : ""}
+        <button type="button" id="pfSmbSet" class="primary" disabled>${sm.set ? "Change" : "Set"}</button>
+      </div>
+    </div></div></div>`;
+}
+function wireShares(root){
+  const a = root.querySelector("#pfSmb"), b = root.querySelector("#pfSmb2"), set = root.querySelector("#pfSmbSet"), clear = root.querySelector("#pfSmbClear");
+  if (!a || !b || !set) return;
+  const check = () => { set.disabled = !(a.value.length >= 8 && a.value === b.value); };
+  a.oninput = b.oninput = check;
+  const post = async (btn, password, word) => {
+    busy(btn, word);
+    try{
+      const j = await (await postJSON("/api/profile", {action: "smb-password", password})).json();
+      if (j.error){ notify(j.error, true); return; }
+      notify(password ? "your SMB password is set: the machine takes it up within a minute" : "your SMB password is cleared");
+      await loadProfile();
+    }catch(e){ notify("profile: " + failWords(e), true); }
+    finally{ unbusy(btn, word); }
+  };
+  set.onclick = () => post(set, a.value, "Setting");
+  if (clear) clear.onclick = async () => {
+    if (!await askYes("Clear your SMB password? The shares named to you refuse you until you set another.", {title: "Clear it?", verb: "Clear", danger: true})) return;
+    post(clear, "", "Clearing");
+  };
 }
 
 // Your terminal (R133 step 10): its text size, cursor and colors, yours in
@@ -246,7 +315,119 @@ function wireTerminalLook(root){
 // Disconnect: asked, then that device signed out; the app finds its token
 // refused on its next call and says to sign in again. One of another
 // account's, on the Users page, is an administrator's to cut off for them.
+// Where the bell reaches you (R149, reach.py): each destination a row
+// with its kind, name, what it takes and its quiet window, Test and Remove;
+// Add opens the form for one kind, its fields the channel's own. A secret
+// field (a token, a webhook address) says only that it is set.
+let pfReach = null;              // {dest, kinds, channels, mail}, or null before the first read
+let pfReachAsked = false;
+let pfReachForm = null;          // {kind, id?} while the form is open
+
+async function loadReach(){
+  pfReachAsked = true;
+  pfReach = await pfTf({action: "reach-list"});
+  profileRev++; drawPanes();
+}
+
+
+// One block per channel kind (R173, the operator, 28 Oct: the Add pulldown
+// hid that several can be on): each a row with its switch, its destinations
+// under it and Add for another of that kind, the form opening in place.
+function profileReach(){
+  if (pfReach === null){ if (!pfReachAsked) loadReach(); return `<div class="field">${skRows(1)}</div>`; }
+  if (pfReach.error) return `<div class="hint bad">${esc(pfReach.error)}</div>`;
+  const ch = pfReach.channels || {}, kinds = pfReach.kinds || [], dests = pfReach.dest || [];
+  const blocks = Object.entries(ch).map(([k, c]) => {
+    const mine = dests.filter(d => d.kind === k), on = mine.filter(d => d.on).length;
+    const rows = mine.map(d => `<div class="row" data-reach="${esc(d.id)}"><div class="grow">
+        <div class="name">${esc(d.name)}${d.on ? "" : ` <span class="pill">off</span>`}${
+          d.last?.at ? ` <span class="pill ${d.last.ok ? "ok" : "bad"}">${d.last.ok ? "sent" : "failed"} ${esc(ago(d.last.at))}</span>` : ""}</div>
+        <div class="sub">Takes ${esc((d.kinds || []).map(x => (kinds.find(y => y[0] === x) || [x, x])[1].replace(/^(a |an )/, "")).join(", ") || "nothing")}${
+          d.quiet ? `; quiet ${esc(d.quiet.from)} to ${esc(d.quiet.to)}` : ""}${d.last?.why ? `; ${esc(d.last.why)}` : ""}</div></div>
+        <div class="acts"><label class="ndcap"><input type="checkbox" data-reachon="${esc(d.id)}"${d.on ? " checked" : ""}> on</label>
+          <button type="button" data-reachedit="${esc(d.id)}">Edit</button><button type="button" data-reachtest="${esc(d.id)}">Test</button>
+          <button type="button" class="danger" data-reachrm="${esc(d.id)}">Remove</button></div></div>`).join("");
+    const form = pfReachForm && pfReachForm.kind === k ? profileReachForm(pfReachForm, ch, kinds) : "";
+    const status = on ? `${on} on` : mine.length ? "off" : "";
+    return docSection("profile", `reach-${k}`, c.label, status, `${rows ? `<div class="rows">${rows}</div>` : ""}${form}
+      <div class="field"><div class="addbar ctlrow" data-add="reach-${esc(k)}"${form ? " hidden" : ""}><button type="button" data-reachadd="${esc(k)}">${mine.length ? `Add another ${esc(c.label)}` : `Set up ${esc(c.label)}`}</button></div></div>`,
+      {cls: on ? "ok" : "", item: true});
+  }).join("");
+  return `${dests.length ? "" : `<div class="field"><div class="hint">Nothing yet. The bell's rows reach you here as well as on the page: an ask waiting on you, what a node needs, a red CI run, an invitation, a file changed in two places. More than one can be on at once.</div></div>`}${blocks}`;
+}
+
+function profileReachForm(f, ch, kinds){
+  const c = ch[f.kind] || {label: f.kind, fields: []};
+  const was = (pfReach?.dest || []).find(d => d.id === f.id) || {};
+  return `<div class="reachform" data-reachform="${esc(f.kind)}">
+    <div class="field"><div class="hint">${esc(c.label)}${f.kind === "email" && !pfReach?.mail ? ": no mail server is set yet (Controller settings, Mail), so nothing is sent until one is" : ""}</div></div>
+    <div class="field">${lbl("pfReachName", "Name")}<input id="pfReachName" type="text" value="${esc(was.name || c.label)}" autocomplete="off"></div>
+    ${c.fields.map(([n, label, secret]) => `<div class="field">${lbl("pfReachF_" + n, label)}
+      <input id="pfReachF_${esc(n)}" data-reachf="${esc(n)}" type="${secret ? "password" : "text"}" value="${esc(secret ? "" : (was.fields || {})[n] || "")}" placeholder="${secret && (was.fields || {})[n] ? "set: type to replace" : ""}" autocomplete="off" spellcheck="false"></div>`).join("")}
+    <div class="field">${lbl("pfReachKinds", "Takes")}<div class="chips">${kinds.map(([k, w]) => `<label class="chip"><input type="checkbox" data-reachk="${esc(k)}" ${!was.kinds || was.kinds.includes(k) ? "checked" : ""}> ${esc(w)}</label>`).join("")}</div></div>
+    <div class="prefrow ctlrow">
+      <div class="setrow col ctlrow">${lbl("pfReachQf", "Quiet from")}<input id="pfReachQf" type="time" value="${esc(was.quiet?.from || "")}"></div>
+      <div class="setrow col ctlrow">${lbl("pfReachQt", "until")}<input id="pfReachQt" type="time" value="${esc(was.quiet?.to || "")}"></div>
+    </div>
+    <div class="field"><div class="hint">Nothing is sent inside the quiet window; what came up then is sent once it ends.</div></div>
+    <div class="actbar"><span class="state" id="pfReachSaid"></span><span class="sp"></span>
+      <button type="button" data-reachcancel>Cancel</button><button type="button" class="primary" data-reachsave>Save</button></div>
+  </div>`;
+}
+
+function wireReach(root){
+  root.querySelectorAll("[data-reachadd]").forEach(b => b.onclick = () => { pfReachForm = {kind: b.dataset.reachadd}; profileRev++; drawPanes(); });
+  root.querySelectorAll("[data-reachedit]").forEach(b => b.onclick = () => {
+    const d = (pfReach?.dest || []).find(x => x.id === b.dataset.reachedit);
+    if (d){ pfReachForm = {kind: d.kind, id: d.id}; profileRev++; drawPanes(); }
+  });
+  // The switch: off keeps its settings, so a kind is turned on again as it was.
+  root.querySelectorAll("[data-reachon]").forEach(i => i.onchange = async () => {
+    const r = await pfTf({action: "reach-on", id: i.dataset.reachon, on: i.checked});
+    if (r.error) notify(r.error, true);
+    loadReach();
+  });
+  root.querySelectorAll("[data-reachcancel]").forEach(b => b.onclick = () => { pfReachForm = null; profileRev++; drawPanes(); });
+  root.querySelectorAll("[data-reachsave]").forEach(b => b.onclick = async () => {
+    const form = root.querySelector("[data-reachform]");
+    const fields = {};
+    form.querySelectorAll("[data-reachf]").forEach(i => { fields[i.dataset.reachf] = i.value; });
+    const kinds = [...form.querySelectorAll("[data-reachk]")].filter(i => i.checked).map(i => i.dataset.reachk);
+    const qf = form.querySelector("#pfReachQf")?.value || "", qt = form.querySelector("#pfReachQt")?.value || "";
+    busy(b, "Saving");
+    const r = await pfTf({action: "reach-set", id: pfReachForm?.id || "", kind: pfReachForm?.kind, name: form.querySelector("#pfReachName")?.value || "",
+                          fields, kinds, quiet: qf && qt ? {from: qf, to: qt} : null});
+    if (r.error){ const s = form.querySelector("#pfReachSaid"); if (s){ s.textContent = r.error; s.classList.add("bad"); } b.disabled = false; b.textContent = "Save"; return; }
+    pfReachForm = null;
+    notify(`the bell reaches you at ${r.dest.name}`);
+    loadReach();
+  });
+  root.querySelectorAll("[data-reachtest]").forEach(b => b.onclick = async () => {
+    busy(b, "Sending");
+    const r = await pfTf({action: "reach-test", id: b.dataset.reachtest});
+    notify(r.error || "a test went out: look for it there", !!r.error);
+    loadReach();
+  });
+  root.querySelectorAll("[data-reachrm]").forEach(b => b.onclick = async () => {
+    if (!await askYes("Remove this destination? The bell stays on the page.", {verb: "Remove", danger: true})) return;
+    busy(b, "Removing");
+    await pfTf({action: "reach-remove", id: b.dataset.reachrm});
+    loadReach();
+  });
+}
+
 function wireDeviceOut(root){
+  root.querySelectorAll("[data-pfsignout]").forEach(b => b.onclick = async () => {
+    const r = (profile?.signins || []).find(x => x.id === b.dataset.pfsignout);
+    if (!await askYes(r?.mine ? "Sign out this browser?" : `Sign out ${r ? r.agent : "that browser"}? Its next request finds it signed out.`)) return;
+    busy(b, "Signing out");
+    try{
+      const j = await (await postJSON("/api/profile", {action: "signin-out", id: b.dataset.pfsignout})).json();
+      if (j.error) notify(j.error, true);
+      else if (j.this){ location.href = "/login"; return; }
+    }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
+    await loadProfile();
+  });
   root.querySelectorAll("[data-pfdevout]").forEach(b => b.onclick = async () => {
     const of = b.dataset.devof || "";
     const d = [...(profile?.devices || []), ...(usersList || []).flatMap(u => u.devices || [])].find(x => x.id === b.dataset.pfdevout);
@@ -432,12 +613,16 @@ function wireTwoFactor(root){
     if (what === "passkey-add"){
       try{
         const o = await pfTf({action: "2fa-passkey-begin"});
+        // The PRF extension asked for at creation (R157): an authenticator
+        // that answers it can hold a key of the person's own.
         const c = await navigator.credentials.create({publicKey: {challenge: pfU8(o.challenge), rp: {name: "BuilderBot", id: location.hostname},
           user: {id: pfU8(o.user), name: o.name, displayName: o.name}, pubKeyCredParams: [{type: "public-key", alg: -7}],
           authenticatorSelection: {residentKey: "preferred", userVerification: "preferred"}, attestation: "none", timeout: 60000,
-          excludeCredentials: (o.exclude || []).map(id => ({type: "public-key", id: pfU8(id)}))}});
+          excludeCredentials: (o.exclude || []).map(id => ({type: "public-key", id: pfU8(id)})), extensions: {prf: {}}}});
+        let prf = false;
+        try{ prf = !!c.getClientExtensionResults().prf?.enabled; }catch(e){ prf = false; }
         const name = await askText("A name for this passkey, so you know it in the list.", {verb: "Save", label: "Name", value: "this device"});
-        const r = await pfTf({action: "2fa-passkey-add", name: name || "a passkey", client: pfB64(c.response.clientDataJSON), att: pfB64(c.response.attestationObject)});
+        const r = await pfTf({action: "2fa-passkey-add", name: name || "a passkey", client: pfB64(c.response.clientDataJSON), att: pfB64(c.response.attestationObject), prf});
         if (r.error){ notify(r.error, true); return; }
         if (r.recovery?.length) pfCodes = r.recovery;
         notify(`Passkey added: ${r.name}`);

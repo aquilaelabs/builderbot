@@ -155,7 +155,7 @@ setting.** A node is not "for" docker or for building; a project names ONE
 node and that node does everything the project needs, so nobody is asked
 which. Every node enrols with the full set, and what a project can actually
 DO on its node is what is INSTALLED there: the census's `toolchains`, which
-the node's page shows in place of the toggles, and which the Toolchains page
+the node's page shows in place of the toggles, and which the Library
 adds to. Three projects on three VMs keeps them apart; three projects on one
 VM shares it; the choice is the project's node, and nothing else.
 
@@ -350,7 +350,7 @@ every phase (`system`, `toolchain`, `cache-clear`, compose plans, `bb` verbs,
 store listings), and an older agent meets an unknown one with a shrug rather
 than an error, which is the worst of the three possible answers. So
 `job_add` refuses and `fits` declines every job whose runner is the node,
-`self-update` excepted; the Nodes page and the Toolchains page ghost the buttons and
+`self-update` excepted; the Nodes page and the Library ghost the buttons and
 say why before the press. It is one rule in `nodes.agent_stale` and the UI
 only mirrors it.
 
@@ -570,7 +570,7 @@ session meets a toolchain another node is replacing, no two distros'
 binaries land in one place, an install on one node waits for no other, and
 a node enrolled again starts afresh under its new id. What no node runs
 from any more (a retired or unknown node's directory, `store_dirs.roots`)
-is offered for removal on the Toolchains page (`toolchains.cleanable`).
+is offered for removal in the Library (`toolchains.cleanable`).
 This controller keeps its own toolchains (Playwright's browsers for
 `bb capture shot`) under `<store>/<os>-<arch>`, which is never offered. The census reports the scope beside the store's
 path, and its listing of the directory (`store_dirs`, every hello) is the
@@ -800,8 +800,8 @@ store and `bb toolchains`, operator-gated; that has to generalize without forkin
   (`type: exec`, spec from the catalog) placed on that node, with the same
   logs, audit and one-at-a-time-per-node rule as everything else, which also
   keeps the existing gate: sessions cannot trigger it, operators can, and now
-  the audit row says who did. The Toolchains page's installer gains the same node
-  picker the Docker manager gets: pick a node, see what is installed *there*,
+  the audit row says who did. The Library's installer has the same node
+  picker the Docker manager has: pick a node, see what is installed *there*,
   install or remove there. The controller is not offered at all (roadmap
   #26): it takes no toolchains, and its own record is registry plumbing.
 *Amended 18 September:* there are **five** stores, with `appdata` joining
@@ -843,12 +843,12 @@ minutes would be minutes of stat traffic for a number already known. Adding
 one is the ordinary toolchain job with `android-tools` (and its JDK) put in
 front of it, since the install is sdkmanager's.
 
-*Amended 19 September:* images left the Toolchains page for an **Emulator**
-page of their own, and the toolchain job for an `image` job (`bb emu image
+*Amended 19 September:* images are on an **Emulator** page of their own,
+not the toolchain installer's, and the toolchain job for an `image` job (`bb emu image
 add|remove ID` on the node, through the same bundle). The two job types take
 turns on a store. An image add on a node without `android-tools` is refused
 with the reason rather than having the tools put in front of it: the Emulator
-page says what is missing and links to the Toolchains page.
+page says what is missing and links to the Library.
 
 - **The store is a role with a location, not a mount.** Each node has a
   `toolchains` store: default an internal path
@@ -904,7 +904,7 @@ toolchain install on a node is a `toolchain` job: the agent fetches the
 bundle (bb, its library, the catalog) by digest into the toolchain store
 and runs `bb toolchains install` from it with `SDK_ROOT` at the store, gated on the
 store's headroom when this controller has measured the toolchain before; the
-Toolchains page's node picker shows what the node's census says it has. Not
+Installed page shows what the node's census says it has. Not
 landed: the node browser is the kept-workspace path in the job's log and
 `bb run`'s last line, not a file view; and an APK has not yet compiled on a
 real node: the mechanism is complete, the proof needs a node with a JDK.
@@ -1028,7 +1028,7 @@ the pieces stack:
    (`bb.example.com`), forwarding `/api/v1/agent/` and answering
    everything else 404 (the dialog prints the rule, with cloudflared's
    config as the example; or the controller runs that tunnel itself from
-   Controller settings' Reach from outside group, R176, `tunnel.py`), the VPS dials that name over HTTPS with its node
+   the Network page's Reach from outside group, R176, `tunnel.py`), the VPS dials that name over HTTPS with its node
    token, nothing on the router changes, and the VPS never learns the home
    address, since it only ever talks to the tunnel's edge; the controller
    answers that hostname on the agent API alone (`tunnel_refuses`, by the
@@ -1114,7 +1114,8 @@ the pieces stack:
    NAME` (R179).
 5. *Put nginx in front of them* (R171, the nginx page): one reverse proxy
    per node, BuilderBot's own, listed for every node on the nginx page,
-   under Containers on the rail. Its routes (a hostname or path to a port a container
+   which Configure on a node's nginx row opens (the Containers page's
+   System section). Its routes (a hostname or path to a port a container
    publishes on that node, with or without TLS) and its certificates (a
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
    the controller (`nginxproxy.py`, the key 0600 and never shown back). A
@@ -1236,7 +1237,12 @@ itself a VM has only when its host passes virtualization through (CPU mode
 host-passthrough, nested KVM on), and without it the row says so rather
 than offering a software-emulated VM. Its remove is refused while any VM is
 there. The firewall above is the second feature, a hosting-only node's
-alone.
+alone. The third is the **IOMMU** (R116): `intel_iommu=on` or `amd_iommu=on`
+with `iommu=pt` on the kernel's command line, written as one marked block
+by whichever of grubby, GRUB's defaults, extlinux or systemd-boot boots the
+machine (the marker names the way, so the remove undoes exactly that), read
+at the next boot, which the row asks the person for; the census says both
+whether BuilderBot wrote it and whether the running kernel has groups.
 
 **Which projects a container may go under.** The project pickers on Send,
 on a row's Project and Built from, and the project a Send, copy or move is
@@ -1671,7 +1677,7 @@ census reports both with the init system (`distro`), so the row says what
 a change would go through. The store is shared and those libraries are
 not, so the census also reports `sysdeps`: for every recipe the store
 holds, the system packages this machine still lacks for its family. The
-Toolchains page shows them with one press, a toolchain job of action `sysdeps`,
+Installed page shows them with one press, a toolchain job of action `sysdeps`,
 which installs the libraries and leaves the recipes alone (roadmap R51);
 a node the agent does not administer refuses it and names them for the
 owner, as an install there does.
@@ -1744,9 +1750,9 @@ graduates.** The popup keeps the per-browser items plus one entry,
 rendering banded groups in the house pattern, same as every other document
 surface. The graduation lands with the first batch of controller settings
 (phase 2), not before: converting the popup while it holds one setting would
-be ceremony. *Where it stands (19 Oct):* the controller's settings are
-**Controller settings**, beside Home in the rail's Home group, and the
-gear keeps the scheme, the time zone and Profile.
+be ceremony. *Where it stands (30 Oct):* the controller's settings are
+**Settings** in the rail's Controller group, and the gear keeps the
+scheme, the time zone and Profile.
 
 **Project-scoped**, which node runs this project's work. One node, named in
 the project row's existing settings dialog beside the person's own settings (the
@@ -2038,7 +2044,7 @@ GPU node for the life of the job and return results as artifacts: no network
 adb involved. The GPU display arrangement is `bb-sandbox gpu` on a node that
 has the card, pressed from its Nodes page (R20); the driver alone, for compute
 as well as the display, is `bb-sandbox gpu-driver install|remove`, pressed
-from the driver's row on the Toolchains page (R102), and the container toolkit
+from the driver's card in the Library (R102) and its row on the Installed page, and the container toolkit
 under it is `bb-sandbox gpu-container install|remove`, which adds or takes
 away NVIDIA's package source and has Docker reload its configuration. The interactive `device-host` service (a
 long-lived emulator a session reaches over network adb) is designed in §2 and
@@ -2263,7 +2269,7 @@ otherwise. Put the session on the node and most of that is simply not needed.
 
 It also settles a question §18 could not. The operator hit it on 4 September:
 this box's toolchain store and bb-sandbox's are **one store under two
-names**: `/sdk` here through Unraid's FUSE layer, `/mnt/SDK` there over NFS,
+names**: `/sdk` here through the host's user-share layer, `/mnt/SDK` there over NFS,
 store id identical, so "the container has Flutter" and "the node has Flutter"
 were one fact, and nothing could be taken off the container without taking it
 off the node. §18's answer was to split the share, which is a share per
@@ -2338,9 +2344,9 @@ above, in order:
    session half up, the session is relayed there; otherwise it is this
    container's, as it always was.
 3. **The login is per node and per account**, in that account's home on the
-   node, and it is made there: Sign in in the Claude section of the node's
-   Agents page runs `claude auth login` on that machine as a job, with the code
-   pasted back in that section, and Sign out there runs `claude auth logout` the
+   node, and it is made there: Sign in on Claude Code's row of the
+   Installed page, with the node picked, runs `claude auth login` on that machine as a job, with the code
+   pasted back in that row, and Sign out there runs `claude auth logout` the
    same way. Nothing fetches a login from anywhere: one machine, one
    account, one login. **Transcripts and memories are one place**: every
    account's `~/.claude/projects`, on every machine, is a link to
@@ -2472,7 +2478,7 @@ The account's CLAUDE LOGIN NEVER TRAVELS (R47). Each machine signs in for
 itself and keeps the grant it alone refreshes, because a refresh rotates the
 refresh token and two machines holding copies of one grant sign each other
 out, which is what a day of node sessions produced twice (bug #64, B100).
-So a login is one account's on one node: signed in from that node's Agents page,
+So a login is one account's on one node: signed in from its row on the Installed page,
 signed out there, and no business of any other node's. What crosses the
 wire is one sentence and no secret: "this account is signed in here as X",
 or that it is not. `bb login --check` sends it on every connection, the
@@ -2495,7 +2501,7 @@ Nodes exist for resource management: a sandbox on this server or another,
 a cloud box, a Mac, a Windows machine, and the controller exists so all of
 that is configured, enrolled and updated from one place. So the toolchain,
 the lint tools, the browser module, the session half: fine on a node, *as
-long as they arrive from the controller*: the Toolchains page, the catalog, the
+long as they arrive from the controller*: the Library, the catalog, the
 bundle, the agent's self-update, and never by somebody logging in and
 setting them up. A new node is a provisioner run and a few clicks, not a
 checklist.

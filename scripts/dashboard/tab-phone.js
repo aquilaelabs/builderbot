@@ -36,12 +36,11 @@ function openPhoneTab(){
   openTab({kind: "phone", arg: "__phone", label: "Phone"});   // the kind's open hook probes
 }
 
-// The bar, the page's and its placeholder's (R218, the operator 18 Oct):
-// the node switcher and Check now in the button group every page's bar has.
-function phoneBar(nodes, n){
-  const g = !nodes;
-  return nodeBar(nodePick("phPick", g ? null : nodes, n?.id),
-                 `<button type="button"${g ? " disabled" : ` id="phRefresh"`} title="ask the node's adb about the phone now">Check now</button>`);
+// Check now, on the phone's own row under the header (the operator, 29
+// Oct: the bar it stood in left a gap over the page); the node is the
+// Build group's header's (R178), so the bar carries nothing.
+function phoneCheckBtn(ghost){
+  return `<button type="button"${ghost ? " disabled" : ` id="phRefresh"`} title="ask the node's adb about the phone now">Check now</button>`;
 }
 
 function renderPhoneInto(i){
@@ -52,10 +51,10 @@ function renderPhoneInto(i){
     // (connect, pair) with their labels are the page's own; the node and
     // its phone are on their way.
     const fld = (label, em, grow = false) => skField(label, em, grow ? "grow" : "");
-    d.setBar(phoneBar(null));
+    d.setBar("");
     // In the card the rows land in (.phonetab).
-    d.list.innerHTML = skTpl(`<div class="phonetab"><div class="row toolstate"><div class="grow"><div class="name">Phone on ${skv(6)}</div>
-        <div class="sub">${skv(10)}</div></div></div>
+    d.list.innerHTML = skTpl(`<div class="phonetab"><div class="row toolstate"><div class="grow"><div class="name">Phone ${skv(6)}</div>
+        <div class="sub">${skv(10)}</div></div><span class="acts actbar">${phoneCheckBtn(true)}</span></div>
       <div class="row">${fld("Phone IP address", 18, true)}${fld("Port", 7)}<span class="acts"><button type="button" class="primary" disabled>Connect</button></span></div>
       <div class="row"><div class="grow prefrow ctlrow">${fld("Pairing port", 9)}${fld("Pairing code", 9)}</div>
         <span class="acts"><button type="button" disabled>Pair</button></span>
@@ -63,11 +62,15 @@ function renderPhoneInto(i){
     return;
   }
   const nodes = ph.nodes || [];
-  const n = nodes.find(x => x.id === phNode) || nodes[0];
-  d.setBar(phoneBar(nodes, n));
+  // The node the Build group's header picked (R178): one without adb is
+  // said so, not swapped for the first that has it.
+  const picked = (nodesList || []).find(x => x.id === phNode);
+  const n = nodes.find(x => x.id === phNode) || (!phNode ? nodes[0] : null);
+  d.setBar("");
   phFoot = "";
   d.list.innerHTML = n ? phonePanel(n)
-    : `<div class="hint">No node carries adb yet: install Android platform tools on one from the ${pageLink("toolchains", "Toolchains page")}.</div>`;
+    : picked ? `<div class="hint">${esc(picked.name)} has no adb: install Android platform tools on it from the ${pageLink("library", "Library")}.</div>`
+    : `<div class="hint">No node carries adb yet: install Android platform tools on one from the ${pageLink("library", "Library")}.</div>`;
   d.setFoot(phFoot);
   if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);
   wirePhoneTab(d.el);
@@ -132,7 +135,10 @@ function phWhy(which, offWhy){
 }
 const phWhyLine = (which, offWhy) => {
   const why = phWhy(which, offWhy);
-  return `<div class="sub warn phwhy" data-phwhy="${which}"${why ? "" : " hidden"}>${why}</div>`;
+  // Muted while it waits on a field, yellow only when it is switched off
+  // (the operator's rule: the reason on the row, never a warning for a form
+  // not filled in yet).
+  return `<div class="hint${offWhy ? " warn" : ""} phwhy" data-phwhy="${which}"${why ? "" : " hidden"}>${why}</div>`;
 };
 
 // The section's body for one node: its phone, connecting and pairing, the
@@ -156,30 +162,31 @@ function phonePanel(n){
     : "";
   // A word and an animated ellipsis, never a bar: nothing here knows a
   // percentage, and inventing one would be a lie about progress.
-  const state = phBusy
+  const pill = phBusy
     ? `<span class="pill go">${esc(phBusy)}<span class="dots"></span></span>`
-    : dev ? `<span class="pill ok">${esc(dev.model || "phone")}</span>`
-          : `<span class="pill">not connected</span>`;
+    : dev ? `<span class="pill stat ok">connected</span> <span class="pill">${esc(dev.model || "phone")}</span>`
+          : `<span class="pill stat">not connected</span>`;
   // The node-scoped tool's shape, the CI runner tab's too (R121 step 5):
   // the state row first, then the ways in, what it is lent to and what it
   // remembers, and at the foot how a session reaches it.
   const rows = [
     `<div class="row toolstate">
-       <div class="grow"><div class="name">Phone on ${esc(n.name)} ${state}${
+       <div class="grow"><div class="name">Phone ${pill}${
            n.owner ? ` <span class="dim">· connected by ${esc(n.owner.name)}${n.mine ? " (you)" : ""}</span>` : ""}</div>
-         <div class="sub">${!n.live
+         <div class="${dev && dev.serial && n.live ? "sub" : "hint"}">${!n.live
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
            : dev ? (dev.serial ? esc(dev.serial) : `connected by ${esc(n.owner?.name || "somebody")}; which phone is theirs to know`)
            : "no phone on its adb"}</div></div>
-       ${dev && (n.mine || state?.admin) && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"${
+       <span class="acts actbar">${phoneCheckBtn(false)}${dev && (n.mine || (n.owner && state?.admin)) && mayPhone() ? `<button type="button" id="phDisconnect"${
          n.mine ? "" : ` data-other="${esc(n.owner?.name || "somebody")}"`}
-         >Disconnect</button></span>` : ""}
+         >Disconnect</button>` : ""}</span>
      </div>`,
     // An IP and its port, both read off the phone's wireless debugging
     // screen. Android hands out a new port every time wireless debugging is
     // toggled; the node used to scan the phone for it, which across a VPN is
     // what a network flags as port scanning (the operator, 9 Oct).
     `<div class="row">
+       <div class="grow name phstep">Connect</div>
        <div class="grow setrow col ctlrow">${lbl("phIp", "Phone IP address", "from its wireless debugging screen, before the colon")}
          <input id="phIp" maxlength="15" autocomplete="off"
          placeholder="192.168.0.10" value="${esc(phIp)}"${off ? " disabled" : ""}></div>
@@ -190,14 +197,12 @@ function phonePanel(n){
          off || !phIp.trim() || !phConnPort.trim() ? " disabled" : ""} title="${offWhy}"
          >${dev ? "Reconnect" : "Connect"}</button></span>
        ${phWhyLine("connect", offWhy)}
-       ${ph.you && phIp === ph.you
-         ? `<div class="sub">this device; you are reading this on it</div>`
-         // The hint under the control it is about (R218 step 23).
-         : !dev ? `<div class="sub">try Connect first: a pairing outlives a restart</div>` : ""}
+       ${ph.you && phIp === ph.you ? `<div class="hint">This device: you are reading this on it.</div>` : ""}
      </div>`,
     // Pairing in the open rather than behind a fold: it is two fields, and a
     // fold over two fields is a click that buys nothing.
     `<div class="row">
+       <div class="grow name phstep">Pair a new phone</div>
        <div class="grow prefrow ctlrow">
          <div class="setrow col ctlrow">${lbl("phPairPort", "Pairing port", "from the pairing dialog, not the main screen")}
          <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="37123"
@@ -209,11 +214,10 @@ function phonePanel(n){
        <span class="acts"><button type="button" id="phPair"${off ? ' data-off="1"' : ""}${
          off || !phIp.trim() || !phPort.trim() || !phCode.trim() ? " disabled" : ""} title="${offWhy}">Pair</button></span>
        ${phWhyLine("pair", offWhy)}
-       <div class="sub">${ph.you && phIp === ph.you
+       <div class="hint">${ph.you && phIp === ph.you
          ? `<b class="warn">You are reading this on the phone you are pairing.</b>
             Pair from another device: Android closes the pairing dialog when you leave it.`
-         : `On the phone: Wireless debugging, then <b>Pair device with pairing code</b>.
-            Keep that dialog open.`}</div>
+         : `Once per phone. On it: Wireless debugging, then <b>Pair device with pairing code</b>, and keep that open. A phone paired before needs only Connect.`}</div>
      </div>`,
   ];
   // What a session is waiting on, above everything else it could be doing:
@@ -278,9 +282,8 @@ function phonePanel(n){
   const known = (n.known || []).filter(k => k.ip);
   if (known.length)
     rows.push(`<div class="row"><div class="grow">
-        <div class="name">Remembered on ${esc(n.name)}</div>
-        <div class="sub">paired or connected here before: today's port is all they need</div>
-        <div class="sub note phknownsay"${phConnPort.trim() ? " hidden" : ""}>Connect wakes once today's port is typed in Port above</div>
+        <div class="name">Remembered here</div>
+        <div class="hint phknownsay"${phConnPort.trim() ? " hidden" : ""}>Connect needs today's port, typed above.</div>
       </div></div>`,
       ...known.map(k => `<div class="row phknown" data-ip="${esc(k.ip)}">
         <div class="grow">
@@ -316,9 +319,6 @@ function phonePanel(n){
 
 function wirePhoneTab(root){
   const $$ = id => root.querySelector("#" + id);
-  const pick = $$("phPick");
-  // A pick is a history entry (B31), so Back returns to the node before.
-  if (pick) pick.onchange = () => navPush(() => { phNode = pick.value; phIp = ""; phFetch(null, true); });
   const rf = $$("phRefresh");
   // Refresh says so on the button itself, like every other tab's (the
   // operator, 13 Oct); the pill is for what the phone is being asked to do.

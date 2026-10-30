@@ -1,0 +1,62 @@
+{
+ "about": "What bb tool diagrams runs: PlantUML and Mermaid, diagrams drawn from text. Needs jdk and playwright beside it.",
+ "label": "Diagram renderers (PlantUML, Mermaid)",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/plantuml"
+ },
+ "name": "diagrams",
+ "platforms": [
+  "linux/amd64"
+ ],
+ "shipped": {
+  "probe": "diagrams",
+  "reports": "plantuml",
+  "requires": [
+   "jdk",
+   "node",
+   "playwright"
+  ],
+  "source": {
+   "checksum": {
+    "from": "github-asset"
+   },
+   "download": {
+    "bytes": 60000000,
+    "resolver": "approximate"
+   },
+   "fresh_only": true,
+   "kind": "script",
+   "run": [
+    "sh",
+    "-ec",
+    "dst=\"$2\"; mkdir -p \"$dst/bin\" \"$dst/lib\"; cp \"$1\" \"$dst/lib/plantuml.jar\"; printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"${JAVA:-java}\" -Djava.awt.headless=true -jar \"$here/../lib/plantuml.jar\" \"$@\"\\n' > \"$dst/bin/plantuml\"; chmod +x \"$dst/bin/plantuml\"; npm install --silent --no-audit --no-fund --prefix \"$dst\" @mermaid-js/mermaid-cli; ln -sf ../node_modules/.bin/mmdc \"$dst/bin/mmdc\"",
+    "--",
+    "{script}",
+    "{dir}"
+   ],
+   "url": "https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar",
+   "verify": [
+    "test",
+    "-s",
+    "{dir}/lib/plantuml.jar"
+   ]
+  },
+  "tool": "diagrams",
+  "updatable": true
+ },
+ "terms": [
+  {
+   "label": "PlantUML's license",
+   "url": "https://plantuml.com/license"
+  },
+  {
+   "label": "Mermaid (MIT)",
+   "url": "https://github.com/mermaid-js/mermaid/blob/develop/LICENSE"
+  }
+ ],
+ "tier": "official"
+}

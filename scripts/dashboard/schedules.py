@@ -1,5 +1,5 @@
-"""Scheduled scripts (R117): an administrator's own cron in BuilderBot, as
-Unraid's User Scripts are. Each schedule is a script, a timetable in cron's
+"""Scheduled scripts (R117): an administrator's own cron in BuilderBot. Each
+schedule is a script, a timetable in cron's
 five fields (said in words: "Sundays at 4:00"), the node it runs on, and
 whether it runs there as the node's jobs account or as root (a sandbox node
 alone, as `bb root run` is). Every run is a job, its log on the Jobs page.
@@ -14,9 +14,9 @@ a schedule at a time, so one still going when the next falls due is said
 and that run skipped; and a run the controller was down for is run once
 when it comes back and said, never once per minute it missed.
 
-The static analysis scan (tools/scan.sh, docs/scanners.md) is the first
-built-in schedule: off until an administrator turns it on, naming the node
-it runs on and its paths, then Sundays at 4:00 until changed.
+The static analysis scan was the first built-in schedule; since 0.9.0 it
+is the Scanners page's own (R145, scanners.py), and migration 0016 moved
+an install's scan schedule there.
 """
 import calendar
 import json
@@ -27,7 +27,6 @@ import time
 from pathlib import Path
 
 FILE = None                  # <state>/schedules.json, set by configure()
-SCAN = None                  # tools/scan.sh, the built-in scan's script
 write_json = None
 _lock = threading.Lock()
 
@@ -42,16 +41,23 @@ TIMEOUT_DEFAULT = TIMEOUT_MAX
 # for it: run once, and say how late.
 LATE_S = 180
 AS = ("job", "root")
-SCAN_ID = "scan"
-SCAN_CRON = "0 4 * * 0"
+# A schedule the controller's own pages make (R162 step 5): a system job
+# from the root agent's table rather than a script, on the node named;
+# the table's entries a page may schedule, each with the shape its config
+# must have, checked here before the record and again on the node.
+SYSTEM_APPLIES = {"storage-snapshot": {"pool": str, "kind": str, "keep": int},
+                  "storage-array": {"array": str}, "storage-backup": {"name": str}}
+# How long each may run as a job: a snapshot is quick, a parity sync or
+# scrub of a large array takes hours.
+SYSTEM_TIMEOUT = {"storage-snapshot": 900, "storage-array": 86400, "storage-backup": 86400}
+SCAN_ID = "scan"           # the row the built-in scan kept before 0.9.0, unlisted now (migration 0016)
 DAYS = ("Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays")
 DAY_NAMES = {d[:3].lower(): i for i, d in enumerate(DAYS)}
 MONTH_NAMES = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
 
 
-def configure(*, state, write_json, scan=None):
-    globals().update(FILE=Path(state) / "schedules.json", write_json=write_json,
-                     SCAN=Path(scan) if scan else None)
+def configure(*, state, write_json):
+    globals().update(FILE=Path(state) / "schedules.json", write_json=write_json)
 
 
 # ---- the timetable -----------------------------------------------------------
@@ -136,6 +142,50 @@ def next_after(expr, after):
     return None
 
 
+def system_words(sysj):
+    """What a system schedule does, in words, for its row."""
+    if not isinstance(sysj, dict):
+        return ""
+    cfg = sysj.get("config") or {}
+    if sysj.get("apply") == "storage-snapshot":
+        return f"a {cfg.get('kind', '')} snapshot of the pool {cfg.get('pool', '')}, {cfg.get('keep', 0)} kept"
+    if sysj.get("apply") == "storage-backup":
+        return f"the backup {cfg.get('name', '')}: its source copied to its destination, a run kept beside the ones before"
+    if sysj.get("apply") == "storage-array":
+        return {"sync": "a SnapRAID sync of the array: the parity brought up to date", "scrub": "a SnapRAID scrub of the array: a part of it read back and checked",
+                "check": "a SnapRAID status of the array"}.get(cfg.get("array", ""), f"the array's {cfg.get('array', '')}")
+    return str(sysj.get("apply") or "")
+
+
+SNAP_CRON = {"hourly": "0 * * * *", "daily": "0 4 * * *", "weekly": "0 4 * * 0"}
+
+
+def scheduled_backups(node_id):
+    """The names of the backups with a schedule turned on, on one node."""
+    return {(r.get("system") or {}).get("config", {}).get("name") for r in listing()
+            if r.get("node") == node_id and r.get("on") and (r.get("system") or {}).get("apply") == "storage-backup"}
+
+
+def snapshot_schedules(node_id):
+    """The storage-snapshot and storage-array schedules on one node (R162
+    steps 5 and 2), for the Storage page: [{id, pool, kind, keep, array,
+    on, words, next_at}], a pool's hourly, daily and weekly and the
+    array's sync and scrub each one row."""
+    out = []
+    for r in listing():
+        sysj = r.get("system") or {}
+        if r.get("node") != node_id or sysj.get("apply") not in ("storage-snapshot", "storage-array", "storage-backup"):
+            continue
+        cfg = sysj.get("config") or {}
+        out.append({"id": r["id"], "pool": cfg.get("pool", ""), "kind": cfg.get("kind", ""), "keep": cfg.get("keep", 0),
+                    # ...and the array's sync and scrub rows (R162 step 2), told apart by `array`.
+                    "array": cfg.get("array", "") if sysj.get("apply") == "storage-array" else "",
+                    # ...and the backups' rows (R162 step 5), told apart by `backup`.
+                    "backup": cfg.get("name", "") if sysj.get("apply") == "storage-backup" else "",
+                    "on": bool(r.get("on")), "words": r.get("words", ""), "next_at": r.get("next_at")})
+    return out
+
+
 def words(expr):
     """A timetable as a person says it: "every 15 minutes", "hourly at :30",
     "daily at 4:00", "Sundays at 4:00", "on the 1st at 4:00"; the fields
@@ -187,33 +237,19 @@ def _save(d):
     write_json(FILE, d)
 
 
-def _builtin_scan():
-    """The scan as it stands before anybody touched it: off, its script the
-    file the image carries."""
-    return {"id": SCAN_ID, "name": "Static analysis scan", "builtin": "scan", "on": False,
-            "cron": SCAN_CRON, "node": "", "as": "root", "timeout": 4 * 3600,
-            "env": {"SCANNER_SOURCE_PATH": "", "SCANNER_REPORTS_PATH": "", "SCANNER_CACHE_PATH": ""}}
-
-
-def _scan_script():
-    try:
-        return SCAN.read_text() if SCAN else ""
-    except OSError:
-        return ""
-
-
 def listing():
     """Every schedule, the built-in scan first, each with its words and its
     next run."""
-    d = _load()["schedules"]
-    rows = {SCAN_ID: {**_builtin_scan(), **(d.get(SCAN_ID) or {})}, **{k: v for k, v in d.items() if k != SCAN_ID}}
+    # The scan's own row, the one built in before 0.9.0, is the Scanners
+    # page's now (migration 0016); one left behind is not listed.
+    d = {k: v for k, v in _load()["schedules"].items() if k != SCAN_ID}
+    rows = d
     now = time.time()
     out = []
     for s in rows.values():
         r = dict(s)
-        if r.get("builtin") == "scan":
-            r["script"] = _scan_script()
         r["words"] = words(r.get("cron"))
+        r["does"] = system_words(r.get("system")) if r.get("system") else ""
         r["next_at"] = next_after(r.get("cron"), now) if r.get("on") else None
         out.append(r)
     return out
@@ -248,16 +284,30 @@ def _clean(req, was):
             s["timeout"] = max(60, min(TIMEOUT_MAX, int(req.get("timeout"))))
         except (TypeError, ValueError):
             return None, "a timeout is a number of seconds"
-    if "script" in req and not s.get("builtin"):
+    if "script" in req:
         script = str(req.get("script") or "")
         if len(script.encode()) > SCRIPT_MAX:
             return None, f"a script is at most {SCRIPT_MAX // 1024} KB"
         if not script.strip():
             return None, "a schedule needs a script"
         s["script"] = script
-    if "env" in req and s.get("builtin") == "scan":
-        got = req.get("env") if isinstance(req.get("env"), dict) else {}
-        s["env"] = {k: str(got.get(k, (s.get("env") or {}).get(k, "")) or "")[:300] for k in _builtin_scan()["env"]}
+    if "system" in req:
+        sysj = req.get("system")
+        if sysj is None:
+            s.pop("system", None)
+        else:
+            if not isinstance(sysj, dict) or sysj.get("apply") not in SYSTEM_APPLIES:
+                return None, f"a system schedule runs one of the table's jobs: {', '.join(SYSTEM_APPLIES)}"
+            shape = SYSTEM_APPLIES[sysj["apply"]]
+            cfg = sysj.get("config") if isinstance(sysj.get("config"), dict) else {}
+            for k, kind in shape.items():
+                if not isinstance(cfg.get(k), kind) or isinstance(cfg.get(k), bool):
+                    return None, f"the {sysj['apply']} job's {k} is missing or not a {kind.__name__}"
+            if sysj["apply"] == "storage-array" and cfg.get("array") not in ("sync", "scrub", "check"):
+                return None, "the array's schedule runs sync, scrub or check"
+            s["system"] = {"apply": sysj["apply"], "config": {k: cfg[k] for k in shape}}
+            s["script"] = ""
+            s["as"] = "root"
     if "on" in req:
         s["on"] = req.get("on") is True
     return s, ""
@@ -270,9 +320,9 @@ def save(req, by):
         d = _load()
         rows = d["schedules"]
         if sid:
-            was = {**_builtin_scan(), **(rows.get(sid) or {})} if sid == SCAN_ID else rows.get(sid)
+            was = rows.get(sid) if sid != SCAN_ID else None
             if not was:
-                return {"error": "no such schedule"}
+                return {"error": "no such schedule" if sid != SCAN_ID else "the scan is the Scanners page's now"}
         else:
             if len(rows) >= MAX:
                 return {"error": f"{MAX} schedules are kept, the most there may be"}
@@ -280,6 +330,8 @@ def save(req, by):
             was = {"id": sid, "name": "", "cron": "", "node": "", "as": "job", "timeout": TIMEOUT_DEFAULT,
                    "script": "", "on": True, "by": by, "made": int(time.time())}
             for k in ("name", "cron", "script"):
+                if k == "script" and isinstance(req.get("system"), dict):
+                    continue
                 if not str(req.get(k) or "").strip():
                     return {"error": f"a new schedule needs its {k}"}
         s, why = _clean(req, was)
@@ -287,11 +339,6 @@ def save(req, by):
             return {"error": why}
         if s.get("on") and not s.get("node"):
             return {"error": "pick the node it runs on before it is turned on"}
-        if s.get("builtin") == "scan" and s.get("on"):
-            env = s.get("env") or {}
-            if not env.get("SCANNER_SOURCE_PATH") or not env.get("SCANNER_REPORTS_PATH"):
-                return {"error": "the scan needs where the projects are on that node and the reports folder "
-                                 "the controller reads at /reports, before it is turned on"}
         s["changed"] = int(time.time())
         s["changed_by"] = by
         # Due from now, never for a minute that went by while it was off.
@@ -305,7 +352,7 @@ def remove(sid):
     with _lock:
         d = _load()
         if sid == SCAN_ID:
-            return {"error": "the scan is built in: turn it off instead"}
+            return {"error": "the scan is the Scanners page's now"}
         if d["schedules"].pop(sid, None) is None:
             return {"error": "no such schedule"}
         _save(d)
@@ -316,7 +363,7 @@ def _record(sid, **fields):
     with _lock:
         d = _load()
         rows = d["schedules"]
-        s = rows.get(sid) or ({**_builtin_scan()} if sid == SCAN_ID else None)
+        s = rows.get(sid)
         if s is None:
             return
         s.update(fields)
@@ -327,9 +374,8 @@ def _record(sid, **fields):
 # ---- running ----------------------------------------------------------------------
 
 def _argv(s):
-    """What the job runs: the script, by bash, the scan's paths in its
-    environment."""
-    script = _scan_script() if s.get("builtin") == "scan" else s.get("script") or ""
+    """What the job runs: the script, by bash."""
+    script = s.get("script") or ""
     env = s.get("env") or {}
     pre = "".join(f"export {k}={json.dumps(v)}\n" for k, v in env.items() if v)
     return ["bash", "-c", pre + script]
@@ -339,10 +385,7 @@ def fire(s, by, queue, late="", at=None):
     """One run of a schedule now, through `queue(s, argv, by)`, which answers
     {job} or {error}: the job queued, recorded as the schedule's last run,
     at `at` (the timer's minute) or now."""
-    if s.get("builtin") == "scan" and not _scan_script():
-        r = {"error": "the scan's script (tools/scan.sh) is not in this image"}
-    else:
-        r = queue(s, _argv(s), by)
+    r = queue(s, _argv(s), by)
     _record(s["id"], last={"at": int(time.time() if at is None else at), "job": r.get("job", ""), "error": r.get("error", ""),
                            "late": late, "by": by})
     return r

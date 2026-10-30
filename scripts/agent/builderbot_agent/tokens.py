@@ -18,8 +18,10 @@ A seal is opened only when a person opens a terminal for their own account
 opened copy is wiped GRACE_S after the account's last session ends. A
 refresh written into it is sealed again within a pass. A login writes into
 the home as ever; the pass finds the plain file, seals it, and puts the
-link in its place. Copilot CLI keeps its token in a file of its settings and
-is not sealed yet.
+link in its place. Copilot CLI keeps its token inside its config.json with
+its settings, so that file is sealed whole (R126 step 3): the settings in
+it are the CLI's own, read where it reads them, and the Installed page names
+who is signed in from the seal's header as for the others.
 """
 import base64
 import contextlib
@@ -31,7 +33,7 @@ import time
 
 from . import tokenseal
 from .accounts import UID_RE, user_of
-from .base import log
+from .base import log, wipe
 
 SEAL_DIR = "/var/lib/builderbot/tokens"
 OPEN_DIR = "/run/bb-tokens"
@@ -39,7 +41,7 @@ GRACE_S = 300
 EVERY_S = 10
 # ...and Grok Build's session (R95 step 21), a file of its own as Codex's is.
 FILES = (("claude", os.path.join(".claude", ".credentials.json")), ("codex", os.path.join(".codex", "auth.json")),
-         ("grok", os.path.join(".grok", "auth.json")))
+         ("grok", os.path.join(".grok", "auth.json")), ("copilot", os.path.join(".copilot", "config.json")))
 
 
 def _claims(jwt):
@@ -69,7 +71,7 @@ def _jwt_email(d, depth=0):
 
 def about(agent, data, home):
     """What a sign-in says of itself, kept readable in its seal's header so
-    the Agents page can name who is signed in without opening it."""
+    the Installed page can name who is signed in without opening it."""
     out = {"agent": agent}
     with contextlib.suppress(ValueError, TypeError, AttributeError):
         if agent == "codex":
@@ -84,6 +86,15 @@ def about(agent, data, home):
             # The email its token's claims name, else that it is an xAI
             # account (login-list.py grok_of says it the same way).
             out["email"] = (_jwt_email(json.loads(data)) or "an xAI account")[:120]
+        elif agent == "copilot":
+            # Its config opens with // lines since 1.0.103 (B282), then the
+            # JSON naming the GitHub login it is signed in as.
+            lines = data.decode("utf-8", "replace").splitlines()
+            n = 0
+            while n < len(lines) and (not lines[n].strip() or lines[n].lstrip().startswith("//")):
+                n += 1
+            u = (json.loads("\n".join(lines[n:])) or {}).get("lastLoggedInUser") or {}
+            out["email"] = str(u.get("login") or "")[:120] if isinstance(u, dict) else ""
     return out
 
 
@@ -175,7 +186,10 @@ class TokensMixin:
         return d
 
     def _seal(self, acct, agent, data, home):
-        pub = (self.state.get("token_pubs") or {}).get(acct)
+        # The X25519 public where this node has the library (R158 step 3),
+        # else the public before, which seals the old way.
+        pub = ((self.state.get("token_pubs2") or {}).get(acct) if tokenseal.HAVE else None) \
+            or (self.state.get("token_pubs") or {}).get(acct)
         if not pub:
             return False
         d = os.path.join(SEAL_DIR, acct)
@@ -349,9 +363,13 @@ class TokensMixin:
                 odir = odir or self._acct_open_dir(acct, pw)
                 of = os.path.join(odir, agent + ".json")
                 _write(of, data, 0o600, pw.pw_uid, pw.pw_gid)
+                wipe(data)
                 st = os.stat(of)
                 seen[(acct, agent)] = (st.st_ino, st.st_size, st.st_mtime_ns)
                 self._link(os.path.join(home, rel), of, pw)
+        # The keys the terminal brought are let go, zeroed (R158 step 6).
+        for k in keys.values():
+            wipe(k)
         if odir:
             live[acct] = time.time()
 

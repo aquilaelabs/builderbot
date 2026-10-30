@@ -611,6 +611,27 @@ def _agent_turns(f, agent, tz, tail, first=False):
                         result(str(u.get("toolCallId") or ""),
                                _acp_text(u.get("content")) if r is None else r if isinstance(r, str)
                                else json.dumps(r, ensure_ascii=False)[:TURN_RESULT_MAX])
+                elif agent == "open":
+                    # OpenCode's export (R144 step 2), one JSON document a
+                    # line: its messages, each a role and its parts (text,
+                    # a tool with its input and its output).
+                    for m in d.get("messages") or []:
+                        info = m.get("info") if isinstance(m, dict) and isinstance(m.get("info"), dict) else {}
+                        who = "you" if info.get("role") == "user" else "claude"
+                        for part in (m.get("parts") or []) if isinstance(m, dict) else []:
+                            if not isinstance(part, dict):
+                                continue
+                            if part.get("type") == "text" and str(part.get("text") or "").strip():
+                                text = str(part["text"])
+                                if who == "you" and text.lstrip().startswith(_CODEX_PREAMBLE):
+                                    continue
+                                say(who, text, _when(info, tz) or stamp)
+                                total += len(text)
+                            elif part.get("type") == "tool":
+                                st = part.get("state") if isinstance(part.get("state"), dict) else {}
+                                tool(f"{part.get('tool') or 'tool'}: {_args(st.get('input'))}", str(part.get("callID") or part.get("id") or ""), stamp)
+                                if st.get("output") is not None:
+                                    result(str(part.get("callID") or part.get("id") or ""), st.get("output"))
                 elif agent == "codex":
                     p = d.get("payload") if isinstance(d.get("payload"), dict) else {}
                     if d.get("type") != "response_item":
@@ -658,7 +679,7 @@ def _agent_turns(f, agent, tz, tail, first=False):
 
 def _agent_render(f, agent, project, sid, tz, tail):
     """render()'s (text, filename) for another agent's conversation."""
-    name = {"codex": "ChatGPT", "copilot": "Copilot", "grok": "Grok"}.get(agent, agent)
+    name = {"codex": "ChatGPT", "copilot": "Copilot", "grok": "Grok", "open": "Any model"}.get(agent, agent)
     try:
         mtime = f.stat().st_mtime
     except OSError as e:

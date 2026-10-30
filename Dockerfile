@@ -289,6 +289,8 @@ COPY config/templates/ /opt/builderbot/templates/
 COPY config/toolchains.json /opt/builderbot/config/toolchains.json
 # ...and the publishers' release keys a download is checked against (R137).
 COPY config/release-keys/ /opt/builderbot/config/release-keys/
+# ...and the vetted catalog maintainers' key its signed index is checked against (R169).
+COPY config/catalog.pub /opt/builderbot/config/catalog.pub
 # The operating systems a VM is made from (R91), read by vms.py the same way.
 COPY config/vm-images.json /opt/builderbot/config/vm-images.json
 # What a sandbox VM is made from, one per hypervisor, which the Nodes tab
@@ -315,7 +317,6 @@ COPY docs/*.md /opt/builderbot/docs/
 COPY CHANGELOG.md /opt/builderbot/CHANGELOG.md
 # The static analysis scan, which the Schedules page runs on a node as its
 # built-in schedule (R117): two levels above server.py, as in a checkout.
-COPY tools/scan.sh /opt/builderbot/tools/scan.sh
 # Carried in the image so the container can seed Unraid's icon cache itself
 # rather than depending on a URL Unraid can reach. See
 # scripts/startup.d/05-unraid-icon.root.sh.

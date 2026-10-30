@@ -1,0 +1,45 @@
+#!/bin/bash
+# Runs inside the image's root once its packages are in (mkosi.postinst):
+# the controller staged from the checkout the way a bare-metal install lays
+# it out, and the two things an immutable root changes about Debian.
+set -euo pipefail
+SRC=/work/src/builderbot
+[ -d "$SRC/nodes" ] || { echo "mkosi.postinst: the checkout is not at $SRC (BuildSources)" >&2; exit 1; }
+
+# The controller: its account, release, env file, bb, sudo rule and service,
+# enabled and not started; the node half runs at the first boot
+# (builderbot-os-firstboot.service, install-controller.sh --firstboot).
+mkosi-chroot env "BB_STAGE_VERSION=${BUILDERBOT_OS_VERSION:-}" "BB_STAGE_REV=${BUILDERBOT_OS_REV:-}" \
+    bash "$SRC/nodes/install-controller.sh" --stage --docker
+
+# apt is not for a root that forgets: diverted, a stub in its place says why
+# and where a tool comes from instead (usr/lib/builderbot-os/no-apt).
+for t in apt apt-get; do
+    mkosi-chroot dpkg-divert --quiet --divert "/usr/bin/$t.distrib" --rename "/usr/bin/$t"
+    mkosi-chroot ln -sfn /usr/lib/builderbot-os/no-apt "/usr/bin/$t"
+done
+
+# The ESP's mount point, and the services the image starts on every boot:
+# the controller (enabled by --stage), docker and libvirt for the node, the
+# network and the time.
+mkosi-chroot install -d -m 0700 /boot/efi
+mkosi-chroot systemctl enable systemd-networkd systemd-resolved systemd-timesyncd docker libvirtd >/dev/null 2>&1 || true
+# BuilderBot OS's own units, enabled here rather than as links in the extra
+# tree (a symlink in the repository does not travel with the tree, B417):
+# the first boot, the installer, which its condition keeps to the ISO, and
+# the health check that marks a trial slot good.
+mkosi-chroot systemctl enable builderbot-os-firstboot.service builderbot-os-installer.service builderbot-os-health.service builderbot-os-env.service builderbot-os-system-pool.service
+# Every interface takes DHCP until the Network page says otherwise (R165
+# step 4's bare-metal half).
+mkosi-chroot install -d -m 0755 /etc/systemd/network
+cat > "$BUILDROOT/etc/systemd/network/80-dhcp.network" <<'NET'
+[Match]
+Name=en* eth*
+
+[Network]
+DHCP=yes
+NET
+
+# The initramfs again, now that the extra tree put the init-bottom script
+# and the modules list in (the kernel's own install ran before them).
+mkosi-chroot update-initramfs -u -k all

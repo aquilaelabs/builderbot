@@ -1179,6 +1179,24 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   ok(await page.$eval('.nb .nbview[data-view="permissions"] .permGitApply', b => !b.disabled),
      '...picking a policy wakes Apply and saves nothing yet');
   await page.selectOption('.nb .nbview[data-view="permissions"] [data-gitpol="push"]', 'allow');
+  // On the git host (R188): every ability with what the token says (here
+  // never measured: no token) and an Allow or Deny over it, merging at
+  // Deny, staged until Apply and saved as the project's forgepol.
+  await page.waitForSelector('.nb .nbview[data-view="permissions"] [data-forgepol="merge"]', { state: 'visible', timeout: 10000 });
+  const hostSect = await page.$eval('.nb .nbview[data-view="permissions"] .permhost', el => ({
+    n: el.querySelectorAll('[data-forgepol]').length, merge: el.querySelector('[data-forgepol="merge"]').value,
+    pr: el.querySelector('[data-forgepol="pr_write"]').value, apply: el.querySelector('.permHostApply')?.disabled,
+    said: /not measured/.test(el.textContent), measure: !!el.querySelector('.permHostMeasure') }));
+  ok(hostSect.n === 12 && hostSect.merge === 'deny' && hostSect.pr === 'allow' && hostSect.apply === true && hostSect.said && hostSect.measure,
+     `Permissions lists every git host ability with an Allow or Deny, merging at Deny, and Measure (${JSON.stringify(hostSect)})`);
+  await page.selectOption('.nb .nbview[data-view="permissions"] [data-forgepol="pr_write"]', 'deny');
+  await page.click('.nb .nbview[data-view="permissions"] .permHostApply');
+  const saved = await page.waitForFunction(async () => {
+    const j = await (await fetch('/api/forge-access?project=beta')).json();
+    return j.rows?.find(r => r.id === 'pr_write')?.set === 'deny' && j.rows;
+  }, null, { timeout: 10000 }).then(() => true, () => false);
+  ok(saved, '...and Apply keeps a Deny as the project\'s own, over whatever the token allows');
+  await page.evaluate(() => postJSON('/api/prefs', {project: 'beta', forgepol: {pr_write: 'allow'}}));
   // ...and the section goes home: Settings has the form whole, Agents may
   // in it but not in its list.
   await page.evaluate(() => openNotebook('beta', 'settings'));
@@ -1220,9 +1238,10 @@ ok(strip.groups.n === 5 && strip.groups.rows === 1 && strip.groups.inside && str
   await page.waitForFunction(b => location.hash === b, before, { timeout: 10000 });
   const view = await page.evaluate(() => getNotebook(tabOf(panes[0])?.arg)?.where());
   ok(/\/git$/.test(before) && view === 'git', `a view switched to is a history entry, and Back returns to the one before (${before}, ${view})`);
-  await page.evaluate(() => railGo('build', 'toolchains'));
-  await page.waitForFunction(() => /^#\/build\/toolchains\/[^/]+$/.test(location.hash), null, { timeout: 15000 });
-  const tc = await page.evaluate(() => ({ hash: location.hash, node: tcNode }));
+  // The Build group opens on the Library since R170, a node page like Toolchains was.
+  await page.evaluate(() => railGo('build', 'library'));
+  await page.waitForFunction(() => /^#\/build\/library\/[^/]+$/.test(location.hash), null, { timeout: 15000 });
+  const tc = await page.evaluate(() => ({ hash: location.hash, node: libNode }));
   ok(tc.hash.endsWith('/' + encodeURIComponent(tc.node)), `a node page's address names its node (${tc.hash})`);
 }
 

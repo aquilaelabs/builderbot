@@ -31,6 +31,23 @@ def write_json(path, data):
 users.configure(state=os.environ["DASHBOARD_STATE"], write_json=write_json)
 
 
+def stamp_if_fresh(fresh):
+    """The owner made from a shell on a new install, before its first start
+    (B436): the store is stamped with this build's state, as a first start
+    stamps a fresh one, or that start reads a users file with no stamp as a
+    /config from before the stamp and refuses it."""
+    if not fresh:
+        return
+    sv = dash.load("stateversion", dash.beside(py))
+    if sv.read(os.environ["DASHBOARD_STATE"])[0] is None:
+        sv.stamp(os.environ["DASHBOARD_STATE"], sv.current())
+
+
+def fresh_store():
+    sv = dash.load("stateversion", dash.beside(py))
+    return sv.read(os.environ["DASHBOARD_STATE"])[0] is None and not sv.used(os.environ["DASHBOARD_STATE"])
+
+
 def token():
     uid = ""
     if args[1]:
@@ -68,10 +85,12 @@ def accounts():
     # The owner, as the first-run page makes it (R84): for a setup scripted
     # from a shell rather than clicked through. Refused once there is one.
     if sub == "claim":
+        fresh = fresh_store()
         r = users.claim(name, pw)
         if r.get("error"):
             print(r["error"], file=sys.stderr)
             raise SystemExit(1)
+        stamp_if_fresh(fresh)
         mark_seen()
         print(f"{name}: created as the owner")
         raise SystemExit(0)
@@ -89,10 +108,12 @@ def accounts():
         # the owner had no transcripts, no projects of its own and tokens
         # naming nobody (diag report #116).
         if not users.all_users():
+            fresh = fresh_store()
             r = users.claim(name, pw)
             if r.get("error"):
                 print(r["error"], file=sys.stderr)
                 raise SystemExit(1)
+            stamp_if_fresh(fresh)
             mark_seen()
             print(f"{name}: created as the owner, since it is the first account")
             raise SystemExit(0)

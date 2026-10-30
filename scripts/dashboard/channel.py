@@ -23,6 +23,7 @@ import runners
 import signing
 import toolchains
 import vms
+import scanners
 import wssync
 import claudesync
 import workspace
@@ -230,6 +231,18 @@ def sync_put(auth, q, stream, length):
     return wssync.put(auth["node"], q.get("project", [""])[0], q, stream, length)
 
 
+# What a node's knock after a move is answered with (move.py), set by the server.
+moved_answer = lambda nid: {"answer": ""}  # noqa: E731
+
+
+def scan_put(auth, q, stream, length):
+    """One SARIF from a node's scan run (R145), raw in the body, kept as that
+    node's for the scanner named."""
+    if (no := _node_only(auth)):
+        return no
+    return scanners.take_report(auth["node"], q.get("scanner", [""])[0], stream, length, q.get("projects", [""])[0][:4000])
+
+
 # ---- a synced node's Claude conversations (B613, claudesync.py) -----------------
 
 def claude_file(auth, q):
@@ -409,6 +422,11 @@ def verb(name, auth, req, addr):
                 _sysdeps_said[nid] = msg
                 print(f"[dashboard] auto sysdeps on {nid} skipped: {msg}", flush=True)
         return _answer(r)
+    if name == "moved":
+        # A node knocking on a controller a move told it about (R90 step 12,
+        # move.py): the answer only a holder of the move key gives, and this
+        # controller's address and pin for it to take.
+        return moved_answer(nid), 200
     if name == "beat":
         # Alive, while its loop is held by a census (nodes.beat).
         nodes.beat(nid)

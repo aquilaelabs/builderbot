@@ -12,6 +12,8 @@
 // the page as a whole. A step whose part is not on screen is left out.
 const TOUR_PANE = "#pane0";
 const TOUR_BAR = `${TOUR_PANE} .docbarrow:not([hidden]), ${TOUR_PANE} .vbar`;
+// The Machines group's header (R177): the node picker where the page's bar was.
+const TOUR_MHEAD = ".pane .bar.grouped .phead";
 const TOUR_SUB = `${TOUR_PANE} .bar .pseg`;
 const TOUR_FIRST = `${TOUR_PANE} .dmcard, ${TOUR_PANE} details.sect, ${TOUR_PANE} .doclist > .row, ${TOUR_PANE} .doclist .row`;
 const TOUR_STEPS = {
@@ -47,33 +49,41 @@ const TOUR_STEPS = {
     {say: "Analysis is what the linters and the code map found across your projects, worst first."},
     {at: TOUR_BAR, say: "Narrow it by project or by kind here."},
   ],
-  toolchains: [
-    {say: "Toolchains are the SDKs and tools a node has for builds, tests and sessions: Android, Flutter, Node and the rest."},
-    {at: TOUR_BAR, say: "Pick the node here. Install and Remove act on what you tick; Check for updates reads what is newer."},
-    {at: TOUR_FIRST, say: "Each toolchain says what is installed and whether a newer one is out. Some ask you to accept a license first, and that is always yours to accept."},
+  installed: [
+    {say: "Installed is what a node has from the Library: its coding agents, toolchains, tool packs and services, and what each is set to there."},
+    {at: TOUR_MHEAD, say: "The node picked above holds here too. Open on a row, or Configure where it asks for anything, opens that thing's own page: your sign-in to an agent, a toolchain's system packages, a pack's or a service's settings."},
   ],
-  agents: [
-    {say: "The coding agents a session on a node can run: Claude Code, Codex CLI, Copilot CLI and Grok Build, each installed once on the node for every account there."},
-    {at: TOUR_BAR, say: "Pick the node here. Each agent's section says its version and updates it, and holds your sign-in on that node: a sign-in is one node's, never carried to another."},
+  // An installed thing's own page (R181 step 2), reached from its row.
+  thing: [
+    {say: "One installed thing on one node: what it is there, and what you set for it. Back, at the top, returns to the page you opened it from."},
+    {say: "Its sections are its kind's: an agent's facts, your sign-in and what you added to it; a toolchain's path and system packages; a pack's or a service's Configure, saved with Save."},
+  ],
+  library: [
+    {say: "The Library is everything a BuilderBot installs or runs on a node: the coding agents, the toolchains for builds and tests, the tool packs you add, the apps a NAS runs, and the apps for your own machines."},
+    {at: TOUR_MHEAD, say: "Pick the node here; it holds across the Library, the Emulator, the Phone and the CI runner. Check for updates reads what is newer; Add your own brings in a tool pack or an app of yours, looked at before it is kept."},
+    {at: `${TOUR_PANE} .lcard`, say: "Each card says its tier, what is installed and whether a newer one is out, with Install or Update on it; Details opens its own page with the whole description."},
+  ],
+  // A Library entry's own page (R183), reached from its card's Details.
+  entry: [
+    {say: "One entry of the Library: what it is in full, where it comes from, what it asks for and what installing it does. Back, at the top, returns to the page you opened it from."},
+    {say: "Its one verb is at the right of its head, as on its card: Install, Update, New container or Download. What is set for it on a node is on the Installed page."},
   ],
   emulator: [
     {say: "The Android emulator on a node: the system images it holds and the virtual devices made from them."},
-    {at: TOUR_BAR, say: "Pick the node here. A device starts from its row, and a session drives it with bb emu."},
+    {at: TOUR_MHEAD, say: "The node picked above is the one the images install on. A device starts from its row, and a session drives it with bb emu."},
   ],
   phone: [
     {say: "A real Android phone, lent to a project by plugging it into a node: a session can install its app and look at the screen, and every command waits for the phone's owner to allow it unless they trust it."},
   ],
   runner: [
     {say: "CI runners: a node registered with GitHub or Gitea so your project's workflows run on it."},
-    {at: TOUR_BAR, say: "Pick the node here, and add a runner with a token from the forge."},
-  ],
-  apps: [
-    {say: "Apps are BuilderBot's own companions you install: the phone app, the editor extension and the Windows companion, each its newest release."},
+    {at: TOUR_MHEAD, say: "The node picked above is where the runner goes; add one with a token from the forge."},
   ],
   docker: [
     {say: "Containers: every project's containers on a node, grouped by project, with Up, Down, Rebuild and a Shell in the dock."},
     {at: TOUR_SUB, say: "Containers, VMs and nginx are the three tools of this group."},
-    {at: TOUR_BAR, say: "Pick the node, search, and switch between cards and a list. New container and Check for updates sit at the right."},
+    {at: TOUR_MHEAD, say: "Pick the node here; it holds for nginx too, and a sub-tab says when the node lacks what it needs."},
+    {at: TOUR_BAR, say: "Search, and switch between cards and a list. New container and Check for updates sit at the right."},
     // Its rows by name: TOUR_FIRST matched an empty page's own notice, so
     // the example never came (the operator, 21 Oct, on a phone).
     {at: `${TOUR_PANE} .dmtab .dmcard, ${TOUR_PANE} .dmtab > .tbl`, sample: () => tourSampleCard(), say: "A project's card: each container with its state, where it answers, and its buttons. The ⋯ menu holds the rest: Log opens what it prints in a tab of the dock, and Remove is last."},
@@ -88,7 +98,7 @@ const TOUR_STEPS = {
   ],
   nginx: [
     {say: "nginx: BuilderBot's own reverse proxy on a node, putting your containers behind hostnames and certificates."},
-    {at: TOUR_BAR, say: "Pick the node here. Deploy puts nginx on a node that has none yet."},
+    {at: TOUR_MHEAD, say: "The node picked above is the one nginx runs on. Deploy puts nginx on a node that has none yet."},
     {at: TOUR_FIRST, say: "The image comes first, with an update when one is out; then hostnames, routes and certificates, each a section. A route sends a hostname to a port a container publishes."},
   ],
   settings: [
@@ -99,9 +109,24 @@ const TOUR_STEPS = {
     {say: "Keys: the install key, which seals what this BuilderBot keeps, and everything kept under it. Save a copy of the key apart from /config; Change makes another and seals everything again."},
     {at: TOUR_FIRST, say: "Each person keeps a key store of their own on their Profile, for their agents' sign-ins and the forge tokens they link."},
   ],
+  network: [
+    {say: "Network: how this BuilderBot is reached. Its address and port, what it is served over, where each node dials in from, and the hostname that reaches it from outside."},
+    {at: `${TOUR_PANE} .snav, ${TOUR_FIRST}`, say: "Pick a section here: Connection sets http or https and its certificate; Reach from outside runs the home tunnel."},
+  ],
+  machine: [
+    {say: "This machine: the computer this BuilderBot runs on, installed bare metal. What it is, the release it runs and its updates, and what it runs as a node."},
+    {at: `${TOUR_FIRST}, ${TOUR_PANE} .empty`, say: "Its sections are a node's: health, the projects on it, its sessions, its features, storage and network, and the verbs at the end, reboot and power off among them."},
+  ],
+  audit: [
+    {say: "Audit: who did what to this BuilderBot, every change since the first day, newest first. Pick a person or a machine in the bar to read theirs alone."},
+  ],
+  scanners: [
+    {say: "Scanners: BuilderBot's own static analysis (Semgrep, Trivy, mobsfscan) on each node that holds projects, run on one schedule; what they find is on the Analysis page."},
+    {at: TOUR_FIRST, say: "The schedule first, then a section per node with Deploy, Run now, Update and Remove, and last the projects nothing covers, each with why."},
+  ],
   nodes: [
     {say: "Nodes are the machines your builds, tests, containers, VMs and sessions run on. The controller itself runs none of them."},
-    {at: TOUR_BAR, say: "Pick a node here. Enroll node makes the script that adds a machine."},
+    {at: TOUR_MHEAD, say: "Pick a node here; it holds across Nodes, Storage and Installed. Enroll node makes the script that adds a machine."},
     {at: TOUR_FIRST, say: "A node's sections: its health, the projects on it, its sessions, its features, and the advanced verbs at the end."},
   ],
   storage: [
@@ -117,12 +142,12 @@ const TOUR_STEPS = {
   ],
   schedules: [
     {say: "Schedules: commands run on a node at the times you set, as cron runs them. Each run is a job, with its log on the Jobs page."},
-    {at: TOUR_BAR, say: "New schedule is here. The static analysis scan is built in, off until you turn it on."},
-    {at: `${TOUR_PANE} .schedrow`, say: "Each schedule says when it runs, where and as whom, and how its last run went. Run now runs it once."},
+    {at: `${TOUR_PANE} #bSchedNew`, say: "New schedule is here. The static analysis scan is the Scanners page's, under Containers."},
+    {at: `${TOUR_PANE} .schedrow, ${TOUR_PANE} .empty`, say: "Each schedule says when it runs, where and as whom, and how its last run went. Run now runs it once."},
   ],
   users: [
     {say: "Users: the accounts that sign in here, and the roles each holds."},
-    {at: TOUR_BAR, say: "Add user is here. A new account holds no role until you give it one."},
+    {at: `${TOUR_PANE} #uAddOpen`, say: "Add user is here. A new account holds no role until you give it one."},
   ],
   roles: [
     {say: "Roles: what an account may read and change, area by area, on its projects or everywhere."},
@@ -297,7 +322,7 @@ function tourFlip(want){
 }
 
 function tourSampleCard(){
-  return `<section class="dmcard"><div class="field dmgroup" style="--gc:var(--accent)"><b>example</b></div>
+  return `<section class="dmcard"><div class="field dmgroup" data-style="--gc:var(--accent)"><b>example</b></div>
     <div class="row stack2"><div class="grow"><div class="dmhead"><div class="dmid">
       <div class="name">web<span class="pill stat dmpill ok live">running</span></div>
       <div class="sub dmorigin">nginx:1.31-alpine<span class="sep"></span>your-node</div>

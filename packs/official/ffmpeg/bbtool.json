@@ -1,0 +1,43 @@
+{
+ "about": "ffmpeg, ffprobe and ffplay, for cutting, converting and sizing video and audio, and for turning a recording into frames a session can look at.",
+ "label": "FFmpeg (video and audio)",
+ "layout": {
+  "bin": [
+   "bin"
+  ],
+  "env": {},
+  "tool": "bin/ffmpeg"
+ },
+ "name": "ffmpeg",
+ "platforms": [
+  "linux/amd64",
+  "linux/arm64"
+ ],
+ "shipped": {
+  "probe": "ffmpeg",
+  "reports": "ffmpeg",
+  "source": {
+   "checksum": {
+    "from": "github-asset"
+   },
+   "fresh_only": true,
+   "kind": "tarball",
+   "strip": 1,
+   "url": {
+    "linux/amd64": "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz",
+    "linux/arm64": "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
+   },
+   "verify": [
+    "{dir}/bin/ffmpeg",
+    "-version"
+   ]
+  }
+ },
+ "terms": [
+  {
+   "label": "FFmpeg's license (GPL for these builds)",
+   "url": "https://ffmpeg.org/legal.html"
+  }
+ ],
+ "tier": "official"
+}

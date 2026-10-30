@@ -56,7 +56,7 @@ function nodePick(id, nodes, cur, why = () => ""){
 const SKW = [62, 48, 71, 55, 66, 43, 58, 51];
 function skel(shape = "rows", n = 0, said = "loading…"){
   if (SKTPLS[shape]) return SKTPLS[shape]();
-  const b = (cls, w) => `<i class="sk-b${cls ? " " + cls : ""}"${w ? ` style="width:${w}%"` : ""}></i>`;
+  const b = (cls, w) => `<i class="sk-b${cls ? " " + cls : ""}"${w ? ` data-style="width:${w}%"` : ""}></i>`;
   const times = (k, f) => Array.from({length: k}, (_, j) => f(j)).join("");
   const rows = k => times(k, j => `<div class="sk-row">${b("", SKW[j % 8])}${b("sub", SKW[(j + 3) % 8] / 2)}</div>`);
   const tiles = k => `<div class="sk-tiles">${times(k, j => `<div class="sk-tile">${b("big", 30 + SKW[j % 8] / 4)}${b("sub", SKW[(j + 2) % 8])}</div>`)}</div>`;
@@ -81,7 +81,7 @@ function skel(shape = "rows", n = 0, said = "loading…"){
 // screen reader; skv() is one value inline, as wide as a typical one in em
 // ("ctl" for a field's control, the height of one);
 // skRows() rows inside a real section or card.
-function skv(em = 5, cls = ""){ return `<i class="skv${cls ? " " + esc(cls) : ""}" style="width:${Number(em) || 5}em"></i>`; }
+function skv(em = 5, cls = ""){ return `<i class="skv${cls ? " " + esc(cls) : ""}" data-style="width:${Number(em) || 5}em"></i>`; }
 // A question asked in a box under a row (consistency pass J3: a bug's
 // close or delete, a roadmap item's drop): the question and what follows
 // from it, a line for why, Cancel and the verb; Enter is the verb and
@@ -124,7 +124,7 @@ function skField(label, em = 16, cls = ""){
   return `<div class="${cls ? esc(cls) + " " : ""}setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
 }
 function skRows(n = 4){
-  return Array.from({length: n}, (_, j) => `<div class="sk-row"><i class="sk-b" style="width:${SKW[j % 8]}%"></i><i class="sk-b sub" style="width:${SKW[(j + 3) % 8] / 2}%"></i></div>`).join("");
+  return Array.from({length: n}, (_, j) => `<div class="sk-row"><i class="sk-b" data-style="width:${SKW[j % 8]}%"></i><i class="sk-b sub" data-style="width:${SKW[(j + 3) % 8] / 2}%"></i></div>`).join("");
 }
 // Inert unless its caller wired what it drew (`live`): a form drawn before
 // its wiring would take typing the real one, landing, throws away.
@@ -139,6 +139,10 @@ function skTpl(html, {said = "loading…", live = false} = {}){
 // what it lists is on its way: the picker's box shimmering, the actions
 // there and dead until the page they act on has drawn. An action given as
 // [label, "primary"] is the page's main action and wears its fill.
+function skActBar(actions = []){
+  return nodeBar("", actions.map(a => [].concat(a)).map(([a, cls, short]) =>
+    `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${short ? barSaid(a, short) : esc(a)}</button>`).join(""));
+}
 function skNodeBar(actions = []){
   return nodeBar(nodePick("", null), actions.map(a => [].concat(a)).map(([a, cls, short]) =>
     `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${short ? barSaid(a, short) : esc(a)}</button>`).join(""));
@@ -169,7 +173,7 @@ function bootPage(hash){
   const parts = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   const key = parts[0] || "home", g = RAIL.find(x => x.key === key) || RAIL[0];
   const tool = g.tools.some(([k]) => k === parts[1]) ? parts[1] : g.tools[0][0];
-  const seg = (tools, on) => `<span class="subnav pseg">${tools.map(([k, label]) =>
+  const seg = (tools, on) => `<span class="subnav pseg hscroll">${tools.filter(([k]) => !PRESSED.has(k)).map(([k, label]) =>
       `<button type="button" disabled class="${k === on ? "on" : ""}">${esc(label)}</button>`).join("")}</span>`;
   const doc = (barHtml, body) => `<div class="doc on flush"><div class="doctab">${barHtml
     ? `<div class="field docbarrow">${barHtml}</div>` : ""}<div class="doclist">${body}</div></div></div>`;
@@ -186,12 +190,19 @@ function bootPage(hash){
     const btn = (on, w) => `<button type="button" disabled class="${on ? "on" : ""}">${w}</button>`;
     bar = `<span class="phead"><span class="pname">${skv(6)}</span><span class="pfacts">${skv(14)}</span><span class="sp"></span>
       <button type="button" disabled>Start agent</button><button type="button" disabled>Shell</button></span>`;
-    body = `<div class="doc on nbhost"><div class="nb"><div class="nbtabs"><div class="nbgroups">${GROUPS.map(([k, w]) => btn(k === grp[0], w)).join("")}</div>
-      <div class="nbsub">${grp[2].map(([v, w]) => btn(v === view, w)).join("")}</div></div>
+    body = `<div class="doc on nbhost"><div class="nb"><div class="nbtabs"><div class="nbgroups hscroll">${GROUPS.map(([k, w]) => btn(k === grp[0], w)).join("")}</div>
+      <div class="nbsub hscroll">${grp[2].map(([v, w]) => btn(v === view, w)).join("")}</div></div>
       ${bootView(view) || `<div class="nbview"><div class="field">${skRows(5)}</div></div>`}</div></div>`;
     return {rail: key, bar: `<div class="bar proj">${bar}</div>`, body: `<div class="skstack">${body}</div>`};
   }
-  bar = `<div class="bar page">${seg(g.tools, tool)}</div>`;
+  // The Machines group's header over its sub-nav (R177): the picker's
+  // placeholder, the facts' shimmer and the two actions, dead.
+  // A group's header over its sub-nav (R177, R178): the picker's
+  // placeholder, the facts' shimmer, the Machines group's two actions dead.
+  bar = ["machines", "build", "containers"].includes(key)
+    ? `<div class="bar page grouped${key === "machines" ? " machines" : ""}"><span class="phead mchead">${nodePick("", null)}<span class="pfacts">${skv(14)}</span><span class="sp"></span></span>
+        <span class="subrow">${seg(g.tools, tool)}<span class="sp"></span>${key === "machines" ? `<span class="actbar"><button type="button" disabled>${"New VM"}</button><button type="button" class="primary" disabled>${barSaid("Enroll node", "Enroll")}</button></span>` : ""}</span></div>`
+    : `<div class="bar page">${seg(g.tools, tool)}</div>`;
   if (key === "home")
     // Home's own order: the tiles, Attention and Last jobs, the projects at
     // a glance, each heading drawn and what fills it shimmering.
@@ -415,8 +426,8 @@ function comboWire(box, inp, options){
 
 // A pointer to another page is a link to it (R256 step 2): the address that
 // page answers at, so a press goes there as the rail does and Back returns.
-const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains", agents: "#/build/agents",
-  users: "#/people/users", roles: "#/people/roles", apps: "#/build/apps"};
+const PAGE_AT = {nodes: "#/machines/nodes", installed: "#/machines/installed", docker: "#/containers", jobs: "#/jobs", library: "#/build/library",
+  users: "#/people/users", roles: "#/people/roles"};
 // A page this account may not open is its words and no link (B114): the
 // address of one a grant forbids landed on the group's first page instead.
 function pageLink(page, words, hash = PAGE_AT[page]){
@@ -941,7 +952,15 @@ function floatPlace(m, anchor){
   const ceil = Math.max(head?.height ? head.bottom : 0, area?.height ? area.top : 0);
   // At its button on a phone too (the operator, 18 Oct: a bottom sheet was
   // the bottom bar's More's, not a menu's), as wide as the screen allows.
-  const a = anchor.getBoundingClientRect(), w = Math.min(m.offsetWidth, innerWidth - 16), h = m.offsetHeight;
+  // A button under the dock or over the page's bar (the row scrolled past
+  // the pane's edge) is brought into the pane first, or the menu was a
+  // 40px strip with its items out of reach (B419).
+  let a = anchor.getBoundingClientRect();
+  if (a.bottom > foot || a.top < ceil){
+    anchor.scrollIntoView({block: "center", inline: "nearest"});
+    a = anchor.getBoundingClientRect();
+  }
+  const w = Math.min(m.offsetWidth, innerWidth - 16), h = m.offsetHeight;
   if (phone) m.style.maxWidth = `${innerWidth - 16}px`;
   // (a button the dock covers still opens its menu above the dock)
   const aTop = Math.min(a.top, foot), aBottom = Math.min(a.bottom, foot);
@@ -1095,10 +1114,20 @@ function viewSaid(said, actions = "", tone = ""){
 }
 function viewGlance(el, tiles = [], said = "", actions = "", tone = ""){
   if (!el) return false;
-  const wrote = paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + viewSaid(said, actions, tone));
+  const html = Array.isArray(tiles) ? statTiles(tiles) : tiles || "";
+  // A view whose control row holds only buttons keeps its status line on
+  // that row, the words at its left and the buttons at its right (the
+  // operator, 29 Oct: a button never on a line of its own), in the row's
+  // own slot, which this paints and nothing else does.
+  const slot = el.closest(".nbview")?.querySelector(":scope > .nbhead > .nbsaidslot");
+  let wrote;
+  if (slot){
+    wrote = paint(el, html);
+    wrote = paint(slot, said || actions ? `<div class="notice${tone ? " " + esc(tone) : ""}">${said}${actions ? `<div class="actbar">${actions}</div>` : ""}</div>` : "") || wrote;
+  } else wrote = paint(el, html + viewSaid(said, actions, tone));
   // Marked once: a poll that brings nothing new writes nothing (uniform).
   if (!el.dataset.drawn) el.dataset.drawn = "1";
-  glanceSeen[el.id] = {tiles: el.querySelectorAll(".tile").length, said: !!el.querySelector(".nbsaid")};
+  glanceSeen[el.id] = {tiles: el.querySelectorAll(".tile").length, said: !!(said || actions)};
   return wrote;
 }
 
@@ -1153,7 +1182,7 @@ function viewSeg(attr, cur, cardsSay, listSay, dead = ""){
     b("cards", "Cards", cardsSay, VIEW_ICON_CARDS)}${b("list", "List", listSay, VIEW_ICON_LIST)}</div>`;
 }
 function tblWrap(cols, rows, cls = ""){
-  return `<div class="tbl${cls ? " " + esc(cls) : ""}" style="--tcols:${tblTracks(cols)}">
+  return `<div class="tbl${cls ? " " + esc(cls) : ""}" data-style="--tcols:${tblTracks(cols)}">
     <div class="thead">${cols.map(c => `<span class="th${c.num ? " num" : ""}${c.act ? " act" : ""}">${
       c.act ? "" : esc(c.label || "")}</span>`).join("")}</div>${rows}</div>`;
 }
@@ -1192,13 +1221,19 @@ function sparkSvg(vals, max = 100, label = ""){
 // said, `max` the scale's top. Its id keeps the crosshair where it was
 // across the redraw a new sample brings.
 const CHART_SPAN = 3600;
-function hourChart(id, title, pts, fmt = v => `${Math.round(v)}%`, max = 100){
+// A longer span (R164 step 4, This machine's Reporting): the same chart
+// over six hours, a day, a week or a month, its axis and caption words
+// for the span, the hour's chart unchanged.
+const CHART_SPANS = {"6h": [6 * 3600, "the last six hours", ["6 h ago", "3 h", "now"]], day: [86400, "the last day", ["a day ago", "12 h", "now"]],
+                     week: [7 * 86400, "the last week", ["a week ago", "3.5 days", "now"]], month: [30 * 86400, "the last month", ["a month ago", "15 days", "now"]]};
+function hourChart(id, title, pts, fmt = v => `${Math.round(v)}%`, max = 100, span = ""){
   const p = (pts || []).filter(x => x && typeof x[1] === "number");
+  const sp = CHART_SPANS[span] || [CHART_SPAN, "the last hour", ["an hour ago", "30 min", "now"]];
   if (!p.length) return `<figure class="chart" data-chart="${esc(id)}"><figcaption><span class="ct">${esc(title)}</span></figcaption>
     <div class="hint">no samples yet: the node sends one each poll</div></figure>`;
-  const now = p.at(-1)[0], from = now - CHART_SPAN, vals = p.map(x => x[1]);
+  const now = p.at(-1)[0], from = now - sp[0], vals = p.map(x => x[1]);
   const top = Math.max(max, ...vals);
-  const X = at => Math.max(0, Math.min(1000, (at - from) / CHART_SPAN * 1000)), Y = v => 100 - v / top * 100;
+  const X = at => Math.max(0, Math.min(1000, (at - from) / sp[0] * 1000)), Y = v => 100 - v / top * 100;
   // Runs split where the samples stop: a node that went quiet is a gap, not
   // a slope. Measured against the slow end of its spacing, not the middle:
   // a busy node reports in bursts seconds apart and an idle one at the
@@ -1217,18 +1252,18 @@ function hourChart(id, title, pts, fmt = v => `${Math.round(v)}%`, max = 100){
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length, last = p.at(-1);
   return `<figure class="chart" data-chart="${esc(id)}">
     <figcaption><span class="ct">${esc(title)}</span><span class="cv">${esc(fmt(last[1]))}</span>
-      <span class="cs">the last hour: low ${esc(fmt(Math.min(...vals)))}, average ${esc(fmt(avg))}, high ${esc(fmt(Math.max(...vals)))}</span></figcaption>
+      <span class="cs">${esc(sp[1])}: low ${esc(fmt(Math.min(...vals)))}, average ${esc(fmt(avg))}, high ${esc(fmt(Math.max(...vals)))}</span></figcaption>
     <div class="cplot">
       <div class="cy" aria-hidden="true"><span>${esc(fmt(top))}</span><span>${esc(fmt(top / 2))}</span><span>${esc(fmt(0))}</span></div>
-      <div class="carea" tabindex="0" role="img" aria-label="${esc(`${title} over the last hour, now ${fmt(last[1])}`)}"
-        data-pts="${esc(JSON.stringify(p.map(x => [x[0], x[1]])))}" data-from="${from}">
+      <div class="carea" tabindex="0" role="img" aria-label="${esc(`${title} over ${sp[1]}, now ${fmt(last[1])}`)}"
+        data-pts="${esc(JSON.stringify(p.map(x => [x[0], x[1]])))}" data-from="${from}" data-span="${sp[0]}">
         <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
           <line class="cgrid" x1="0" x2="1000" y1="0" y2="0"/><line class="cgrid" x1="0" x2="1000" y1="50" y2="50"/>
           <line class="cgrid" x1="0" x2="1000" y1="100" y2="100"/>
           <path class="cfill" d="${fill}"/><path class="cline" d="${line}"/></svg>
-        <span class="cdot" style="left:${(X(last[0]) / 10).toFixed(2)}%;top:${Y(last[1]).toFixed(2)}%"></span>
+        <span class="cdot" data-style="left:${(X(last[0]) / 10).toFixed(2)}%;top:${Y(last[1]).toFixed(2)}%"></span>
         <span class="chair" hidden></span><span class="ctip" hidden></span>
-        <div class="cx" aria-hidden="true"><span>an hour ago</span><span>30 min</span><span>now</span></div>
+        <div class="cx" aria-hidden="true"><span>${esc(sp[2][0])}</span><span>${esc(sp[2][1])}</span><span>${esc(sp[2][2])}</span></div>
       </div>
     </div></figure>`;
 }
@@ -1243,20 +1278,21 @@ function wireCharts(root, fmtOf = () => v => `${Math.round(v)}%`){
     let pts;
     try{ pts = JSON.parse(a.dataset.pts || "[]"); }catch(e){ pts = []; }
     if (!pts.length) return;
-    const from = Number(a.dataset.from), hair = a.querySelector(".chair"), tip = a.querySelector(".ctip");
+    const from = Number(a.dataset.from), span = Number(a.dataset.span) || CHART_SPAN, hair = a.querySelector(".chair"), tip = a.querySelector(".ctip");
     const show = i => {
       if (i < 0){ hair.hidden = tip.hidden = true; return; }
-      const x = Math.max(0, Math.min(100, (pts[i][0] - from) / CHART_SPAN * 100));
+      const x = Math.max(0, Math.min(100, (pts[i][0] - from) / span * 100));
       hair.style.left = tip.style.left = `${x}%`;
       tip.classList.toggle("flip", x > 70);
       tip.textContent = "";
       const b = document.createElement("b"); b.textContent = fmt(pts[i][1]);
-      tip.append(b, " ", new Date(pts[i][0] * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
+      tip.append(b, " ", span > 86400 ? new Date(pts[i][0] * 1000).toLocaleString([], {weekday: "short", hour: "2-digit", minute: "2-digit"})
+                       : new Date(pts[i][0] * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
       hair.hidden = tip.hidden = false;
       chartHover = {id, i};
     };
     const near = ev => {
-      const r = a.getBoundingClientRect(), at = from + (ev.clientX - r.left) / r.width * CHART_SPAN;
+      const r = a.getBoundingClientRect(), at = from + (ev.clientX - r.left) / r.width * span;
       let best = 0;
       pts.forEach((p, i) => { if (Math.abs(p[0] - at) < Math.abs(pts[best][0] - at)) best = i; });
       return best;
@@ -1350,7 +1386,7 @@ const chipScroll = {};
 function chipsScrolled(e){
   const c = e.target;
   if (c?.matches?.(".chips[data-chips]")) chipScroll[c.dataset.chips] = c.scrollLeft;
-  if (c?.matches?.(".chips")) chipsEdge(c);
+  if (c?.matches?.(".chips, .hscroll")) chipsEdge(c);
 }
 // Which ends of a row of chips have more past them (the operator, 23 Oct: on
 // a desk a row that ran off the edge had no way along but a trackpad): .chl
@@ -1361,15 +1397,16 @@ function chipsEdge(c){
   c.classList.toggle("chr", max > 1 && c.scrollLeft < max - 1);
 }
 function chipsEdges(root = document){
-  root.querySelectorAll?.(".chips").forEach(chipsEdge);
+  // ...and a row of sub-tabs that may run off its edge (the operator, 29 Oct).
+  root.querySelectorAll?.(".chips, .hscroll").forEach(chipsEdge);
 }
 // A press on an end's arrow moves the row most of its width that way. The
 // arrows are the row's own ::before and ::after, so the press lands on the
 // row itself, at its edge, never on a chip.
-const CHIP_ARROW = 28;
+const CHIP_ARROW = 32;
 function chipsArrow(e){
   const c = e.target;
-  if (!c?.matches?.(".chips.chl, .chips.chr, .dockline.chl, .dockline.chr") || chipDragged) return;
+  if (!c?.matches?.(".chips.chl, .chips.chr, .dockline.chl, .dockline.chr, .hscroll.chl, .hscroll.chr") || chipDragged) return;
   const r = c.getBoundingClientRect(), by = Math.max(80, c.clientWidth * 0.7);
   if (c.classList.contains("chl") && e.clientX < r.left + CHIP_ARROW) c.scrollBy({left: -by, behavior: "smooth"});
   else if (c.classList.contains("chr") && e.clientX > r.right - CHIP_ARROW) c.scrollBy({left: by, behavior: "smooth"});
@@ -1379,7 +1416,7 @@ function chipsArrow(e){
 // the browser's own swipe.
 let chipDrag = null, chipDragged = false;
 function chipsDown(e){
-  const c = e.target?.closest?.(".chips, .dockline");
+  const c = e.target?.closest?.(".chips, .dockline, .hscroll");
   if (!c || e.pointerType !== "mouse" || e.button !== 0 || c.scrollWidth <= c.clientWidth + 1) return;
   chipDrag = {c, x: e.clientX, left: c.scrollLeft, moved: false};
   chipDragged = false;
@@ -1402,13 +1439,13 @@ function chipsUp(){
   if (chipDragged) setTimeout(() => { chipDragged = false; }, 0);
 }
 function chipsClickGuard(e){
-  if (chipDragged && e.target?.closest?.(".chips")){ e.stopPropagation(); e.preventDefault(); }
+  if (chipDragged && e.target?.closest?.(".chips, .hscroll")){ e.stopPropagation(); e.preventDefault(); }
 }
 function chipsRestore(muts){
   for (const m of muts) for (const n of m.addedNodes){
     if (n.nodeType !== 1) continue;
     // Its ends, once it is laid out.
-    if (n.matches(".chips") || n.querySelector(".chips")) requestAnimationFrame(() => chipsEdges(n.parentNode || document));
+    if (n.matches(".chips, .hscroll") || n.querySelector(".chips, .hscroll")) requestAnimationFrame(() => chipsEdges(n.parentNode || document));
     for (const c of n.matches(".chips[data-chips]") ? [n] : n.querySelectorAll(".chips[data-chips]")){
       const x = chipScroll[c.dataset.chips];
       if (x && c.scrollLeft !== x){

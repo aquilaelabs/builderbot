@@ -78,21 +78,25 @@ await sleep(1100);
 await beat([{ ...mine, email: '' }]);
 ok(store()[owner][minted.id].at === at, 'the same list again is not a write: a heartbeat must not cost one');
 
-// The Agents page says them, per agent on that node (R95 step 15, moved
-// there from Profile), and says where they are changed.
+// The Installed page says them, per agent on that node (R95 step 15, on
+// each agent's row there since R172), and says where they are changed.
 {
   const browser = await launch();
   const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
   await page.goto(URL); await ready(page);
-  const read = sect => page.evaluate(s => (document.querySelector(`.agentstab [data-sect="${s}"] .agextras`)?.closest('.field')?.textContent || '').replace(/\s+/g, ' ').trim(), sect);
-  await page.evaluate(id => openAgentsOn(id), minted.id);
-  await page.waitForFunction(id => document.querySelector(`.agentstab [data-agnode="${id}"] [data-sect="agents:claude"] .agextras`), minted.id, { timeout: 15000 });
-  const text = await read('agents:claude');
+  // Each agent's own page on the node (R181 step 2): its Yours section.
+  const PAGE = name => `.thingtab [data-instnode="${minted.id}"][data-thing="agent:${name}"]`;
+  const read = name => page.evaluate(s => (document.querySelector(`${s} .agextras`)?.closest('.agpart')?.textContent || '').replace(/\s+/g, ' ').trim(), PAGE(name));
+  await page.evaluate(id => openInstalledOn(id, 'claude'), minted.id);
+  await page.waitForSelector(`${PAGE('claude-code')} .agextras`, { timeout: 15000 });
+  const text = await read('claude-code');
   ok(/your plugins\s*code-simplifier 1\.0\.0, feature-dev 1\.0\.0 \(alpha\), pyright-lsp 1\.0\.0 off/.test(text)
      && /your MCP servers\s*github/.test(text) && /\/plugin and \/mcp in a Claude session/.test(text),
-     `the Agents page lists your plugins and MCP servers under Claude on that node, a project's plugin with its name and one switched off marked so (${text.slice(0, 140)})`);
-  const cx = await read('agents:codex');
-  ok(/your MCP servers\s*docs/.test(cx), `...and Codex's MCP servers under ChatGPT (${cx.slice(0, 80)})`);
+     `Claude Code's page on the node lists your plugins and MCP servers on that node, a project's plugin with its name and one switched off marked so (${text.slice(0, 140)})`);
+  await page.evaluate(id => openThing(id, 'agent:codex-cli'), minted.id);
+  await page.waitForSelector(`${PAGE('codex-cli')} .agextras`, { timeout: 15000 });
+  const cx = await read('codex-cli');
+  ok(/your MCP servers\s*docs/.test(cx), `...and Codex CLI's page its MCP servers (${cx.slice(0, 80)})`);
   await page.evaluate(() => { profile = null; openProfileTab(); loadProfile(); });
   await page.waitForSelector('.doc.on #pfSave', { timeout: 15000 });
   ok(!await page.$('.doc.on [data-sect="profile:plugins"]'), 'Profile no longer has a plugins section of its own');
@@ -100,9 +104,10 @@ ok(store()[owner][minted.id].at === at, 'the same list again is not a write: a h
 
   // Taken off the node: gone from the page.
   await beat([{ uid: owner, email: '', plugins: null, mcp: {} }]);
-  await page.evaluate(id => openAgentsOn(id), minted.id);
-  await page.evaluate(() => loadAgents()); await sleep(800);
-  const empty = await read('agents:claude');
+  await page.evaluate(id => openInstalledOn(id, 'claude'), minted.id);
+  await page.evaluate(() => loadInstalled()); await sleep(800);
+  await page.waitForSelector(`${PAGE('claude-code')} .agextras`, { timeout: 15000 });
+  const empty = await read('claude-code');
   ok(/your plugins\s*none/.test(empty) && /your MCP servers\s*none/.test(empty),
      `a node that says the account has none takes them off (${empty.slice(0, 60)})`);
   await browser.close();

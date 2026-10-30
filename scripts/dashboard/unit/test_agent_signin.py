@@ -100,7 +100,7 @@ class Listed(unittest.TestCase):
 
 class Doctor(unittest.TestCase):
     """bb doctor's line for each other agent reads the same files the list
-    does, so it and the Agents page never disagree."""
+    does, so it and the Installed page never disagree."""
     setUp, put = Listed.setUp, Listed.put
 
     def signed(self, agent):

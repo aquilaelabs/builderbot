@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# What a BuilderBot OS boot hands the controller's environment beyond its env
+# file (R161 step 6): the lines of builderbot.env on the ESP, the stick's
+# plain config partition, which a person edits with the stick in another
+# machine when the dashboard will not come up, and builderbot.debug=1 typed
+# at the GRUB menu for one boot without changing the stick. Written to
+# /run/builderbot-os/env, which the controller's unit reads if it is there;
+# nothing of it is kept across a boot that has neither, so every such
+# option is off at a start that did not ask for it. Only a short list of
+# names is taken: the file is on a FAT partition anybody can write. The
+# stick's network settings go to /run/builderbot-os/net instead, for the
+# step that writes the network file (net), never the controller's.
+set -euo pipefail
+ESP="${BB_ESP:-/boot/efi}"
+OUT="${BB_OS_RUN:-/run/builderbot-os}/env"
+CMDLINE="${BB_CMDLINE:-/proc/cmdline}"
+NETOUT="$(dirname "$OUT")/net"
+ALLOW="DEBUG_MODE BB_RELEASE_LINE BB_RELEASE_CHANNEL TZ BB_DATA_MAX"
+NET="BB_HOSTNAME BB_NET_ADDRESS BB_NET_MASK BB_NET_GATEWAY BB_NET_DNS"
+mkdir -p "$(dirname "$OUT")"
+: > "$OUT.new"; : > "$NETOUT.new"
+if [ -r "$ESP/builderbot.env" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%%#*}"; line="${line//$'\r'/}"
+        case "$line" in *=*) ;; *) continue ;; esac
+        k="${line%%=*}"; v="${line#*=}"
+        k="${k//[[:space:]]/}"
+        case " $ALLOW " in *" $k "*) printf '%s=%s\n' "$k" "${v//[^A-Za-z0-9_./:+-]/}" >> "$OUT.new" ;; esac
+        case " $NET " in *" $k "*) printf '%s=%s\n' "$k" "${v//[^A-Za-z0-9.,-]/}" >> "$NETOUT.new" ;; esac
+    done < "$ESP/builderbot.env"
+fi
+read -r cmdline < "$CMDLINE" || cmdline=""
+for w in $cmdline; do
+    case "$w" in builderbot.debug=1) printf 'DEBUG_MODE=1\n' >> "$OUT.new" ;; esac
+done
+chmod 0640 "$OUT.new"
+mv -f "$OUT.new" "$OUT"
+mv -f "$NETOUT.new" "$NETOUT"

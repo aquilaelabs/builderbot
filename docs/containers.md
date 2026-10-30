@@ -2,7 +2,16 @@
 
 The Containers group on the rail: **Containers** is the Docker manager,
 where a project's containers are built, started, stopped and given their env
-on a node, and **nginx** is each node's reverse proxy. A project's own
+on a node, and **VMs** the virtual machines ([vms.md](vms.md)), both for
+the node picked once in the group's header. The containers
+BuilderBot deploys itself (each node's nginx, its scanners and its model
+router) are the **System** section at the top of the Containers page: rows
+like any other container's, with **Configure**, which opens that
+container's own settings page (the nginx page, the Scanners page, the
+router's row on Installed). Their env and compose file are that page's to
+write and never the row's; a container you want otherwise is one you deploy
+yourself. A page opened that way carries a small top header with **Back**,
+naming the page it was opened from and returning there. A project's own
 containers are also its page's Docker view. This doc covers the manager, a
 container's row, a dev instance built from a project and its mounts, how an
 instance is reached, the containers' networks, nginx, and image updates.
@@ -103,7 +112,9 @@ not evidence that anything stopped. It is also fast, because a daemon known to
 be off is asked nothing, rather than waiting on a machine that is not there
 until a timeout.
 
-**With more than one docker host, the manager grows a node picker.** Nodes
+**With more than one docker host, the node is picked in the Containers
+group's header over the page** (the pick holds for nginx too, and the
+Containers sub-tab says *not here* on a node without Docker). Nodes
 with the `docker-host` capability are listed online or not; picking one
 switches the whole view to that node's daemon: one page, redrawn, never a
 page per node. Each node's last-known container list is kept, so switching to
@@ -135,7 +146,7 @@ exits, so a `compose build` spending four minutes pulling layers is not four
 minutes of a spinner. The phase word above it still says *building* or
 *starting*; the tail below says what the phase is spending its time on. It is
 raw and deliberately not parsed into a bar: docker rewrites a line per layer
-per tick, and turning that into a percentage is the thing the Toolchains page
+per tick, and turning that into a percentage is the thing the toolchain rows
 already gave up on.
 
 **Abort** sits beside it while a job runs, and asks nothing first. Stopping a
@@ -144,6 +155,22 @@ build's work is, and the signal goes to the process *group*, because a compose
 CLI waiting on a pull leaves the download running if only the CLI is asked to
 stop. The row then says how the job ended rather than silently reverting to
 whatever state it was in.
+
+**From the catalog** (R164): New container opens on a pick of ready apps
+(Jellyfin, Plex, the arr stack, qBittorrent, Immich, Nextcloud, Home
+Assistant, Syncthing, any an administrator added from the Library's Add
+your own, and any kept from the vetted catalog's apps, R170), each a compose file pinned to a tag with its blanks
+in the environment: where its data goes and which share's folder it serves
+or syncs (folders under a pool, the array or a share), the user it runs as
+(the one that owns those folders), the time zone and its port, with a
+database password or an admin password made for the apps that need one.
+Fill the definition in puts the compose file and the environment in the
+dialog's own tabs, to read and change before Create makes it as any
+container; the registry update check says when an image's tag moves. The
+app answers on its port on the node; a hostname and a certificate for it
+are that node's nginx page. On the controller's own machine these run
+where the Containers page runs them, under R165's arrangement of the own
+node as a docker host.
 
 **New container** on that page runs something with no project behind it, and
 takes the **project** it belongs to (Send to Docker manager takes the same,
@@ -194,7 +221,7 @@ set `container_name` to anything it likes and may declare several, and this is
 the one name that is always true of all of them.
 
 Under it, and not behind a fold, are **what it publishes and what it mounts,
-written the way Unraid's own Containers page writes them**: container side
+written the way a NAS's own Containers page writes them**: container side
 on the left, host side on the right, and the arrow saying which way it goes:
 `/library ← /mnt/user/plex-media` for a read-only mount, `↔` for a writable
 one, `7474:TCP ← 192.0.2.10:7475` for a published port. That is deliberately
@@ -206,9 +233,9 @@ a mount without knowing anything about the variables that built it.
 
 A running service gets **Open** beside its buttons. One published TCP port
 links straight there, pointed at this page's own host; several open a chooser
-listing every `host:port` for you to pick from. Unraid does not discover this
-either: its tab reads a `WebUI` line somebody wrote into a template, or the
-`net.unraid.docker.webui` label, so one port is the only case where it can be
+listing every `host:port` for you to pick from. A NAS's app page does not
+discover this either: it reads a `WebUI` line somebody wrote into a template,
+or a label the template sets, so one port is the only case where it can be
 known rather than asked, and asking beats guessing for the rest.
 
 The mounts are not repeated in the warnings below. They are all on the row
@@ -270,7 +297,7 @@ about a remote daemon easy to forget and impossible to see: a bind mount's
 *source* is resolved by whoever runs the container, which is the host.
 `/workspace/alpha` and `/devdata/alpha` mean something here and nothing
 over there, and docker answers a missing bind source by creating an empty
-directory and mounting that, so on Unraid, whose root filesystem is RAM, the
+directory and mounting that, so on a host whose root filesystem is RAM, the
 result is an app that starts with no data and loses it again at reboot. It
 reads as a bug in the app. The node's path mapping states it once: the
 same one you made when you mounted the volumes, and BuilderBot both hands
@@ -287,7 +314,7 @@ itself (as root, then chowning it) which on a share that squashes root fails
 and takes the whole run down with *operation not permitted*, leaving the
 directory behind so the second press works: an intermittent-looking failure
 with a fixed cause. So they are made first, owned by whoever BuilderBot runs
-as, which is the ownership Unraid expects.
+as, which is the ownership the host's shares expect.
 
 Made on whichever side can reach them, which is not something to think about:
 a share this container mounts is a local `mkdir`, and anything else is a
@@ -364,7 +391,7 @@ nodes and projects' containers use one name without typing it again.
 
 nginx keeps up to date like the toolchains and the agent (R192, the
 operator, 11 Oct). The controller reads the registry's tag list once a week
-(Check now on the nginx page reads it at once) and keeps the newest release
+(Check for updates on the nginx page reads it at once) and keeps the newest release
 line's alpine tag with its digest; a node's nginx is pinned to a digest when
 it is deployed or updated, written into its compose file as
 `nginx:TAG@sha256:...`, so a Save rebuilds with exactly what it had and
@@ -374,6 +401,38 @@ the new digest and rebuilds; the bell carries a note of its own kind, to the
 digest, so Dismiss holds until the registry moves the line again. One
 deployed before any check had read the registry is unpinned, and behind
 whatever is newest until its first Update.
+
+### Certificates from Let's Encrypt
+
+A pair can be asked for rather than pasted (R150): **Get one from Let's
+Encrypt** on a node's Certificates section takes a public hostname, the
+challenge and an email, and asks in the background; the row says how it
+goes and the bell says when it came, or why it could not. **HTTP-01** has
+Let's Encrypt fetch a token from port 80 at the name, which the node's own
+nginx answers (the token's line is written into its config for the minutes
+it takes and taken out again), so the name must reach the node and 80 be
+open to the internet. **DNS-01** writes a `_acme-challenge` TXT record
+through the Cloudflare API token under Controller settings, so the node
+need not be reachable at all; the domain must be on that account. The pair
+is kept like a pasted one, filed under its hostname, and renewed thirty
+days before it ends, the way it was first got; a renewal that fails is on
+the bell and tried again a few hours later. The client is `acme.py`,
+BuilderBot's own on the `cryptography` library; `BB_ACME_DIRECTORY` points
+it at another ACME directory (a staging one, or a private CA).
+
+## Scanners
+
+The Scanners page, opened from the scanners' row in the System section,
+deploys BuilderBot's own static analysis
+scanners (Semgrep, Trivy, mobsfscan) to each node that holds projects as
+one compose project of one-shot services, their versions pinned at the
+deploy like nginx's image (R145), and runs them there on one schedule over
+the projects whose node it is; each node sends its SARIF up to the
+controller over the agent's own API, so nothing of the controller's is
+mounted on a node, and the Analysis page reads what came. The page says
+each node's state and versions, Update when newer are out (checked weekly),
+each node's last run with its log, Run now, Remove, and the projects
+nothing covers with why. The whole of it is [scanners.md](scanners.md).
 
 ## Each project's containers on their own network
 

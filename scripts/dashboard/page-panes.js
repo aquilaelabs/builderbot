@@ -41,11 +41,14 @@ function paintBar(pane, t, i){
   // name and its close button everywhere else, and a third thing in it was a
   // shape one tab had and no other.
   const reload = TABKINDS[t.kind]?.reload
-    ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
+    ? `<button class="ic" data-reload="${esc(t.kind)}" data-style="margin-left:8px">reload</button>` : "";
   // A page (R218 step 2) wears its group's sub-nav, or its name, and no
   // close: the rail is how you leave it. A project (step 3) wears its
   // header: the name, the facts, the session's state and its actions.
   const proj = t.kind === "notebook";
+  // Which project the front pane is on, so a band put away there comes back
+  // once it is left (pnoteOnShow).
+  if (i === 0) pnoteOnShow(proj ? t.arg : "");
   // Painted, and wired, only when it changed (R218 step 10): assigned on
   // every draw, the page's sub-nav and a project's header were rebuilt by
   // each poll under the pointer that was about to press them.
@@ -54,6 +57,8 @@ function paintBar(pane, t, i){
     : `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}`, true);
   bar.classList.toggle("page", isToolKind(t.kind));
   bar.classList.toggle("proj", proj);
+  bar.classList.toggle("machines", isToolKind(t.kind) && groupOf(t.kind)?.key === "machines");
+  bar.classList.toggle("grouped", isToolKind(t.kind) && !!GROUP_HEADS[groupOf(t.kind)?.key]);
   if (fresh){
     wireShellBar(bar);
     if (proj) wireProjectHeader(bar);

@@ -79,7 +79,14 @@ AREAS = (
     ("vms", "VMs", "project", "its VMs and their state", "make, start, stop, snapshot and remove them"),
     ("terminal", "Terminal", "project", "the shielded agent console", "the full tmux shell"),
     ("nodes", "Nodes", "global", "the Nodes page", "configure nodes, and what a project's sessions reach"),
-    ("toolchains", "Toolchains", "global", "the Toolchains page", "install and remove"),
+    # What the Library and the Installed page do (R174, the operator, 28
+    # Oct): Install and Configure on a node, each grantable node by node,
+    # and Curate, the catalog's own entries, which every node shares. Before
+    # 0.9 these were one area, Toolchains, still read as Install for a
+    # release (ALIASES).
+    ("install", "Install", "global", "the Library and the Installed page", "install, update and remove toolchains, coding agents and packs on a node"),
+    ("configure", "Configure", "global", "a service's and a pack's settings on a node", "change them, and deploy or remove a service there"),
+    ("curate", "Curate", "global", "the catalog's own entries", "add your own pack or app, edit and remove it"),
     ("jobs", "Jobs", "global", "the Jobs page", "run a command on a node"),
     # Scheduled scripts (R117): an administrator's own cron, given to no
     # other role unless somebody says so.
@@ -94,7 +101,11 @@ AREAS = (
 )
 # The areas a Global role may hold on named nodes alone (its `nodes`, none
 # named being every node): what reaches a machine (the operator, 7 Oct).
-NODE_AREAS = frozenset({"nodes", "toolchains", "jobs", "newprojects", "storage"})
+NODE_AREAS = frozenset({"nodes", "install", "configure", "jobs", "newprojects", "storage"})
+# An area's name before 0.9, read as today's for one release (R174): a role
+# written by a 0.8 page or a script still holding Toolchains is read as
+# Install. Migration 0017 rewrote the roles kept; this goes in 0.10.
+ALIASES = {"toolchains": "install"}
 # The areas an Everywhere role may hold instance by instance, each at its own
 # level (the operator, 16 Oct: expand an area's row to say which nodes, which
 # runners, Read or Write on each, the area's own boxes ticking every one).
@@ -116,7 +127,8 @@ CAP_AREA = {
     "lock": ("settings", "write"), "rename": ("settings", "write"), "trash": ("settings", "write"),
     "git-auth": ("gitauth", "write"), "docker-write": ("containers", "write"),
     "terminal": ("terminal", "write"),
-    "node": ("nodes", "write"), "toolchains-write": ("toolchains", "write"), "jobs": ("jobs", "write"),
+    "node": ("nodes", "write"), "toolchains-write": ("install", "write"), "jobs": ("jobs", "write"),
+    "curate": ("curate", "write"), "configure": ("configure", "write"),
     "schedules": ("schedules", "write"), "schedules-read": ("schedules", "read"),
     "runner": ("runner", "write"),
     "command-pin": ("controller", "write"), "create": ("newprojects", "write"),
@@ -177,6 +189,7 @@ def configure(*, state, write_json):
 def _perms(p):
     """{area: read|write}, the ones that name a known area and level."""
     p = p if isinstance(p, dict) else {}
+    p = {**{new: p[old] for old, new in ALIASES.items() if old in p and new not in p}, **p}
     return {a: p[a] for a in AREA_KEYS if p.get(a) in LEVELS}
 
 
@@ -208,6 +221,7 @@ def _only(raw, perms, nodes=()):
     is held is in `perms` at the best level of its map, so every question
     asked without an instance (the rail, the summary) keeps its answer."""
     raw = raw if isinstance(raw, dict) else {}
+    raw = {**{new: raw[old] for old, new in ALIASES.items() if old in raw and new not in raw}, **raw}
     nodes = sorted({str(n)[:40] for n in nodes or () if str(n).strip()})[:64]
     if not raw and nodes:
         raw = {a: {n: perms[a] for n in nodes} for a in NODE_AREAS if perms.get(a)}

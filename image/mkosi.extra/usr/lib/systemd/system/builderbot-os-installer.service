@@ -1,0 +1,23 @@
+[Unit]
+Description=BuilderBot OS installer, on the console of a machine booted from the ISO
+# Only on the ISO (bbinstaller=1 on the kernel's command line): on a disk
+# this unit never runs, and the controller's own first boot does.
+ConditionKernelCommandLine=bbinstaller=1
+After=systemd-user-sessions.service getty-pre.target
+Conflicts=getty@tty1.service
+Before=getty.target
+
+[Service]
+Type=idle
+ExecStart=/usr/lib/builderbot-os/installer
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

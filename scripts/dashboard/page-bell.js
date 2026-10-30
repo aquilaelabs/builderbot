@@ -191,10 +191,10 @@ function attRow(a){
     // the projects bound to the node.
     const cc = a.tools.some(t => t.name === "claude-code") && a.sessions > 0;
     const n = a.tools.length;
-    // A coding agent's update is the Agents page's (R95), a toolchain's the
-    // Toolchains page's: each its own row.
+    // A coding agent's update and a toolchain's are each a row of their own
+    // (R95), both opening the Library on the node, where Update is.
     const ag = a.kind === "agents";
-    const where = ag ? "Agents page" : "Toolchains page";
+    const where = "Library";
     return `<div class="bnote att">
       <div class="bt">${n} ${ag ? "coding agent" : "toolchain"} update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
       <div class="bsum">${a.tools.map(t => esc(t.label)).join(", ")}</div>
@@ -203,7 +203,7 @@ function attRow(a){
       <details class="bdetail"${sectAttr((ag ? "bell:ag:" : "bell:tc:") + a.id)}><summary>versions${cc ? " and sessions" : ""}</summary><pre>${
         a.tools.map(t => `${esc(t.label)}: ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join("\n")}${
         cc ? `\n\nsessions there: ${a.projects.map(esc).join(", ")}` : ""}</pre></details>
-      <div class="bfoot"><span>on its ${where}</span>
+      <div class="bfoot"><span>in the ${where}</span>
         <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
           <a href="#" ${ag ? "data-bag" : "data-btc"}="${esc(a.id)}">${where}</a></span></div></div>`;
   }
@@ -316,7 +316,7 @@ function attRow(a){
         a.count > 1 ? `; ${esc(String(a.count - 1))} more this week` : ""}</div>
       <div class="bfoot"><span>${esc(ago(a.at))}; treat it as copied and end it at the provider</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
-          <a href="#" data-bag="${esc(a.id)}">Agents page</a></span></div></div>`;
+          <a href="#" data-bag="${esc(a.id)}">Library</a></span></div></div>`;
   }
   // A node's retired token presented again after its grace (R135 step 4): a
   // copy of its credential is in use somewhere, and its tokens are revoked.
@@ -327,6 +327,81 @@ function attRow(a){
       <div class="bfoot"><span>${esc(ago(a.at))}</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bnode="${esc(a.id)}" data-bwhat="node">Nodes page</a></span></div></div>`;
+  }
+  // A certificate from Let's Encrypt (R150): came, or could not; the nginx
+  // page on that node says the rest.
+  if (a.kind === "acme"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${a.bad ? `no certificate for ${esc(a.host)} on ${esc(a.node)}` : `a certificate for ${esc(a.host)} on ${esc(a.node)}`}</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : ""}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bnginx="${esc(a.nid)}">nginx page</a></span></div></div>`;
+  }
+  // A scanner run that failed on a node, or a node behind the newest
+  // scanner versions (R145): to the Scanners page.
+  if (a.kind === "scan"){
+    return `<div class="bnote att${a.what === "failed" ? " bad" : ""}">
+      <div class="bt">${a.what === "failed" ? `Scan failed on ${esc(a.node)}` : `Scanner update on ${esc(a.node)}`}</div>
+      <div class="bsum">${a.what === "failed" ? esc(a.said) : `${esc(a.said)} ${/,/.test(a.said) ? "are" : "is"} out`}</div>
+      <div class="bfoot"><span>on the Scanners page</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          ${a.job ? `<a href="#" data-bjob="${esc(a.job)}">its log</a>` : ""}
+          <a href="#" data-bscanners="1">Scanners page</a></span></div></div>`;
+  }
+  // The controller's own machine's storage (R164 step 3): a disk SMART
+  // calls failing, a hot disk, a pool not online, an array slot gone;
+  // each to the Storage page, where Replace and the rest are.
+  if (a.kind === "disk"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${esc({failing: "A disk is failing", hot: "A disk runs hot", pool: "A pool is not online", array: "An array disk is gone"}[a.what] || "Storage")} on ${esc(a.node)}</div>
+      <div class="bsum">${esc(a.said)}</div>
+      <div class="bfoot"><span>${a.bad ? "until it is replaced or back" : "until it cools"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
+  }
+  // The controller's own machine's power (R164 step 3): on its UPS
+  // battery, the battery low or to be replaced, the UPS silent; and its
+  // own packages: security updates waiting, a restart they need. To This
+  // machine, where the Power section and Updates are.
+  // A pack the vetted catalog withdrew, which this install holds (R169
+  // step 2): to the Installed page, where Remove is.
+  if (a.kind === "pack"){
+    return `<div class="bnote att bad">
+      <div class="bt">The catalog withdrew ${esc(a.name)}</div>
+      <div class="bsum">${esc(a.said)}</div>
+      <div class="bfoot"><span>until it is removed</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-btoolchains="1">Installed page</a></span></div></div>`;
+  }
+  // A backup of the own machine that failed, or went stale (R162 step 5): to the Storage page.
+  if (a.kind === "backup"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${a.what === "failed" ? "A backup failed" : "A backup is overdue"} on ${esc(a.node)}</div>
+      <div class="bsum">${esc(a.said)}</div>
+      <div class="bfoot"><span>${a.what === "failed" ? "until the next run succeeds" : "until it runs"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
+  }
+  if (a.kind === "power" || a.kind === "host"){
+    const title = {battery: "On the UPS battery", low: "The UPS battery is low", replace: "The UPS battery needs replacing", silent: "The UPS does not answer",
+                   security: "Security updates waiting", reboot: "A restart is needed"}[a.what] || "This machine";
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${esc(title)} on ${esc(a.node)}</div>
+      <div class="bsum">${esc(a.said)}</div>
+      <div class="bfoot"><span>${a.kind === "power" ? "until the power is back" : "under This machine's Updates"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bmachine="${a.kind === "power" ? "power" : "updates"}">This machine</a></span></div></div>`;
+  }
+  // A newer BuilderBot release, on a controller installed bare metal (R90
+  // step 5): Update runs the installer through its own node's root agent.
+  if (a.kind === "release"){
+    return `<div class="bnote att">
+      <div class="bt">BuilderBot ${esc(a.to)} is out</div>
+      <div class="bsum">this install runs ${esc(a.from || "an unstamped build")}; Update fetches the release's bundle, checks it, switches to it and comes back by itself if it does not answer</div>
+      <div class="bfoot"><span>under Controller settings</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-brelease="${esc(a.id)}">Update</a></span></div></div>`;
   }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
@@ -744,13 +819,13 @@ function wireNeeds(root, after = () => {}){
     after();
     openNodesTab(a.dataset.bnode, a.dataset.bwhat);
   });
-  // ...and a toolchain update to that node's Toolchains tab.
+  // ...and a toolchain update to the Library on that node.
   root.querySelectorAll("[data-btc]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
-    openToolchainsOn(a.dataset.btc);
+    openLibraryOn(a.dataset.btc);
   });
-  // ...and a coding agent's update to that node's Agents page (R95).
+  // ...and a coding agent's update to the Library on that node (R95).
   root.querySelectorAll("[data-b2fa]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
@@ -759,9 +834,17 @@ function wireNeeds(root, after = () => {}){
   root.querySelectorAll("[data-bag]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
-    openAgentsOn(a.dataset.bag);
+    openLibraryOn(a.dataset.bag);
   });
   // ...and a node short of room to its Storage page.
+  root.querySelectorAll("[data-btoolchains]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    openInstalledTab();
+  });
+  root.querySelectorAll("[data-bmachine]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    openMachineTab(a.dataset.bmachine);
+  });
   root.querySelectorAll("[data-bstorage]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
@@ -773,10 +856,27 @@ function wireNeeds(root, after = () => {}){
     after();
     openDockerOn(a.dataset.bdocker || "");
   });
+  // ...and a release's Update (R90 step 5): the own node's job, said once queued.
+  root.querySelectorAll("[data-brelease]").forEach(a => a.onclick = async e => {
+    e.preventDefault();
+    const j = await (await postJSON("/api/v1/nodes", {action: "controller-update", id: a.dataset.brelease})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "updating: the installer runs on this machine's node, and the page comes back on the new release", !!j.error);
+    after();
+  });
   // ...and an nginx update to the nginx tab on that node.
+  root.querySelectorAll("[data-bstorage]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    openStorageTab(a.dataset.bstorage);
+  });
   root.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
     openNginxTab(a.dataset.bnginx);
+  });
+  // ...and a scan's note to the Scanners page (R145).
+  root.querySelectorAll("[data-bscanners]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openScannersTab();
   });
 }

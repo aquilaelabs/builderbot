@@ -155,13 +155,14 @@ function renderUsersInto(i){
   const refused = usersErr && !(usersList || []).length;
   // No count beside the button (the operator, 25 Oct: no loose words at a
   // page's top): the list says how many.
-  d.setBar(`<span class="sp"></span>
-    ${refused || usersReadOnly() ? "" : `<span class="actbar"><button type="button" class="primary" id="uAddOpen">Add user</button></span>`}`);
+  // Add user on the head (the operator, 29 Oct: not a row of its own).
+  d.setBar("");
+  const addUser = refused || usersReadOnly() ? "" : `<button type="button" class="primary" id="uAddOpen">Add user</button>`;
   if (usersList === null){
     // Its template (R218 step 16): the list beside the settings, whose
     // labels are the page's own; the accounts are on their way.
     const field = label => skField(label, 16);
-    d.list.innerHTML = skTpl(`<div class="rsplit"><div class="rlist">${skRows(3)}</div><div class="rdetail">${
+    d.list.innerHTML = skTpl(`${pageHead({facts: [["Accounts", GHOST], ["Administrators", GHOST]], actions: addUser})}<div class="rsplit"><div class="rlist">${skRows(3)}</div><div class="rdetail">${
       field("Account name") + field("Their name") + field("Roles and projects")}</div></div>`);
     loadUsers();
     wireUsersBar(d.el);
@@ -174,8 +175,13 @@ function renderUsersInto(i){
   if (rolesData === null && !usersRolesAsked){ usersRolesAsked = true; loadRoles().then(usersRedraw); }
   if (!usersPicked()) usersPick = usersList[0]?.name || "";
   const u = usersPicked();
+  // The page's head, as every page of settings has one (the operator, 29
+  // Oct): how many accounts, and how many may administer.
+  const admins = usersList.filter(x => x.role === "owner" || x.role === "admin").length;
+  const seen = usersList.filter(x => x.seen && Date.now() / 1000 - x.seen < 86400 * 7).length;
   d.list.innerHTML = `
     ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
+    ${pageHead({facts: [["Accounts", String(usersList.length)], ["Administrators", String(admins)], ["Seen this week", String(seen)]], actions: addUser})}
     <div class="rsplit${usersPhoneOpen ? " open" : ""}">
       <div class="rlist">${usersList.map(userRow).join("") || `<div class="empty">nobody yet</div>`}</div>
       <div class="rdetail">${u ? usersDetail(u) : `<div class="empty">nobody to show</div>`}</div>

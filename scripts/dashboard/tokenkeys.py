@@ -58,20 +58,37 @@ def keys():
     return [k for k in (signing.MASTER, prev if len(prev) >= 16 else None) if k]
 
 
-def _pub(k, node, uid):
-    cache = (k, node, uid)
+def _pub(k, node, uid, old=False):
+    """The public half of the account's key pair on this node: X25519's
+    (R158 step 3), or with `old` the format before's, which a 0.8.x node
+    still seals with."""
+    cache = (k, node, uid, old)
     if cache not in _pub_cache:
         _pub_cache.clear() if len(_pub_cache) > 4096 else None
-        _pub_cache[cache] = ts().public(ts().secret(k, node, uid))
+        t = ts()
+        _pub_cache[cache] = t.public(t.secret1(k, node, uid) if old else t.secret(k, node, uid))
     return _pub_cache[cache]
 
 
-def public(node, uid):
+def _secret_for(k, node, uid, R):
+    """The secret of the kind a seal's R calls for."""
+    t = ts()
+    return t.secret(k, node, uid) if t.is_v2(R) else t.secret1(k, node, uid)
+
+
+def public(node, uid, old=False):
     """The account's public key on this node, hex, made from its own key,
     or "" with no install key: an install with none has nothing to seal
-    with, and keeps its sign-ins as plain files."""
+    with, and keeps its sign-ins as plain files. For an account whose store
+    is under a key of its own and shut (R157), the half remembered from
+    when it was open: a public half is nothing secret, and the node needs
+    it to seal a login made while the person works."""
     k = accountkeys.key_of(uid)
-    return _pub(k, node, uid) if k else ""
+    if k:
+        pub = _pub(k, node, uid, old)
+        accountkeys.remember_pub(uid, node, old, pub)
+        return pub
+    return accountkeys.pub_remembered(uid, node, old)
 
 
 def _candidates(uid):
@@ -92,16 +109,18 @@ def made_under(node, uid, v):
     (K), or None when it names none or none of the account's fits."""
     K = str((v or {}).get("K") or "")
     for k in (_candidates(uid) if K else ()):
-        if ts().rid(_pub(k, node, uid)) == K:
+        if K in (ts().rid(_pub(k, node, uid)), ts().rid(_pub(k, node, uid, old=True))):
             return k
     return None
 
 
-def pubs(node, uids):
-    """{uid: public} for these accounts on this node, for its hello."""
+def pubs(node, uids, old=False):
+    """{uid: public} for these accounts on this node, for its hello: the
+    X25519 publics a 0.9 agent seals with, or with `old` the ones before,
+    which a 0.8.x agent still reads."""
     out = {}
     for u in uids:
-        p = public(node, u)
+        p = public(node, u, old)
         if p:
             out[u] = p
     return out
@@ -129,10 +148,12 @@ def wrapped_for(node, uid, tokseal):
         # again under the account's public key (R154). One naming none is
         # from before K: today's own key, then the install key as |prev.
         k = made_under(node, uid, v)
-        pairs = ([(k, "")] if k == own else [(k, "|prev")]) if k else [(own, ""), (keys()[0], "|prev")]
+        # A seal of the format before under today's own key is |prev too:
+        # opened with that, the node seals it again the vetted way.
+        pairs = ([(k, "" if t.is_v2(R) else "|prev")] if k == own else [(k, "|prev")]) if k else [(own, ""), (keys()[0], "|prev")]
         for key, slot in pairs:
             try:
-                out[t.rid(R) + slot] = t.key_for(t.secret(key, node, uid), R)
+                out[t.rid(R) + slot] = t.key_for(_secret_for(key, node, uid, R), R)
             except t.Refused:
                 continue
     if not out:
@@ -168,6 +189,6 @@ def sealed_under(censuses, key, uid=None):
                 continue
             for v in (agents or {}).values():
                 K = str((v or {}).get("K") or "")
-                if not K or ts().rid(_pub(key, node, u)) == K:
+                if not K or K in (ts().rid(_pub(key, node, u)), ts().rid(_pub(key, node, u, old=True))):
                     n += 1
     return n

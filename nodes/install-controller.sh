@@ -19,7 +19,6 @@
 #   sudo bash nodes/install-controller.sh --check      can this machine take one
 #   sudo bash nodes/install-controller.sh --install    the controller, and its own node
 #   sudo bash /opt/builderbot/nodes/install-controller.sh --update     the newest release
-#   sudo bash /opt/builderbot/nodes/install-controller.sh --rollback   the one before
 #   sudo bash /opt/builderbot/nodes/install-controller.sh --remove     take it away
 #
 # What it lays down, and who owns it:
@@ -61,7 +60,7 @@ BB_BIN="$P/usr/local/bin/bb"
 SERVICE=builderbot-controller
 REPO=aquilaelabs/builderbot
 # How many releases are kept beside the one in use: the one before is what
-# --rollback goes back to.
+# an update that does not come up goes back to by itself.
 KEEP_RELEASES=3
 
 ACCOUNT=builderbot
@@ -103,15 +102,22 @@ Actions:
                  checkout or an unpacked release), put in place the way an
                  image update is: checked against the state first, so a
                  release that would refuse it changes nothing, then switched
-                 to and started; the one before is kept.
-  --rollback     back to the release before. When the newer one had already
-                 moved the state on, the copy it took first is put back
-                 (what it held then is kept under the state's backups/).
+                 to and started; the one before is kept, and a new
+                 release that does not answer goes back to it by itself,
+                 the state copy it took first put back. There is no going
+                 back by hand: a release moves forward only.
   --remove       stop the controller and take its release, service, bb and
                  wall away, and this machine's node with them. The state,
                  the env file, the secrets, the account and the projects
                  stay; --purge takes all but the projects too. Says what
                  will go and asks; --yes does not ask.
+  --stage        inside the appliance image's root as it is built
+                 (image/mkosi.postinst): what --install does up to the
+                 service, which is enabled and not started; the packages are
+                 the image's. The node half waits for the first boot.
+  --firstboot    the first boot of an appliance disk, from its unit: the
+                 controller is up by its own service, the wall goes up, and
+                 this machine enrolls as its node, once.
 
 Options:
   --workspace PATH   the projects folder (default /srv/builderbot/projects);
@@ -214,7 +220,7 @@ lay_out() {
     done < <(sed -n 's/^COPY \([^ ]*\) \([^ ]*\)$/\1 \2/p' "$t/Dockerfile")
     [ "$n" -gt 5 ] || die "the Dockerfile in $t names nothing to lay out ($n COPY lines)"
     # ...and what a machine of its own needs that the image does not: the
-    # installer itself (for --update, --rollback and --remove from here), its
+    # installer itself (for --update and --remove from here), its
     # env file's template and the Dockerfile's pins.
     install -m 0755 "$t/nodes/install-controller.sh" "$dir.partial/nodes/install-controller.sh"
     install -m 0644 "$t/config/controller.env" "$dir.partial/config/controller.env"
@@ -525,9 +531,12 @@ sudoers() {
 # rest after it is done (KillMode=mixed), which is the order `docker stop`
 # gives the container: the terminals are saved before tmux goes.
 service() {
+    # On BuilderBot OS the boot's own settings (builderbot-os-env.service)
+    # are read beside the env file; elsewhere the file is simply not there.
     svc_install "$SERVICE" "BuilderBot controller" "/opt/builderbot/scripts/host-boot.sh supervise" \
         "KillMode=mixed
-TimeoutStopSec=30"
+TimeoutStopSec=30
+EnvironmentFile=-/run/builderbot-os/env"
 }
 
 # wait_up: the dashboard answering on its port, or why not.
@@ -628,20 +637,101 @@ Its state is $(env_get DASHBOARD_STATE), its projects $(env_get WORKSPACE).
 EOF
 }
 
+# ---- the appliance image (R160 step 1) ----------------------------------------
+# cmd_stage: inside the image's root while mkosi builds it: root, the
+# packages in, no service manager running, the checkout at $TREE. What
+# --install does up to the service, enabled for the first boot and not
+# started; the version is the build's (BB_STAGE_VERSION and BB_STAGE_REV from
+# image/build.sh), since the checkout's git is another user's in the chroot.
+cmd_stage() {
+    local ver rev dir py
+    load_core
+    [ "$(id -u)" -eq 0 ] || die "--stage runs as root inside the image's root"
+    [ -d /usr/lib/builderbot-os ] || die "--stage is for the appliance image's tree (image/), which carries /usr/lib/builderbot-os"
+    INIT=systemd
+    py="$(pick_python)" || die "the image has no python 3.${PY_MIN} or newer: image/mkosi.conf"
+    printf '   python: %s\n' "$py"
+    extras
+    make_account
+    folders
+    if [ -n "${BB_STAGE_VERSION:-}" ]; then ver="$BB_STAGE_VERSION"; rev="${BB_STAGE_REV:-unstamped}"
+    else read -r ver rev <<<"$(tree_stamp "$TREE")"; fi
+    dir="$RELEASES/$(release_name "$ver")"
+    say "release ${ver}, staged"
+    install -d -m 0755 "$RELEASES"
+    lay_out "$TREE" "$dir" "$ver" "$rev"
+    flip "$dir"
+    env_file
+    bb_wrapper
+    sudoers
+    say "service: ${SERVICE}, enabled for the first boot"
+    BB_SVC_NO_START=1 service
+}
+
+# cmd_firstboot: the first boot of an appliance disk
+# (builderbot-os-firstboot.service): the controller is up by its own
+# service, so this is --install's last step, the wall and this machine as
+# the controller's node. own_node writes the marker the unit's condition
+# reads, so it runs once; a boot that fails it (no network yet) runs it
+# again at the next.
+cmd_firstboot() {
+    load_core
+    [ "$(id -u)" -eq 0 ] || die "--firstboot runs as root, from its unit"
+    [ -f "$ENV_FILE" ] || die "no staged controller here ($ENV_FILE): --firstboot is the appliance image's"
+    INIT=systemd
+    say "first boot: waiting for the controller on port ${PORT}"
+    wait_up || die "the controller did not answer on port ${PORT}: journalctl -u ${SERVICE} says why"
+    wall_write
+    local f
+    if [ -r "$OS_FEATURES_FILE" ]; then
+        while read -r f; do
+            case "$f" in vmhost|firewall|iommu) OS_FEATURES+=(--feature "$f") ;; "") ;; *) warn "not a feature the installer offers: $f (left out)" ;; esac
+        done < "$OS_FEATURES_FILE"
+        [ "${#OS_FEATURES[@]}" -eq 0 ] || printf '   features asked for at install: %s\n' "$(tr '\n' ' ' < "$OS_FEATURES_FILE")"
+    fi
+    own_node || die "this machine did not become its controller's node (above): the unit runs again at the next boot"
+}
+
 # ---- updates: the release fetched and put in place as an image pull is -----
 # fetch_tree [TAG]: the release's tree, unpacked in a folder of its own,
 # printed. The newest release when no tag is named, read from the releases
 # page's redirect the way the Dockerfile reads its tools' (no API budget).
+# fetch_tree [TAG]: the release's controller bundle (R90 step 5), which the
+# release workflow publishes as builderbot-controller-X.Y.Z.tar.gz with its
+# sha256 beside it and a build attestation from GitHub: the archive checked
+# against the sha256, and against the attestation where gh is here to ask;
+# a release from before the bundle falls back to the tag's source archive,
+# said as such. The tree's directory is printed.
 fetch_tree() {
-    local tag="${1:-}" d url
+    local tag="${1:-}" d url base ver sum
     if [ -z "$tag" ]; then
         tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)"
         tag="${tag##*/}"
         case "$tag" in v[0-9]*) ;; *) die "could not tell which release is the newest (https://github.com/${REPO}/releases/latest)" ;; esac
     fi
     d="$(mktemp -d /tmp/builderbot-release.XXXXXX)"
-    url="https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz"
-    curl -fsSL -o "$d/release.tar.gz" "$url" || die "could not download ${url}"
+    ver="${tag#v}"
+    base="https://github.com/${REPO}/releases/download/${tag}/builderbot-controller-${ver}.tar.gz"
+    if curl -fsSL -o "$d/release.tar.gz" "$base" 2>/dev/null; then
+        curl -fsSL -o "$d/release.tar.gz.sha256" "${base}.sha256" || die "the bundle has no sha256 beside it at ${base}.sha256, so it is not taken"
+        sum="$(awk '{print $1}' "$d/release.tar.gz.sha256")"
+        echo "${sum}  $d/release.tar.gz" | sha256sum -c - >/dev/null 2>&1 \
+            || die "the bundle does not match its sha256 (${base}): not taken"
+        printf '   bundle %s, sha256 %s\n' "$(basename "$base")" "${sum:0:12}" >&2
+        if command -v gh >/dev/null 2>&1; then
+            if gh attestation verify "$d/release.tar.gz" --repo "$REPO" >/dev/null 2>&1; then
+                printf '   build attestation: verified by gh\n' >&2
+            else
+                die "gh attestation verify refused the bundle: not taken (a build not made by the release workflow)"
+            fi
+        else
+            printf '   build attestation: gh is not here to check it; the sha256 is what held\n' >&2
+        fi
+    else
+        url="https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz"
+        printf '   %s publishes no controller bundle (a release from before 0.9.0); its source archive is taken instead, unverified\n' "$tag" >&2
+        curl -fsSL -o "$d/release.tar.gz" "$url" || die "could not download ${url}"
+    fi
     tar -xzf "$d/release.tar.gz" -C "$d"
     local top
     top="$(find "$d" -mindepth 1 -maxdepth 1 -type d | head -1)"
@@ -705,24 +795,33 @@ cmd_update() {
     fi
     service
     if wait_up; then
-        printf '   %s is up; %s --rollback goes back to %s\n' "$ver" "$OPT/nodes/install-controller.sh" "${cur:-the one before}"
+        printf '   %s is up\n' "$ver"
     else
-        warn "${ver} did not answer on port ${PORT}: journalctl -u ${SERVICE} says why, and --rollback goes back to ${cur:-the one before}"
+        # Not answering: back by itself (R90 step 5), the state the newer
+        # build may have moved on put back from the copy it took, so the
+        # machine is never left on a build that does not come up.
+        warn "${ver} did not answer on port ${PORT}: journalctl -u ${SERVICE} says why; going back to ${cur:-the one before} now"
+        if [ -L "$RELEASES/.previous" ] && back_to_previous; then
+            warn "back on ${cur:-the one before}; ${ver} is kept beside it for a look"
+        else
+            warn "going back did not go through either: journalctl -u ${SERVICE} says why"
+        fi
         exit 1
     fi
 }
 
-cmd_rollback() {
+# back_to_previous: the release before, put back by an update whose new
+# release did not answer (R90 step 5). Boot safety, not a downgrade: it is
+# never a verb of its own (the operator, 28 Oct: no roll back).
+back_to_previous() {
     local prev newver oldver state
     [ -L "$RELEASES/.previous" ] || die "there is no release before this one to go back to"
-    load_core
-    [ "$(id -u)" -eq 0 ] || die "run this as root: sudo bash $0 --rollback"
     prev="$(readlink "$RELEASES/.previous")"
     [ -d "$prev" ] || die "the release before ($prev) is gone"
     newver="$(sed -n 's/^BB_VERSION=//p' "$OPT/build.env" 2>/dev/null || true)"
     oldver="$(sed -n 's/^BB_VERSION=//p' "$prev/build.env" 2>/dev/null || true)"
     state="$(env_get DASHBOARD_STATE)"
-    say "rollback: ${newver:-?} to ${oldver:-?}"
+    say "back: ${newver:-?} to ${oldver:-?}"
     svc_stop "$SERVICE"
     # The newer build may have moved the state on, which the older one
     # refuses; then the copy the newer one took before it migrated is put
@@ -791,6 +890,10 @@ cmd_remove() {
 # A machine that is a node already is left as it is: of this controller,
 # provisioned again for a newer agent and bb-session; of another, said.
 OWN_MARK="$ETC/own-node"
+# The features the installer on the ISO was asked for (R160 step 2), turned
+# on with the node at the first boot: one id per line, on the data partition.
+OS_FEATURES_FILE="$P/var/lib/builderbot-os/features"
+declare -a OS_FEATURES=()
 own_node() {
     local ip name tok ctl prov="$OPT/nodes/provision-linux.sh"
     local -a dev=()
@@ -812,7 +915,7 @@ own_node() {
     tok="$("$BB_BIN" nodes enroll-token "$name" --user "$JOBS_USER" --own)" \
         || { warn "the controller would not mint this machine a token (above)"; return 1; }
     bash "$prov" --controller "$ctl" --token "$tok" --user "$JOBS_USER" --session-user "$SESSION_USER" \
-        --beside-controller "${dev[@]}" || { warn "this machine did not enroll as a node (above); --install again tries again"; return 1; }
+        --beside-controller "${dev[@]}" "${OS_FEATURES[@]}" || { warn "this machine did not enroll as a node (above); --install again tries again"; return 1; }
     printf '%s\n' "$ctl" > "$OWN_MARK"
     printf '   enrolled as %s, at %s\n' "$name" "$ctl"
     printf '   Give this machine a fixed address: the node reaches its controller at %s.\n' "$ip"
@@ -923,7 +1026,7 @@ main() {
     [ $# -gt 0 ] || { usage; exit 0; }
     while [ $# -gt 0 ]; do
         case "$1" in
-            --check|--install|--update|--rollback|--remove)
+            --check|--install|--update|--remove|--stage|--firstboot)
                 [ -z "$ACTION" ] || die "one action at a time: ${ACTION} and $1"
                 ACTION="$1"; shift ;;
             --workspace) WORKSPACE_DIR="${2:?--workspace needs a path}"; shift 2 ;;
@@ -953,8 +1056,9 @@ main() {
         --check) cmd_check ;;
         --install) cmd_install ;;
         --update) cmd_update ;;
-        --rollback) cmd_rollback ;;
         --remove) cmd_remove ;;
+        --stage) cmd_stage ;;
+        --firstboot) cmd_firstboot ;;
         *) usage; exit 1 ;;
     esac
 }

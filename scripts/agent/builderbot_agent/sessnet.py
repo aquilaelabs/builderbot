@@ -251,6 +251,7 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 		ip saddr . ip daddr @own goto pass
 		ip saddr . ip daddr . tcp dport @peers goto pass
 		ip saddr . ip daddr . udp dport @peers goto pass
+		ip saddr . ct original ip daddr . ct original proto-dst @peers goto pass
 		ip saddr . ip daddr @hosts goto pass
 		ip saddr . ip daddr @vms goto pass
 		ip daddr @local reject with icmpx type admin-prohibited
@@ -394,7 +395,10 @@ def sessnet_pairs(sessions, own, containers):
 def sessnet_peers(sessions, own):
     """(session address, node address, port) for every session and every
     published port its project's containers hold on the project's other
-    nodes (R82): the controller names them per project as `peers`."""
+    nodes (R82), and the model router its project may use (R144), on this
+    node too: the controller names them per project as `peers`. A port
+    published on this node's own address is reached by the address the
+    connection was made to (ct original), after Docker's DNAT."""
     out = set()
     for s in sessions:
         o = (own or {}).get(s["project"])

@@ -16,7 +16,7 @@ runner's token is typed on the CI runner page.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
+| `PUID` / `PGID` | `99` / `100` | File ownership (a NAS host's `nobody:users`) |
 | `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked under the gear in the header |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (websockets at `/termws`) |
 | `FEATURES_OFF` | *(empty)* | Features switched off for the whole install, comma-separated: `tunnel`, `ftp`, `phone`, `devices`, `apps`, `image-updates`, `runner`, `enroll`, `shell` (a terminal on the controller itself; a node's stay), `vms` (virtual machines on nodes: the VMs page, `bb vm` and installing VM host), `internet` (an install meant to run offline: apps, image updates, the tunnel and runners with it, and the Doctor skips asking the outside). Each one's controls are drawn dead with the sentence below under them, its requests are refused, and Settings lists them |
@@ -24,7 +24,7 @@ runner's token is typed on the CI runner page.
 | `BANNER_LINK` | *(empty)* | A link at the banner's end, http(s) or a path on this site; anything else is dropped |
 | `BANNER_LINK_LABEL` | *(empty)* | The link's words; "more" when empty |
 | `FEATURES_OFF_WHY` | *(empty)* | The sentence a switched-off feature shows; "switched off on this install" when empty |
-| `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and read by `bb findings` and the Analysis view; empty where no scanner runs |
+| `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | deprecated in 0.9.0, removed in the release after: the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and still read by `bb findings` and the Analysis view beside what the Scanners page's own scanners send up ([scanners.md](scanners.md)); empty where no host scanner runs |
 | `BUILDERBOT_PULL` | `missing` | BuilderBot's own dev instance only: compose's pull policy, `build` to build this checkout (with `BUILDERBOT_TAG=dev`) |
 
 Mounts: the projects folder, the state directories (`home`, `config`), the
@@ -76,7 +76,7 @@ mounted read-write, and beside the state in `/config/.install-key` when
 there is none. Kept beside the state, a copy of `/config` carries the key,
 so the Keys page and `bb doctor` say so; mount a secrets folder the
 controller may write to and the next start moves the key into it. On
-Unraid that is the container's **Edit**, **Secrets directory** set to a
+a NAS host that is the container's **Edit**, **Secrets directory** set to a
 folder such as `/mnt/user/appdata/BuilderBot/secrets` with access
 **Read/Write**, then **Apply**: an install from a template before 0.8.0
 keeps the read-only mount it was made with until it is changed there.
@@ -90,6 +90,12 @@ pasted, and seals everything kept under the one before again under it at
 once; people stay signed in until the next restart. The page also lists
 everything kept under the key, each with what uses it and where it is
 changed.
+
+**Controller, Audit** (for an account that reads the controller's area) is
+who did what to this install: every change since the first day, newest
+first, a page at a time, each line when, who, what and on what (a machine
+by its name where the change was to one); the bar's two pickers narrow it to
+one person or one machine. Nothing on it changes anything.
 
 Each account has a key of its own, kept by the controller under the install
 key, for its coding agents' sign-ins sealed on the nodes; changing the
@@ -173,7 +179,7 @@ bb version unbump      take the last unreleased bump or set back; its
                    stays. Once: the bump before it is not taken back too.
                    A section dated under the wrong number is fixed with
                    unbump, then set to the number meant
-bb version release --why "..." [--without-apk]
+bb version release --why "..." [--without-apk] [--dev]
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
                    credentials. The project's settings say whether an agent may
@@ -181,7 +187,9 @@ bb version release --why "..." [--without-apk]
                    the project's owner, with --why as the reason. A release
                    whose Android APK could not be signed is refused before the
                    tag, saying why; --without-apk goes on, and bb sign release
-                   signs it once that is put right
+                   signs it once that is put right. --dev tags the dev
+                   build instead (vX.Y.Z-dev.N, no bump, no changelog section),
+                   which CI publishes as a pre-release on the dev channel
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
                    change the published release under the same setting, each
                    edit its own ask: the notes replaced whole (- reads stdin),
@@ -469,6 +477,15 @@ bb roadmap target N X.Y.Z             the release one is meant for (`none` clear
                                       `target N.M X.Y.Z` (or N M) is step M's own, `none`
                                       sends it back to its item's, and --target lists an item
                                       for any step meant for that release
+bb roadmap step mv N M TO [POS]       step M of N moved whole to item TO (at POS); N says where
+                                      it went, and `show N.M` finds it by its old number
+bb roadmap split N --into "TITLE" M...   N's steps M... moved to a new item, --into repeated
+                                      for each; `fold N INTO M[.K]` makes N a step of M
+                                      (its words on step K's details), N leaving the list
+bb roadmap refs       the R numbers and steps the list's own words name that find nothing
+bb roadmap --format json|yaml|markdown   the records whole, on list and show (--json for short),
+                      as bb bug, rules, wiki, design and map print theirs; `add --from FILE`
+                      adds the records in a file, `apply FILE` writes an edited show back
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
@@ -486,6 +503,11 @@ bb tests run [ARGS]  run the project's test command, time it, and record the run
                    and the fact that nothing after it ran. A crash prints no `FAIL` line and no totals, so a
                    run that only said "failures above" cost four whole runs to read once. ARGS go to the
                    command, so `bb tests run auth cards` times and records those two files and nothing else
+                   else. On the test node the project's settings name (Test node, beside its
+                   nodes; R151) the suites run there as a job, this tree snapshotted, with as
+                   many workers as its cores and memory allow, the lines streamed here and the
+                   run recorded as a local one; bb dashboard test and the gate go there too
+
 bb tests last      that verdict again off the last run's log, running nothing
 bb tests log [-f]  the last run's output, whole; -f follows a run still going. The
                    Tests view's Open the run's output sends this into the project's shell
@@ -531,6 +553,7 @@ bb rules pending   rules a session added that are waiting for your approval
 bb rules audit [DAYS]   your conversations here over DAYS (7): the commands a rule
                    refuses, run or tried, and the code map asked against grep
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb router-key      the model router's address, this project's own key and its models, for an Any model session
 bb help TOPIC      one topic of the session briefing in full (start, where, map, build, tidy,
                    speed, capture, asks, notebook, versions, git, android, gpu, containers);
                    bb help topics lists them, bb help VERB one verb's lines
@@ -639,6 +662,13 @@ bb vm hardware NAME [--pin 2,3|none] [--share-cpus] [--mem-max 8G|none] [--share
                    device passed through are a person's, on the VMs page
 bb vm autostart NAME on|off
                    whether it starts when its node boots
+bb vm devices [NODE]
+                   the USB devices on the project's VM hosts (R116), each
+                   with what holds it: the host, a VM, or nothing
+bb vm usb NAME give|take VENDOR:PRODUCT[:SERIAL] [--port 1-3]
+                   a USB device to a VM, or back: a running VM has it now,
+                   a stopped one from its next start; always held for a
+                   person on the bell, since a device can be a disk or a key
 bb vm ip NAME | ssh NAME [COMMAND...]
                    its address, and ssh in as its account
 bb container       what container asks are waiting on an administrator
@@ -671,6 +701,23 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
                    kept, a run id for one, `--project NAME` from elsewhere);
                    for a project on GitHub's own runners, its runs and the end
                    of each failed job's log, read by the controller from GitHub
+bb forge whoami    what this project's token may do on its git host (GitHub,
+                   GitLab, Gitea), as measured, and what to ask for; `measure`
+                   asks the host again
+bb forge pr|issue|run|release ACTION [ARGS]
+                   the git host worked through the controller with the
+                   project's token, which never reaches a session: pr list,
+                   view N, create --title --head --base [--body] [--draft],
+                   comment N --body, review N --approve|--request-changes|
+                   --body, close N, merge N [--method merge|squash|rebase];
+                   issue list, view N, create --title [--body] [--label a,b],
+                   comment N --body, close N, label N NAME...; run list
+                   [--branch B], view ID, log ID [--lines N] [--job], rerun
+                   ID [--failed], dispatch WORKFLOW --ref B [-f NAME=VALUE];
+                   release list, view TAG. --state open|closed|all on a list,
+                   --json for the host's answer whole. Each needs what the
+                   token allows and the project's Permissions, On the git
+                   host, permit (docs/git-hosts.md)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -770,6 +817,12 @@ bb capture prune [--days N] [NAME...]
                    controller sweeps them when the Artifacts view draws: name
                    yours here to let them go sooner
 bb tool            the tools toolchains add to a session, each under its own name
+bb tool search [WORDS...]  the vetted catalog's tool packs and apps, each with
+                   its tier and what it is, and whether it is added here
+bb tool install NAME --why "..."  ask for a pack from the vetted catalog, as the
+                   project's Install a tool pack setting says: refused, asked
+                   of a person on the bell, or added now; a person installs
+                   it on a node from the Library
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,
                    annotate, diff, svg2png and optimize, into dist/img/, and
@@ -808,7 +861,7 @@ once.
 | Where | What |
 |---|---|
 | Build, Apps | each offered app with its version, **Download**, and how to connect it |
-| Settings, Profile | the devices signed in as you, with **Disconnect** |
+| Settings, Profile | the browsers signed in as you, each with **Sign out**, and the devices, each with **Disconnect** |
 | `GET /apps/NAME/FILE` | one file the controller holds (`android`), for anybody signed in |
 | `GET /api/apps` | what is offered and held: each app's files, their sha256 and size, the release, when it last looked |
 | `POST /api/v1/device/apps` | the same for a device's app (its own token), to update itself from; `GET /api/v1/device/app-file?app=NAME&file=FILE` fetches one |
@@ -819,7 +872,7 @@ before the controller's window is answered 426 with the way to update, by
 name. The device door's `projects` and `apps` answers say the controller's
 `door` and `door_min`, so an app newer than its controller says so plainly.
 What each released app reads is pinned with its types (the Android app's
-in `android/api-surface.json`): a field may be added at any time, and removed
+in `apps/android/api-surface.json`): a field may be added at any time, and removed
 only in the release after the apps that read it stopped, with the pin moved
 in the same change and a changelog line.
 

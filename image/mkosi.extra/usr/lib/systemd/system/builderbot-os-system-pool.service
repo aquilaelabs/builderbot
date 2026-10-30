@@ -1,0 +1,19 @@
+[Unit]
+Description=BuilderBot OS: a stick's system pool, where docker, VMs, the toolchains and the projects write instead of the stick
+ConditionKernelCommandLine=bbtoram=1
+After=local-fs.target zfs-mount.service
+Before=containerd.service docker.service libvirtd.service
+# A pool that mounts late (an array put together after boot) is waited for:
+# a failed try is tried again every half minute, and the held services
+# start the moment it holds.
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/builderbot-os/system-pool apply
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

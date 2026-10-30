@@ -323,7 +323,12 @@ BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json",
                 # The gate, which refuses every tool call while the
                 # controller is not answering, so a node's sessions stop for
                 # an update the same way the controller's do.
-                "scripts/dashboard/bb-gate")
+                "scripts/dashboard/bb-gate",
+                # The record documents bb design show NAME, bb wiki and bb
+                # roadmap --format print, which the verbs in scripts/lib
+                # import from beside the dashboard (B426: a node's bb
+                # had no records module).
+                "scripts/dashboard/records.py")
 
 
 def bundle():

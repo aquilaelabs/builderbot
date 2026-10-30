@@ -1,0 +1,72 @@
+#!/bin/sh
+# BuilderBot OS (R160 step 1): what persists on an immutable root, mounted
+# before the system starts so PID 1 sees it from its first read.
+#
+# overlayroot has just put a tmpfs over the read-only root, so anything
+# written anywhere lives until the next boot. Two places are made to last:
+# the data partition at /var (the state, docker, libvirt, the logs), /srv
+# bound from it (the projects), and /etc as an overlay whose upper half is on that partition, so a
+# changed file in /etc (an account made, a hostname set, a unit enabled) is
+# kept across boots while every file the next image brings still shows
+# through. Nothing else persists: an apt install into the root is gone at
+# the next boot, which is what makes an update a whole image.
+# rootmnt is where init mounted the root, set before any init-bottom script runs.
+# shellcheck disable=SC2154
+PREREQ="overlayroot"
+prereqs() { echo "$PREREQ"; }
+case "${1:-}" in prereqs) prereqs; exit 0 ;; esac
+# shellcheck source=/dev/null  # the initramfs's own library, with rootmnt set by init
+. /scripts/functions
+DATA=/dev/disk/by-partuuid/6a5c2f3e-0b7d-4b2a-9c1e-b0b1de5b0e0d
+i=0
+while [ ! -b "$DATA" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+if [ ! -b "$DATA" ]; then
+    panic "BuilderBot OS: the data partition (PARTUUID ...0e0d) is not here: the disk this slot booted from has lost it, or another disk was put in its place"
+fi
+mkdir -p "${rootmnt}/var"
+mount -t ext4 -o defaults,noatime "$DATA" "${rootmnt}/var" \
+    || panic "BuilderBot OS: the data partition did not mount (fsck it from a rescue system, or Safe mode once R161 step 2 lands)"
+mkdir -p "${rootmnt}/var/lib/builderbot-os/etc/upper" "${rootmnt}/var/lib/builderbot-os/etc/work"
+mount -t overlay overlay \
+    -o "lowerdir=${rootmnt}/etc,upperdir=${rootmnt}/var/lib/builderbot-os/etc/upper,workdir=${rootmnt}/var/lib/builderbot-os/etc/work" \
+    "${rootmnt}/etc" \
+    || panic "BuilderBot OS: /etc's overlay did not mount"
+# /srv on the data partition too: the projects live under it
+# (/srv/builderbot/projects, the controller's WORKSPACE), and on the root's
+# tmpfs they were gone at every boot (B437).
+mkdir -p "${rootmnt}/var/lib/builderbot-os/srv" "${rootmnt}/srv"
+[ -z "$(ls -A "${rootmnt}/var/lib/builderbot-os/srv")" ] && [ -n "$(ls -A "${rootmnt}/srv" 2>/dev/null)" ] \
+    && cp -a "${rootmnt}/srv/." "${rootmnt}/var/lib/builderbot-os/srv/"
+mount --bind "${rootmnt}/var/lib/builderbot-os/srv" "${rootmnt}/srv" \
+    || panic "BuilderBot OS: /srv did not mount from the data partition"
+
+# The USB edition (R161 step 10, the operator, 29 Oct: the stick read once
+# and written rarely, as Unraid's is). On a stick boot (bbtoram=1: the slot
+# runs from RAM) the stick keeps the configuration and little else: its
+# data partition flushed once a minute rather than every five seconds, the
+# system's logs and the controller's own on RAM disks, the journal in
+# memory, and docker, containerd and libvirt held until the system pool
+# (usr/lib/builderbot-os/system-pool) has put their data on a pool. Each
+# setting is written into the root's tmpfs, so it lasts this boot alone and
+# an installed disk never has it.
+stick=0
+read -r cmdline < /proc/cmdline
+for w in $cmdline; do
+    case "$w" in bbtoram=1) stick=1 ;; esac
+done
+if [ "$stick" = 1 ]; then
+    mount -o remount,noatime,commit=60 "${rootmnt}/var" || true
+    mount -t tmpfs -o mode=0755,size=128m,nosuid,nodev tmpfs "${rootmnt}/var/log" || true
+    owner="$(grep '^builderbot:' "${rootmnt}/etc/passwd" 2>/dev/null | cut -d: -f3,4)"
+    for d in logs ci-logs; do
+        mkdir -p "${rootmnt}/var/lib/builderbot-controller/config/$d"
+        mount -t tmpfs -o "mode=0750,size=256m,nosuid,nodev${owner:+,uid=${owner%%:*},gid=${owner##*:}}" tmpfs \
+            "${rootmnt}/var/lib/builderbot-controller/config/$d" || true
+    done
+    mkdir -p "${rootmnt}/usr/lib/systemd/journald.conf.d"
+    printf '[Journal]\nStorage=volatile\nRuntimeMaxUse=64M\n' > "${rootmnt}/usr/lib/systemd/journald.conf.d/60-builderbot-stick.conf"
+    for u in docker containerd libvirtd; do
+        mkdir -p "${rootmnt}/usr/lib/systemd/system/$u.service.d"
+        printf '[Unit]\nConditionPathExists=/run/builderbot-os/system-pool-ready\n' > "${rootmnt}/usr/lib/systemd/system/$u.service.d/60-builderbot-stick.conf"
+    done
+fi

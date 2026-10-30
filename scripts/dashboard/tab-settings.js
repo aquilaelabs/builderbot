@@ -13,11 +13,27 @@
 
 "use strict";
 
+// What the controller offers and holds of its companions (apps.view), for
+// the Apps section here and the Library's Companions cards (the Apps page's
+// read until R170).
+let devApps = null, devAppsRev = 0;
+async function loadApps(){
+  // Switched off on this install (R81): the route refuses, so it is not asked.
+  if (featureOff("apps")){ devAppsRev++; return; }
+  try{
+    const r = await bootFetch("/api/apps");
+    const j = await r.json();
+    if (!j.error) devApps = j;
+  }catch(e){ /* the section says it could not read them */ }
+  devAppsRev++;
+  if (tabs.some(t => t.kind === "settings")) drawPanes();
+}
+
 // Revert on a section puts its fields back to what is saved: the draft for
 // them dropped and the tab repainted, which the live key has to notice.
 let settingsRev = 0;
 function settingsLive(){
-  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.logs, state?.paths, settingsRev, devAppsRev]);
+  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.logs, state?.paths, settingsRev, devAppsRev, state?.checks]);
 }
 
 // Typed and not yet applied, by control id, across the tab's redraws: one
@@ -71,6 +87,13 @@ const SETTINGS_SAYS = {
   idle: "when an idle session is ended", paths: "the shares and disks this controller uses",
   tunnel: "a hostname that reaches it from outside",
   apps: "the apps your people install, kept current",
+  mail: "the SMTP server the bell goes out through",
+  move: "to another home, its nodes following",
+  updates: "the release running, the newest, and Update",
+  power: "restart the machine, or shut it down",
+  updwin: "when a newer release is applied by itself",
+  backup: "the password the copies are sealed under",
+  copies: "the copies kept on the disks, and one now",
   reset: "start over at the setup page",
 };
 
@@ -97,7 +120,9 @@ function renderSettingsInto(i){
   const t = state?.settings?.tunnel;
   const sect = (key, title, status, html, opts = {}) =>
     docSection("settings", key, title, status, html.replace(/<h4>[^<]*<\/h4>\s*/, ""), opts);
-  const groups = settingsSections();
+  // Reach from outside and Connection are the Network page's now (R165
+  // step 4, tab-network.js), drawn from the same table.
+  const groups = settingsSections().filter(g => !NETWORK_GROUPS.includes(g.key));
   // The logs are an administrator's: a poll that has landed without them
   // means this account has no Logs section, not one still on its way (B38).
   const logs = logSection();
@@ -108,7 +133,12 @@ function renderSettingsInto(i){
     ${sect("idle", "Idle sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
            `<div class="row stack2" data-group="Idle sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
-    ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
+    ${state?.release?.running !== undefined ? sect("updates", "Updates", state.release.newer ? `${state.release.newer} is out` : state.release.latest ? "up to date" : "", updatesSection()) : ""}
+    ${state?.bare_metal && state?.own_node && state?.can?.admin ? sect("power", "Power", "", powerSection()) : ""}
+    ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})
+        // The copies made go right under the Backup group that makes them.
+        + (g.key === "backup" ? sect("copies", "Backup copies", backupData?.made_at ? `last ${ago(backupData.made_at)}` : backupData?.on === false ? "off" : "", backupSection()) : "")).join("")}
+    ${state?.can?.admin ? sect("move", "Move this controller", moveStatus(), moveSection()) : ""}
     ${
     // Last, apart from the settings (R218 step 32); the Nodes section that
     // only linked to the Nodes page is gone with it, the rail being the way.
@@ -131,6 +161,8 @@ function renderSettingsInto(i){
   wireIdleSection(d.el);
   wirePathsSection(d.el);
   wireSettingsSections(d.el);
+  wireChecks(d.el);
+  wireCatalogMirror(d.el);
   settingsKeep(d.el);
   if (reportsList === null) loadReports();
   const ac = d.el.querySelector("#setAppsCheck");
@@ -177,6 +209,246 @@ async function loadReports(){
   drawPanes();
 }
 const reportsCount = () => reportsList === null ? null : reportsList.length;
+// A bare-metal install's updates (R90 step 5): the release running, the
+// newest published, and Update, which runs the installer through this
+// machine's own node; the container edition has no such section.
+function updatesSection(){
+  const r = state?.release || {};
+  const when = r.at ? `checked ${esc(ago(r.at))}` : "not checked yet";
+  const os = r.os && r.os.version ? r.os : null;
+  // BuilderBot OS (R160 step 4): the image whole into the other slot, a
+  // restart to finish; elsewhere the installer's bundle (R90 step 5).
+  const runs = os ? `BuilderBot OS ${esc(os.version)} from slot ${esc(os.slot || "?")}${os.next && os.next !== os.slot ? `, and slot ${esc(os.next)} boots next: restart to finish the update` : os.trial ? ", on trial until the health check marks it good" : ""}${os.fell_back ? `; ${esc(os.fell_back)}` : ""}`
+    : esc(r.running || "an unstamped build");
+  const how = os ? `Update fetches the release's image (its root, kernel and initrd), checks each against its sha256 and the root against its build attestation, writes the slot not in use and names it for the next boot; the restart is yours, from This machine, and the slot running now stays to fall back to. An offline machine takes the same files from a folder here (a stick, a share).`
+    : `Update fetches the release's bundle, checks its sha256 and its build attestation, holds the state to its version gate, switches to it and comes back by itself if the new build does not answer.`;
+  // The machine's own packages (R164 step 3), on a bare-metal install
+  // that is not BuilderBot OS: how many wait, the security ones among
+  // them, and Apply updates, with a restart after when ticked.
+  const h = r.host && typeof r.host.pending === "number" ? r.host : null;
+  const host = !h ? "" : `<div class="sub">The system's own packages: ${h.pending ? `${h.pending} update${h.pending === 1 ? "" : "s"} waiting${h.security ? `, ${h.security} of them security` : ""}` : "up to date"}${h.checked ? ` (checked ${esc(ago(h.checked))})` : ""}${h.reboot ? `; <span class="warn">a restart is needed</span> to run the new kernel or libraries` : ""}.</div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="hostReboot"> restart after, if the update asks for it</label></div>
+      <div class="actbar"><span class="sp"></span>
+        ${h.reboot ? `<button type="button" data-hostreboot="${esc(r.node || "")}">Restart now</button>` : ""}
+        <button type="button" data-hostupdate="${esc(r.node || "")}"${r.node && h.pending ? "" : " disabled"}>Apply updates</button></div>`;
+  // The release channel (R179): drawn only where dev may be picked (debug
+  // mode with the dev switch on); everybody else is on the normal channel
+  // and sees no pulldown.
+  const channel = r.dev_ok ? `<div class="field"><label class="pick"><span class="pickw">Channel</span><select id="relChannel" data-relchannel aria-label="release channel">
+        <option value="normal"${r.channel !== "dev" ? " selected" : ""}>Releases</option><option value="dev"${r.channel === "dev" ? " selected" : ""}>Dev builds</option></select></label>
+      <div class="sub dim">${r.channel === "dev" ? `The dev channel takes the pre-releases CI publishes from a dev build${r.dev_latest ? `; the newest is ${esc(r.dev_latest)}` : ""}. A dev build is not a release: it may not come up, and the slot's fallback is what brings the machine back.` : "Releases alone. The dev channel is here because this controller runs in debug mode with the dev switch on."}</div></div>` : "";
+  return `<div class="row stack2" data-group="Updates"><div class="grow">
+      <div class="sub">This install runs ${runs}; the newest ${r.channel === "dev" ? "on the dev channel" : "release"} is ${(r.channel === "dev" ? r.newer || r.dev_latest || r.latest : r.latest) ? esc(r.channel === "dev" ? r.newer || r.dev_latest || r.latest : r.latest) : "not known yet"} (${when}${r.error ? `; ${esc(r.error)}` : ""}).</div>
+      <div class="sub dim">${how}</div>
+      ${channel}
+      ${host}
+      ${os ? `<div class="field"><label class="pick"><span class="pickw">From a folder here</span><input type="text" id="osFrom" placeholder="/mnt/stick/builderbot-os" autocomplete="off" spellcheck="false"></label></div>` : ""}
+      <div class="actbar"><span class="sp"></span>
+        <button type="button" data-relcheck>Check now</button>
+        ${os ? `<button type="button" data-osfrom="${esc(r.node || "")}"${r.node ? "" : " disabled"}>Update from the folder</button>` : ""}
+        <button type="button" class="primary" data-relupdate="${esc(r.node || "")}" data-os="${os ? "1" : ""}"${r.newer && r.node ? "" : " disabled"}>${r.newer ? `Update to ${esc(r.newer)}` : "Update"}</button></div>
+    </div></div>`;
+}
+// ---- the copies kept (R161 step 4) ----
+// Back up now writes a copy to every folder where they go; the list is what
+// is there, newest first, each under the state downloadable (sealed).
+let backupData = null, backupAsked = false;
+async function loadBackup(){
+  backupAsked = true;
+  try{ backupData = await (await fetch("/api/backup")).json(); }
+  catch(e){ backupData = {error: "backup: " + failWords(e)}; }
+  settingsRev++; drawPanes();
+}
+function backupSection(){
+  if (backupData === null){ if (!backupAsked) loadBackup(); return `<div class="field">${skRows(2)}</div>`; }
+  const b = backupData;
+  if (b.error) return `<div class="hint bad">${esc(b.error)}</div>`;
+  const owner = state?.me?.role === "owner";
+  const rows = (b.copies || []).map(c => `<div class="row"><div class="grow"><div class="name">${esc(c.name)}</div>
+      <div class="sub">${esc(c.where)} · ${esc(humanBytes(c.size || 0))} · ${c.made_at ? esc(ago(c.made_at)) : ""}${c.version ? ` · ${esc(c.version)}` : ""}</div></div>
+      ${owner && !/\.builderbot\/backup$/.test(c.where) ? `<span class="acts"><a class="btn" href="/api/backup-file?name=${encodeURIComponent(c.name)}" download>Download</a></span>` : ""}</div>`).join("");
+  return `<div class="row stack2" data-group="Backup copies"><div class="grow">
+      <div class="sub">${b.on ? `Copies go to ${(b.where || []).map(esc).join(", ")}${b.made_at ? `; the last was written ${esc(ago(b.made_at))} (${esc(humanBytes(b.size || 0))})` : "; none written yet"}.` : "No backup password set: nothing is copied until one is, under Backup."}${(b.failed || []).length ? ` <span class="bad">Not written: ${esc(b.failed.join("; "))}.</span>` : ""}</div>
+      ${rows ? `<div class="rows">${rows}</div>` : ""}
+      <div class="actbar"><span class="sp"></span><button type="button" class="primary" data-backupnow${b.on && owner ? "" : " disabled"}>Back up now</button></div>
+    </div></div>`;
+}
+function wireBackup(root){
+  root.querySelectorAll("[data-backupnow]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Writing");
+    const j = await (await postJSON("/api/backup", {action: "now"})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `written: ${j.name} to ${(j.where || []).length} place${(j.where || []).length === 1 ? "" : "s"}`, !!j.error);
+    await loadBackup();
+  }));
+}
+// ---- moving this controller (R90 step 12) ----
+// Prepare to move arms the move and shows the token once (R175: no life on
+// it, and the nodes hear it on every hello from then on); Download the
+// bundle packs it fresh under that key at that moment; Forget it withdraws
+// the move (the key gone here, the nodes told nothing more); Mark as moved,
+// pressed once the new home is up, makes this one read-only, saying where
+// it went, and the controller marks itself so when the new one tells it or
+// answers its asking. The moved band is page-shell.js's (drawMovedBand).
+let moveData = null, moveAsked = false, moveToken = null;
+async function loadMove(){
+  moveAsked = true;
+  try{ moveData = await (await fetch("/api/move?pieces=1")).json(); }
+  catch(e){ moveData = {error: "move: " + failWords(e)}; }
+}
+function moveStatus(){
+  const m = moveData || {};
+  return m.moved ? "moved" : m.prepared ? "armed" : m.arrived?.restored_at ? "arrived" : "";
+}
+function moveSize(n){ return n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`; }
+function moveSection(){
+  if (moveData === null){ if (!moveAsked) loadMove(); return `<div class="field">${skRows(2)}</div>`; }
+  const m = moveData;
+  if (m.error) return `<div class="hint bad">${esc(m.error)}</div>`;
+  const howWord = {pressed: "marked so here", told: "told by the new controller", asked: "learned by asking the new controller"}[m.how] || "";
+  if (m.moved) return `<div class="row stack2" data-group="Move"><div class="grow">
+      <div class="sub bad">This controller moved to ${esc(m.to)} ${m.at ? esc(ago(m.at)) : ""}${howWord ? ` (${howWord}${m.landed_at ? `; the bundle landed ${esc(ago(m.landed_at))}` : ""})` : ""}: it is read-only now, and its nodes have followed. A node that comes back late is told where and knocks there by itself. What is here is a copy for a look back.</div></div></div>`;
+  // The state arrived by a move: what the old controller was told.
+  const ar = m.arrived || {};
+  const arrived = ar.restored_at ? `<div class="sub">This state arrived by a move${ar.from ? ` from ${esc(ar.from)}` : ""} ${esc(ago(ar.restored_at))}${
+      ar.told_at ? `; the old controller was told ${esc(ago(ar.told_at))}${ar.told_how && ar.told_how !== "taken" ? ` (${esc(ar.told_how)})` : ""}`
+      : ar.from ? `; the old controller is told once it answers${ar.tell_error ? ` (last: ${esc(ar.tell_error)})` : ""}` : "; the old controller named no address, so it learns by asking here"}.${
+      (m.not_here || []).length ? ` ${m.not_here.length} node${m.not_here.length === 1 ? " has" : "s have"} not checked in since: the Nodes page gives each its line.` : ""}</div>` : "";
+  const sizeMb = m.size ? moveSize(m.size) : "";
+  const token = moveToken ? `<div class="field"><div class="hint warn">The move token, shown once and never kept here: <code>${esc(moveToken)}</code>. Give it on the new install's first page (Moving a controller here?) with this controller's address, or with the bundle.</div></div>` : "";
+  const pieces = (m.pieces || []).map(pc => `<div class="field"><label class="ndcap"><input type="checkbox" data-movepiece="${esc(pc.key)}"${pc.on ? " checked" : ""}${pc.fixed ? " disabled" : ""}> ${esc(pc.label)} <span class="dim">(${pc.over ? "at least " : ""}${moveSize(pc.size || 0)}${pc.about ? `; ${esc(pc.about)}` : ""})</span></label></div>`).join("");
+  const stores = Array.isArray(m.stores) ? m.stores : [];
+  return `<div class="row stack2" data-group="Move"><div class="grow">
+      ${arrived}
+      <div class="sub">To another container, to a machine of its own, or back: Prepare to move arms the move and shows a move token once; from then on every node hears where the controller is going, and follows by itself once the new home answers, however long that takes. The bundle (the state, the stores ticked, the deploy key, the repositories and the install key when ticked) is packed fresh each time it is downloaded, or pulled by the new install from here with the token.</div>
+      ${m.prepared ? `<div class="sub">Armed ${esc(ago(m.made_at))} for ${esc(m.to || "an address not named yet")}: ${m.heard} of ${m.nodes} node${m.nodes === 1 ? "" : "s"} ${m.heard === 1 ? "has" : "have"} heard it${m.packed_at ? `; last packed ${esc(ago(m.packed_at))}, ${esc(sizeMb)}` : ""}${stores.length ? `, with ${esc(stores.join(", "))}` : ""}${m.repos ? ", the repositories in it" : ""}${m.carries_key ? ", the install key in it" : ""}.${
+          m.asked_at ? ` Asked ${esc(m.to)} ${esc(ago(m.asked_at))} whether it landed: ${m.asked_error ? esc(m.asked_error) : "not yet"}.` : ""}</div>` : ""}
+      ${token}
+      ${m.prepared ? "" : `<div class="field"><label class="pick"><span class="pickw">New home</span><input type="text" id="moveTo" placeholder="https://builderbot.new.example" autocomplete="off" spellcheck="false"></label></div>
+      ${pieces}`}
+      <div class="actbar"><span class="sp"></span>
+        ${m.prepared ? `<a class="btn" href="/api/move-bundle" download>Download the bundle</a>${m.to ? `<button type="button" data-moveask>Ask the new home</button>` : ""}<button type="button" data-moveforget>Forget it</button><button type="button" class="danger" data-movedone>Mark as moved</button>`
+                     : `<button type="button" class="primary" data-moveprep>Prepare to move</button>`}</div>
+    </div></div>`;
+}
+function wireMove(root){
+  root.querySelectorAll("[data-moveprep]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Preparing");
+    const on = k => !!root.querySelector(`[data-movepiece="${k}"]`)?.checked;
+    const stores = [...root.querySelectorAll('[data-movepiece^="store:"]')].filter(x => x.checked).map(x => x.dataset.movepiece.slice(6));
+    const j = await (await postJSON("/api/move", {action: "prepare", to: $("moveTo")?.value || "", repos: on("repos"), carry_key: on("install_key"), stores})).json().catch(() => ({error: "no answer"}));
+    if (j.error){ notify(j.error, true); unbusy(b, "Prepare to move"); return; }
+    moveToken = j.token;
+    await loadMove();
+  }));
+  root.querySelectorAll("[data-moveforget]").forEach(b => b.onclick = () => pressing(b, async () => {
+    if (!await askYes("Forget this move?\n\nThe key is gone from here, so no node will follow a controller restored from its bundle, and the nodes hear of it no more. A bundle already downloaded still opens under its token, as a backup does.", {title: "Forget the move?", verb: "Forget it", danger: true})) return;
+    const j = await (await postJSON("/api/move", {action: "forget"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    moveToken = null;
+    await loadMove();
+  }));
+  root.querySelectorAll("[data-moveask]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Asking");
+    const j = await (await postJSON("/api/move", {action: "ask"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    else notify(j.moved ? "it landed: this controller is marked moved" : `not landed there yet${j.asked_error ? `: ${j.asked_error}` : ""}`);
+    await loadMove();
+    if (j.moved) await refresh();
+  }));
+  root.querySelectorAll("[data-movedone]").forEach(b => b.onclick = () => pressing(b, async () => {
+    if (!await askYes("Mark this controller as moved?\n\nFrom now on it is read-only and tells its nodes where it went; press this once the new home is up and answering, or let it learn so by itself.", {title: "Moved?", verb: "Mark as moved", danger: true})) return;
+    const j = await (await postJSON("/api/move", {action: "moved"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    await loadMove();
+    await refresh();
+  }));
+}
+
+// Power (R175, the operator, 28 Oct): the machine this controller runs on,
+// restarted or shut down from here on a bare-metal install and the OS,
+// the same verbs This machine's Advanced section has; the container
+// edition has no machine of its own here.
+function powerSection(){
+  const n = typeof ownMachine === "function" ? ownMachine() : null;
+  const live = !!n?.live;
+  const busyWith = (n?.jobs || []).find(j => j.type === "system" && !["reboot", "poweroff"].includes(j.apply));
+  const inflight = w => (n?.jobs || []).some(j => j.apply === w);
+  const why = !n ? "This install's own machine is not enrolled as a node yet." : !live ? "Its agent is not dialing in: power the machine from its console." : busyWith ? "A system job is running on it; wait for it to finish." : "";
+  return `<div class="row stack2" data-group="Power"><div class="grow">
+      <div class="sub">Restart ends every session on this machine, everybody's, each closed first, and the machine comes back on its own with the dashboard. Shut down does the same and the machine stays off until somebody switches it on.</div>
+      ${why ? `<div class="sub warn">${esc(why)}</div>` : ""}
+      <div class="actbar">${typeof holdNextBox === "function" ? holdNextBox() : ""}<span class="sp"></span>
+        <button type="button" class="danger" data-power="reboot"${why || inflight("reboot") ? " disabled" : ""}>${inflight("reboot") ? "Restarting…" : "Restart"}</button>
+        <button type="button" class="danger" data-power="poweroff"${why || inflight("poweroff") ? " disabled" : ""}>${inflight("poweroff") ? "Shutting down…" : "Shut down"}</button></div>
+    </div></div>`;
+}
+function wirePower(root){
+  if (typeof wireHoldNext === "function") wireHoldNext(root);
+  root.querySelectorAll("[data-power]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const act = b.dataset.power, id = state?.own_node || "";
+    const here = (state?.sessions || []).filter(x => x.node_id === id);
+    const open = here.length ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open here, everybody's, each closed before the machine goes; transcripts are kept. ` : "";
+    if (!await askYes(act === "reboot"
+          ? `Restart this machine?\n\n${open}Whatever is running here stops; the dashboard is back once the machine is.`
+          : `Shut this machine down?\n\n${open}It does not come back on its own: switch it on from its console.`,
+        {title: act === "reboot" ? "Restart?" : "Shut down?", verb: act === "reboot" ? "Restart" : "Shut down", danger: true})) return;
+    busy(b, act === "reboot" ? "Restarting" : "Shutting down");
+    const j = await (await postJSON("/api/v1/nodes", {action: act, id})).json().catch(() => ({error: "no answer"}));
+    if (j.error){ notify(j.error, true); unbusy(b, act === "reboot" ? "Restart" : "Shut down"); return; }
+    notify(act === "reboot" ? "restarting: the page comes back with the machine" : "shutting down");
+    if (typeof loadNodes === "function") await loadNodes();
+  }));
+}
+
+function wireUpdates(root){
+  // The channel's pick (R179): saved, then the newest asked for again.
+  root.querySelectorAll("[data-relchannel]").forEach(s => s.onchange = async () => {
+    const j = await (await postJSON("/api/settings", {set: {release_channel: s.value}})).json().catch(() => ({error: "no answer"}));
+    if (j.error){ notify(j.error, true); return; }
+    await postJSON("/api/v1/nodes", {action: "release-check"}).catch(() => {});
+    await refresh();
+  });
+  root.querySelectorAll("[data-hostupdate]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const reboot = !!$("hostReboot")?.checked;
+    if (!await askYes(`Update the system's own packages?\n\napt brings every package to its newest with the configuration files kept as they are${reboot ? ", and the machine restarts after if the update asks for it" : "; a restart, if one is needed, is yours to press after"}. The log is on the Jobs page.`, {title: "Apply updates?", verb: "Update"})) return;
+    busy(b, "Updating");
+    const j = await (await postJSON("/api/v1/nodes", {action: "host-update", id: b.dataset.hostupdate, reboot})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "updating: the job runs on this machine; its log is on the Jobs page", !!j.error);
+  }));
+  root.querySelectorAll("[data-hostreboot]").forEach(b => b.onclick = () => pressing(b, async () => {
+    if (!await askYes("Restart this machine now? Every session and container on it stops until it is back.", {title: "Restart?", verb: "Restart", danger: true})) return;
+    busy(b, "Restarting");
+    const j = await (await postJSON("/api/v1/nodes", {action: "reboot", id: b.dataset.hostreboot})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "restarting: the page comes back when the machine does", !!j.error);
+  }));
+  root.querySelectorAll("[data-relcheck]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Checking");
+    const j = await (await postJSON("/api/v1/nodes", {action: "release-check"})).json().catch(() => ({error: "no answer"}));
+    if (j.error) notify(j.error, true);
+    await refresh();
+  }));
+  root.querySelectorAll("[data-osfrom]").forEach(b => b.onclick = () => pressing(b, async () => {
+    const from = ($("osFrom")?.value || "").trim();
+    if (!from){ notify("name the folder on this machine that holds the release's files", true); return; }
+    if (!await askYes(`Write the image in ${from} into the other slot?\n\nIts files are checked against the sha256 beside each; the slot not in use takes it and boots next; nothing running changes until you restart.`, {title: "Update from a folder?", verb: "Write the slot"})) return;
+    busy(b, "Updating");
+    const j = await (await postJSON("/api/v1/nodes", {action: "os-update", id: b.dataset.osfrom, from})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "updating: the job writes the other slot; restart from This machine when it is done", !!j.error);
+  }));
+  root.querySelectorAll("[data-relupdate]").forEach(b => b.onclick = () => pressing(b, async () => {
+    if (b.dataset.os){
+      if (!await askYes(`Update this machine to BuilderBot OS ${state?.release?.newer}?\n\nThe release's image is fetched and checked (sha256, build attestation), written into the slot not in use and named for the next boot; nothing running changes until you restart from This machine, and the slot running now stays to fall back to.`, {title: "Update the image?", verb: "Write the slot"})) return;
+      busy(b, "Updating");
+      const j = await (await postJSON("/api/v1/nodes", {action: "os-update", id: b.dataset.relupdate, release: "v" + state.release.newer})).json().catch(() => ({error: "no answer"}));
+      notify(j.error || "updating: the job writes the other slot; restart from This machine when it is done", !!j.error);
+      return;
+    }
+    if (!await askYes(`Update this install to ${state?.release?.newer}?\n\nThe installer runs on this machine's node: the bundle is fetched and checked, the state copied aside, the service switched to the new release and started. The page comes back on it; if it does not answer, the install goes back by itself.`)) return;
+    busy(b, "Updating");
+    const j = await (await postJSON("/api/v1/nodes", {action: "controller-update", id: b.dataset.relupdate})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "updating: the job runs on this machine's node; the page comes back on the new release", !!j.error);
+  }));
+}
 function reportsSection(){
   const rows = reportsList || [];
   const mayDelete = state?.can?.controller !== false;
@@ -227,11 +499,32 @@ async function clearReports(btn){
 // group is one section with one Apply, a field that has never been saved
 // says so beside it, and the bar says whether a change applies at once or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
+// The checks, in the order Controller settings lists them, with what each asks.
+const CHECK_KINDS = [
+  ["release", "A newer BuilderBot", "Asks the releases for a newer version than this install runs, on a bare-metal install; the Update window applies it."],
+  ["images", "Container images", "Asks each project container's registry for a newer image."],
+  ["nginx", "nginx", "Asks the registry for a newer nginx image for the nodes that serve hostnames."],
+  ["scanners", "Scanners", "Asks for newer versions of the scanners the nodes run over projects."],
+  ["catalog", "Library", "Asks upstream for the toolchains' and coding agents' newest versions, and the vetted catalog for its index. A node's own check of what it holds is on its page."]];
 const SETTING_GROUPS = [
   // The apps this controller offers its people (R272 step 3, apps.py): each
   // one on is fetched from the release matching this controller, checked
-  // against its sha256 and offered on the Apps page (under Build); Look now asks the
+  // against its sha256 and offered on its card in the Library (under Build); Look now asks the
   // release again rather than waiting for the daily look.
+  // Update checks on one clock (R176, checks.py): each check BuilderBot
+  // makes by itself, how often, when it last ran, and Check now. A node's
+  // own version check is its page's.
+  {key: "checks", title: "Update checks", intro: checksIntro, status: checksStatus,
+   heading: () => { const c = state?.checks || {}; const off = Object.values(c).filter(x => x.cadence === "off").length;
+     return off ? `${off} off` : Object.keys(c).length ? "on" : ""; },
+   fields: CHECK_KINDS.map(([k, label, hint]) => ({key: `check_${k}`, label, type: "select", hint,
+     options: [["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["off", "Off: only Check now"]]}))},
+  // The vetted catalog (R169): where its signed index is read, and a mirror
+  // of it imported for a controller that cannot reach it (step 6).
+  {key: "catalog", title: "Vetted catalog", intro: catalogIntro, status: catalogStatus,
+   heading: s => `${/aquilaelabs\/builderbot-catalog\//.test(s?.settings?.catalog_url?.value || "") ? "the public catalog" : "another catalog"}${s?.catalog_mirror ? ", a mirror held" : ""}`,
+   fields: [{key: "catalog_url", label: "Address", type: "text", placeholder: "https://raw.githubusercontent.com/aquilaelabs/builderbot-catalog/main/",
+     hint: "where the Library reads the catalog's index.json and index.sig, checked against the maintainers' key this install ships"}]},
   {key: "apps", title: "Apps", off: "apps", intro: appsIntro, status: appsStatus,
    heading: s => `${["apps_android", ...(s?.settings?.offer_unvetted?.value ? ["apps_vscode", "apps_companion"] : [])]
      .filter(k => s?.settings?.[k]?.value).length} offered`,
@@ -259,6 +552,44 @@ const SETTING_GROUPS = [
      hint: "From Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), the long eyJ… string in its install command. The controller runs the tunnel itself with it."},
     {key: "cf_api_token", label: "Cloudflare API token (optional)", type: "secret",
      hint: "With Zone DNS Edit and Account Cloudflare Tunnel Edit: the hostname's record and the tunnel's two rules (the agent's API to the controller, everything else 404) are written on Apply rather than clicked."}]},
+  // The dashboard's own connection (R158 step 2, tls.py): http, the
+  // install's own certificate, or Let's Encrypt for the controller's own
+  // hostname; its line says what is in force, with the fingerprint a phone
+  // or the companion pins and Download for the certificate itself.
+  {key: "connection", title: "Connection", status: connectionStatus, intro: connectionIntro,
+   heading: s => !s?.tls ? "" : s.tls.on ? (s.tls.kind === "acme" ? "https, Let's Encrypt" : "https, own certificate") : "http",
+   headingCls: s => s?.tls?.on ? "ok" : "warn",
+   fields: [
+    {key: "tls_mode", label: "Served over", type: "select",
+     options: [["", "as set below: https with the install's own certificate where a hostname is set, else http"],
+               ["http", "http: nothing encrypted, for a LAN with no CA"],
+               ["self", "https with the install's own certificate"],
+               ["acme", "https with a Let's Encrypt certificate for the hostname (DNS-01, Cloudflare)"]],
+     hint: "One port serves both: a browser gets https and a node keeps dialing http. The install's own certificate is made here and remade a month before it ends; a browser warns once until it is pinned. Let's Encrypt needs the hostname below on a domain the Cloudflare API token (Reach from outside) can write a record in; port 80 is not asked for."},
+    {key: "tls_host", label: "Hostname", type: "text", placeholder: "bb.example.com",
+     hint: "The controller's own public name, which the certificate is for. Leave it empty on a LAN with no name: the install's own certificate then names the addresses the page is reached at."},
+    {key: "tls_email", label: "Email (Let's Encrypt)", type: "text", placeholder: "you@example.com",
+     hint: "Where Let's Encrypt writes about the certificate. Optional."}]},
+  // The mail server the bell's rows go out through (R149, reach.py): each
+  // person picks where the bell reaches them on their Profile; email needs
+  // this server.
+  {key: "mail", title: "Mail", status: s => s?.settings?.smtp_host?.value ? "set" : "no server yet",
+   heading: s => s?.settings?.smtp_host?.value ? "set" : "",
+   headingCls: s => s?.settings?.smtp_host?.value ? "ok" : "",
+   fields: [
+    {key: "smtp_host", label: "SMTP server", type: "text", placeholder: "smtp.example.com",
+     hint: "The server BuilderBot sends mail through, for a person who asked for the bell by email on their Profile. Nothing is sent until one is set."},
+    {key: "smtp_port", label: "Port", type: "text", placeholder: "587",
+     hint: "Empty takes 587 with STARTTLS and 465 with TLS."},
+    {key: "smtp_security", label: "Security", type: "select",
+     options: [["starttls", "STARTTLS (port 587)"], ["tls", "TLS from the start (port 465)"], ["none", "none: a server on this network only"]],
+     hint: "What the connection to the server is: STARTTLS and TLS encrypt it; none sends in the clear."},
+    {key: "smtp_user", label: "Sign-in name", type: "text", placeholder: "you@example.com",
+     hint: "Empty sends without signing in, which a server on this network may allow."},
+    {key: "smtp_password", label: "Password", type: "secret",
+     hint: "Kept sealed under the install key, as the tokens are."},
+    {key: "smtp_from", label: "From", type: "text", placeholder: "BuilderBot <builderbot@example.com>",
+     hint: "The address the mail is from; the sign-in name when empty."}]},
   // The room a node keeps for itself (R110): the numbers the bell, the
   // build gate, a rebuild's check and the hourly prune go by, and a memory
   // limit for a container whose compose file sets none.
@@ -274,6 +605,25 @@ const SETTING_GROUPS = [
   // Maintenance mode, the owner's alone (state.can.maintenance): every
   // other account is told why and kept out until it is off, and a band on
   // every page reminds the owner it is on.
+  // The backup password (R161 step 4): the copies of the state on the
+  // machine's pools and under the state are sealed under its key; the
+  // copies themselves are the Backup copies section's.
+  {key: "backup", title: "Backup",
+   heading: s => s?.settings?.backup_password?.set ? "on" : "off",
+   fields: [
+    {key: "backup_password", label: "Backup password", type: "secret",
+     hint: "Eight characters at least. With one set, a sealed copy of the configuration (accounts, nodes, projects, settings, the stores) is written after every change onto every pool of this machine and under the state, the five newest kept; a fresh install's first page restores one with this password. Keep the password where you keep the owner's: a copy without it is a sealed file."}]},
+  // The update window (R160 step 4): a newer release applied by itself at
+  // the hour named, daily or one weekday; off by default, so nothing moves
+  // the install without a press or this choice.
+  {key: "updwin", title: "Update window",
+   heading: s => s?.settings?.update_window?.value ? `${s.settings.update_window.value} at ${String(s.settings.update_hour?.value ?? 4).padStart(2, "0")}:00` : "off",
+   fields: [
+    {key: "update_window", label: "Apply a newer release", type: "select",
+     options: [["", "never by itself: Update under Updates is the press"], ["daily", "daily, at the hour below"],
+               ["mon", "Mondays"], ["tue", "Tuesdays"], ["wed", "Wednesdays"], ["thu", "Thursdays"], ["fri", "Fridays"], ["sat", "Saturdays"], ["sun", "Sundays"]],
+     hint: "In the window the newest release is applied the way Update does it: the image into the other slot on BuilderBot OS (a restart still waits for you), the installer's bundle elsewhere. One window applies one release once."},
+    {key: "update_hour", label: "At (hour, 0 to 23, this controller's time)", type: "number"}]},
   {key: "maint", title: "Maintenance", can: "maintenance",
    heading: s => s?.settings?.maintenance_mode?.value ? "on" : "off",
    headingCls: s => s?.settings?.maintenance_mode?.value ? "warn" : "",
@@ -296,10 +646,91 @@ async function maintAsk(rows){
   return askYes(text, {title: "Turn maintenance mode on?", verb: rows.length ? "End them and turn it on" : "Turn it on", danger: rows.length > 0});
 }
 
+// The Connection section's lines (R158 step 2): what is in force, the
+// certificate's fingerprint and expiry, Download, and an ACME request going.
+function connectionIntro(s){
+  const t = s?.tls || {};
+  if (!t.on) return `<div class="hint">Served over http: what the page carries crosses the network in the clear. https is recommended wherever this is reached beyond one machine; behind the home tunnel, Cloudflare's edge is https already.</div>`;
+  const when = t.expires ? new Date(t.expires * 1000).toLocaleDateString() : "";
+  const p = t.pending || {};
+  return `<div class="hint">https with ${t.kind === "acme" ? "a Let's Encrypt certificate" : "the install's own certificate"} for ${esc((t.names || []).join(", ") || "this install")}${when ? `, until ${esc(when)}` : ""}${
+      t.kind === "self" ? "; a browser warns once until it is pinned, and the phone and the companion pin it by its fingerprint" : ""}.</div>
+    <div class="field"><div class="sub mono">${esc(t.fingerprint || "")}</div></div>
+    <div class="field"><div class="actbar"><span class="sp"></span><a class="btn" href="/api/tls?download=1" download="builderbot.pem">Download the certificate</a>${
+      t.mode === "acme" ? `<button type="button" data-tlsissue${p.state && !["done", "failed"].includes(p.state) ? " disabled" : ""}>Ask Let's Encrypt now</button>` : ""}</div></div>${
+    p.state ? `<div class="field"><div class="sub${p.state === "failed" ? " bad" : ""}">${p.state === "failed" ? `Let's Encrypt: ${esc(p.error || "it failed")}` : p.state === "done" ? "the Let's Encrypt certificate is in force" : `asking Let's Encrypt (${esc(p.state)})`}</div></div>` : ""}`;
+}
+function connectionStatus(s){
+  const t = s?.tls || {};
+  return t.on ? (t.key_sealed ? "applies at once; the private key is sealed under the install key" : "applies at once; the private key is kept open until the install has a key") : "applies at once";
+}
+
 // What the Apps section holds, over its switches, and Look now.
+function checksIntro(){
+  const c = state?.checks || {};
+  return `<div class="field">${CHECK_KINDS.filter(([k]) => c[k]).map(([k, label]) =>
+    `<div class="row stack2 ckrow"><div class="grow"><span class="name">${esc(label)}</span> <span class="sub dim">${c[k].at ? `checked ${esc(ago(c[k].at))}` : "not checked yet"}</span></div>
+      <button type="button" data-checknow="${esc(k)}">Check now</button></div>`).join("")}</div>`;
+}
+function checksStatus(){
+  const c = state?.checks || {};
+  const due = Object.values(c).filter(x => x.cadence !== "off").length;
+  return `${due} of ${Object.keys(c).length} on their own clock · applies at once`;
+}
+function wireChecks(root){
+  root.querySelectorAll("[data-checknow]").forEach(b => b.onclick = () => pressing(b, async () => {
+    busy(b, "Checking");
+    const j = await (await postJSON("/api/checks", {kind: b.dataset.checknow})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "checking: the answer is here in a moment", !!j.error);
+    setTimeout(() => refresh(), 4000);
+  }));
+}
+
+// The mirror's line and its two presses: Import takes an archive that
+// tools/catalog-mirror.py made on a machine with the network.
+function catalogIntro(s){
+  const m = s?.catalog_mirror;
+  return `<div class="sub">The Library lists the packs and apps BuilderBot's maintainers reviewed, from the index at this address. A controller that cannot reach it imports a mirror instead: <code>tools/catalog-mirror.py</code> makes one on a machine with the network, and the Library then installs from it with nothing fetched.</div>
+    <div class="field">${m
+      ? `<div class="row stack2"><div class="grow"><span class="name">Mirror</span> <span class="sub">${m.packs} entr${m.packs === 1 ? "y" : "ies"} from ${m.repos} repositor${m.repos === 1 ? "y" : "ies"}, made ${esc(m.generated || "at an unknown time")}, imported ${esc(ago(m.imported_at))}</span></div>
+          <button type="button" data-mirrorforget>Forget</button></div>`
+      : `<div class="sub dim">No mirror imported.</div>`}</div>
+    <div class="addbar ctlrow"><input id="mirrorFile" type="file" hidden accept=".tar,.tgz,.tar.gz,application/gzip,application/x-tar">
+      <button type="button" data-mirrorimport>${m ? "Import a newer mirror" : "Import a mirror"}</button></div>`;
+}
+function catalogStatus(s){
+  return s?.catalog_mirror ? `a mirror made ${s.catalog_mirror.generated || "earlier"} answers when the catalog does not · applies at once` : "applies at once";
+}
+function wireCatalogMirror(root){
+  const file = root.querySelector("#mirrorFile");
+  root.querySelector("[data-mirrorimport]")?.addEventListener("click", () => file?.click());
+  if (file) file.onchange = async () => {
+    const f = file.files[0];
+    if (!f) return;
+    const b = root.querySelector("[data-mirrorimport]");
+    if (b) busy(b, "Importing");
+    const u = await fetch("/api/upload-archive?name=" + encodeURIComponent(f.name), {method: "POST", body: f});
+    const uj = await u.json().catch(() => ({}));
+    const j = !u.ok || uj.error ? {error: uj.error || `the upload failed (HTTP ${u.status})`}
+      : await (await postJSON("/api/catalog-mirror", {action: "import", archive: uj.id})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || `the mirror is imported: ${j.packs} entries, made ${j.generated}`, !!j.error);
+    if (state && !j.error) state.catalog_mirror = j.mirror;
+    settingsRev++; drawPanes(); refresh();
+  };
+  root.querySelector("[data-mirrorforget]")?.addEventListener("click", async e => {
+    const b = e.currentTarget;
+    if (!await askYes("Forget the catalog's mirror? The Library reads the catalog's address alone again; packs kept from the mirror stay.")) return;
+    busy(b, "Forgetting");
+    const j = await (await postJSON("/api/catalog-mirror", {action: "forget"})).json().catch(() => ({error: "no answer"}));
+    notify(j.error || "the mirror is forgotten", !!j.error);
+    if (state && !j.error) state.catalog_mirror = null;
+    settingsRev++; drawPanes();
+  });
+}
+
 function appsIntro(){
   return `<div class="sub">Each one on is fetched from the release that matches this controller, checked, and offered on the ${
-    pageLink("apps", "Apps page")} for your people to download and keep current.</div>
+    pageLink("library", "Library")}, under For you, for your people to download and keep current.</div>
     <div class="addbar ctlrow"><button type="button" id="setAppsCheck"${devApps?.checking ? " disabled" : ""}>${devApps?.checking ? "Looking…" : "Look now"}</button></div>`;
 }
 // ...and its line: what it holds, from which release, when it looked.
@@ -489,6 +920,13 @@ function settingsSections(){
             }
             // A number is a short field beside its label, held to the
             // range the server keeps (settings.KEYS) by the browser too.
+            // A pick among a few (R158 step 2: the connection's mode).
+            if (f.type === "select"){
+              return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${src(f.key)}</label>
+                <select id="${id}" data-set="${f.key}">${(f.options || []).map(([val, lab]) =>
+                  `<option value="${esc(val)}"${sdVal(id, v ?? "") === val ? " selected" : ""}>${esc(lab)}</option>`).join("")}</select>
+              </div>`;
+            }
             if (f.type === "number"){
               const m = s.meta?.[f.key] || {};
               return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${src(f.key)}</label>
@@ -525,6 +963,20 @@ function settingsSections(){
 }
 
 function wireSettingsSections(el){
+  wireUpdates(el);
+  wireBackup(el);
+  wireMove(el);
+  wirePower(el);
+  // Ask Let's Encrypt now (R158 step 2): the Connection section's own press.
+  el.querySelectorAll("[data-tlsissue]").forEach(b => b.onclick = async () => {
+    busy(b, "Asking");
+    try{
+      const j = await (await postJSON("/api/tls", {action: "issue"})).json();
+      if (j.error) notify(j.error, true);
+      else notify("asking Let's Encrypt: the Connection section says how it goes");
+    }catch(e){ notify("could not ask: " + failWords(e), true); }
+    refresh();
+  });
   el.querySelectorAll('[data-group]').forEach(box => {
     const btn = box.querySelector(".setApply");
     if (!btn) return;

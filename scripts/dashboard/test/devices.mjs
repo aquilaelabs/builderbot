@@ -135,12 +135,12 @@ ok(woke.status === 200 && (woke.changes || []).some(c => c[0] === 'from-laptop.t
      `...and a file written on the controller's disk reaches a waiting device by its poll's scan (${Date.now() - t1} ms)`);
 }
 
-// ---- the app itself (windows/bbcompanion), its own command line against this server -----------
+// ---- the app itself (apps/windows/bbcompanion), its own command line against this server -----------
 // The agent's sync, shared, on the device door: signed in, a project picked
 // into a folder, the first copy made; then a change made in the folder goes
 // up and one made elsewhere comes down, with nothing but the app running.
 {
-  const appEnv = { ...process.env, APPDATA: `${DIR}/appdata`, PYTHONPATH: `${REPO}/windows:${REPO}/scripts/agent`,
+  const appEnv = { ...process.env, APPDATA: `${DIR}/appdata`, PYTHONPATH: `${REPO}/apps/windows:${REPO}/scripts/agent`,
                    BB_COMPANION_PASSWORD: people['dv.rw'] };
   const app = (...args) => { try { return { code: 0, out: execFileSync('python3', ['-m', 'bbcompanion', ...args], { env: appEnv, encoding: 'utf8', timeout: 120000 }) }; }
                              catch (e) { return { code: e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; } };

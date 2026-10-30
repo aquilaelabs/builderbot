@@ -5,7 +5,7 @@ a copy kept by hand (R50 step 16).
 
     bb design json | python3 tools/app-schemes.py
 
-rewrites Schemes.all in android/.../ui/Theme.kt in place and says how many
+rewrites Schemes.all in apps/android/.../ui/Theme.kt in place and says how many
 it wrote. A theme without a light half is refused: the app offers Light for
 every scheme, as the gear does.
 """
@@ -14,7 +14,7 @@ import os
 import sys
 
 KEYS = ["bg", "panel", "ink", "dim", "line", "accent", "warn", "bad", "note"]
-THEME_KT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "android", "app", "src", "main",
+THEME_KT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "apps", "android", "app", "src", "main",
                         "java", "dev", "builderbot", "app", "ui", "Theme.kt")
 
 

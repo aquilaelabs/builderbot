@@ -143,7 +143,7 @@ function vmRow(v){
       </div>
       ${snaps.length ? `<div class="vmsnaps"><span class="vmsnaplbl">Snapshots</span>${snaps.map(s => `<div class="vmsnap"><code>${esc(s)}</code>${may && !busy ? `
         <button type="button" data-vm="revert" data-snap="${esc(s)}" title="back to ${esc(s)}: what changed since is lost">Revert</button>
-        <button type="button" data-vm="snapshot-rm" data-snap="${esc(s)}" title="delete this snapshot">Delete</button>` : ""}</div>`).join("")}</div>` : ""}
+        <button type="button" class="danger" data-vm="snapshot-rm" data-snap="${esc(s)}" title="delete this snapshot">Delete</button>` : ""}</div>`).join("")}</div>` : ""}
     </div>`;
   if (vmView !== "list") return `<div class="row stack2" data-vm-key="${esc(v.key)}">${inner}</div>`;
   return `<details class="row stack2 dmline" data-vm-key="${esc(v.key)}"${sectAttr(`vms:line:${v.key}`)}>
@@ -152,9 +152,23 @@ function vmRow(v){
     <div class="dmbody">${inner}</div></details>`;
 }
 
+// Domains on a node's libvirt that BuilderBot did not make (R165 step 1):
+// an administrator reads them by name, state and size, and nothing on the
+// page acts on one; libvirt's own tools do, on the machine.
+function vmOthersHtml(rows){
+  const size = v => [v.vcpus ? `${v.vcpus} vCPU` : "", v.mem_mb ? (v.mem_mb >= 1024 ? `${+(v.mem_mb / 1024).toFixed(1)} GB` : `${v.mem_mb} MB`) : ""].filter(Boolean).join(" · ");
+  return `<section class="dmcard vmothers"><div class="field dmgroup"><b>Not BuilderBot's</b><span class="sub"> · on a node's libvirt, made outside BuilderBot: read here, never changed from here</span></div>
+    <div class="rows">${rows.map(v => `<div class="row stack2 vmother" data-vmother="${esc(v.node)}/${esc(v.name)}"><div class="grow"><div class="dmhead"><div class="dmid">
+      <div class="name">${esc(v.name)}<span class="pill${v.state === "running" ? " ok" : ""}">${esc(v.state || "unknown")}</span></div>
+      <div class="sub dmorigin">${[esc(v.node_name || ""), esc(size(v))].filter(Boolean).join(`<span class="sep"></span>`)}</div>
+    </div></div></div></div>`).join("")}</div></section>`;
+}
+
 // A VM whose repository is gone is in no project (the operator, 26 Oct),
 // grouped and chipped as No project.
-const vmOwner = p => (vmsData?.unowned || []).includes(p) ? "No project" : projLabel(p);
+// ...and the machine's own (R165 step 3): the NAS's apps and desktops, no
+// project's, grouped and chipped as such.
+const vmOwner = p => p === "machine" ? "This machine's own" : (vmsData?.unowned || []).includes(p) ? "No project" : projLabel(p);
 function vmGroupsHtml(rows){
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
   const owners = [...new Set(rows.map(v => v.project))].sort((a, b) => byName(vmOwner(a), vmOwner(b)));
@@ -162,7 +176,7 @@ function vmGroupsHtml(rows){
     const html = rows.filter(v => v.project === o).sort((a, b) => byName(a.name, b.name)).map(vmRow).join("");
     return vmView === "list" ? tblWrap(VM_COLS, html, "dmtbl") : html;
   };
-  return owners.map(o => `<section class="dmcard"><div class="field dmgroup" style="--gc:${colorTone(projectColor(o)) || "var(--accent)"}"><b>${
+  return owners.map(o => `<section class="dmcard"><div class="field dmgroup" data-style="--gc:${colorTone(projectColor(o)) || "var(--accent)"}"><b>${
       esc(vmOwner(o))}</b></div>${group(o)}</section>`).join("");
 }
 
@@ -239,7 +253,13 @@ function renderVmsInto(i){
   // Written only when it says something new, as the Containers page is
   // (the operator, 26 Oct): a read bringing the same VMs leaves the page,
   // its menus and its focus alone.
-  const html = `<div class="doctab vmtab">${vmBar(false)}${head}${empty || vmGroupsHtml(rows)}</div>`;
+  // The domains a node's libvirt has that BuilderBot did not make (R165
+  // step 1): read here by an administrator, under the node picked, with no
+  // button on them; not counted in the tiles or the chips, which are
+  // BuilderBot's own VMs.
+  const others = off ? [] : (vmsData.others || []).filter(v => !vmsNode || v.node === vmsNode)
+    .filter(v => !q || [v.name, v.node_name].some(x => String(x || "").toLowerCase().includes(q)));
+  const html = `<div class="doctab vmtab">${vmBar(false)}${head}${empty || vmGroupsHtml(rows)}${others.length ? vmOthersHtml(others) : ""}</div>`;
   if (el.__vmHtml === html && el.querySelector(":scope > .vmtab")) return;
   const typing = document.activeElement?.id === "vmSearch" && el.contains(document.activeElement) ? document.activeElement.selectionStart : null;
   el.innerHTML = html;
@@ -359,7 +379,7 @@ function openNewVm(forProject = ""){
   m.innerHTML = `<div class="box"><h3>New VM</h3>
     <div class="prefrow ctlrow">
       <div class="setrow col ctlrow">${lbl("vmName", "Name")}<input id="vmName" maxlength="31" autocomplete="off" spellcheck="false" placeholder="db"></div>
-      <div class="setrow col ctlrow">${lbl("vmProject", "Project")}<select id="vmProject">${optionList(projects.map(p => [p, projLabel(p)]), forProject)}</select></div>
+      <div class="setrow col ctlrow">${lbl("vmProject", "Belongs to", "a project, whose sessions reach it; or this machine's own, an administrator's alone")}<select id="vmProject">${optionList(projects.map(p => [p, vmOwner(p)]), forProject)}</select></div>
     </div>
     <div class="prefrow ctlrow">
       <div class="setrow col ctlrow">${lbl("vmNode", "Node", "a node with VM host installed")}<select id="vmNode">${optionList(hosts.map(h => [h.id, h.name]))}</select></div>
@@ -478,7 +498,7 @@ function openNewVm(forProject = ""){
 
 // ---- a VM's hardware beyond size (R100) -----------------------------------
 // One set of fields for New VM's More and the Hardware dialog of a stopped VM:
-// CPU threads in their core pairs (as Unraid draws them), a memory ceiling it
+// CPU threads in their core pairs (as a hypervisor's form draws them), a memory ceiling it
 // may balloon to, its network, a folder of the project shared in, and the
 // host's devices passed through, which only an administrator is shown.
 function vmHwLine(v){
@@ -487,7 +507,12 @@ function vmHwLine(v){
   if (hw.mem_max_mb) bits.push(`memory up to ${+(hw.mem_max_mb / 1024).toFixed(1)} GB`);
   if (hw.net === "lan" && !v.node_id) bits.push("on the LAN");
   if (hw.share?.path) bits.push(`sees ${hw.share.path.replace(/^\/workspace\//, "")}${hw.share.ro ? " read-only" : ""} as "${hw.share.tag}"`);
-  if ((hw.devices || []).length) bits.push(`${hw.devices.length} device${hw.devices.length > 1 ? "s" : ""} passed through`);
+  // The USB devices it was given from its node's page, by name (R116);
+  // the rest of what is passed through, counted.
+  const usb = v.usb || [];
+  if (usb.length) bits.push(`USB: ${usb.map(u => u.name || `${u.vendor.slice(2)}:${u.product.slice(2)}`).join(", ")}`);
+  const rest = (hw.devices || []).filter(d => d.type !== "usb" || !usb.some(u => u.vendor === d.vendor && u.product === d.product));
+  if (rest.length) bits.push(`${rest.length} device${rest.length > 1 ? "s" : ""} passed through`);
   return bits.length ? `<div class="sub dmorigin">${esc(bits.join(" · "))}</div>` : "";
 }
 function vmHwFields(host, hw, admin){

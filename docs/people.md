@@ -24,7 +24,7 @@ Claude Code on that node, and a first project, which can wait: after Finish,
 Home's Getting started card keeps what is left of them. Where what grows is
 kept and when an idle session ends are not asked; their defaults are under
 Controller settings. A public hostname and hosting-only nodes come later,
-from Controller settings and Enroll node.
+from the Network page and Enroll node.
 
 Afterwards, `bb users passwd <name>` changes a password and `bb users add`
 makes the others. `bb users token <project> [<account>]` mints the scoped
@@ -63,9 +63,14 @@ roles, made on the **Roles** page (R152, the operator, 7 Oct). A role is a
 that reaches the machinery, or **On a project**, given per project and
 holding there) and, per area, **Read** and **Write**: Projects, Project
 settings, Releases and versions, Git authentication, File access, Containers
-and Terminal on a project; Nodes, Toolchains, Jobs, CI runner, Accounts and
-roles, New projects, Controller and Storage beside them. On an Everywhere
-role the areas that reach a machine (Nodes, Toolchains, Jobs, New projects,
+and Terminal on a project; Nodes, Install, Configure, Curate, Jobs, CI
+runner, Accounts and roles, New projects, Controller and Storage beside them.
+**Install** is the Library's and the Installed page's install, update and
+remove on a node; **Configure** a service's and a pack's settings on a node,
+and deploying or removing a service there; **Curate** the catalog's own
+entries every node shares, a pack or an app of your own (R174; before 0.9
+the first two were one area, Toolchains). On an Everywhere role the areas
+that reach a machine (Nodes, Install, Configure, Jobs, New projects,
 Storage) open on the nodes, and CI runner on each runner, with Read and Write
 on each, every one ticked being every node, those added later included: a
 role with New projects to write on bb-sandbox alone lets an
@@ -94,7 +99,7 @@ and the rail does not draw its page), and the server holds the same line: the
 Users and Roles reads, an agent's console without Terminal Read (no terminal
 at all), the Jobs listing (a person's own projects' jobs alone) and the
 Docker listing (the projects whose Containers they may read). Without Nodes
-or Toolchains Read those reads answer only for the nodes of the person's own
+or Install Read those reads answer only for the nodes of the person's own
 projects, which a sign-in there needs, and never for another machine.
 
 The **Roles** page lists the roles beside the one picked (the projects'
@@ -193,8 +198,8 @@ own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
 
 Each account signs in to the agents it uses for itself, on each node it
-works on, from that node's Agents page (Build, then Agents, with that node
-picked), and People and Profile name the account each agent is signed in as.
+works on, from that node's Installed page (Machines, then Installed, with that
+node picked in the header), and People and Profile name the account each agent is signed in as.
 Which account that is is the person's own choice: the Users page says when
 two BuilderBot accounts are on one Anthropic account, since Anthropic's
 terms allow one person per Claude account, and nothing is refused for it.
@@ -211,7 +216,7 @@ gets no shell, and their agent's session opens as a **console** instead:
 the real interface, rendered by a read-only terminal that takes no keys, with
 a box to type a message and a button to end the conversation. The controller
 refuses anything else they ask a terminal for, so a read-only window cannot be
-pointed at somebody else's session. They see the Containers and Toolchains pages
+pointed at somebody else's session. They see the Containers page and the Library
 for their own projects' nodes: the scoping is on the answer, not just the
 picker, so a node none of their projects builds on is refused rather than
 listed, and change neither, with one exception: **Rebuild**, and Abort with
@@ -231,10 +236,32 @@ account's own page, in sections. **Who you are** holds the account name,
 their name and email, and the name and email their commits carry (blank means
 the ones above); **What you may do** is what their roles add up to;
 **Password** is a change that asks for the current one first;
-**Two-factor sign-in** is described below; and **Signed in as you**, last, is the devices signed in as this account (a
-line a device, with when it last called and **Disconnect**, which signs that
-one out). The plugins and MCP servers a person added to each coding agent
-are on the Agents page, per agent on each node.
+**Two-factor sign-in** is described below; **Your key store** is the key
+the person's agent sign-ins and tokens are sealed under, who holds it (this
+BuilderBot, their passkey, or a key they keep: *Hold the key yourself*
+moves it, *Give the key back* moves it back), the tokens they gave
+repositories with the projects that use them, *Unlock for* with the window
+a token stays opened (a quarter of an hour, an hour, eight hours, or while
+signed in), *Lock*, and *Purge*; **Uses of your tokens** lists each time
+one was opened and for what; **Where the bell reaches you** is the places
+the bell's rows are sent as well as shown (R149): one block per kind
+(R173), email (through the server under Controller settings, Mail), a
+webhook, ntfy, Gotify, Pushover, Telegram, Discord and Slack, each with
+Set up (or Add another of that kind), its destinations under it with a
+switch each, so more than one kind is on at once and one switched off
+keeps its settings; a destination takes what you tick (an ask waiting on
+you, what a node or a project needs, a red CI run, an invitation, a file
+changed in two places) and a quiet window during which nothing is sent; a
+row is sent once and not again while it is unchanged, Test sends a line
+to check the way, and a token or address typed is sealed under the install
+key; and **Signed in as you**, last, is
+the browsers signed in as this account (a line a browser, named with its
+system and the address it came from, this one first, each with **Sign out**,
+which ends that one's sign-in) and the devices (a line a device, with when it
+last called and **Disconnect**, which signs that one out). A browser's
+sign-in is bound to the browser it was made in: its cookie presented from
+another is refused, so one copied off a device opens nothing elsewhere. The plugins and MCP servers a person added to each coding agent
+are on the Installed page, per agent on each node.
 
 ### Two-factor sign-in
 

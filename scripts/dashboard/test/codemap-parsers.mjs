@@ -18,7 +18,7 @@ const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const CODEMAP = `${REPO}/scripts/lib/codemap.py`;
 const build = root => {
   execFileSync('python3', [CODEMAP, '--root', root, 'build'], { encoding: 'utf8' });
-  return JSON.parse(readFileSync(join(root, '.bb-map', 'map3.json'), 'utf8'));
+  return JSON.parse(readFileSync(join(root, '.bb-map', 'map4.json'), 'utf8'));
 };
 const show = xs => xs.slice(0, 6).map(x => JSON.stringify(x)).join(' ');
 
@@ -177,7 +177,7 @@ for p, f in idx["files"].items():
             if nm and (nm, n.lineno) not in calls:
                 bad.append([p, "call", nm, n.lineno])
 print(json.dumps(bad[:10] + [len(bad)]))
-`, join(REPO, '.bb-map', 'map3.json'), REPO], { encoding: 'utf8' });
+`, join(REPO, '.bb-map', 'map4.json'), REPO], { encoding: 'utf8' });
   const r = JSON.parse(py);
   ok(r[r.length - 1] === 0, `the map agrees with python's ast on every def, its end and every call in this tree${
     r.length > 1 ? ': ' + show(r.slice(0, -1)) : ''}`);
