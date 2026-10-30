@@ -860,7 +860,7 @@ function makeNotebook(project){
     viewGlance($("dkHint"), blind || !n ? "" : dmTiles({running: mine.filter(d => d.running).length, all: mine.length,
       behind: mine.filter(d => (d.images_behind || []).length || d.nginx_to).length, checked: !!got.images_at}),
       blind && n ? `on ${esc(where)}: the daemon did not answer, so the rows cannot say what is running`
-        : n ? `on ${esc(where)}${imgs}` : "");
+        : n ? `on ${esc(where)}${imgs}` : "no node runs this project's containers yet");
     const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length,
                                 dmView, got.images_at, blind]);
     if (key === dkSeen) return;
