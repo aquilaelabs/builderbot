@@ -199,9 +199,15 @@ class DebianOnTheImage(unittest.TestCase):
             self.assertIn("not in the BuilderBot OS image: no-such-package-zz", r.stderr)
 
 
+def workflows():
+    # The image is built and booted by os-image.yml, which build-image.yml
+    # calls for a release and publishes after: the two read as one.
+    return read(ROOT, ".github", "workflows", "build-image.yml") + read(ROOT, ".github", "workflows", "os-image.yml")
+
+
 class Workflow(unittest.TestCase):
     def test_the_workflow_builds_with_the_mkosi_build_sh_pins(self):
-        wf = read(ROOT, ".github", "workflows", "build-image.yml")
+        wf = workflows()
         self.assertIn("appliance:", wf)
         self.assertIn("MKOSI_PIN:-", wf)
         b = read(IMG, "build.sh")
@@ -222,7 +228,7 @@ class Workflow(unittest.TestCase):
             self.assertIn(f"s|{mark}|", b)
         import xml.dom.minidom
         xml.dom.minidom.parseString(ovf)
-        self.assertIn("qemu-utils", read(ROOT, ".github", "workflows", "build-image.yml"))
+        self.assertIn("qemu-utils", workflows())
 
     def test_the_disk_is_laid_out_by_one_script_the_image_carries(self):
         # R160 step 2: build.sh lays the image's disk out with lay-disk and
@@ -254,7 +260,7 @@ class Workflow(unittest.TestCase):
         conf = read(IMG, "mkosi.conf")
         for p in ("live-boot", "live-boot-initramfs-tools", "whiptail"):
             self.assertIn(p, conf, p)
-        wf = read(ROOT, ".github", "workflows", "build-image.yml")
+        wf = workflows()
         self.assertIn("xorriso mtools", wf)
         self.assertIn("out/builderbot-os-*.iso", wf)
 
@@ -268,9 +274,10 @@ class Workflow(unittest.TestCase):
         # R160 step 5: the publish job waits on the boot job, which waits
         # on the build; step 6: the weekly schedule builds with the day's
         # snapshot and keeps the package diff.
-        wf = read(ROOT, ".github", "workflows", "build-image.yml")
+        wf = workflows()
         self.assertRegex(wf, r"appliance-boot:\n    needs: appliance\n")
-        self.assertRegex(wf, r"appliance-publish:\n    needs: appliance-boot\n")
+        self.assertRegex(wf, r"appliance-publish:\n    needs: appliance\n")
+        self.assertIn("uses: ./.github/workflows/os-image.yml", wf)
         self.assertIn("hostfwd=tcp:127.0.0.1:7680-:7680", wf)
         self.assertIn("github.event_name == 'schedule'", wf)
         self.assertIn("builderbot-os-*.packages", wf)
@@ -510,7 +517,7 @@ class Workflow(unittest.TestCase):
         b = read(IMG, "build.sh")
         self.assertIn('xz -q -T0 -6 "$RAW"', b)
         self.assertIn('grub-editenv "$MNT/grub/grubenv" set bb_toram=1', b)
-        self.assertIn("stick.raw.xz", read(ROOT, ".github", "workflows", "build-image.yml"))
+        self.assertIn("stick.raw.xz", workflows())
         self.assertTrue(os.access(os.path.join(ROOT, "tools", "builderbot-stick.py"), os.X_OK))
 
     def test_build_sh_says_how_without_root(self):

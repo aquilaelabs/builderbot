@@ -132,17 +132,26 @@ jobs:
             -drive file="$disk",format=qcow2,if=virtio \
             -netdev user,id=n0,hostfwd=tcp:127.0.0.1:7680-:7680 -device virtio-net-pci,netdev=n0 \
             -display none -serial file:serial.log -daemonize -pidfile qemu.pid
+          said="the dashboard did not answer within ten minutes"
           for i in $(seq 1 120); do
             code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' http://127.0.0.1:7680/ || true)"
             case "$code" in 200|302|303) echo "the dashboard answered $code after $((i * 5)) s"; kill "$(cat qemu.pid)" || true; exit 0 ;; esac
+            # A panic is the answer: stop there rather than wait out the ten
+            # minutes while the machine reboots into the same one.
+            if grep -aq "end Kernel panic" serial.log 2>/dev/null; then said="the kernel panicked after $((i * 5)) s"; break; fi
             sleep 5
           done
-          echo "the dashboard did not answer within ten minutes; the serial log's end follows, and it is the artifact"
+          echo "$said; the first boot follows, and the serial log is the artifact"
           kill "$(cat qemu.pid)" || true
-          # The first boot's own lines, its kernel start to its first panic:
+          # The first boot, from the firmware starting it to its first panic:
           # a failing boot reboots and repeats, so the log's end was the same
-          # panic over and over, never what led to it.
-          awk '/Linux version/{n++} n==1' serial.log | tr -d '\r' | grep -v '^[[:space:]]*$' | tail -n 150 || true
+          # panic over and over; and with quiet there is no Linux version
+          # line to cut at.
+          tr -d '\r' < serial.log | sed 's/\x1b\[[0-9;=?]*[A-Za-z]//g' | grep -av '^[[:space:]]*$' > plain.log || true
+          awk '/BdsDxe: starting/{n++} n==1{print} /end Kernel panic/{if(n==1)exit}' plain.log > first.log || true
+          # No firmware line to cut at: the log's start, which is the first boot.
+          [ -s first.log ] || head -n 400 plain.log > first.log
+          tail -n 150 first.log
           exit 1
       - uses: actions/upload-artifact@v4
         if: always()
