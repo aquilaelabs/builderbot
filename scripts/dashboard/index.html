@@ -5734,18 +5734,18 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          Tuesday is read on Thursday without anybody remembering to say so. -->
     <!-- Every view's top is the Containers page's (R109, a-notebook/views):
          the control row (a search over the items, their steps and their
-         details at the left, which reaches the Finished section too; History;
-         then Reorder and Add to roadmap, the primary, at the right), the
+         details at the left, which reaches the Finished section too; then
+         History, Reorder and Add to roadmap, the primary, at the right), the
          glance (the numbers as tiles, the status line under them), then the
          chips. -->
     <div class="field nbhead vbar docbarrow">
       <input id="roadmapFind" type="search" maxlength="80" autocomplete="off" hidden
              placeholder="search the roadmap" aria-label="search the roadmap">
-      <button id="roadmapLog" type="button"
-        title="every change to this list, by either of you, with when"
-        >History</button>
       <span class="sp"></span>
       <span class="actbar">
+        <button id="roadmapLog" type="button"
+          title="every change to this list, by either of you, with when"
+          >History</button>
         <button id="roadmapOrder" type="button" hidden
           title="reorder; the send controls come back after"
           >Reorder</button>
@@ -5875,15 +5875,14 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          so staging it behind Save would only delay the record. -->
     <div class="nbview" data-view="bugs" hidden>
       <!-- The control row (R109): a search over a report's words at the
-           left, History, and Report a bug, the primary, at the right; its
+           left, then History and Report a bug, the primary, at the right; its
            form unrolls under the row. -->
       <div class="field nbhead vbar docbarrow">
         <input id="bugFind" type="search" maxlength="80" autocomplete="off" hidden
                placeholder="search the tracker" aria-label="search the tracker">
-        <button type="button" id="bugLog"
-          title="every change to the tracker, by either of you, with when">History</button>
         <span class="sp"></span>
-        <span class="actbar"><button type="button" id="bugNew" class="primary" data-add="bug" hidden><span class="lng">Report a bug</span><span class="shrt">Report</span></button></span>
+        <span class="actbar"><button type="button" id="bugLog"
+          title="every change to the tracker, by either of you, with when">History</button><button type="button" id="bugNew" class="primary" data-add="bug" hidden><span class="lng">Report a bug</span><span class="shrt">Report</span></button></span>
       </div>
       <div class="field nbaddf" id="bugAdd" hidden></div>
       <!-- The glance: open by severity, and closed, as tiles. -->
@@ -6061,9 +6060,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <!-- The control row (R109): History, and New page, the primary, whose
            form unrolls under the row, as every view adds (B457). -->
       <div class="field nbhead vbar docbarrow">
-        <button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button>
         <span class="sp"></span>
-        <span class="actbar"><button type="button" id="wkNew" class="primary" data-add="wiki" hidden>New page</button></span>
+        <span class="actbar"><button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button><button type="button" id="wkNew" class="primary" data-add="wiki" hidden>New page</button></span>
       </div>
       <div id="wkAddBox"></div>
       <!-- The glance: its pages, and its status line, which says where the
