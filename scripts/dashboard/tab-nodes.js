@@ -429,7 +429,7 @@ function nodeRunnerSection(n, c, between = "", acts = ""){
   return `${between}
       ${addbar ? `<div class="field">${addbar}</div>` : ""}
       <div class="ndruns">${acts ? `<div class="field ndrunhead"><b>Runners</b><span class="dim">${slots.length}</span><span class="sp"></span><span class="actbar ndrunadd">${acts}</span></div>` : ""}${
-        rows || `<div class="row"><div class="grow"><div class="ndrunnone">No runner on this node yet.</div></div></div>`}</div>
+        rows || `<div class="empty ndrunnone">No runner on this node yet.</div>`}</div>
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
         <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div></div>` : ""}`;
 }

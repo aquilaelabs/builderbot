@@ -5015,7 +5015,10 @@ pre{margin:0;padding:9px 11px;font:var(--f-code);white-space:pre-wrap;
   word-break:break-word;max-height:300px;overflow:auto;color:color-mix(in srgb, var(--ink) 80%, var(--dim))}
 /* An empty state, one style everywhere (consistency batch 5): the page's
    own was 9px 11px, a document's the tokens and a list box's 8px 10px. */
-.empty{color:var(--dim);padding:var(--row-y) var(--row-x);font-style:italic}
+/* An empty state is one dim line in the hint voice (the operator, 29 Oct:
+   italic here, the code face there and a bare word elsewhere said the same
+   thing four ways). */
+.empty{color:var(--dim);padding:var(--row-y) var(--row-x);font:var(--f-ui);font-style:normal}
 /* ...and a placeholder that has become a failure notice: the poll's words
    for a card that could not draw, in the warning color and no longer
    pulsing, because nothing is coming. */

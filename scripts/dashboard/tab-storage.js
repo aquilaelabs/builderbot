@@ -145,7 +145,7 @@ function storageDisks(n){
         mine.length ? `<div class="sub">${ours ? `${sgb(ours)} of it is BuilderBot's` : "nothing of it is BuilderBot's yet"}</div>` : ""}${
         pct >= 90 && storageFreeable(n, fs) ? `<div class="sub warn">${esc(storageFreeable(n, fs))}.</div>` : ""}</div>${
       some.map(storageRow).join("")}${
-      none.length ? `<div class="row stnone"><div class="grow"><div class="sub">${esc(andList(none.map(h => h.name)))} hold${none.length === 1 ? "s" : ""} nothing yet</div></div></div>` : ""}`,
+      none.length ? `<div class="empty stnone">${esc(andList(none.map(h => h.name)))} hold${none.length === 1 ? "s" : ""} nothing yet.</div>` : ""}`,
       {cls: pct >= 92 ? "bad" : pct >= 80 ? "warn" : "", item: true});
   };
   // The disks are the node's, as many as it has: big chips pick one (R122),
