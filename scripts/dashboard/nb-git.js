@@ -234,10 +234,10 @@ function nbGitView({$, nb, project}){
         f.fix && mayFix ? `<button type="button" data-cifix="${esc(f.where)}"
           title="write ${esc(f.fix.to)} on that line, in the working tree; you commit it">Fix</button>` : ""}</div>`).join("");
     const run = ci.run?.id ? ` The newest run on ${esc(ci.run.branch)} ${esc(ci.run.ended || "ended " + ci.run.conclusion)}.` : "";
-    const body = `<div class="sub dim">${ci.at ? `Looked ${esc(ago(ci.at))}${ci.repo ? ` at ${esc(ci.repo)} on GitHub` : ""}.${run}` :
-        "Not looked at yet."}${none ? " The tree has no workflow in .github/workflows, .gitea/workflows or .forgejo/workflows, so there is no CI here to watch." : ""} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
+    const body = `<div class="sub dim">${ci.at ? `Checked ${esc(ago(ci.at))}${ci.repo ? ` at ${esc(ci.repo)} on GitHub` : ""}.${run}` :
+        "Not checked yet."}${none ? " The tree has no workflow in .github/workflows, .gitea/workflows or .forgejo/workflows, so there is no CI here to watch." : ""} Checked once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
       ci.error ? `<div class="sub bad">${esc(ci.error)}</div>` : ""}${rows}
-      <div class="actbar"><button type="button" id="gitCiLook">Look now</button>${ci.run?.id
+      <div class="actbar"><button type="button" id="gitCiLook">Check now</button>${ci.run?.id
         ? `<button type="button" data-cilog="${esc(String(ci.run.id))}" title="its jobs and the end of each one's log, in the dock">Its log</button>` : ""}</div>`;
     return docSection("git", "ci", "CI", status, body, {cls, open: red, loud: red});
   }
@@ -444,13 +444,13 @@ function nbGitView({$, nb, project}){
       openLogTab(`log:ci:${project}:${b.dataset.cilog}`, `CI: ${projLabel(project)} #${b.dataset.cilog}`));
     const cl = $("gitCiLook");
     if (cl) cl.onclick = async () => {
-      busy(cl, "Looking");
+      busy(cl, "Checking");
       try{
         const j = await (await postJSON("/api/ci-watch", {project})).json();
         if (j.error) notify(j.error, true);
         else { git.ci = j; drawGit(); }
       }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
-      finally{ if (cl.isConnected) unbusy(cl, "Look now"); }
+      finally{ if (cl.isConnected) unbusy(cl, "Check now"); }
     };
     body.querySelectorAll("[data-gitask]").forEach(b => b.onclick = () => gitAsk(b.dataset.gitask, {}, b));
     const msg = $("gitMsg");

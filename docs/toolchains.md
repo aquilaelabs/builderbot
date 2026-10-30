@@ -701,7 +701,7 @@ screen's layout, and tap, swipe, glide and type, the last two only while one
 of the lease's apps is in front or is the keyboard. Everything else, another
 app, Settings, a shell, still goes through `bb phone run --why`. The section
 shows the lease, the newest screenshot a session took (it updates on the
-next poll as a session works), Look now and Take back; a lease also ends
+next poll as a session works), Check now and Take back; a lease also ends
 when its time is up or the phone disconnects. All of it is adb from the node,
 nothing on the phone's side, so the companion app gains no permission for it
 and looks to Play Protect as it did.

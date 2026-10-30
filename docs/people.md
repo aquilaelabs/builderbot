@@ -14,7 +14,7 @@ to make the **owner** account, and it is the only page it serves until you
 have; nothing else is reachable, signed in or not. So open it as soon as the
 container is up: until somebody claims it, whoever can reach the port can.
 The setup page follows (R199, R267): four steps, each a card with its state
-and its own button. A first node cannot wait: **Create sandbox VM** or
+and its own button. A first node cannot wait: **New VM** or
 **Enroll node** in its card opens the Nodes page's own dialogs, the card says
 when the machine dials in, and **Finish** stays shut, on the server too,
 until a node is enrolled, answering and running sessions: a hosting-only node

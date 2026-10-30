@@ -870,7 +870,7 @@ The apps are built for every release and attached to it, each with a
 under **Apps** on its Controller settings page: a while after it starts and once a day it fetches each from
 the release matching its own version (the newest release when none does,
 and the section says so), keeps it only if it matches its sha256, and
-serves it from `/config/apps`. A switch moved, or **Look now**, looks at
+serves it from `/config/apps`. A switch moved, or **Check for updates**, looks at
 once.
 
 | Where | What |

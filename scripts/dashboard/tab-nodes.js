@@ -1752,7 +1752,7 @@ function nodeCharts(n){
 const ND_SECTS = [["health", "Health"], ["report", "Reporting"], ["machine", "Name and time"], ["power", "Power"], ["projects", "Repositories"], ["sessions", "Sessions"], ["gpu", "GPU"], ["usb", "USB"],
                   ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
-// Why Create sandbox VM and Enroll node are dead, when this install switched
+// Why New VM and Enroll node are dead, when this install switched
 // enrolling off (R81): under the bar, since a reason in a tooltip is nothing
 // on a phone.
 function ndOffLine(){
@@ -2537,7 +2537,7 @@ function wireNodesTab(root){
   });
   root.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
-  // Create sandbox VM and Enroll node are the group's header's (R177, wired
+  // New VM and Enroll node are the group's header's (R177, wired
   // by page-shell.js wireGroupHeader); the dialogs stay the page's.
   const {modal, body, shut, mintForm, vmForm} = ndDialogs();
   wireSections(root);

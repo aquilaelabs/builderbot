@@ -1791,7 +1791,7 @@ bulk token is in play, in the same held-above-the-fold shape the Phone tab's
 asks use. *Where it stands (19 Oct):* the **Nodes page**, under Machines
 on the rail, shows one node at a time, picked in its bar, its sections
 Health, Projects, Sessions, GPU, Claude Code, Storage, Network and
-Advanced, with Create sandbox VM and Enroll node in the bar.
+Advanced, with New VM and Enroll node in the bar.
 
 **The rule for anything new:** *who has to be able to change it, and what has
 to restart for it to take?* Answer those two and the scope, and therefore
@@ -2196,7 +2196,7 @@ sandbox VM the Docker manager already needs is the first node: `provision-linux.
 --controller URL --token bbe_…` enrolls it in the same run. Since 12 Oct
 (R199) a first run asks for it before anything else: after the owner
 account, the setup page's first step is the node, and it opens nothing more
-until one is enrolled and answering, made with Create sandbox VM or Enroll
+until one is enrolled and answering, made with New VM or Enroll
 node in that step's card, and one that runs sessions rather than a
 hosting-only one.
 

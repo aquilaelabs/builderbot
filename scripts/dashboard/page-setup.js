@@ -106,7 +106,7 @@ function drawSetup(){
       : s.waiting
       ? `<p>Waiting for <b>${esc(s.waiting.name)}</b> to dial in: run its enroll script on the machine. This turns to done by itself.</p>`
       : `<p>A sandbox VM made for it, or a machine you already have, on this network or reached over the internet.</p>${deadWhy(featureOff("enroll"))}`,
-      s.node ? "" : `<button type="button" data-setvm${featureOff("enroll") ? " disabled" : ""}>Create sandbox VM</button><button type="button" class="primary" data-setenroll${featureOff("enroll") ? " disabled" : ""}>Enroll node</button>`)}
+      s.node ? "" : `<button type="button" data-setvm${featureOff("enroll") ? " disabled" : ""}>New VM</button><button type="button" class="primary" data-setenroll${featureOff("enroll") ? " disabled" : ""}>Enroll node</button>`)}
     ${s.own ? setupDisksCard(2) : ""}
     ${card(s.own ? 3 : 2, "Your name and email", s.git, false, s.git
       ? `<p>Your commits carry them. Your profile, in the gear, changes them.</p>`

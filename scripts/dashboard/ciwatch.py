@@ -163,7 +163,7 @@ def fix(project, where):
     rec = read(project)
     hit = next((f for f in rec.get("findings") or [] if f.get("where") == where and f.get("fix")), None)
     if not hit:
-        return {"error": "no fix for that line in the last look: Look now looks again"}
+        return {"error": "no fix for that line in the last look: Check now looks again"}
     name, _, num = str(where).rpartition(":")
     folder, _, base = name.rpartition("/")
     folder = folder or WORKFLOW_DIRS[0]
@@ -177,7 +177,7 @@ def fix(project, where):
     i = int(num) - 1
     old, new = hit["fix"]["from"], hit["fix"]["to"]
     if not 0 <= i < len(lines) or old not in lines[i]:
-        return {"error": f"{name}:{num} no longer says {old}: Look now looks again"}
+        return {"error": f"{name}:{num} no longer says {old}: Check now looks again"}
     lines[i] = lines[i].replace(old, new, 1)
     try:
         path.write_text("\n".join(lines))
@@ -194,7 +194,7 @@ NOTICE = re.compile(r"deprecat|will (?:be )?(?:migrat|remov|retir|stop)|no longe
 
 
 def look(project):
-    """Look now, keep what was found, and return it."""
+    """Check now, keep what was found, and return it."""
     found, run, err = [], {}, ""
     token = cilogs._token(project)
     flows = workflows(project)

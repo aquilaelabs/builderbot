@@ -30,7 +30,7 @@ page shows one node, picked in the Machines header over it: one band for
 Nodes, Storage and Installed, with the node pulldown where a project's name
 is, when it was seen, where it dials in from (the address of its last
 hello, so a node whose address moves is followed within a minute) and its
-agent beside it, and **Create sandbox VM** and **Enroll node** at the right
+agent beside it, and **New VM** and **Enroll node** at the right
 of the sub-nav's line. The pick holds across the three pages, and the Build
 and Containers groups wear the same header. Under it, nothing names the
 node again: the agent's bar (with **Update agent** when this container
@@ -135,7 +135,7 @@ ghosted for it, enrolling included, and a line on
 the page says so; the verbs behind those controls are an administrator's on
 the server as well.
 
-**Create sandbox VM** is the step before all of this when there is no
+**New VM** is the step before all of this when there is no
 machine yet. **Pick what runs it**: the VM manager whose XML the form writes (nodes/unraid-vm.xml), Proxmox VE, libvirt/KVM, QEMU on
 its own, VMware, Hyper-V or VirtualBox, and it writes that machine: the same
 cores, memory, disk and installer everywhere, in whatever that manager reads
@@ -480,7 +480,7 @@ is the computer the controller runs on: its head says what it is (its name,
 system, cores and memory, the release this install runs and how long it
 has been up, its agent and whether the wall between its sessions and the
 controller is in force), then the **Updates** section (the release running
-against the newest, **Check now**, **Update**: [Controller settings](#controller-settings)),
+against the newest, **Check for updates**, **Update**: [Controller settings](#controller-settings)),
 then the machine as a node, drawn exactly as a node's page draws any node:
 its health, the projects on it, its sessions, GPU, USB, features,
 storage, network and the advanced verbs, reboot and power off
@@ -567,7 +567,7 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   **Clear reports**.
 - **Updates** (a controller installed bare metal, R90): the release this
   install runs and the newest published, checked on its cadence under
-  Update checks (weekly unless set) and on **Check now**; **Update** runs the installer's update through this machine's
+  Update checks (weekly unless set) and on **Check for updates**; **Update** runs the installer's update through this machine's
   own node, the bundle verified and the state copied aside, and the install
   comes back by itself if the new release does not answer. On BuilderBot OS
   the same press writes the release's image into the slot not in use and
@@ -593,10 +593,10 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   one weekday, the way Update does it; off by default.
 - **Update checks** (R176): how often BuilderBot asks by itself for what is
   newer, each check daily, weekly (the default), monthly or off, with when it
-  last ran and **Check now** beside it: a newer BuilderBot (a bare-metal
+  last ran and **Check for updates** beside it: a newer BuilderBot (a bare-metal
   install's), the container images, nginx, the scanners and the Library (the
   toolchains' and coding agents' newest versions and the vetted catalog's
-  index). Off leaves only Check now. A node's own check of what it holds is
+  index). Off leaves only Check for updates. A node's own check of what it holds is
   its **Version check** on its row's Advanced section, weekly unless set.
 - **Idle sessions**: the idle rule, which ends any agent's session after N minutes
   with nothing typed or written, here and on every node, where the node

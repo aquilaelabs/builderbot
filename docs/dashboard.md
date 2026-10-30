@@ -67,7 +67,7 @@ container or a node as you type; it does not search inside notebooks.
 pages**, in a project's shape: the node picked once where a project's name
 is, with when it was seen, where it dials in from and its agent beside it,
 and the group's sub-nav under it with the group's own actions at its right
-(Machines: Create sandbox VM and Enroll node). Every page of the group
+(Machines: New VM and Enroll node). Every page of the group
 follows that one pick and has no picker of its own, and no page names the
 node again under the header. A sub-tab says *not here* when the picked node
 lacks what it needs (no Docker, no Android tools, no CI runner yet).

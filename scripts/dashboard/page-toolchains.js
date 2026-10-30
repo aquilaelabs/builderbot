@@ -375,7 +375,7 @@ function tpCatalogSection(items){
   return docSection("toolchains", "catalog", "Vetted catalog", when,
     `<div class="field"><div class="hint">Packs BuilderBot's maintainers reviewed, each pinned to a commit and the sha256 of its archive there, the index signed by them and checked here before it is read.${helpIcon(
       "Install opens the same dialog as Add tool pack on that commit: Look shows what it fetches and runs, and Add keeps exactly that. The catalog's address is under Controller settings.")}</div></div>
-    <div class="field"><div class="addbar ctlrow" data-add="catalog"><button type="button" data-tprefresh>Refresh</button></div></div>
+    <div class="field"><div class="addbar ctlrow" data-add="catalog"><button type="button" data-tprefresh>Check for updates</button></div></div>
     <div class="field">${body}</div>`);
 }
 function tpOpenCatalog(entry){
@@ -389,7 +389,7 @@ function tpOpenCatalog(entry){
 function tpWire(el){
   el.querySelectorAll("[data-tpnew]").forEach(b => b.onclick = () => tpOpen(""));
   el.querySelectorAll("[data-tpedit]").forEach(b => b.onclick = () => tpOpen(b.dataset.tpedit));
-  el.querySelectorAll("[data-tprefresh]").forEach(b => b.onclick = () => pressing(b, async () => { busy(b, "Reading"); await loadCatalog(true); }));
+  el.querySelectorAll("[data-tprefresh]").forEach(b => b.onclick = () => pressing(b, async () => { busy(b, "Checking"); await loadCatalog(true); }));
   el.querySelectorAll("[data-tpinstall]").forEach(b => b.onclick = () => {
     const e = (tpCatalog?.index?.packs || []).find(x => x.name === b.dataset.tpinstall);
     if (e) tpOpenCatalog(e);

@@ -214,7 +214,7 @@ The controller runs no emulator, carries no SDK and claims no GPU: `bb emu`
 on a project runs on that project's node, whose toolchain store holds the
 emulator (the Library) and its images (Emulator page) and whose own
 `/dev/kvm` and card do the work. A node is a machine you enroll from the
-Nodes page (**Enroll node**, or **Create sandbox VM**) on a VM or a spare
+Nodes page (**Enroll node**, or **New VM**) on a VM or a spare
 Linux box.
 Nothing here needs a device or a runtime flag for it.
 
@@ -237,7 +237,7 @@ notebook context.
    that, `bb users passwd <name>` changes a password and the Users page adds
    everyone else
 4. **Finish the setup page.** Its first step is the first node (**Enroll
-   node** or **Create sandbox VM**, in its card); then your name and email,
+   node** or **New VM**, in its card); then your name and email,
    Claude Code on the node and a first project, which can wait for Home's
    Getting started card. The rest of the dashboard opens once a node that
    runs sessions (not a hosting-only one) is enrolled and answering: nothing

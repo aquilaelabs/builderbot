@@ -120,7 +120,7 @@ docker exec -it BuilderBot bb doctor
 
 Then open the dashboard. The first page makes the owner account; the setup
 page after it is four steps, each a card with its own button: your first
-node (**Enroll node** for a machine you already have, **Create sandbox VM**
+node (**Enroll node** for a machine you already have, **New VM**
 for a new VM), your name and email, Claude Code on that node, and a first
 project. The node cannot be skipped: nothing runs without one, so **Finish**
 opens only once one is enrolled and answering, and it has to be one that
@@ -322,7 +322,7 @@ no going back by hand: a release moves forward only, and the
 The page does the same without a shell: a newer release is a line on the
 bell and the **Updates** section under Controller settings says which
 release this install runs and which is newest (checked weekly unless
-Update checks says otherwise, **Check now** sooner); **Update** runs the installer through this machine's own
+Update checks says otherwise, **Check for updates** sooner); **Update** runs the installer through this machine's own
 node, whose root agent is the only account that runs it, and the page comes
 back on the new release.
 

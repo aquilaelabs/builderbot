@@ -8780,7 +8780,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(r)
 
     def _checks_post(self, req):
-        """POST /api/checks {kind}: Check now, for one of the update checks
+        """POST /api/checks {kind}: Check for updates, for one of the update checks
         under Controller settings (R176, checks.py). An administrator's."""
         if self._refused("controller"):
             return

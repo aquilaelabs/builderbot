@@ -254,7 +254,7 @@ function phonePanel(n){
              encodeURIComponent(L.project)}&path=${encodeURIComponent(L.video)}" target="_blank" rel="noopener">the video</a>` : ""}</div>` : ""}${
          L.recording ? `<div class="sub"><span class="pill warn">recording</span> a session is recording the screen</div>` : ""}
          ${n.mine ? `<div class="actbar"><span class="state">the screen updates as a session takes shots and recordings</span>
-           <button type="button" id="phLook">Look now</button>
+           <button type="button" id="phLook">Check now</button>
            <button type="button" class="danger" id="phTakeBack">Take back</button></div>` : ""}</div>
      </div>`);
   } else if (dev && n.mine && mayPhone()){

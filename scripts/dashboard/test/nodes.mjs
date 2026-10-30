@@ -2996,7 +2996,7 @@ await page.evaluate(async () => {
 await page.click('.pane .bar #ndVm');
 await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),
-   'Create sandbox VM opens on the machine\'s sizes, with nothing rendered yet');
+   'New VM opens on the machine\'s sizes, with nothing rendered yet');
 // Every hypervisor with a template here is offered, and the list is the
 // server's: the templates that actually ship, not a copy of them in the page.
 await page.waitForFunction(() => (document.querySelectorAll('#ndBody #vm_hv option') || []).length > 1,

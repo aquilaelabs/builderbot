@@ -190,7 +190,7 @@ release, and on GitHub, with the token `bb ci-log`
 uses, whether the newest run on the main branch passed and what GitHub wrote
 on it (its warnings about a retired Node or a label about to move). What it
 finds is kept under `ciwatch/` in the state, shown as the Git view's CI
-section (with Look now), printed by `bb catchup`, and, while main is red,
+section (with Check now), printed by `bb catchup`, and, while main is red,
 a bell row. It reads and never changes anything; nothing in a repository
 needs setting up, so every BuilderBot and every project gets it. R117.
 
