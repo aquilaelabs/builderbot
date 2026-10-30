@@ -157,17 +157,18 @@ need xorriso "xorriso (and mtools, for the EFI image)"
 say "the ISO: ${NAME}.iso"
 ISO="$(mktemp -d)"
 install -d "$ISO/live" "$ISO/boot/grub"
-# A copy, not a link: grub-mkrescue's xorriso runs as mkisofs, which takes
-# a link into the medium as a link rather than the file it names.
+# A copy, not a link: xorriso takes a link into the medium as a link
+# rather than the file it names.
 cp "$OUT/$NAME.root.squashfs" "$ISO/live/filesystem.squashfs"
 install -m 0644 "$OUT/$NAME.vmlinuz" "$ISO/live/vmlinuz"
 install -m 0644 "$OUT/$NAME.initrd" "$ISO/live/initrd"
 install -m 0644 "$OUT/$NAME.release" "$ISO/live/release"
 install -m 0644 "$HERE/iso-grub.cfg" "$ISO/boot/grub/grub.cfg"
 # Its own words kept, and said when it fails: hidden, a failure was one line
-# with no reason (seen in CI, 30 Oct). The options after -- are xorriso's in
-# its mkisofs mode, where the volume's name is -V.
-if ! grub-mkrescue -o "$OUT/$NAME.iso" "$ISO" -- -V BUILDERBOT_OS > "$OUT/grub-mkrescue.log" 2>&1; then
+# with no reason (seen in CI, 30 Oct). What follows -- is xorriso's own
+# commands (-volid; -follow_links is none, which was the failure), the
+# squashfs being a copy so nothing needs following.
+if ! grub-mkrescue -o "$OUT/$NAME.iso" "$ISO" -- -volid BUILDERBOT_OS > "$OUT/grub-mkrescue.log" 2>&1; then
     tail -n 25 "$OUT/grub-mkrescue.log" >&2
     die "grub-mkrescue did not make the ISO"
 fi
