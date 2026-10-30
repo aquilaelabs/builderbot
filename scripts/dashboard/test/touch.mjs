@@ -96,8 +96,15 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
   let top = 200, pulled = 0, where = '', drags = 0;
   while (drags < 3 && !pulled){
     drags++;
-    top = await page.evaluate(() => { const r = document.querySelector('.doctab.nodestab .doclist')?.getBoundingClientRect();
-      return r ? Math.round(r.top + 20) : 200; });
+    // On the list's first row, under the page's bar: since the search took
+    // the bar row over the list (the operator, 29 Oct), twenty pixels into
+    // the list was the search box, where a drag is the field's, not a pull.
+    top = await page.evaluate(() => {
+      const list = document.querySelector('.doctab.nodestab .doclist');
+      const row = [...(list?.querySelectorAll('.row, .card, .ndrow') || [])].find(e => e.offsetHeight
+        && !e.closest('.docbarrow, .field') && !e.matches('input, select, textarea'));
+      const r = (row || list)?.getBoundingClientRect();
+      return r ? Math.round(r.top + Math.min(20, r.height / 2)) : 200; });
     await finger(page, 200, top, 200, top + 140);
     pulled = await page.evaluate(() => window.__pulls);
     // Asked only of a drag that did not count: one that did redraws the
