@@ -3882,6 +3882,19 @@ cmd_git() {
             ''|*[!A-Za-z0-9._/:+~^@-]*) die "bb git: '$a' is not a remote name or refspec" ;;
         esac
     done
+    # A push whose commits add a symbolic link is refused here, naming it: the
+    # tree's sync to the controller carries no link, so the controller's copy
+    # read it as missing and the push was refused later with nothing saying
+    # why (B417). The base is the branch's upstream, else the remote's default.
+    if [ "$verb" = push ]; then
+        local base links
+        base="$(git rev-parse -q --verify '@{upstream}' 2>/dev/null || git rev-parse -q --verify origin/HEAD 2>/dev/null || true)"
+        if [ -n "$base" ]; then
+            links="$(git diff --raw --no-renames --diff-filter=AM "$base" HEAD 2>/dev/null | awk '$2 == "120000" {print $NF}')"
+            [ -z "$links" ] || die "bb git push: these commits add a symbolic link, which never reaches the controller, so the push would fail there: $(printf '%s ' $links)
+Take it out of the history (git rm --cached PATH, commit, and squash it away), and make the link from a script at build or boot time instead."
+        fi
+    fi
     git "$verb" "$@"
 }
 
