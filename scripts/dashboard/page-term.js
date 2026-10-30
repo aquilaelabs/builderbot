@@ -403,7 +403,7 @@ function termSend(rec, kind, body){
 }
 
 function termFit(rec){
-  if (!rec?.fit || !rec.el.isConnected || !rec.el.offsetParent) return;
+  if (!rec?.fit || rec.gone || !rec.el.isConnected || !rec.el.offsetParent) return;
   try{ rec.fit.fit(); }catch(e){ /* a box with no size yet */ }
 }
 
@@ -427,7 +427,7 @@ function termConnect(rec){
   const ws = new WebSocket(termUrl(rec.t, rec.term.cols, rec.term.rows));
   ws.binaryType = "arraybuffer";
   rec.ws = ws;
-  ws.onmessage = e => { if (rec.ws === ws) rec.term.write(new Uint8Array(e.data)); };
+  ws.onmessage = e => { if (rec.ws === ws && !rec.gone) rec.term.write(new Uint8Array(e.data)); };
   ws.onclose = e => {
     if (rec.ws !== ws) return;
     termEnded(rec, e.reason || (e.code === 1006 ? "the connection dropped" : "the terminal ended"));
@@ -447,6 +447,10 @@ function termDrop(key){
   const rec = TERMS.get(key);
   if (!rec) return;
   TERMS.delete(key);
+  // Gone before anything is torn down: a message already on its way, or a
+  // fit a resize asked for, reached the disposed terminal and xterm read a
+  // renderer it no longer had (B425: "reading 'dimensions'").
+  rec.gone = true;
   try{ rec.ws?.close(); }catch(e){ /* gone */ }
   rec.ro?.disconnect();
   try{ rec.term?.dispose(); }catch(e){ /* gone */ }
