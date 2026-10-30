@@ -260,6 +260,15 @@ def token(uid, fid, why="", project="", by="", host="", login=""):
     return line
 
 
+def forget_token(uid, fid):
+    """The opened line of `uid`'s entry `fid` let go: its token was replaced
+    or dropped, so the next use opens what the store holds now."""
+    with _lock:
+        t = ((_open.get(uid) or {}).get("tokens") or {}).pop(str(fid), None)
+    if t and wipe and isinstance(t.get("line"), (bytes, bytearray)):
+        wipe(t["line"])
+
+
 def handout(uid, project, fid, why="", by="", host="", login=""):
     """The path git's helper reads the opened token from, for `project`:
     RUN_DIR/<uid>/<project>, written now from token(), or "" when there is

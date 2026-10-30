@@ -53,6 +53,32 @@ class PerPerson(unittest.TestCase):
         self.assertEqual(gitcreds.givers("web"), [])
         self.assertFalse((self.d / "gitcreds" / "web").exists())
 
+    def test_a_new_token_replaces_the_one_before_and_keeps_its_projects(self):
+        # One token per account on a host (the operator, 30 Oct): a new one
+        # replaces the entry, never files a second beside it.
+        gitcreds.link_account("web", ADA, self.ada)
+        new = "https://ada:ghp_adaNEWNEWNEWNEWNEW2@github.com"
+        got = accountkeys.link_forge(ADA, "github.com", new, "ada")[0]
+        self.assertEqual(got["id"], self.ada, "the same entry, so its projects keep working")
+        fs = [e for e in accountkeys._entries(ADA).values() if e["host"] == "github.com"]
+        self.assertEqual(len(fs), 1)
+        self.assertEqual(accountkeys.open_entry_with(ADA, self.ada, accountkeys.key_of(ADA)), new)
+        self.assertEqual(gitcreds.givers("web"), [(ADA, self.ada)])
+
+    def test_the_migration_collapses_a_pile_and_moves_its_projects(self):
+        import importlib
+        mig = importlib.import_module("statemigrations.0019_one_token_per_account")
+        sd = accountkeys._load_secrets()
+        old = dict(sd[ADA]["forges"][self.ada], at=1)
+        sd[ADA]["forges"]["oldone"] = old
+        accountkeys.statefile.write_json(accountkeys._secrets_file(), sd, mode=0o600)
+        gitcreds.link_account("api", ADA, "oldone")
+        mig.run({"state": str(self.d)})
+        self.assertEqual(sorted(accountkeys._entries(ADA)), [self.ada], "the newest is kept, the older dropped")
+        self.assertEqual(gitcreds.givers("api"), [(ADA, self.ada)], "its project moved to the one kept")
+        mig.run({"state": str(self.d)})
+        self.assertEqual(sorted(accountkeys._entries(ADA)), [self.ada], "and a second run changes nothing")
+
     def test_a_token_is_used_only_while_its_person_is_signed_in(self):
         gitcreds.link_account("web", ADA, self.ada)
         self.assertEqual(gitcreds.read_line("web", uid=ADA), "", "signed out everywhere: nothing")

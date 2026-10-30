@@ -51,9 +51,15 @@ class Store(unittest.TestCase):
         self.assertEqual(accountkeys.forge_line(UID, self.fid), LINE)
         self.assertEqual(accountkeys.forges_of(UID)[0]["login"], "octo")
         self.assertEqual(accountkeys.forge_line("u_0000000b", host="github.com"), "")
-        # The same token again is the same entry; another for the host, another.
+        # The same token again is the same entry; a new one for that account
+        # on the host replaces it in place (the operator, 30 Oct: no record
+        # of the tokens before); another account on the host is its own.
         self.assertEqual(accountkeys.link_forge(UID, "github.com", LINE, "octo")[0]["id"], self.fid)
-        other = accountkeys.link_forge(UID, "github.com", LINE.replace("ghp_abcdef", "ghp_zzzzzz"), "octo")[0]["id"]
+        new = LINE.replace("ghp_abcdef", "ghp_zzzzzz")
+        self.assertEqual(accountkeys.link_forge(UID, "github.com", new, "octo")[0]["id"], self.fid)
+        self.assertEqual(len(accountkeys.forges_of(UID)), 1)
+        self.assertEqual(accountkeys.forge_line(UID, self.fid), new)
+        other = accountkeys.link_forge(UID, "github.com", new.replace("octo", "octo2"), "octo2")[0]["id"]
         self.assertNotEqual(other, self.fid)
         self.assertEqual(len(accountkeys.forges_of(UID)), 2)
 

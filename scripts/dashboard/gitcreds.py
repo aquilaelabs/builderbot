@@ -274,7 +274,23 @@ def keep_for(project, uid, line, login):
         write_line(project, line)
     else:
         link_account(project, uid, got["id"])
+        # The entries it replaced: every project linked to one now uses the
+        # one kept, so no project is left on a token that is gone.
+        if got.get("replaced"):
+            remap(uid, got["replaced"], got["id"])
     return helper(project)
+
+
+def remap(uid, olds, new):
+    """Each project linked to one of `uid`'s entries `olds` linked to `new`
+    instead: the replaced token's projects keep a token, the current one."""
+    olds = {str(o) for o in olds}
+    d = STATE / "gitcreds"
+    for f in sorted(d.iterdir()) if d.is_dir() else []:
+        rows = givers(f.name)
+        if any(u == uid and x in olds for u, x in rows):
+            moved = [(u, new if u == uid and x in olds else x) for u, x in rows]
+            _write_givers(f.name, list(dict.fromkeys(moved)))
 
 
 def adopt(owner_of):

@@ -366,23 +366,36 @@ def _open_entry(k, f):
 
 def link_forge(uid, host, line, login):
     """A forge token the account gave, as git's credential line
-    (scheme://user:token@host), sealed under the account's own key; the same
-    token given twice is one entry. ({ok, id, host, login}, status)."""
+    (scheme://user:token@host), sealed under the account's own key: one
+    entry per account on a host (the operator, 30 Oct: the current token or
+    its replacement, never a record of the ones before). A new token for an
+    account already there replaces its entry in place, the id kept so every
+    project linked to it uses the new one; any other entry for that account
+    and host is dropped, its id in `replaced` for the caller to move the
+    projects linked to it. ({ok, id, host, login, replaced}, status)."""
     k = key_of(uid)
     if not k:
         return {"error": "this install has no key, so nothing can be kept in an account's key store"}, 409
     host = str(host).lower()
     with _lock:
         sd = _load_secrets()
+        fs = sd.setdefault(uid, {}).setdefault("forges", {})
         for fid, f in _entries(uid, sd).items():
             if f["host"] == host and _open_entry(k, f) == line:
-                return {"ok": True, "id": fid, "host": host, "login": f.get("login", "")}, 200
-        fid = secrets.token_hex(6)
-        sd.setdefault(uid, {}).setdefault("forges", {})[fid] = {
+                return {"ok": True, "id": fid, "host": host, "login": f.get("login", ""), "replaced": []}, 200
+        same = sorted((fid for fid, f in fs.items() if isinstance(f, dict) and str(f.get("host", "")).lower() == host
+                       and (f.get("login") or "") == (login or "")), key=lambda i: -int(fs[i].get("at") or 0))
+        fid = same[0] if same else secrets.token_hex(6)
+        for old in same[1:]:
+            fs.pop(old, None)
+        fs[fid] = {
             "host": host, "sealed": base64.b64encode(signing.seal(line.encode(), k)).decode(),
             "login": login, "scheme": line.split("://", 1)[0], "at": int(time.time())}
         statefile.write_json(_secrets_file(), sd, mode=0o600)
-    return {"ok": True, "id": fid, "host": host, "login": login}, 200
+    # What was opened from the entries replaced is let go with them.
+    for old in same:
+        unlocks.forget_token(uid, old)
+    return {"ok": True, "id": fid, "host": host, "login": login, "replaced": same[1:]}, 200
 
 
 def unlink_forge(uid, fid):
