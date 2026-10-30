@@ -7,6 +7,15 @@ decisions you need to make.
 The image, `ghcr.io/aquilaelabs/builderbot`, is public: pulling it needs no
 login.
 
+BuilderBot comes in four editions, one controller in four shapes. This
+checklist is the **container** edition, on any host with Docker. The
+**bare-metal install** puts the same controller on a Linux machine of its
+own, which is also its own node ([Bare metal](#bare-metal)). **BuilderBot
+OS** is that install as an appliance, from an ISO or a VM image, and the
+**USB edition** runs it from a stick ([image.md](image.md)); those two are
+new in 0.9 and experimental. A controller moves between any of them
+([Moving a controller](#moving-a-controller)).
+
 ### 0. Know the credentials (they are NOT interchangeable)
 
 Separate credentials for separate jobs: a **runner token** for the nodes' CI
@@ -177,9 +186,10 @@ have. Only BuilderBot makes a project: a folder made by hand on the projects
 share is not listed. A project with a problem says so on its card: no git
 repository or the wrong ownership in red.
 
-**The apps for your machines**: the Android app is on the **Apps** page,
-under Build, with Download and how to connect it, fetched by the controller from its own
-release and kept current there. The devices signed in as you are the last
+**The apps for your machines**: the Android app is a card on the
+**Library**, under Build, in its For you section, with Download, fetched
+by the controller from its own release and kept current there; the
+**Phone** page beside it connects and pairs one. The devices signed in as you are the last
 section of your **Profile**, under Settings, each with Disconnect. Which are offered is the **Apps** section of
 the Controller settings page, or `/config/seed.json` before the first start
 ([reference.md](reference.md#the-seed-file)).
@@ -312,8 +322,8 @@ no going back by hand: a release moves forward only, and the
 
 The page does the same without a shell: a newer release is a line on the
 bell and the **Updates** section under Controller settings says which
-release this install runs and which is newest (checked daily, **Check
-now** sooner); **Update** runs the installer through this machine's own
+release this install runs and which is newest (checked weekly unless
+Update checks says otherwise, **Check now** sooner); **Update** runs the installer through this machine's own
 node, whose root agent is the only account that runs it, and the page comes
 back on the new release.
 
@@ -326,9 +336,9 @@ puts it back on them. `--remove --purge` takes all but the projects.
 installed edition from the appliance image instead: Debian pinned to a
 snapshot with the controller staged in, a read-only root in two slots so an
 update is a whole image and a bad one falls back, and the machine its own
-node at its first boot. [image.md](image.md) says what it is and how it is
-built; the installer ISO, the VM disk and the USB stick made from it are on
-their way (R160, R161).
+node at its first boot. Each release carries it as an installer ISO, a
+VM disk (qcow2 and OVA) and a USB stick's image; [image.md](image.md) says
+what it is, how each is installed and how it is built.
 
 ## Building locally instead of pulling
 

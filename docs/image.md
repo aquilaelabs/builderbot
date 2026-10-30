@@ -25,8 +25,8 @@ how it boots, and how it is built. The decisions behind it are in
 - **Everything the node half needs**: what `nodes/provision-linux.sh`
   installs on a Debian node (python, tmux, git, the reel's X tools,
   WireGuard, nftables), Debian's own docker, the VM host's qemu and
-  libvirt, Samba and NFS, and the disk tools the Storage page will use
-  (smartmontools, ZFS, mergerfs, SnapRAID).
+  libvirt, Samba and NFS, NUT for a UPS, and the disk tools the Storage
+  page uses (smartmontools, ZFS, mergerfs, SnapRAID).
 - **No apt.** `apt` and `apt-get` are diverted to a stub that says why: the
   root forgets at the next boot, and a package installed into it would be
   gone without a word. A tool a project needs is a toolchain, from the
@@ -74,8 +74,7 @@ containers, the VMs, the toolchains and the projects, lives on a **system
 pool**: picked under This machine's **The stick** from the pools and the
 array the machine has, it is where those folders are bound at every boot,
 and picking it moves what the stick held of them there. Until one is
-picked, docker and the VMs wait, as they wait for the array on other NAS
-systems, and sessions still run, their projects on the stick. **The stick**
+picked, docker and the VMs wait, and sessions still run, their projects on the stick. **The stick**
 also says what still lives on the stick and how much has been written to it,
 in its life and since this boot. An installed disk has none of this: its
 data partition is the machine's disk.
@@ -103,8 +102,8 @@ lists the copies found on the machine's pools (newest first, with the
 machine and the version each came from) and takes the password, or takes a
 copy you kept; held to the same gate as a move (never onto an older build),
 restored and restarted, the machine is the controller as it was, its nodes
-checking back in. Pushing a copy to another BuilderBot or a node is the
-step's next piece.
+checking back in. Pushing a copy to another BuilderBot or a node is not
+here yet.
 
 ## The stick maker
 
@@ -266,18 +265,19 @@ describes, and its page is This machine.
 `/usr/lib/builderbot-os/slot` is the slot tool: `current` (the slot this
 boot came from), `other`, `next [a|b]` (the one GRUB boots next time, which
 is what an update sets once it has written the other slot) and `status`.
-Counting a new slot's tries, marking it good, and Safe mode are the USB
-edition's boot work (R161 step 2), on top of this.
+An updated slot's trial and Safe mode are under [Updating](#updating).
 
 ## Building it
 
-CI builds the image on a hosted runner (`appliance` in
-`.github/workflows/build-image.yml`): on every release tag, from the
-Actions page's *Run workflow* with its *appliance* box ticked, and weekly.
-Before anything of it is published, `appliance-boot` boots the VM disk
-under QEMU and waits for the dashboard to answer; a release's files land
-only after that (`appliance-publish`), beside the controller bundle, each
-of the disk, the ISO, the VM disks and the slot with a build attestation.
+CI builds the image on a hosted runner with a workflow of its own,
+`.github/workflows/os-image.yml`, which builds it and then boots the VM
+disk under QEMU until the dashboard answers (`appliance-boot`). The image
+build calls it on every release tag, from the Actions page's *Run
+workflow* with its *appliance* box ticked, and weekly; a branch push that
+touches the image runs it alone and publishes nothing, so a fix to the
+image is proved on a push. A release's files land only after the boot
+(`appliance-publish`), beside the controller bundle, each of the disk, the
+ISO, the VM disks, the stick and the slot with a build attestation.
 The weekly run takes the day before's snapshot, builds, and says in its
 summary which system packages moved since the last release (each image
 carries its package list, `.packages`); a patch release from it is a press
@@ -295,13 +295,16 @@ sudo image/build.sh --out image/out
 `--tree-only` stops after mkosi, with the tree under `image/out/mkosi/tree`
 to look at; `--from-tree DIR` assembles a disk from a tree built before.
 Moving the pin is editing `image/SNAPSHOT` to a newer timestamp; the weekly
-security rebuild (R160 step 6) will do that on its own.
+rebuild takes the day before's snapshot on its own.
 
 ## Updating
 
-A newer release is found the way a bare-metal install's is (checked daily
-and on **Check now** under Controller settings, Updates, and said on the
-bell). On BuilderBot OS **Update** does not run the installer: the own
+A newer release is found the way a bare-metal install's is (checked weekly
+unless Controller settings' Update checks says otherwise, and on **Check
+now** under Controller settings, Updates, and said on the bell). It follows
+the release line the install is on (`BB_RELEASE_LINE`, which the stick
+maker's `--set` writes) and the releases as published; the dev builds'
+channel is in [versions.md](versions.md#two-channels). On BuilderBot OS **Update** does not run the installer: the own
 node's root agent fetches the release's image files (the root, the kernel,
 the initrd, the stamp), checks each against the sha256 the release carries
 and the root against its build attestation (where `gh` is on the machine),
@@ -338,9 +341,7 @@ it, once per release, and the restart still waits for you.
 
 ## What is not here yet
 
-What the boot in CI does not yet try (a ZFS pool and an array on virtual
-disks, a share over SMB, a node enrolled and a container started, the
-browser suites against the booted system) lands with the storage work
-(R162), the canary on the dev pair with it; the USB edition with its boot
-counting, Safe mode and the slot kept only once it says it is healthy
-(R161) builds on this image.
+The boot in CI does not yet try a ZFS pool and an array on virtual disks, a
+share over SMB, a node enrolled and a container started, or the browser
+suites against the booted system; those are proved by hand on a machine
+for now.
