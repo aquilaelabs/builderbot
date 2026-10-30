@@ -1276,6 +1276,19 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   ok(await page.$eval('.profiletab', el => /test/.test(el.textContent) && !!el.querySelector('#pfSave')
                                           && !!el.querySelector('#pfPasswd')),
      'the Profile page names the account and carries Save and Change password');
+  // Its own Revert beside Save (pages-of-settings): asleep until a field
+  // changes, and pressed it puts the field back and sleeps again.
+  const rv = await page.evaluate(async () => {
+    const r = document.querySelector('.profiletab #pfRevert'), f = document.querySelector('.profiletab #pf_git_name');
+    if (!r || !f) return { r: !!r, f: !!f };
+    const asleep = r.disabled, was = f.value;
+    f.value = was + 'x'; f.dispatchEvent(new Event('input', { bubbles: true }));
+    const woke = !r.disabled;
+    r.click();
+    return { asleep, woke, back: f.value === was, again: r.disabled };
+  });
+  ok(rv.asleep && rv.woke && rv.back && rv.again,
+     `...and Revert beside Save, asleep until a field changes and putting it back (${JSON.stringify(rv)})`);
   // ...and says what the account may do, once (R255 step 5): its roles by
   // name in its head and every area it holds, with its level.
   const wm = await page.$eval('.profiletab', el => ({ bar: el.closest('.doc')?.querySelector('.docbarrow')?.textContent || '',
