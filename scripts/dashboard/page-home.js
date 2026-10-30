@@ -187,9 +187,10 @@ function homeStartHtml(){
   ].filter(Boolean);
   const left = steps.filter(x => !x[1]).length;
   if (!left) return "";
-  return `<div class="field"><section class="hcard hstart"><h3>Getting started<span class="sst">${steps.length - left} of ${steps.length}</span></h3>
-    ${steps.map(([t, done, act]) => `<div class="hsrow${done ? " done" : ""}"><span class="setnum">${done ? "✓" : ""}</span><span class="grow">${esc(t)}</span>${done ? "" : act}</div>`).join("")}
-    <div class="bfootbar"><span class="sp"></span><button type="button" data-hstart="hide">Put away</button></div></section></div>`;
+  // Put away on the card's head, beside its count: a card's one button is
+  // on its head's row, never alone on a row over a gap (the page-head rule).
+  return `<div class="field"><section class="hcard hstart"><h3>Getting started<span class="sst">${steps.length - left} of ${steps.length}</span><button type="button" data-hstart="hide">Put away</button></h3>
+    ${steps.map(([t, done, act]) => `<div class="hsrow${done ? " done" : ""}"><span class="setnum">${done ? "✓" : ""}</span><span class="grow">${esc(t)}</span>${done ? "" : act}</div>`).join("")}</section></div>`;
 }
 
 // Attention, Last jobs and the pinned projects: the cards under the tiles,
