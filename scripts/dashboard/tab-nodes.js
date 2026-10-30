@@ -2405,7 +2405,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
   // template here, what each hands back, and which identity fields it takes.
   let vmKinds = null;
   const vmForm = (made) => {
-    document.getElementById("ndTitle").textContent = "Create a sandbox VM";
+    document.getElementById("ndTitle").textContent = "New VM";
     boxWidth(!!made);
     const f = (k, label, help, extra = "") =>
       `<div class="setrow col ctlrow">${lbl("vm_" + k, label, help)}
