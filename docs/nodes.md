@@ -1028,7 +1028,7 @@ the pieces stack:
    (`bb.example.com`), forwarding `/api/v1/agent/` and answering
    everything else 404 (the dialog prints the rule, with cloudflared's
    config as the example; or the controller runs that tunnel itself from
-   Controller settings' Reach from outside group, R176, `tunnel.py`), the VPS dials that name over HTTPS with its node
+   the Network page's Reach from outside group, R176, `tunnel.py`), the VPS dials that name over HTTPS with its node
    token, nothing on the router changes, and the VPS never learns the home
    address, since it only ever talks to the tunnel's edge; the controller
    answers that hostname on the agent API alone (`tunnel_refuses`, by the
@@ -1750,9 +1750,9 @@ graduates.** The popup keeps the per-browser items plus one entry,
 rendering banded groups in the house pattern, same as every other document
 surface. The graduation lands with the first batch of controller settings
 (phase 2), not before: converting the popup while it holds one setting would
-be ceremony. *Where it stands (19 Oct):* the controller's settings are
-**Controller settings**, beside Home in the rail's Home group, and the
-gear keeps the scheme, the time zone and Profile.
+be ceremony. *Where it stands (30 Oct):* the controller's settings are
+**Settings** in the rail's Controller group, and the gear keeps the
+scheme, the time zone and Profile.
 
 **Project-scoped**, which node runs this project's work. One node, named in
 the project row's existing settings dialog beside the person's own settings (the

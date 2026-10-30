@@ -24,7 +24,7 @@ Claude Code on that node, and a first project, which can wait: after Finish,
 Home's Getting started card keeps what is left of them. Where what grows is
 kept and when an idle session ends are not asked; their defaults are under
 Controller settings. A public hostname and hosting-only nodes come later,
-from Controller settings and Enroll node.
+from the Network page and Enroll node.
 
 Afterwards, `bb users passwd <name>` changes a password and `bb users add`
 makes the others. `bb users token <project> [<account>]` mints the scoped

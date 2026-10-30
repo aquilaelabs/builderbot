@@ -8,7 +8,7 @@ explains each in full.
 One page in the browser, at a desk or on a phone ([dashboard.md](dashboard.md)).
 
 - **The rail** down the left edge: Home, Projects, Build, Containers,
-  Machines, Sessions, Jobs, People, Settings and Help. On a phone it is a bar
+  Controller, Machines, Sessions, Jobs, People, Settings and Help. On a phone it is a bar
   at the foot.
 - **Home**: tiles for what is running and what needs you (nodes online,
   containers running, jobs and failures, sessions open, updates due, CI in
@@ -181,5 +181,5 @@ The machines that do the work ([machines.md](machines.md), [nodes.md](nodes.md))
   toolchains in folders you choose ([install.md](install.md)).
 - **Upgrades** between releases carried forward automatically, with a backup
   first and a clear refusal on an unsupported jump ([install.md](install.md#upgrading)).
-- **Settings**, logs and diagnostics on the Controller settings page.
+- **Settings**, logs and diagnostics on the Controller group's Settings page.
 - **Nothing is sent to us**: no telemetry ([privacy.md](privacy.md)).

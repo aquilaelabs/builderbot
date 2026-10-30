@@ -131,7 +131,7 @@ maintainers' Ed25519 key; the public half ships with BuilderBot
 (`config/catalog.pub`), and an install reads an entry only after the
 signature checks: an index changed on the way, or signed by another key,
 is refused and the one read before stands, with the reason said. Where it
-is read from is **Catalog address** under Controller settings. A pack the
+is read from is the **Address** in Controller settings' Vetted catalog group. A pack the
 catalog withdraws (`withdrawn: true` in the next signed index) is a line on
 the bell for every install that holds it, saying to remove it. The Library
 is what reads it. An entry may name a `path`, the folder of its repository

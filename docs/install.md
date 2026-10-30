@@ -188,8 +188,7 @@ repository or the wrong ownership in red.
 
 **The apps for your machines**: the Android app is a card on the
 **Library**, under Build, in its For you section, with Download, fetched
-by the controller from its own release and kept current there; the
-**Phone** page beside it connects and pairs one. The devices signed in as you are the last
+by the controller from its own release and kept current there. The devices signed in as you are the last
 section of your **Profile**, under Settings, each with Disconnect. Which are offered is the **Apps** section of
 the Controller settings page, or `/config/seed.json` before the first start
 ([reference.md](reference.md#the-seed-file)).

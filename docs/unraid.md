@@ -249,10 +249,10 @@ looking at (thumbtack the ones you use to keep them on top),
 and browser terminals backed by tmux.
 
 Every tool is a page on the rail down the left edge, in groups: Home,
-Projects (with Analysis), Build (Toolchains, Emulator, Phone, CI runner,
-Apps), Containers (Containers, nginx), Machines (Controller settings,
-Nodes, Storage), Sessions, Jobs, People (Users, Roles), Settings (Profile)
-and Help. A page your account's grants forbid is not drawn. On a phone the
+Projects (with Analysis), Build (Library, Emulator, Phone, CI runner),
+Containers (Containers, VMs), Controller (Settings, Network, Keys, Audit),
+Machines (Nodes, Storage, Installed), Sessions, Jobs (with Schedules),
+People (Users, Roles), Settings (Profile) and Help. A page your account's grants forbid is not drawn. On a phone the
 rail is a bar of five across the foot in the same order (Home, Projects,
 Build, Containers, More), and
 every page is the one page area, with the terminals and the chat in the dock

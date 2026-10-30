@@ -2,7 +2,7 @@
 
 The companion app is BuilderBot on an Android phone: the projects and their
 notebooks, the approvals and the notifications, without the terminals.
-Download it from **Apps**, under Build on the rail. This doc covers what it
+Download it from its card on the **Library**, under Build on the rail, in the For you section. This doc covers what it
 does, pairing it with several BuilderBots, its lock, Claude from the phone,
 its notifications, and how it is kept in step with the dashboard and built.
 
