@@ -185,8 +185,10 @@ await page.waitForFunction(n =>
     const x = sel => { const e = document.querySelector(sel); if (!e) return null; const c = card(e);
       return Math.round(c ? c.getBoundingClientRect().x
                           : e.getBoundingClientRect().x + parseFloat(getComputedStyle(e).paddingLeft)); };
-    return { head: x('.pane .nb .nbview:not([hidden]) .nbhead'),
-             bar: x('.pane .nb #anaList .fxbar'),
+    // The view's control row holds only History, so it sits at the right
+    // beside the tiles (the operator, 29 Oct): its left edge is no band's.
+    // The tiles' card and the list's bands are what line up.
+    return { bar: x('.pane .nb #anaList .fxbar'),
              rule: x('.pane .nb #anaList .rule') };
   });
   ok(new Set(Object.values(xs)).size === 1 && !Object.values(xs).includes(null),
