@@ -84,8 +84,12 @@ set_pool() {
     while IFS= read -r line; do
         name="${line%%=*}"; place="${line#*=}"; src="$p/$SUB/$name"
         mkdir -p "$src"
-        if findmnt -rn -o TARGET "$place" 2>/dev/null | grep -qx "$place"; then
-            umount "$place" || true
+        if findmnt -rn -o TARGET "$place" 2>/dev/null | grep -qx "$place" && ! umount "$place"; then
+            # Still the old pool's: a copy and a delete through it would
+            # empty that pool (B476). Nothing more moves; what moved stays.
+            echo "system-pool: $place is busy and stays where it is: close what holds it and set the pool again" >&2
+            [ -n "${BB_SP_NO_SYSTEMCTL:-}" ] || systemctl start --no-block "${SERVICES[@]/%/.service}" 2>/dev/null || true
+            return 1
         fi
         # What the stick holds of it goes to the pool once, then off the stick.
         if [ -d "$place" ] && [ -n "$(ls -A "$place" 2>/dev/null)" ]; then
