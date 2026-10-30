@@ -309,27 +309,41 @@ the release line the install is on (`BB_RELEASE_LINE`, which the stick
 maker's `--set` writes) and the releases as published; the dev builds'
 channel is in [versions.md](versions.md#two-channels). On BuilderBot OS **Update** does not run the installer: the own
 node's root agent fetches the release's ISO, checks it against the sha256
-the release carries and against its build attestation (where `gh` is on the
-machine), opens it read-only and takes the root, the kernel, the initrd and
-the stamp out of its `live/` folder, writes the slot not in use, puts the kernel beside it on the ESP, and names
-that slot for the next boot. Nothing running changes until you restart
+the release carries and against its build attestation (`gh attestation
+verify`; an image that does not verify, or a machine without `gh`, writes
+nothing), opens it read-only and takes the root, the kernel, the initrd and
+the stamp out of its `live/` folder as plain files, points the next boot
+back at the slot running now, writes the slot not in use, puts the kernel
+beside it on the ESP, and only then names that slot for the next boot, on
+trial, in one write. An update is refused while the slot running now is
+itself on trial, since the other slot is then the only good one, and when
+a second BuilderBot disk or stick in the machine carries the same slot.
+Nothing running changes until you restart
 from This machine, and the slot running now stays to fall back to: at the
 GRUB menu, or with `slot next a`. The Updates section says which slot runs
 and which boots next.
 
 An offline machine takes the same files from a folder on it (a stick, a
 share): **Update from the folder** under Updates, the folder holding the
-release's ISO with its `.sha256` beside it.
+release's ISO with its `.sha256` beside it. A folder's ISO is checked
+against that sha256 alone, so it is only as trustworthy as the folder.
 
 **On trial.** The slot an update wrote boots on trial: GRUB counts each
 boot of it in its environment, and the health check
 (`builderbot-os-health.service`) marks it good once the dashboard answers
-and the node's agent runs; a second boot without that word goes back to
+with a page and the node's agent runs. A trial boot that is not healthy
+within ten minutes restarts, a kernel or initramfs that panics restarts
+after fifteen seconds, and a kernel that will not load falls to the slot
+before at once; a second boot without the health check's word goes back to
 the slot before by itself, and This machine says so until the next update.
+Picking the slot before from the menu during a trial ends the trial there.
 Before an update the controller's configuration is copied to
-`/var/lib/builderbot-os/before/` (the two newest kept), so the slot before
-boots the configuration it had; a patch carries no configuration change,
-so falling back on one boots the same configuration as it is.
+`/var/lib/builderbot-os/before/` (the two newest kept). A boot that fell
+back puts that copy back before the controller starts, when the newer slot
+moved the configuration on further than the slot before reads; what it held
+is kept in `/var/lib/builderbot-os/rolled-back-TIME/`. A patch carries no
+configuration change, so falling back on one boots the same configuration
+as it is.
 
 **The boot menu.** Each slot is named with its version, the slot that
 boots is the default after four seconds, and **Safe mode** boots the slot
