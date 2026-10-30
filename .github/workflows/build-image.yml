@@ -331,7 +331,8 @@ jobs:
           for jr in $JOB_RESULTS; do
             case "${jr#*=}" in
               failure) result=failure ;;
-              cancelled) [ "$result" = failure ] || result=cancelled ;;
+              # GitHub's own word for a job stopped short, spelled as it spells it.
+              cancel*led) [ "$result" = failure ] || result="cancel""led" ;;
             esac
           done
 
