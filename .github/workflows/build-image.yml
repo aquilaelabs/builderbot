@@ -412,8 +412,19 @@ jobs:
           # A dev build's tag (vX.Y.Z-dev.N, R179) is a pre-release and never
           # the latest: the dev channel alone takes it.
           pre=(); case "$TAG" in *-dev.*) pre=(--prerelease --latest=false);; esac
+          # The notes are the tree's when it has them for this version
+          # (docs/release-notes/X.Y.Z.md, or X.Y.Z-dev.md for a dev build),
+          # @TAG@ and @REPO@ filled in, so the release is published with
+          # them rather than edited after.
+          ver="${TAG#v}"; base="${ver%%-dev.*}"
+          notes="docs/release-notes/$base.md"; case "$TAG" in *-dev.*) notes="docs/release-notes/$base-dev.md";; esac
+          if [ -f "$notes" ]; then
+            sed -e "s|@TAG@|$TAG|g" -e "s|@REPO@|$GITHUB_REPOSITORY|g" "$notes" > notes.md
+          else
+            echo "BuilderBot $ver: see CHANGELOG.md." > notes.md
+          fi
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$TAG" --notes "BuilderBot ${TAG#v}: see CHANGELOG.md."
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$TAG" --notes-file notes.md
             # A release this job's own token publishes starts no workflow
             # (GitHub's rule), so the companion apps' release builds, which
             # a release published by a person starts, are started by name.
