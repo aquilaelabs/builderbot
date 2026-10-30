@@ -20,11 +20,39 @@ SQ="$(find "$LIVE/live" -maxdepth 1 -name '*.squashfs' | head -1)"
 [ -f "$SQ" ] || bye "No root image on the medium (live/*.squashfs)."
 VER="$(sed -n 's/^BUILDERBOT_OS_VERSION=//p' "$LIVE/live/release" 2>/dev/null | head -1)"
 
-# The disk this medium is, left out of the offer.
+# Every disk this medium sits on, left out of the offer: through a dm
+# mapping (Ventoy) by lsblk's inverse tree, and through a loop device (an
+# ISO file on a stick) by its backing file's own filesystem (B473).
 medium_dev="$(findmnt -no SOURCE "$LIVE" 2>/dev/null | sed 's/\[.*//')"
-medium_disk=""
-[ -n "$medium_dev" ] && medium_disk="$(lsblk -no PKNAME "$medium_dev" 2>/dev/null | head -1)"
-[ -n "$medium_disk" ] || medium_disk="$(basename "${medium_dev:-none}")"
+case "$medium_dev" in /dev/loop*)
+    back="$(losetup -nO BACK-FILE "$medium_dev" 2>/dev/null | head -1)"
+    [ -n "$back" ] && medium_dev="$(findmnt -no SOURCE -T "$back" 2>/dev/null | sed 's/\[.*//')" ;;
+esac
+medium_disks="$(basename "${medium_dev:-none}")"
+[ -n "$medium_dev" ] && medium_disks="$medium_disks $(lsblk -nsrpo NAME,TYPE "$medium_dev" 2>/dev/null | awk '$2 == "disk" {sub(".*/", "", $1); print $1}' | tr '\n' ' ')"
+
+# The disks to offer, one "NAME<tab>what it is" a line: read from lsblk's
+# JSON, since a model with spaces or none at all shifted read's columns and
+# left a machine's own disks out (B473). A disk with anything mounted is in
+# use and never offered.
+disk_rows() {
+    lsblk -J -b -p -o NAME,SIZE,MODEL,TRAN,TYPE,MOUNTPOINTS 2>/dev/null | python3 -c '
+import json, sys
+skip = set(sys.argv[1].split())
+def mounted(d):
+    return any(m for m in d.get("mountpoints") or [] if m) or any(mounted(c) for c in d.get("children") or [])
+for d in json.load(sys.stdin).get("blockdevices") or []:
+    n = str(d.get("name") or "")
+    if d.get("type") != "disk" or n.rsplit("/", 1)[-1] in skip or mounted(d):
+        continue
+    if n.startswith(("/dev/loop", "/dev/ram", "/dev/zram", "/dev/sr")):
+        continue
+    model = " ".join(str(d.get("model") or "").replace("_", " ").split())[:40]
+    tran = str(d.get("tran") or "")
+    gb = int(d.get("size") or 0) / 1e9
+    print(f"{n}\t{gb:.0f} GB {model}" + (f" · {tran}" if tran else ""))
+' "$medium_disks"
+}
 
 # BuilderBot's logo over the welcome (R185), the one the console shows at
 # every boot.
@@ -38,17 +66,19 @@ This installs it onto a disk of this machine: the whole disk is laid out again (
 pick=""
 while [ -z "$pick" ]; do
     rows=()
-    while read -r name size model tran type; do
-        [ "$type" = disk ] || continue
-        case "$name" in /dev/loop*|/dev/ram*|/dev/zram*|/dev/sr*) continue ;; esac
-        [ "$(basename "$name")" = "$medium_disk" ] && continue
-        rows+=("$name" "$size $(echo "$model" | tr '_' ' ')${tran:+ · $tran}")
-    done < <(lsblk -dnpo NAME,SIZE,MODEL,TRAN,TYPE 2>/dev/null)
-    [ "${#rows[@]}" -gt 0 ] || bye "No disk to install onto: this machine shows none beside the medium it booted from."
+    while IFS=$'\t' read -r name what; do
+        [ -n "$name" ] && rows+=("$name" "$what")
+    done < <(disk_rows)
+    [ "${#rows[@]}" -gt 0 ] || bye "No disk to install onto: this machine shows none beside the medium it booted from, and none with nothing mounted."
     pick="$(whiptail --title "BuilderBot OS" --menu "The disk to install onto. Everything on it is lost." 20 72 8 "${rows[@]}" 3>&1 1>&2 2>&3)" || bye "Nothing installed."
+    # What is on it now, so the disk is known by its contents and not its
+    # name alone.
+    on="$(lsblk -no NAME,SIZE,FSTYPE,LABEL,MODEL "$pick" 2>/dev/null | head -8)"
     whiptail --title "BuilderBot OS" --yesno "Lay out $pick as BuilderBot OS?
 
-Every partition on it is replaced. There is no undo." 12 72 --defaultno || pick=""
+${on:-(nothing could be read from it)}
+
+Every partition on it is replaced. There is no undo." 20 76 --defaultno || pick=""
 done
 
 feats="$(whiptail --title "BuilderBot OS" --checklist "Features turned on at the first boot (each can change later on This machine):" 16 72 4 \
@@ -61,15 +91,20 @@ echo "== laying out $pick"
 if ! bash "$LIB/lay-disk" "$pick" "$SQ" "$LIVE/live/vmlinuz" "$LIVE/live/initrd" "$LIVE/live/release" "$LIB/grub.cfg" --grow; then
     bye "The disk was not laid out (above). Nothing is installed; $pick may be partly written."
 fi
-# The features chosen, onto the data partition for the first boot.
-data="$(readlink -f "/dev/disk/by-partuuid/$(sed -n 's/^BB_PART_DATA=\([0-9a-f-]*\).*/\1/p' "$LIB/partitions.sh")" 2>/dev/null || true)"
+# The features chosen, onto the data partition of the disk just laid out:
+# its fifth, as lay-disk numbers it, never found by its UUID, which every
+# BuilderBot disk shares (B473).
+case "$pick" in *[0-9]) data="${pick}p5" ;; *) data="${pick}5" ;; esac
 mnt="$(mktemp -d)"
+wrote=""
 if [ -b "$data" ] && mount "$data" "$mnt" 2>/dev/null; then
     mkdir -p "$mnt/lib/builderbot-os"
     echo "$feats" | tr -d '"' | tr ' ' '\n' | grep . > "$mnt/lib/builderbot-os/features" || true
+    [ -f "$mnt/lib/builderbot-os/features" ] && wrote=1
     umount "$mnt"
 fi
 rmdir "$mnt" 2>/dev/null || true
+[ -n "$wrote" ] || whiptail --title "BuilderBot OS" --msgbox "The features chosen could not be written to $data, so none is on at the first boot: turn them on under This machine once the dashboard is up." 12 72
 sync
 whiptail --title "BuilderBot OS" --msgbox "BuilderBot OS ${VER:-} is on $pick.
 
