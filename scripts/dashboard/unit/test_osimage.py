@@ -1,6 +1,7 @@
 """BuilderBot OS updated from the page (R160 step 4): the agent's os-update
-job fetches the release's four files (or takes them from a folder), holds
-each to its sha256, writes the slot not in use, puts the kernel beside it on
+job fetches the release's ISO (or takes it from a folder), holds it to its
+sha256, takes the slot, kernel, initrd and release stamp out of its live/
+folder, writes the slot not in use, puts the kernel beside it on
 the ESP and names the slot for the next boot; a file that does not match
 writes nothing; the census says the image, the slot and the next; the
 controller queues the job only for a machine that runs the image; the
@@ -11,6 +12,7 @@ import re
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -38,6 +40,11 @@ class Job:
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
+
+
+# Where image/build.sh puts each piece on the ISO.
+IN_ISO = {"root.squashfs": "live/filesystem.squashfs", "vmlinuz": "live/vmlinuz",
+          "initrd": "live/initrd", "release": "live/release"}
 
 
 class World:
@@ -77,18 +84,27 @@ class World:
                     "BB_OS_ESP": self.esp, "BB_OS_WORK": self.work, "BB_OS_RELEASE_URL": "file://" + os.path.join(self.d, "rel"),
                     "BB_OS_STATE": self.state}
 
-    def publish(self, version, bad=None):
-        """The release's files under rel/vVERSION, each with its sha256; `bad`
-        names a piece whose sha256 file lies."""
+    def publish(self, version, bad=False, without=""):
+        """The release's ISO under rel/vVERSION with its sha256: here a tar
+        holding the ISO's live/ folder, which the test's mount unpacks. `bad`
+        makes the sha256 file lie; `without` leaves a piece out."""
         d = os.path.join(self.d, "rel", "v" + version)
         os.makedirs(d, exist_ok=True)
         files = {"root.squashfs": b"hsqs" + version.encode() * 300, "vmlinuz": b"MZkernel" + version.encode(),
                  "initrd": b"initrd" + version.encode(), "release": f"BUILDERBOT_OS_VERSION={version}\n".encode()}
+        live = os.path.join(self.d, "live-" + version)
+        os.makedirs(os.path.join(live, "live"), exist_ok=True)
         for piece, data in files.items():
-            with open(os.path.join(d, f"builderbot-os-{version}.{piece}"), "wb") as f:
-                f.write(data)
-            with open(os.path.join(d, f"builderbot-os-{version}.{piece}.sha256"), "w") as f:
-                f.write(f"{'0' * 64 if piece == bad else sha(data)}  builderbot-os-{version}.{piece}\n")
+            if piece != without:
+                with open(os.path.join(live, IN_ISO[piece]), "wb") as f:
+                    f.write(data)
+        iso = os.path.join(d, f"builderbot-os-{version}.iso")
+        with tarfile.open(iso, "w") as t:
+            t.add(os.path.join(live, "live"), arcname="live")
+        with open(iso, "rb") as f:
+            want = sha(f.read())
+        with open(iso + ".sha256", "w") as f:
+            f.write(f"{'0' * 64 if bad else want}  builderbot-os-{version}.iso\n")
         return d, files
 
 
@@ -100,6 +116,16 @@ class TheAgent(unittest.TestCase):
 
         class A(av.OsImageMixin):
             def _sh(self, job, argv, timeout=0, **kw):
+                # The ISO is opened by mount, which needs root: here the
+                # test's ISO is a tar, unpacked where it would be mounted.
+                if argv[0] == "mount":
+                    self.mounted = argv
+                    with tarfile.open(argv[-2]) as t:
+                        t.extractall(argv[-1], filter="data")
+                    return 0
+                if argv[0] == "umount":
+                    self.unmounted = argv
+                    return 0
                 r = subprocess.run(argv, capture_output=True, text=True, check=False)
                 job.say(r.stdout + r.stderr)
                 return r.returncode
@@ -174,15 +200,29 @@ class TheAgent(unittest.TestCase):
         self.assertEqual(state, "succeeded", text)
         self.assertFalse(os.path.exists(os.path.join(w.work, "fell-back")))
 
-    def test_a_file_that_does_not_match_its_sha256_writes_nothing(self):
+    def test_an_image_that_does_not_match_its_sha256_writes_nothing(self):
         w = World(slot="a")
-        w.publish("0.9.1", bad="vmlinuz")
+        w.publish("0.9.1", bad=True)
         state, code, text = self.run_update(w, {"release": "v0.9.1"})
         self.assertEqual((state, code), ("failed", 67), text)
-        self.assertIn("vmlinuz: its sha256 does not match", text)
+        self.assertIn("builderbot-os-0.9.1.iso: its sha256 does not match", text)
         with open(w.dev["b"], "rb") as f:
             self.assertEqual(f.read(), b"\0" * 4096)
         self.assertFalse(os.path.exists(w.nextf))
+
+    def test_an_image_missing_a_piece_writes_nothing_and_is_closed_again(self):
+        w = World(slot="a")
+        w.publish("0.9.1", without="initrd")
+        a = self.A()
+        with mock.patch.dict(os.environ, w.env):
+            job = Job()
+            state, code = a._apply_os_update(job, {"release": "v0.9.1"})
+        self.assertEqual((state, code), ("failed", 66), job.text())
+        self.assertIn("the image has no live/initrd", job.text())
+        self.assertEqual(a.mounted[:3], ["mount", "-o", "loop,ro,nodev,nosuid,noexec"])
+        self.assertEqual(a.unmounted[-1], a.mounted[-1])
+        with open(w.dev["b"], "rb") as f:
+            self.assertEqual(f.read(), b"\0" * 4096)
 
     def test_an_offline_machine_takes_the_files_from_a_folder(self):
         w = World(slot="b")

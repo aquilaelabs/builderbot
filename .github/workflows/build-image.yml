@@ -456,16 +456,16 @@ jobs:
         with:
           name: builderbot-os
           path: out
-      - name: Attest the disk, the ISO, the VM disks and the slot
+      # Two files go on the release, the ISO and the USB stick's image, each
+      # with its sha256 (the operator, 30 Oct): an update takes the slot, its
+      # kernel and its initrd out of the ISO, and the raw disk, qcow2 and OVA
+      # stay the boot test's and the run's artifact.
+      - name: Attest the ISO and the stick
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
-            out/builderbot-os-*.raw.xz
-            out/builderbot-os-*.stick.raw.xz
             out/builderbot-os-*.iso
-            out/builderbot-os-*.qcow2
-            out/builderbot-os-*.ova
-            out/builderbot-os-*.root.squashfs
+            out/builderbot-os-*.stick.raw.xz
       - name: Put it on the release
         shell: bash
         env:
@@ -475,4 +475,5 @@ jobs:
           pre=(); case "$tag" in *-dev.*) pre=(--prerelease --latest=false);; esac
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag "${pre[@]}" --title "$tag" --notes "BuilderBot ${tag#v}: see CHANGELOG.md."
-          gh release upload "$tag" out/builderbot-os-* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$tag" out/builderbot-os-*.iso out/builderbot-os-*.iso.sha256 \
+            out/builderbot-os-*.stick.raw.xz out/builderbot-os-*.stick.raw.xz.sha256 --repo "$GITHUB_REPOSITORY" --clobber

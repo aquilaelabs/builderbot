@@ -17,6 +17,8 @@
 #   builderbot-os-VERSION.initrd
 #   builderbot-os-VERSION.release        the stamp the image carries at /usr/lib/builderbot-os/release
 #   builderbot-os-VERSION.packages       every package in it with its version, for the weekly rebuild's diff
+# A release carries two of them, the ISO and the stick (build-image.yml's
+# appliance-publish); an update takes the slot out of the ISO.
 #
 # --tree-only stops after mkosi (the tree under DIR/mkosi/tree, for a look);
 # --from-tree DIR assembles the disk from a tree built before. The disk is

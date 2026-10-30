@@ -52,7 +52,7 @@ machine does.
 | --- | --- | --- | --- | --- |
 | **Container** | Any host with Docker: a NAS, a home server, a VPS | The dashboard beside everything else the host runs; nodes elsewhere | `docker compose up` with the compose file below, or the app template on a NAS | Released |
 | **Bare-metal install** | A Linux machine of its own (every system a node runs on) | One box that is the controller and its own node: the dashboard, the builds, the sessions and the storage on one machine | `nodes/install-controller.sh --install` on the machine, updates from the page | Released |
-| **BuilderBot OS** | A machine installed from the ISO, or a VM from the qcow2 or OVA | The bare-metal install as an appliance: a read-only root in two slots, an update that falls back by itself, the disks as pools, an array and shares | Boot the ISO and pick a disk, or import the VM image | Experimental: it boots and updates in the lab and on one machine, and it is the edition most likely to break |
+| **BuilderBot OS** | A machine or a VM installed from the ISO | The bare-metal install as an appliance: a read-only root in two slots, an update that falls back by itself, the disks as pools, an array and shares | Boot the ISO and pick a disk | Experimental: it boots and updates in the lab and on one machine, and it is the edition most likely to break |
 | **USB edition** | A stick in any x86-64 machine | BuilderBot OS loaded into memory at boot, its configuration kept on the stick, the machine's disks its storage | `tools/builderbot-stick.py write` on Windows, a Mac or Linux | Experimental, with the OS edition |
 
 The container and bare-metal editions are what BuilderBot has shipped as
@@ -242,10 +242,10 @@ makes the machine its own node; updates come from the page after that
 
 ### BuilderBot OS and the USB edition (experimental)
 
-Each release carries the appliance image: `builderbot-os-VERSION.iso` to
-install on a machine, `.qcow2` and `.ova` to import as a VM, and
-`.stick.raw.xz` for a stick. Boot the ISO and pick a disk, import the VM
-with two processors and 4 GB, or write a stick:
+Each release carries the appliance image as two files:
+`builderbot-os-VERSION.iso` to install on a machine or a VM, and
+`builderbot-os-VERSION.stick.raw.xz` for a stick. Boot the ISO and pick a
+disk (a VM wants two processors and 4 GB), or write a stick:
 
 ```bash
 sudo python3 tools/builderbot-stick.py list

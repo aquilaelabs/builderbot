@@ -48,9 +48,10 @@ the initramfs, `fstab` and GRUB alike:
 | `bbroot-b` | 4 GiB | root slot B: empty until an update writes it |
 | `bbdata` | 2 GiB in the image, the rest of the disk when installed | `/var`, and under it the changes to `/etc` |
 
-Beside the disk, the build leaves the pieces an update and the stick maker
-take: the slot's squashfs (`.root.squashfs`), its kernel and initrd, and the
-release stamp, each with a `.sha256`.
+Beside the disk, the build leaves the slot's squashfs (`.root.squashfs`),
+its kernel and initrd, and the release stamp, each with a `.sha256`; the ISO
+carries the same four under `live/`, which is where an update takes them
+from.
 
 ## On a stick, run from memory
 
@@ -215,15 +216,16 @@ first page, at `http://ITS-ADDRESS:7680` on the LAN, makes the owner and
 names the machine. The ISO's second entry boots the live system without
 installing, for a look or a rescue.
 
-## The same disk for a hypervisor
+## In a VM
 
-The raw disk is converted, never laid out again, into `builderbot-os-VERSION.qcow2`
-for Proxmox, libvirt and other QEMU hosts, and `builderbot-os-VERSION.ova` for VMware
-and VirtualBox (a stream-optimized VMDK with its OVF descriptor,
-`image/ovf.xml`, and a manifest): the easiest way to try BuilderBot, and to
-keep it apart on a hypervisor, its snapshots the hypervisor's. The VM boots
-into the bare-metal controller with the machine as its own node, as a stick
-or an installed disk does. Give it two processors and 4 GB at least, and
+A VM installs from the ISO as a machine does: give it a disk of 16 GB or
+more, boot the ISO and pick that disk. It boots into the bare-metal
+controller with the machine as its own node, as a stick or an installed
+disk does. The build also converts the raw disk, never laid out again, into
+`builderbot-os-VERSION.qcow2` and `builderbot-os-VERSION.ova` (a
+stream-optimized VMDK with its OVF descriptor, `image/ovf.xml`, and a
+manifest), which the boot test runs and the CI run keeps as its artifact;
+a release does not carry them. Give the VM two processors and 4 GB at least, and
 turn nested virtualization on for it where VMs are to run inside it (the
 Features row says when `/dev/kvm` is missing); the data partition is grown
 to the disk the hypervisor gives it at boot, so a disk made bigger later is
@@ -275,9 +277,10 @@ disk under QEMU until the dashboard answers (`appliance-boot`). The image
 build calls it on every release tag, from the Actions page's *Run
 workflow* with its *appliance* box ticked, and weekly; a branch push that
 touches the image runs it alone and publishes nothing, so a fix to the
-image is proved on a push. A release's files land only after the boot
-(`appliance-publish`), beside the controller bundle, each of the disk, the
-ISO, the VM disks, the stick and the slot with a build attestation.
+image is proved on a push. A release carries two of its files, the ISO and
+the stick's image, each with its sha256 and a build attestation, and only
+after the boot (`appliance-publish`); the raw disk, the qcow2 and the OVA
+stay the run's artifact.
 The weekly run takes the day before's snapshot, builds, and says in its
 summary which system packages moved since the last release (each image
 carries its package list, `.packages`); a patch release from it is a press
@@ -305,10 +308,10 @@ now** under Controller settings, Updates, and said on the bell). It follows
 the release line the install is on (`BB_RELEASE_LINE`, which the stick
 maker's `--set` writes) and the releases as published; the dev builds'
 channel is in [versions.md](versions.md#two-channels). On BuilderBot OS **Update** does not run the installer: the own
-node's root agent fetches the release's image files (the root, the kernel,
-the initrd, the stamp), checks each against the sha256 the release carries
-and the root against its build attestation (where `gh` is on the machine),
-writes the slot not in use, puts the kernel beside it on the ESP, and names
+node's root agent fetches the release's ISO, checks it against the sha256
+the release carries and against its build attestation (where `gh` is on the
+machine), opens it read-only and takes the root, the kernel, the initrd and
+the stamp out of its `live/` folder, writes the slot not in use, puts the kernel beside it on the ESP, and names
 that slot for the next boot. Nothing running changes until you restart
 from This machine, and the slot running now stays to fall back to: at the
 GRUB menu, or with `slot next a`. The Updates section says which slot runs
@@ -316,7 +319,7 @@ and which boots next.
 
 An offline machine takes the same files from a folder on it (a stick, a
 share): **Update from the folder** under Updates, the folder holding the
-release's four files with their `.sha256` beside them.
+release's ISO with its `.sha256` beside it.
 
 **On trial.** The slot an update wrote boots on trial: GRUB counts each
 boot of it in its environment, and the health check

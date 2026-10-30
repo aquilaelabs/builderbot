@@ -3,10 +3,11 @@ itself for the census, and the update that writes the next image into the
 slot not in use. The disk is image/partitions.sh's: two root slots found by
 fixed partition UUIDs, each slot's kernel and initrd under /builderbot/SLOT
 on the ESP, and GRUB booting the slot its environment names (the slot
-tool). An update fetches the release's four files, checks each against the
-sha256 the release carries and the squashfs against its build attestation
-where gh is here, writes the other slot, puts its kernel beside it, names it
-for the next boot, and asks for a restart; nothing running changes until
+tool). An update fetches the release's ISO, checks it against the sha256
+the release carries and against its build attestation where gh is here,
+takes the slot, its kernel, its initrd and its release stamp out of the
+ISO's live/ folder, writes the other slot, puts its kernel beside it, names
+it for the next boot, and asks for a restart; nothing running changes until
 then, and the slot that runs now is the one to fall back to.
 """
 import contextlib
@@ -28,7 +29,9 @@ SLOT_DEV = {"a": "/dev/disk/by-partuuid/6a5c2f3e-0b7d-4b2a-9c1e-b0b1de5b0e0a",
 SLOT_MIB = 4096
 RELEASE_URL = "https://github.com/aquilaelabs/builderbot/releases/download"
 REPO = "aquilaelabs/builderbot"
-PIECES = ("root.squashfs", "vmlinuz", "initrd", "release")
+# Each piece of a slot, and where image/build.sh puts it on the ISO.
+PIECES = {"root.squashfs": "live/filesystem.squashfs", "vmlinuz": "live/vmlinuz",
+          "initrd": "live/initrd", "release": "live/release"}
 VER_RE = re.compile(r"v?(\d+\.\d+\.\d+)")
 
 
@@ -153,6 +156,29 @@ class OsImageMixin:
     """Agent's BuilderBot OS update: one of the parts class Agent (agent.py)
     is made of."""
 
+    def _iso_pieces(self, job, iso, work):
+        """The slot's pieces copied out of the ISO's live/ folder into
+        `work`, the ISO mounted read-only for it: {piece: path}, or {} with
+        what went wrong said."""
+        mnt = os.path.join(work, "iso")
+        os.makedirs(mnt, exist_ok=True)
+        if self._sh(job, ["mount", "-o", "loop,ro,nodev,nosuid,noexec", iso, mnt], timeout=60) != 0:
+            job.say("the image would not open (mount -o loop): nothing written\n")
+            return {}
+        files = {}
+        try:
+            for piece, inside in PIECES.items():
+                dest = os.path.join(work, piece)
+                try:
+                    shutil.copyfile(os.path.join(mnt, inside), dest)
+                except OSError as e:
+                    job.say(f"the image has no {inside}: {e}; nothing written\n")
+                    return {}
+                files[piece] = dest
+        finally:
+            self._sh(job, ["umount", mnt], timeout=60)
+        return files
+
     def _apply_system_pool(self, job, cfg):
         """A stick's system pool named (R161 step 10): the tool stops docker,
         containerd and libvirt, moves what the stick holds of theirs, of the
@@ -204,48 +230,50 @@ class OsImageMixin:
         os.makedirs(work, mode=0o700)
         name = f"builderbot-os-{ver}" if ver else ""
         if src:
-            # The folder's files name the version.
-            found = sorted(f for f in os.listdir(src) if f.startswith("builderbot-os-") and f.endswith(".release"))
+            # The folder's ISO names the version.
+            found = sorted(f for f in os.listdir(src) if f.startswith("builderbot-os-") and f.endswith(".iso"))
             if len(found) != 1:
-                say(f"refused: {src} holds {len(found)} release stamps (builderbot-os-VERSION.release); one, please\n")
+                say(f"refused: {src} holds {len(found)} images (builderbot-os-VERSION.iso); one, please\n")
                 return "failed", 65
-            name = found[0][:-len(".release")]
+            name = found[0][:-len(".iso")]
             ver = name[len("builderbot-os-"):]
         say(f"os update: {name}, into slot {other} (slot {cur} runs now)\n")
-        files = {}
-        for piece in PIECES:
-            fn = f"{name}.{piece}"
-            dest = os.path.join(work, fn)
-            try:
-                if src:
-                    shutil.copyfile(os.path.join(src, fn), dest)
-                    shutil.copyfile(os.path.join(src, fn + ".sha256"), dest + ".sha256")
-                else:
-                    base = _env("BB_OS_RELEASE_URL", RELEASE_URL)
-                    job.step(f"fetching {fn}")
-                    _fetch(f"{base}/{tag if tag.startswith('v') else 'v' + tag}/{fn}", dest, say)
-                    _fetch(f"{base}/{tag if tag.startswith('v') else 'v' + tag}/{fn}.sha256", dest + ".sha256", say)
-            except OSError as e:
-                say(f"{fn}: not got: {e}\n")
-                return "failed", 66
-            with open(dest + ".sha256", encoding="utf-8", errors="replace") as f:
-                want = (f.read().split() or [""])[0].lower()
-            have = _sha256(dest)
-            if not re.fullmatch(r"[0-9a-f]{64}", want) or want != have:
-                say(f"{fn}: its sha256 does not match the one the release carries ({have[:12]} against {want[:12] or 'none'}): nothing written\n")
-                return "failed", 67
-            files[piece] = dest
-        say("every file matches its sha256\n")
+        fn = f"{name}.iso"
+        iso = os.path.join(work, fn)
+        try:
+            if src:
+                shutil.copyfile(os.path.join(src, fn), iso)
+                shutil.copyfile(os.path.join(src, fn + ".sha256"), iso + ".sha256")
+            else:
+                base = _env("BB_OS_RELEASE_URL", RELEASE_URL)
+                job.step(f"fetching {fn}")
+                _fetch(f"{base}/{tag if tag.startswith('v') else 'v' + tag}/{fn}", iso, say)
+                _fetch(f"{base}/{tag if tag.startswith('v') else 'v' + tag}/{fn}.sha256", iso + ".sha256", say)
+        except OSError as e:
+            say(f"{fn}: not got: {e}\n")
+            return "failed", 66
+        with open(iso + ".sha256", encoding="utf-8", errors="replace") as f:
+            want = (f.read().split() or [""])[0].lower()
+        have = _sha256(iso)
+        if not re.fullmatch(r"[0-9a-f]{64}", want) or want != have:
+            say(f"{fn}: its sha256 does not match the one the release carries ({have[:12]} against {want[:12] or 'none'}): nothing written\n")
+            return "failed", 67
+        say(f"{fn} matches its sha256\n")
         # The build attestation (R160 step 4): keyless, from the workflow
         # that built the image, checked where gh is here to ask GitHub.
         gh = shutil.which("gh")
         if gh and not src:
-            rc = self._sh(job, [gh, "attestation", "verify", files["root.squashfs"], "--repo", _env("BB_OS_REPO", REPO)], timeout=120)
+            rc = self._sh(job, [gh, "attestation", "verify", iso, "--repo", _env("BB_OS_REPO", REPO)], timeout=120)
             if rc != 0:
-                say("the slot's build attestation did not verify: nothing written\n")
+                say("the image's build attestation did not verify: nothing written\n")
                 return "failed", 68
         elif not src:
             say("no gh here to verify the build attestation with: the sha256 is what was checked\n")
+        job.step("reading the image")
+        files = self._iso_pieces(job, iso, work)
+        if not files:
+            return "failed", 66
+        os.unlink(iso)
         size = os.path.getsize(files["root.squashfs"])
         if size > SLOT_MIB * 1048576:
             say(f"the root image is {size >> 20} MB and a slot holds {SLOT_MIB}: nothing written\n")

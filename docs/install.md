@@ -335,8 +335,8 @@ puts it back on them. `--remove --purge` takes all but the projects.
 installed edition from the appliance image instead: Debian pinned to a
 snapshot with the controller staged in, a read-only root in two slots so an
 update is a whole image and a bad one falls back, and the machine its own
-node at its first boot. Each release carries it as an installer ISO, a
-VM disk (qcow2 and OVA) and a USB stick's image; [image.md](image.md) says
+node at its first boot. Each release carries it as an installer ISO, for a machine or a VM, and a
+USB stick's image; [image.md](image.md) says
 what it is, how each is installed and how it is built.
 
 ## Building locally instead of pulling
