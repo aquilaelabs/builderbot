@@ -17,13 +17,19 @@ fi
 # and no slot was ever marked good.
 PORT="$(sed -n 's/^DASHBOARD_PORT=//p' /etc/builderbot-controller/controller.env 2>/dev/null | head -1 || true)"
 PORT="${PORT:-7680}"
-# Healthy is the dashboard answering as it does when it works (a page or
-# its redirect to the sign-in), never an error: a 500 or a 502 was taken
-# for healthy and ended the trial of a slot that did not work (B471).
+# Healthy is the controller's own health answer, 200, which it gives once
+# it is past its state gate and its store answers, three times running
+# (fifteen seconds) with the agent up: never an error, a held start or a
+# page answering for a moment (B471, R191 step 5).
+streak=0
 for i in $(seq 1 120); do
-    code="$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:${PORT}/" 2>/dev/null || true)"
-    case "$code" in 2??|301|302|303|307|308) up=1 ;; *) up="" ;; esac
-    if [ -n "$up" ] && systemctl is-active --quiet builderbot-agent 2>/dev/null; then
+    code="$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:${PORT}/api/v1/healthz" 2>/dev/null || true)"
+    if [ "$code" = 200 ] && systemctl is-active --quiet builderbot-agent 2>/dev/null; then
+        streak=$((streak + 1))
+    else
+        streak=0
+    fi
+    if [ "$streak" -ge 3 ]; then
         bash "$SLOT" good
         echo "healthy after $((i * 5)) s: the dashboard answers $code and the agent runs; slot $(bash "$SLOT" current) is marked good"
         exit 0
