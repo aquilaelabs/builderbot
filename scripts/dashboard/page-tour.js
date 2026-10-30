@@ -142,12 +142,12 @@ const TOUR_STEPS = {
   ],
   schedules: [
     {say: "Schedules: commands run on a node at the times you set, as cron runs them. Each run is a job, with its log on the Jobs page."},
-    {at: TOUR_BAR, say: "New schedule is here. The static analysis scan is the Scanners page's, under Containers."},
+    {at: `${TOUR_PANE} #bSchedNew`, say: "New schedule is here. The static analysis scan is the Scanners page's, under Containers."},
     {at: `${TOUR_PANE} .schedrow, ${TOUR_PANE} .empty`, say: "Each schedule says when it runs, where and as whom, and how its last run went. Run now runs it once."},
   ],
   users: [
     {say: "Users: the accounts that sign in here, and the roles each holds."},
-    {at: TOUR_BAR, say: "Add user is here. A new account holds no role until you give it one."},
+    {at: `${TOUR_PANE} #uAddOpen`, say: "Add user is here. A new account holds no role until you give it one."},
   ],
   roles: [
     {say: "Roles: what an account may read and change, area by area, on its projects or everywhere."},
