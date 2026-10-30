@@ -235,7 +235,7 @@ function renderEmulatorInto(i){
       and the Android command-line tools and the emulator are packaged for ${
       esc(d.wrong_platform)}: no system image can run there.</div></div>`
       : (d.missing || []).length ? `<div class="field"><div class="notice warn emneed">${esc(d.name)} has no ${
-      esc(d.missing.join(" or "))} yet. <button type="button" id="emuToTc">Install from Toolchains</button></div></div>` : ""}
+      esc(d.missing.join(" or "))} yet. <button type="button" id="emuToTc">Install from the Library</button></div></div>` : ""}
     ${
     // The node's images at a glance (R216): how many, the AVDs built on
     // them, the levels its projects need and have none of, the room left.
