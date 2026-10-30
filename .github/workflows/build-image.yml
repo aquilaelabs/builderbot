@@ -276,7 +276,10 @@ jobs:
   # before this one, or which of them was a dispatch. Seconds of work on the
   # self-hosted runner, and the alternative is a PAT.
   record:
-    needs: build
+    # Every job of the run, not the image's alone: a run whose OS image failed
+    # was recorded a success (B455). A skipped job (no tag, no box ticked)
+    # counts as nothing either way.
+    needs: [build, bundle, appliance, appliance-publish]
     # Failed, canceled and skipped are exactly the outcomes worth recording.
     if: always()
     # The image is pushed by the time this runs, so nothing waits on it: with
@@ -303,7 +306,7 @@ jobs:
         # the dashboard follows for anything the web can reach, and it keeps
         # a workflow input out of a command line.
         env:
-          BUILD_RESULT: ${{ needs.build.result }}
+          JOB_RESULTS: "build=${{ needs.build.result }} bundle=${{ needs.bundle.result }} appliance=${{ needs.appliance.result }} appliance-publish=${{ needs.appliance-publish.result }}"
           BUILD_VERSION: ${{ needs.build.outputs.version }}
           BUILD_DIGEST: ${{ needs.build.outputs.digest }}
           BUILD_ELAPSED: ${{ needs.build.outputs.elapsed }}
@@ -322,6 +325,15 @@ jobs:
           # build over it, but it should say so rather than look successful.
           mkdir -p "$dir" || { echo "no writable /config, so nothing archived"; exit 0; }
           log="$dir/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
+
+          # The run's result is its worst job's, each job's said under it.
+          result=success
+          for jr in $JOB_RESULTS; do
+            case "${jr#*=}" in
+              failure) result=failure ;;
+              cancelled) [ "$result" = failure ] || result=cancelled ;;
+            esac
+          done
 
           case "$BUILD_ELAPSED" in
             ''|*[!0-9]*) took="unknown" ;;
@@ -354,7 +366,8 @@ jobs:
             echo "itself ran on a hosted runner, which keeps nothing this box can"
             echo "reach. The run page on GitHub has the log."
             echo
-            printf 'result: %s\n' "$BUILD_RESULT"
+            for jr in $JOB_RESULTS; do printf 'job %s: %s\n' "${jr%%=*}" "${jr#*=}"; done
+            printf 'result: %s\n' "$result"
             printf 'closed: %s\n' "$(date -Is)"
           } > "$log"
           cat "$log"
