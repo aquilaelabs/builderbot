@@ -58,7 +58,10 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       // What the last build took on its node, workspace and cache (R110
       // step 7): the room the next one is checked against.
       {label: "last build took", value: humanBytes(art.build?.took?.workspace || 0),
-       sub: art.build?.took?.cache ? `cache ${humanBytes(art.build.took.cache)}` : "", omit: !art.build?.took?.workspace}]);
+       sub: art.build?.took?.cache ? `cache ${humanBytes(art.build.took.cache)}` : "", omit: !art.build?.took?.workspace}],
+      // Its status line, on the control row beside Download source (the
+      // operator, 29 Oct: never a button alone on its line).
+      "the code base as a zip, without build output");
     {
       // Where this project compiles, as a section rather than a loose band:
       // this tab is three subjects stacked, where it builds, what it is
