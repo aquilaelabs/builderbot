@@ -177,7 +177,7 @@ function phonePanel(n){
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
            : dev ? (dev.serial ? esc(dev.serial) : `connected by ${esc(n.owner?.name || "somebody")}; which phone is theirs to know`)
            : "no phone on its adb"}</div></div>
-       <span class="acts actbar">${phoneCheckBtn(false)}${dev && (n.mine || state?.admin) && mayPhone() ? `<button type="button" id="phDisconnect"${
+       <span class="acts actbar">${phoneCheckBtn(false)}${dev && (n.mine || (n.owner && state?.admin)) && mayPhone() ? `<button type="button" id="phDisconnect"${
          n.mine ? "" : ` data-other="${esc(n.owner?.name || "somebody")}"`}
          >Disconnect</button>` : ""}</span>
      </div>`,
