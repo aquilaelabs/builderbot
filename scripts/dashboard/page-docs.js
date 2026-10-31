@@ -1089,11 +1089,13 @@ function glanceWaiting(el){
                + (said ? viewSaid(skel("word")) : ""));
 }
 // What a view has to say beside its tiles, in the notice voice (the operator,
-// 25 Oct: no loose words at a page's top): an error in red, a state plain,
-// its buttons on the notice's own bar.
+// 25 Oct: no loose words at a page's top): an error in red, a warning in
+// gold, a state in the note's color, its buttons on the notice's own bar. A
+// bare .notice is gold, so a state passed with no tone is a note: the
+// Artifacts view's "the code base as a zip" read as a warning.
 function viewSaid(said, actions = "", tone = ""){
   if (!said && !actions) return "";
-  return `<div class="field nbsaid"><div class="notice${tone ? " " + esc(tone) : ""}">${said}${
+  return `<div class="field nbsaid"><div class="notice ${esc(tone || "note")}">${said}${
     actions ? `<div class="actbar">${actions}</div>` : ""}</div></div>`;
 }
 function viewGlance(el, tiles = [], said = "", actions = "", tone = ""){
@@ -1107,7 +1109,7 @@ function viewGlance(el, tiles = [], said = "", actions = "", tone = ""){
   let wrote;
   if (slot){
     wrote = paint(el, html);
-    wrote = paint(slot, said || actions ? `<div class="notice${tone ? " " + esc(tone) : ""}">${said}${actions ? `<div class="actbar">${actions}</div>` : ""}</div>` : "") || wrote;
+    wrote = paint(slot, said || actions ? `<div class="notice ${esc(tone || "note")}">${said}${actions ? `<div class="actbar">${actions}</div>` : ""}</div>` : "") || wrote;
   } else wrote = paint(el, html + viewSaid(said, actions, tone));
   // Marked once: a poll that brings nothing new writes nothing (uniform).
   if (!el.dataset.drawn) el.dataset.drawn = "1";
@@ -1462,8 +1464,9 @@ const inRelease = (v, on) => !on || (on === "none" ? !relOf(v) : relOf(v) === on
 // The chips alone, for a band that holds more than them (a list's search
 // beside them, R254 step 1): "" when fewer than two groups have anything.
 // `all` is All's count where the groups overlap (a branch both Active and
-// Yours), the groups' sum otherwise.
-function chipButtons(groups, on, attr, all){
+// Yours), the groups' sum otherwise. `allWord` names the first chip where a
+// second row under another would say All again (the Library's sources).
+function chipButtons(groups, on, attr, all, allWord = "All"){
   // A group with no count to give (a disk, a key: count null) is a chip
   // with its name alone; one whose count is 0 has nothing to show.
   const gs = (groups || []).filter(g => g && (g.count || g.count === null));
@@ -1472,5 +1475,5 @@ function chipButtons(groups, on, attr, all){
   const chip = (key, label, count) => `<button type="button" class="chip${(on || "") === key ? " on" : ""}"
     ${attr}="${esc(key)}" aria-pressed="${(on || "") === key}">${esc(label)}${
       count === null || count === undefined ? "" : `<span class="pill">${count}</span>`}</button>`;
-  return chip("", "All", total) + gs.map(g => chip(g.key, g.label, g.count)).join("");
+  return chip("", allWord, total) + gs.map(g => chip(g.key, g.label, g.count)).join("");
 }

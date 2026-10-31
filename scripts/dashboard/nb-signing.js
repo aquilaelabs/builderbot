@@ -131,7 +131,7 @@ function nbSigningView({$, nb, project}){
     viewGlance($("sgHint"), !held ? [] : [
       {label: held === 1 ? "key" : "keys", value: held},
       {label: mappedN === 1 ? "app" : "apps", value: mappedN, omit: !mappedN}],
-      !held ? "" : AT_REST[atRest] || "");
+      !held ? "" : AT_REST[atRest] || "", "", {open: "warn", locked: "bad"}[atRest] || "");
     // Import a backup and New key, the view's adds, the control row's
     // actions with New key the primary (a-notebook/views, R109), the form
     // either opens unrolling under the row.

@@ -15,7 +15,7 @@ function nbAnalysisView({$, nb, project}){
     if (!findings || findings.loading){ glanceWaiting(hint); list.innerHTML = skel("rows"); return; }
     if (findings.error){ viewGlance(hint, [], esc("analysis: " + findings.error), "", "bad"); return; }
     if (!findings.available){
-      viewGlance(hint, [], "no scan results: the report folder is not mounted here");
+      viewGlance(hint, [], "no scan results: the report folder is not mounted here", "", "warn");
       // What the view is for, and the way to it (docs/scanners.md).
       list.innerHTML = `<div class="field"><div class="hint nbempty">Findings from the static analysis stack land here once it runs:
         <a href="#/help/scanners">setting it up</a> says how, with the script that runs it.</div></div>`;

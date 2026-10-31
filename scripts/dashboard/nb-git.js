@@ -155,7 +155,9 @@ function nbGitView({$, nb, project}){
       {label: files.length === 1 ? "change" : "changes", value: files.length, sub: "not committed"},
       {label: local.length === 1 ? "branch" : "branches", value: local.length, omit: !commits.length},
       {label: "to push", value: st.ahead || 0, omit: !st.upstream},
-      {label: "to pull", value: st.behind || 0, omit: !st.upstream, tone: st.ahead && st.behind ? "warn" : ""}], said];
+      {label: "to pull", value: st.behind || 0, omit: !st.upstream, tone: st.ahead && st.behind ? "warn" : ""}], said, "",
+      // In gold when it says what stops a press: no push rights, or both ways to go.
+      git.remote && (!git.push || (st.upstream && st.ahead && st.behind)) ? "warn" : ""];
     viewGlance(hint, ...gitGlance);
     const net = $("gitNet");
     if (net){
