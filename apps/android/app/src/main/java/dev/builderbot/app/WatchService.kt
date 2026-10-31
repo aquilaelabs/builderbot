@@ -332,6 +332,14 @@ object Watch {
                  " (updating Claude Code ends the ${a.optInt("sessions")} Claude session${if (a.optInt("sessions") == 1) "" else "s"} there)" else "")
         "release-sign" -> if (a.bool("bad")) "${a.str("tag")}'s APK in ${a.str("project")} is not signed: ${a.str("why")}"
                           else "${a.str("project")}'s next release cannot be signed: ${a.str("why")}"
+        // The rest of the bell's own rows, in its words (server._attention_words).
+        "git-unlinked" -> "${a.str("project")} has no git access: ${a.str("why")}"
+        "project-leftover" -> "${a.str("project")} can be deleted: ${a.str("why")}"
+        "schedule" -> "${a.str("name").ifBlank { "A schedule" }}: ${if (a.bool("bad")) "its run did not work" else "a run was skipped"}"
+        "two-factor" -> if (a.bool("required")) "A role of yours requires two-factor sign-in" else "Turn on two-factor sign-in"
+        "token-reuse" -> "${a.str("node")}'s credential was used from a copy: every token of that node is revoked"
+        "acme" -> "${if (a.bool("bad")) "No certificate" else "A certificate"} for ${a.str("host")} on ${a.str("node")}"
+        "scan" -> "${if (a.str("what") == "failed") "Scan failed" else "Scanner update"} on ${a.str("node")}"
         // A release short of a file its project lists (R190).
         "release-files" -> "${a.str("tag")} of ${a.str("project")} is missing a file: ${a.str("why")}"
         "room" -> "${a.str("node")} is running short of room: " + (a.arr("short").map {
@@ -373,6 +381,8 @@ object Watch {
         "release-withdraw" -> "Withdraw the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }} and its tag"
         // A push held for the lines in it that look like a secret (R219).
         "push" -> "A push from ${a.str("project").ifBlank { "a project" }} looks sensitive"
+        // A session asking to use its person's own phone, lent or not.
+        "phone-use" -> "Your phone, from ${a.str("project").ifBlank { "a project" }}"
         // A VM a session asks to make, start or remove (R91), under its
         // project's Make VMs setting.
         "vm" -> "A VM in ${a.str("project").ifBlank { "a project" }}"
