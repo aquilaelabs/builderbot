@@ -127,9 +127,17 @@ class TheAgent(unittest.TestCase):
             self.assertEqual(self.ran, [], cfg)
 
     def test_a_held_disk_goes_in_when_the_job_says_wipe_and_the_rest_run_as_named(self):
+        # A single disk into a mirror pool is refused, wipe or not: it could
+        # never be taken out again (B526).
         state, code, text = self.run_job({"pool": "add", "name": "tank", "layout": "single", "disks": ["sda"], "wipe": True})
+        self.assertEqual((state, code), ("failed", 64), text)
+        self.assertIn("could not be taken out again", text)
+        # ...and the same layout goes in, its held disk's labels wiped first,
+        # zpool add itself never forced.
+        state, code, text = self.run_job({"pool": "add", "name": "tank", "layout": "mirror", "disks": ["sda", "sdb"], "wipe": True})
         self.assertEqual(state, "succeeded", text)
-        self.assertEqual(self.ran[-1][1:4], ["add", "-f", "tank"])
+        self.assertIn(["wipefs", "-a", "/dev/sda"], self.ran)
+        self.assertEqual(self.ran[-1][1:4], ["add", "tank", "mirror"])
         self.run_job({"pool": "scrub", "name": "tank"})
         self.assertEqual(self.ran[-1][1:], ["scrub", "tank"])
         self.run_job({"pool": "replace", "name": "tank", "old": "ata-WDC_WD20EFRX_WD-A", "new": "sdb"})

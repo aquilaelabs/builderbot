@@ -303,13 +303,28 @@ class PoolsMixin:
             if action == "add" and name not in have:
                 say(f"refused: no pool called {name} here\n")
                 return "failed", 66
+            # Added only in the layout the pool already has: a single disk
+            # added to a raidz2 cannot be taken out again, and losing it loses
+            # the pool. zpool refuses that itself, unless forced (below).
+            if action == "add":
+                kinds = {v.get("type") for v in (have[name].get("vdevs") or []) if v.get("type") in LAYOUTS}
+                if kinds and layout not in kinds:
+                    say(f"refused: {name} is {', '.join(sorted(kinds))}, and a {layout} added to it could not be "
+                        "taken out again; add the same layout\n")
+                    return "failed", 64
             ids = [by_id(n) for n in want]
             vdev = ([] if layout == "single" else [layout]) + ids
             if action == "create":
                 argv = [zpool, "create"] + (["-f"] if wipe else []) + ["-o", "ashift=12", "-O", "compression=lz4", "-O", "atime=off",
                                                                       "-O", "xattr=sa", "-O", "acltype=posixacl", "-m", f"{MOUNT_ROOT}/{name}", name] + vdev
             else:
-                argv = [zpool, "add"] + (["-f"] if wipe else []) + [name] + vdev
+                # Never forced: -f also overrides zpool's own refusal of a
+                # mismatched layout. A wipe clears the disks' old labels
+                # first instead.
+                if wipe:
+                    for n in want:
+                        self._sh(job, ["wipefs", "-a", f"/dev/{n}"], timeout=120)
+                argv = [zpool, "add", name] + vdev
             say(f"pool {action} {name}: {layout} of {', '.join(want)} ({', '.join(ids)})\n")
             if action == "create" and cfg.get("encrypt") is True:
                 # Native encryption (R162 step 3): the passphrase never rides
