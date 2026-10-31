@@ -472,7 +472,7 @@ fun NodesScreen(store: Store) {
             }
             if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Note)
             if (nd.error != null) Problem(nd.error)
-            if (nd.value != null && rows.isEmpty()) Dim("no node is enrolled; the dashboard's Nodes tab mints a token for one")
+            if (nd.value != null && rows.isEmpty()) Dim("no node is enrolled; the dashboard's Nodes page, under Machines, mints a token for one")
         }
         items(rows) { n ->
             val rep = n.obj("reported")
@@ -1072,7 +1072,7 @@ fun ToolsScreen(store: Store, mayTools: Boolean) {
             if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 8.dp), color = Note)
             if (pk.error != null) Problem(pk.error)
             if (nd.value != null && nodes.isEmpty()) Column(Modifier.padding(horizontal = 16.dp)) {
-                Dim("no node is enrolled: toolchains are installed on a node, and the dashboard's Nodes tab enrolls one") }
+                Dim("no node is enrolled: toolchains are installed on a node, and the dashboard's Nodes page, under Machines, enrolls one") }
             pk.value?.let { v ->
                 if (v.str("root").isNotBlank()) Column(Modifier.padding(16.dp, 6.dp, 16.dp, 0.dp)) {
                     Dim("store: ${v.str("root")}" + if (v.bool("shared")) " (a mapped share)" else "") }

@@ -339,7 +339,7 @@ private fun Briefing(api: dev.builderbot.app.Api, project: String) {
         item {
             Column(Modifier.padding(16.dp, 8.dp)) {
                 if (rl.error != null) Problem(rl.error)
-                if (rl.value != null) Dim("${rl.value.int("standing")} standing rule${if (rl.value.int("standing") == 1) "" else "s"}, ${rl.value.int("conditional")} conditional · edited on the dashboard's Briefing tab")
+                if (rl.value != null) Dim("${rl.value.int("standing")} standing rule${if (rl.value.int("standing") == 1) "" else "s"}, ${rl.value.int("conditional")} conditional · edited on the project's Overview in the dashboard")
                 if (rl.value != null && rules.isEmpty()) Dim("no house rules here")
             }
         }
