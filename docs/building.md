@@ -449,7 +449,23 @@ than a release: auto releases at once, **ask** (the default) puts the tag
 and the commit it would mark in front of the project's owner in their bell
 and the app, and deny refuses naming the setting. A release that could not
 happen (no version, a tag already there, uncommitted changes) is refused
-before anybody is asked.
+before anybody is asked. From a branch other than the one builds ship
+from, a session's release is the dev build's (`--dev`, a pre-release on
+the dev channel) unless `--stable` says otherwise, and its first line
+names the channel it lands on (R190).
+
+**Rehearsing one.** `bb version rehearse` runs every build a release's tag
+runs (the controller bundle packed, the OS image built and booted, the
+Android app, the companion and the VS Code extension built) on the pushed
+branch, publishing nothing, its summary listing the files the release would
+carry; a release is then tagged once. GitHub starts it only once the
+repository's default branch carries `.github/workflows/release-rehearsal.yml`.
+
+**The files a release carries.** `.release-files` at the tree's root lists
+them, one a line with `@VER@` for the version. The controller checks each
+release it made against the list at its own tag once CI has had three
+hours, and a release short of a file is a red row on the bell naming the
+file and why (an unsigned APK, a file CI did not attach).
 
 **The forge's release.** Once the tag is pushed, Release makes the forge's
 own release beside it: titled with the version, the changelog's section for
@@ -473,7 +489,7 @@ address of the file of that name on the release, which is how a
 screenshot attached by the same edit is shown. It is under the release's
 own dial, and on ask every edit is its own ask: the project's owner reads
 the notes whole and each file by its name and size before Allow. Nothing
-deletes a release or moves its tag (R139).
+here moves a tag (R139).
 
 A file comes off a release with `bb version release --remove NAME --why
 "..."` (once for each name), and only that way: its own ask under the same
@@ -483,6 +499,13 @@ the forge's own list of the release's files before anybody is asked, so
 the ask names files that are there, with their sizes, and the bell shows it
 in the destructive color. On GitLab the release's link to the file goes;
 the file itself stays in the package registry.
+
+A release made by mistake is taken back with `bb version release --withdraw
+TAG --why "..."`: the forge's release and its tag deleted together, and the
+tag taken out of the controller's copy, so the number can be cut again from
+a fixed commit (R190). It is always the project owner's answer on the bell,
+whatever the dial (deny refuses), since nothing undoes it; a tag whose
+release is already gone is withdrawn alone.
 
 **What is signed says so.** The node reports what `apksigner verify` (or
 `jarsigner -verify` for a bundle) found: the certificate's SHA-256 and the

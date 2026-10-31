@@ -46,7 +46,9 @@ dev build heading for it, a dev build by its ordinal), so a dev build
 moves to a later dev build or to the release it was heading for. A dev
 build is not a release: it may not come up, and the OS image's slot
 fallback is what brings the machine back. `bb version release --dev` cuts
-such a tag on this commit (no bump, no changelog section) and pushes it;
+such a tag on this commit (no bump, no changelog section) and pushes it,
+which is what a session's release from a branch other than main is unless
+`--stable` says otherwise;
 the stick maker's `--latest` and `--release` take only the normal channel.
 
 ## What a release upgrades from
