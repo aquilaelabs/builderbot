@@ -2139,7 +2139,7 @@ ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb 
   await page.evaluate(n => openNotebook(n, 'roadmap'), 'ep.silon');
   await page.waitForFunction(() => document.querySelectorAll('.pane .doc.on #roadmapVers [data-rmver]').length === 4, null, { timeout: 15000 });
   const chips = await page.$$eval('.pane .doc.on #roadmapVers [data-rmver]', bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));
-  ok(chips.join('|') === 'All3|0.5.41|0.6.01|No target1', `a chip per target, oldest first, and No target, each with its count (${chips.join('|')})`);
+  ok(chips.join('|') === 'Any version3|0.5.41|0.6.01|No target1', `a chip per target, oldest first, and No target, each with its count (${chips.join('|')})`);
   const tag = await page.$$eval('.pane .doc.on #roadmapList .roadmap .tag.ver', ts => ts.map(t => t.textContent.trim()));
   ok(tag.includes('for 0.6.0') && tag.includes('for 0.5.4') && tag.length === 2, `an item with a target says it above its words (${tag.join(', ')})`);
   const texts = () => page.$$eval('.pane .doc.on #roadmapList .roadmap[data-step="-1"] .txt', ts => ts.filter(t => t.checkVisibility()).map(t => t.textContent));
