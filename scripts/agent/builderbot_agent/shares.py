@@ -211,6 +211,16 @@ class SharesMixin:
             if not (path.startswith(ROOTS) and os.path.isabs(path) and ".." not in path.split("/") and os.path.isdir(path)):
                 say(f"refused: {path or 'no path'} is not a folder under /mnt or /srv that is here\n")
                 return "failed", 65
+            # The folder as it really is, and a plain path: it is written into
+            # /etc/exports.d and smb.conf, where a space or a newline in a name
+            # a share's user made wrote options of its own (a world export
+            # keeping root), and a link exported wherever it pointed.
+            real = os.path.realpath(path)
+            if not (real.startswith(ROOTS) and re.fullmatch(r"/[A-Za-z0-9._/+@-]+", real)):
+                say(f"refused: {path} is a link out of /mnt or /srv, or has characters a share's path may not have "
+                    "(spaces and the like): name its folder plainly\n")
+                return "failed", 65
+            path = real
             if not smb.get("on") and not nfs.get("on"):
                 say("refused: a share is served over SMB, NFS or both\n")
                 return "failed", 64
