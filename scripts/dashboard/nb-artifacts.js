@@ -57,9 +57,10 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       {label: caps.length === 1 ? "capture" : "captures", value: caps.length, omit: !caps.length},
       // The room the last build used on its node, workspace and cache (R110
       // step 7), which the next one is checked against. Said as room: "last
-      // build took 2kB" read as a time.
-      {label: "room the last build used", value: humanBytes(art.build?.took?.workspace || 0),
-       sub: art.build?.took?.cache ? `cache ${humanBytes(art.build.took.cache)}` : "", omit: !art.build?.took?.workspace}],
+      // build took 2kB" read as a time; a label short enough for a phone's
+      // tile, the build it was under it.
+      {label: "build room", value: humanBytes(art.build?.took?.workspace || 0),
+       sub: art.build?.took?.cache ? `the last build's, cache ${humanBytes(art.build.took.cache)}` : "the last build's", omit: !art.build?.took?.workspace}],
       // Its status line, on the control row beside Download source (the
       // operator, 29 Oct: never a button alone on its line).
       "the code base as a zip, without build output");
