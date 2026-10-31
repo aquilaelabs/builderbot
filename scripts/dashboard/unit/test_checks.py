@@ -23,6 +23,10 @@ class Checks(unittest.TestCase):
         self.addCleanup(lambda: (setattr(settings, "FILE", saved[0]), setattr(settings, "write_json", saved[1])))
         settings.configure(write_json=lambda p, d: Path(p).write_text(json.dumps(d)), state=self.tmp)
         self.ran = []
+        # ...and checks' own, which a later module in this process read with
+        # this test's directory long gone (B468).
+        kept = (checks.STATE, checks.settings)
+        self.addCleanup(lambda: (setattr(checks, "STATE", kept[0]), setattr(checks, "settings", kept[1])))
         checks.configure(state=self.tmp, settings_mod=settings, last={"images": lambda: 1000},
                          run={"images": lambda: self.ran.append("images"), "release": lambda: None})
 

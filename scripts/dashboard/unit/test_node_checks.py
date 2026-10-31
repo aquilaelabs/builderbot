@@ -7,6 +7,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import checks  # noqa: E402
 import toolchains  # noqa: E402
 
 DAY = 86400
@@ -33,7 +34,11 @@ class NodeChecks(unittest.TestCase):
             def jobs_for(node_id=None, type=None, n=50):
                 return jobs.get(node_id, [])
 
-        was = toolchains.nodes, toolchains.node_job, toolchains.TOOLCHAINS
+        # The check's own cadence read without settings, so weekly: under the
+        # parallel tier settings.FILE was another module's temp directory,
+        # gone by the time this read it (B468).
+        was = toolchains.nodes, toolchains.node_job, toolchains.TOOLCHAINS, checks.settings
+        checks.settings = None
         toolchains.nodes = Nodes
         toolchains.node_job = lambda p, nid, action, names: queued.append((p, nid, action)) or {"ok": True, "job": "j"}
         toolchains.TOOLCHAINS = [{"name": "jdk"}]
@@ -41,7 +46,7 @@ class NodeChecks(unittest.TestCase):
             self.left = Nodes.checks_wanted
             return toolchains.node_checks_due(now=NOW), queued
         finally:
-            toolchains.nodes, toolchains.node_job, toolchains.TOOLCHAINS = was
+            toolchains.nodes, toolchains.node_job, toolchains.TOOLCHAINS, checks.settings = was
 
     def test_a_node_checked_twelve_days_ago_is_checked(self):
         got, queued = self.run_with([node("n1")], {"n1": [
