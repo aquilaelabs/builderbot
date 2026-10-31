@@ -1,8 +1,8 @@
 # BuilderBot documentation
 
 BuilderBot is a self-hosted workshop for coding agents: Claude Code,
-ChatGPT's Codex CLI and GitHub's Copilot CLI. One container, the
-**controller**, serves this dashboard and keeps every project's plan, bugs
+ChatGPT's Codex CLI, GitHub's Copilot CLI, xAI's Grok Build, and any model
+through OpenCode. The **controller** serves this dashboard and keeps every project's plan, bugs
 and rules; the machines it enrolls, the **nodes**, do the work: the agents'
 sessions, builds, tests, CI, Android emulators and Docker containers. These
 docs are also the dashboard's **Help**, where the search in the bar finds a
@@ -42,7 +42,7 @@ dashboard's rail.
 - [scanners.md](scanners.md): setting up the static analysis stack (Semgrep, Trivy, mobsfscan) and the script that runs it
 - [versions.md](versions.md): a project's version, release lines (two releases built at once), and moving fixes forward and back between them
 - [toolchains.md](toolchains.md): the Build pages: Toolchains, the NVIDIA card, Android versions and the Emulator, and a Phone lent to a project
-- [agents.md](agents.md): the coding agents a session runs (Claude Code, Codex CLI, Copilot CLI, Grok Build): installing each on a node from the Library and signing in to it there
+- [agents.md](agents.md): the coding agents a session runs (Claude Code, Codex CLI, Copilot CLI, Grok Build, OpenCode): installing each on a node from the Library and signing in to it there
 - [tool-packs.md](tool-packs.md): toolchains you add yourself from a repository, the commands they give a session, and how to write one
 - [containers.md](containers.md): the Containers page and nginx: dev instances, how one is reached, their networks and image updates
 - [vms.md](vms.md): the VMs page and `bb vm`: VM host on a node, the OS catalog, Make VMs, the network, snapshots, a VM made a node

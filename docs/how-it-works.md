@@ -33,7 +33,7 @@ edge:
 
 | | |
 |---|---|
-| **The coding agents** | Not in the image: a session runs on a node, and the node installs them (Claude Code, Codex CLI, Copilot CLI, Grok Build) |
+| **The coding agents** | Not in the image: a session runs on a node, and the node installs them (Claude Code, Codex CLI, Copilot CLI, Grok Build, OpenCode) |
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Playwright** | CLI + the system deps; the browsers themselves install to the [toolchain store](toolchains.md#the-toolchain-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
