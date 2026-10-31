@@ -83,6 +83,21 @@ class Gate(unittest.TestCase):
             sv.gate(self.state, "0.9.0")
         self.assertEqual((self.state / "backups" / "before-0.9.0" / "users.json").read_text(), '{"users": {}}')
 
+    def test_a_copy_put_back_is_used_once(self):
+        # The copy goes with what it replaced, so a later start of that
+        # version copies afresh rather than reusing the first try's.
+        (self.state / "users.json").write_text('{"v": "old"}')
+        sv.backup(self.state, "0.9.0")
+        (self.state / "users.json").write_text('{"v": "migrated"}')
+        aside = sv.restore(self.state, "0.9.0")
+        self.assertEqual((self.state / "users.json").read_text(), '{"v": "old"}')
+        self.assertEqual((Path(aside) / "users.json").read_text(), '{"v": "migrated"}', "what it held, kept")
+        self.assertFalse((self.state / "backups" / "before-0.9.0").exists())
+        self.assertTrue((Path(aside) / "used-before-0.9.0" / "users.json").is_file())
+        (self.state / "users.json").write_text('{"v": "a week on"}')
+        sv.backup(self.state, "0.9.0")
+        self.assertEqual((self.state / "backups" / "before-0.9.0" / "users.json").read_text(), '{"v": "a week on"}')
+
     def test_the_newest_three_copies_are_kept(self):
         (self.state / "users.json").write_text("{}")
         for i, v in enumerate(("0.5.0", "0.5.1", "0.5.2", "0.6.0")):

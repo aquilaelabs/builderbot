@@ -349,6 +349,10 @@ def restore(state, version):
         if (was.exists() or was.is_symlink()) and not (now.exists() or now.is_symlink()):
             now.parent.mkdir(parents=True, exist_ok=True)
             os.replace(was, now)
+    # The copy used goes with what it replaced, so the next start of that
+    # version takes a fresh one: kept, a retry a week later reused the copy
+    # from the first try, and a second rollback put that week-old state back.
+    os.replace(src, aside / f"used-{name}")
     return aside
 
 
