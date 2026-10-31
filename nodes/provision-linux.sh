@@ -2947,6 +2947,9 @@ feature_vmhost() {
             if have virsh; then
                 n="$(virsh -c qemu:///system list --all --name 2>/dev/null | grep -c . || true)"
                 [ "${n:-0}" -eq 0 ] || die "${n} VM(s) are on this machine: remove them first, then VM host"
+            elif [ -n "$(ls -A /var/lib/builderbot/vms/disks 2>/dev/null)" ]; then
+                # No virsh to ask: disks still here are VMs' until shown otherwise.
+                die "virsh is not here to say which VMs are defined, and /var/lib/builderbot/vms/disks holds disks: nothing removed"
             fi
             say "taking VM host off"
             rm -f "$VIRTIOFSD_WRAP"
