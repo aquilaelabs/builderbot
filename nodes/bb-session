@@ -1444,9 +1444,12 @@ def worktree(c, argv):
                 os.setuid(st.st_uid)
                 env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/nonexistent", "GIT_CONFIG_NOSYSTEM": "1",
                        "GIT_CONFIG_GLOBAL": "/dev/null"}
-                has = subprocess.run(["git", "-C", src, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+                # The repository's own hooks and fsmonitor off: a session can
+                # write them, and they would run here, outside its view (B512).
+                off = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+                has = subprocess.run(["git", *off, "-C", src, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
                                      env=env, check=False).returncode == 0
-                add = ["git", "-C", src, "worktree", "add"] + ([wt, branch] if has else ["-b", branch, wt])
+                add = ["git", *off, "-C", src, "worktree", "add"] + ([wt, branch] if has else ["-b", branch, wt])
                 os._exit(subprocess.run(add, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                         check=False).returncode)
             except Exception:                                  # noqa: BLE001 (the child says only how it ended)
