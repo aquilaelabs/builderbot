@@ -163,12 +163,10 @@ function tcVerifiedLine(p){
     : `<span class="sub tcverified">Checked when it was installed: its ${esc(v.algo)} matched ${esc(v.where)}</span>`;
 }
 // ---- tool packs (R77) -------------------------------------------------------
-// The packs an administrator added, as a table, a row each with Edit at its
-// end and Add tool pack over it, both opening one dialog (tpDraw). A pack is
-// looked at before it is added: the dialog fetches its manifest at a commit
-// and shows what it would download and run, and Add keeps exactly that commit.
-const TP_COLS = [{label: "Pack"}, {label: "From"}, {label: "Commit", w: "6.5rem"},
-  {label: "Added by", w: "minmax(0,.6fr)"}, {act: true, w: "5rem"}];
+// The one dialog the Library's Add tool pack and a pack's Edit open (tpDraw).
+// A pack is looked at before it is added: the dialog fetches its manifest at a
+// commit and shows what it would download and run, and Add keeps exactly that
+// commit.
 let tpEdit = null;             // the dialog's pack: "" for Add tool pack, else the name of the pack in Edit
 // `from` is where Add takes the pack (a repository, a pasted bbtool.json or
 // an uploaded archive of its files); a pack made here edits by the last two.
@@ -341,60 +339,11 @@ function tpModalHtml(){
     ${dlgFoot(`<button type="button" data-tpcancel>${fresh || offer ? "Cancel" : "Close"}</button>`, `${look}${add}`, rm)}</div>`;
 }
 
-function tpSection(items){
-  const packs = (items || []).filter(i => i.pack);
-  const tier = p => p.pack.tier === "vetted" ? ` <span class="pill ok">vetted</span>` : p.pack.here ? "" : ` <span class="pill">by URL</span>`;
-  const rec = p => `<div class="row ngrec">${tblLine(TP_COLS, [
-      `${esc(p.label)} <span class="sub">${esc(p.name)}</span>${tier(p)}`, p.pack.here ? `<span class="sub">made here</span>` : `<code>${esc(p.pack.url)}</code>`,
-      esc(p.pack.commit.slice(0, 12)),
-      esc(p.pack.by || ""), `<button type="button" data-tpedit="${esc(p.name)}">Edit</button>`])}</div>`;
-  const body = packs.length ? tblWrap(TP_COLS, packs.map(rec).join(""), "tprecords")
-    : `<div class="hint">none yet: Add tool pack brings in a toolchain you choose</div>`;
-  return docSection("toolchains", "packs", "Tool packs", packs.length ? `${packs.length} added` : "none added",
-    `<div class="field"><div class="hint">Toolchains you add yourself, for any tool: from a git repository, a pasted bbtool.json or an upload of the pack's files.${helpIcon(
-      "A pack installs like any toolchain and gives a session bb tool verbs. It is kept as the version you looked at, and a project's sessions use it only once its settings switch it on. Help's Tool packs says how to write one for somebody else's tool.")}</div></div>
-    <div class="field"><div class="addbar ctlrow" data-add="pack"><button type="button" data-tpnew>Add tool pack</button></div></div>
-    <div class="field">${body}</div>`);
-}
-
-// The vetted catalog (R169 step 4): the packs the maintainers reviewed,
-// each pinned to a commit, with Install opening the same dialog as Add
-// tool pack on that commit (Look first, as always); a withdrawn one is
-// said and not offered; the three tiers read on every row.
-function tpCatalogSection(items){
-  const c = tpCatalog, idx = c?.index, have = new Set((items || []).filter(i => i.pack).map(i => i.name));
-  const rows = (idx?.packs || []).filter(e => e.kind !== "app").map(e => `<div class="row${e.withdrawn ? " bad" : ""}"><div class="grow">
-      <div class="name">${esc(e.name)} <span class="pill${e.withdrawn ? " bad" : " ok"}">${e.withdrawn ? "withdrawn" : e.tier}</span>${have.has(e.name) ? ` <span class="pill">added</span>` : ""}</div>
-      <div class="sub">${esc(e.about || "")}${e.platforms?.length ? ` · ${esc(e.platforms.join(", "))}` : ""} · <code>${esc(e.url)}</code> at ${esc(e.commit.slice(0, 12))}</div>
-      </div>${e.withdrawn ? `<span class="acts"><span class="sub bad">${have.has(e.name) ? "remove it from Tool packs" : "not offered"}</span></span>`
-        : `<span class="acts"><button type="button" data-tpinstall="${esc(e.name)}"${have.has(e.name) ? " disabled" : ""}>${have.has(e.name) ? "Added" : "Install"}</button></span>`}</div>`).join("");
-  const when = idx?.fetched_at ? `read ${ago(idx.fetched_at)}` : "";
-  const body = c === null ? skRows(2)
-    : `${c.error ? `<div class="hint${idx ? " warn" : " bad"}">${esc(c.error)}${idx ? "; the index read before stands" : ""}</div>` : ""}
-       ${rows ? `<div class="rows">${rows}</div>` : idx ? `<div class="empty">Nothing vetted yet: the catalog is open for submissions, and a pack by URL is Add tool pack above.</div>` : ""}`;
-  return docSection("toolchains", "catalog", "Vetted catalog", when,
-    `<div class="field"><div class="hint">Packs BuilderBot's maintainers reviewed, each pinned to a commit and the sha256 of its archive there, the index signed by them and checked here before it is read.${helpIcon(
-      "Install opens the same dialog as Add tool pack on that commit: Look shows what it fetches and runs, and Add keeps exactly that. The catalog's address is under Controller settings.")}</div></div>
-    <div class="field"><div class="addbar ctlrow" data-add="catalog"><button type="button" data-tprefresh>Check for updates</button></div></div>
-    <div class="field">${body}</div>`);
-}
 function tpOpenCatalog(entry){
   tpEdit = "";
   tpForm = {...TP_BLANK(), url: entry.url, catalog: entry};
   tpDraw(true);
   tpLook();
-}
-
-// The section's two doors into the dialog.
-function tpWire(el){
-  el.querySelectorAll("[data-tpnew]").forEach(b => b.onclick = () => tpOpen(""));
-  el.querySelectorAll("[data-tpedit]").forEach(b => b.onclick = () => tpOpen(b.dataset.tpedit));
-  el.querySelectorAll("[data-tprefresh]").forEach(b => b.onclick = () => pressing(b, async () => { busy(b, "Checking"); await loadCatalog(true); }));
-  el.querySelectorAll("[data-tpinstall]").forEach(b => b.onclick = () => {
-    const e = (tpCatalog?.index?.packs || []).find(x => x.name === b.dataset.tpinstall);
-    if (e) tpOpenCatalog(e);
-  });
-  if (tpCatalog === null) loadCatalog(false);
 }
 
 // A pack kept from the vetted catalog (R169 step 4) looks at the index's

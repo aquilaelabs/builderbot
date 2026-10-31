@@ -135,24 +135,6 @@ function skTpl(html, {said = "loading…", live = false} = {}){
     html.replace(/ data-sect="[^"]*"/g, "")}</div>`;
 }
 
-// The bar a node's page wears (nodePick and its actions at the right) while
-// what it lists is on its way: the picker's box shimmering, the actions
-// there and dead until the page they act on has drawn. An action given as
-// [label, "primary"] is the page's main action and wears its fill.
-function skActBar(actions = []){
-  return nodeBar("", actions.map(a => [].concat(a)).map(([a, cls, short]) =>
-    `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${short ? barSaid(a, short) : esc(a)}</button>`).join(""));
-}
-function skNodeBar(actions = []){
-  return nodeBar(nodePick("", null), actions.map(a => [].concat(a)).map(([a, cls, short]) =>
-    `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${short ? barSaid(a, short) : esc(a)}</button>`).join(""));
-}
-// A node's page's bar, its order the same on every page that has one
-// (consistency pass J17): the node picker at the left, then the page's
-// buttons at the right in an action bar, or none.
-function nodeBar(pick, actions = ""){
-  return `${pick}<span class="sp"></span>${String(actions).trim() ? `<span class="actbar">${actions}</span>` : ""}`;
-}
 // A bar button's words at both widths (the operator, 18 Oct: the node
 // picker and a page's buttons on one line on a phone). On a phone the short
 // form shows; where it is the start of the long one the rest is a span a

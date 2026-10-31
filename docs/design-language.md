@@ -789,7 +789,7 @@ never changes on it (its headings, a tile's label, a table's head, a form's
 labels, its bar's controls) is drawn for real and only the values on their
 way shimmer: `skTpl()` around the page's own markup, `skv()` for a value
 inline (`ctl` for a field's control), `skRows()` and `skTable()` for the
-rows to come, `skNodeBar()` for a node page's bar. It is inert while it
+rows to come. It is inert while it
 waits, its actions there and dead, so nothing is typed into a form the real
 one replaces. A `loading…` line is left only where no shape is known.
 
