@@ -204,10 +204,11 @@ function jobBy(j){
 }
 // The Job column has the room (B112): a title wraps at a word only when
 // its column holds the longest word, so it takes most of the shares; Node
-// and By keep a floor that holds a node's and an account's name whole, and
+// and By keep a floor that holds a node's and an account's name whole (By's
+// fits automatic update, which it cut short at a desk), and
 // the buttons' column is one Cancel wide, not a blank band at the right.
 const JOB_COLS = [{label: "Job", w: "minmax(0,4fr)"}, {label: "State", w: "6rem"}, {label: "Kind", w: "6rem"},
-                  {label: "Node", w: "minmax(7rem,1fr)"}, {label: "By", w: "minmax(5.5rem,.7fr)"}, {label: "When", w: "6.5rem"},
+                  {label: "Node", w: "minmax(7rem,1fr)"}, {label: "By", w: "minmax(8rem,.7fr)"}, {label: "When", w: "6.5rem"},
                   {label: "Took", w: "5rem", num: true}, {act: true, w: "5.5rem"}];
 
 // What a job left behind: the artifacts it delivered into dist/, as the
