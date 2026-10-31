@@ -329,18 +329,29 @@ def restore(state, version):
                          f"({src}) to put back")
     aside = state / BACKUPS / time.strftime("rolled-back-%Y%m%d-%H%M%S")
     aside.mkdir(parents=True)
-    for p in sorted(state.iterdir()):
-        if _skipped(p.name):
-            continue
-        os.replace(p, aside / p.name)
-    for p in sorted(src.iterdir()):
-        if p.name == "NOT-COPIED.txt":
-            continue
-        dst = state / p.name
-        if p.is_dir() and not p.is_symlink():
-            shutil.copytree(p, dst, symlinks=True)
-        else:
-            shutil.copy2(p, dst, follow_symlinks=False)
+    # Moved, not copied: the copy is used once (below), and a rename within
+    # one disk needs no room, where a copy that ran out of it halfway left
+    # half a state for the newer build to start on. Every move is undone if
+    # one fails, so it is the whole copy or the state as it was.
+    done = []
+    try:
+        for p in sorted(state.iterdir()):
+            if _skipped(p.name):
+                continue
+            os.replace(p, aside / p.name)
+            done.append((aside / p.name, p))
+        for p in sorted(src.iterdir()):
+            if p.name == "NOT-COPIED.txt":
+                continue
+            os.replace(p, state / p.name)
+            done.append((state / p.name, p))
+    except OSError:
+        for now, was in reversed(done):
+            try:
+                os.replace(now, was)
+            except OSError:
+                pass
+        raise
     # ...and what the copy could not read is still in what was moved aside:
     # brought back rather than lost (a root-only file, B109), a file inside
     # a folder the copy took the rest of included.

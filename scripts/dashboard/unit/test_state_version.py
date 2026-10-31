@@ -93,10 +93,29 @@ class Gate(unittest.TestCase):
         self.assertEqual((self.state / "users.json").read_text(), '{"v": "old"}')
         self.assertEqual((Path(aside) / "users.json").read_text(), '{"v": "migrated"}', "what it held, kept")
         self.assertFalse((self.state / "backups" / "before-0.9.0").exists())
-        self.assertTrue((Path(aside) / "used-before-0.9.0" / "users.json").is_file())
+        self.assertTrue((Path(aside) / "used-before-0.9.0").is_dir())
         (self.state / "users.json").write_text('{"v": "a week on"}')
         sv.backup(self.state, "0.9.0")
         self.assertEqual((self.state / "backups" / "before-0.9.0" / "users.json").read_text(), '{"v": "a week on"}')
+
+    def test_a_restore_that_fails_leaves_the_state_as_it_was(self):
+        (self.state / "users.json").write_text('{"v": "old"}')
+        (self.state / "roadmap.json").write_text('{"r": "old"}')
+        sv.backup(self.state, "0.9.0")
+        (self.state / "users.json").write_text('{"v": "migrated"}')
+        (self.state / "roadmap.json").write_text('{"r": "migrated"}')
+        real, calls = os.replace, []
+
+        def flaky(a, b):
+            calls.append(a)
+            if len(calls) == 4:
+                raise OSError(28, "No space left on device")
+            return real(a, b)
+        with mock.patch.object(sv.os, "replace", flaky), self.assertRaises(OSError):
+            sv.restore(self.state, "0.9.0")
+        self.assertEqual((self.state / "users.json").read_text(), '{"v": "migrated"}')
+        self.assertEqual((self.state / "roadmap.json").read_text(), '{"r": "migrated"}')
+        self.assertTrue((self.state / "backups" / "before-0.9.0" / "users.json").is_file(), "the copy is still there to try again")
 
     def test_the_newest_three_copies_are_kept(self):
         (self.state / "users.json").write_text("{}")
