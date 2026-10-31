@@ -238,8 +238,14 @@ ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
   const was = await page.$eval('.dockline', l => ({ chr: l.classList.contains('chr'), left: l.scrollLeft }));
   const r = await page.$eval('.dockline', l => { const b = l.getBoundingClientRect(); return { x: b.right - 10, y: b.top + b.height / 2 }; });
   await page.mouse.click(r.x, r.y);
-  await page.waitForFunction(() => document.querySelector('.dockline').scrollLeft > 60, null, { timeout: 5000 }).catch(() => {});
-  await page.waitForTimeout(400);
+  await page.waitForFunction(() => document.querySelector('.dockline').scrollLeft > 60, null, { timeout: 15000 }).catch(() => {});
+  // Its smooth scroll come to rest, read twice the same a frame apart,
+  // rather than a fixed pause a loaded gate outran (B420).
+  const still = () => page.waitForFunction(() => new Promise(res => {
+    const l = document.querySelector('.dockline'), a = l.scrollLeft;
+    requestAnimationFrame(() => requestAnimationFrame(() => res(l.scrollLeft === a)));
+  }), null, { timeout: 15000 }).catch(() => {});
+  await still();
   const now = await page.$eval('.dockline', l => ({ left: l.scrollLeft, chl: l.classList.contains('chl') }));
   ok(was.chr && was.left === 0 && now.left > 0 && now.chl,
      `the dock's line has an arrow at the end with more tabs past it, and a press on it moves the line along (${JSON.stringify({ was, now })})`);
@@ -248,7 +254,9 @@ ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
   // front (B322).
   const before = await page.$eval('.dockline', l => l.scrollLeft);
   await page.evaluate(() => { tabs.find(t => t.arg === 'sh:45:alpha').label = 'many 5 renamed'; render(); });
-  await page.waitForTimeout(200);
+  await page.waitForFunction(() => [...document.querySelectorAll('.dockline .dtab')].some(e => /renamed/.test(e.textContent)),
+                             null, { timeout: 15000 }).catch(() => {});
+  await still();
   const after = await page.$eval('.dockline', l => ({ left: l.scrollLeft, drawn: [...l.querySelectorAll('.dtab')].some(e => /renamed/.test(e.textContent)) }));
   ok(after.drawn && before > 0 && Math.abs(after.left - before) < 2,
      `the dock's line drawn again keeps where it was scrolled to (${JSON.stringify({ before, after })})`);
