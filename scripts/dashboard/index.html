@@ -3074,6 +3074,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .nb .nbview[data-view="wiki"]>.nbhead{flex-wrap:wrap}
 .nb .nbview[data-view="wiki"]>.nbhead>#wkNetState{flex:1 1 12rem;min-width:0;font:var(--f-note);overflow-wrap:anywhere}
 .nb .nbhead>.nbsaidslot:empty{display:none}
+/* An empty part of a head row (the Docker view's view switch while it has
+   no containers) takes no gap: its status line sat 8px in from every other
+   view's. The spacer is the one empty span that stays. */
+.nb .nbhead>span:empty:not(.sp){display:none}
 .nb .nbhead>.nbsaidslot>.notice{margin:0;display:flex;align-items:center;flex-wrap:wrap;gap:var(--field-gap)}
 .nb .nbhead>.nbsaidslot>.notice>.actbar{margin-inline-start:auto}
 .nb .nbview>.field.nbhead:not(:has(>input:not([hidden]),>select,>label,>.pseg,>[id]:not(:empty),>.actbar>*:not([hidden]),>.nbsaidslot:not(:empty))){display:none}
