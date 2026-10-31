@@ -173,7 +173,7 @@ function nbBugsView({$, nb, project}){
       </div>
       <label>Notes<span class="help" data-help="cause, analysis, fix plan" tabindex="0">?</span></label>
       <textarea class="bfNotes" spellcheck="false"
-        placeholder="what is known about why; mostly Claude's half">${v("notes")}</textarea>
+        placeholder="what is known about why; mostly the agent's half">${v("notes")}</textarea>
       <div class="actbar">
         <button type="button" class="stop bfCancel">Cancel</button>
         <button type="button" class="primary bfGo">${b ? "Save the bug" : "Report it"}</button></div>

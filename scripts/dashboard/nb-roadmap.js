@@ -864,7 +864,7 @@ function nbRoadmapView({$, nb}){
     <textarea maxlength="4000" spellcheck="false"></textarea>
     <div class="q qd"><span>Details: the technical half: files, functions, approach</span></div>
     <textarea class="dta" maxlength="20000" spellcheck="false"
-      placeholder="mostly Claude's to write; empty is fine"></textarea>
+      placeholder="mostly the agent's to write; empty is fine"></textarea>
     <div class="q qd"><span>${step < 0 ? "Target: the release it is meant to ship in; empty for none"
         : `Target: the release this step ships in; empty goes with the item${r0?.target ? ` (${esc(r0.target)})` : ""}`}</span></div>
     <input class="tgt" maxlength="24" autocomplete="off" spellcheck="false" inputmode="decimal" placeholder="${step < 0 ? "0.6.0" : esc(r0?.target || "0.6.0")}">

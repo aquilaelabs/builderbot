@@ -244,7 +244,7 @@ function renderVmsInto(i){
     : vmsErr ? `<div class="hint bad">${esc(vmsErr)}</div>`
     : !hosts.length ? `<div class="empty vmnone">No node has VM host yet: its Features section on the ${pageLink("nodes", "Nodes page")} installs it, where the machine has /dev/kvm.</div>`
     : !(vmsData.vms || []).length ? `<div class="empty vmnone">No VM yet. ${Object.values(vmsData.can || {}).includes("write")
-        ? "Press <b>New VM</b>, or ask Claude in a session for one: <code>bb vm new NAME --os debian</code>."
+        ? "Press <b>New VM</b>, or ask the agent in a session for one: <code>bb vm new NAME --os debian</code>."
         : "A project's sessions make them with <code>bb vm new</code> where its settings allow it."}</div>`
     : !rows.length ? `<div class="empty">No VM matches “${esc(vmsSearch)}”.</div>` : "";
   const head = off || vmsErr || !onNode.length ? "" : vmTiles(onNode, chips.length) + chipBar(chips, vmsChip, "data-vmchip");

@@ -195,7 +195,7 @@ function nbAnalysisView({$, nb, project}){
     if (!d || (!d.pending && !k)) return "";
     const by = k?.by ? ` by ${k.by}` : "";
     const line = d.pending
-      ? "Waiting for the first Claude session: pressing Claude on this project opens it to change before it is sent."
+      ? "Waiting for the first session: Start agent on this project opens it to change before it is sent."
       : k.sent ? `Sent as the first session's first prompt ${ago(k.at)}${by}. No session after that one reads it.`
       : `Set aside ${ago(k.at)}${by}, when the first session started without it.`;
     const body = `<div class="field"><div class="hint">${esc(line)}</div>

@@ -4233,8 +4233,8 @@ ok(await page.$('#devSend'),
   // The pill found inside the page each time, never a function handed in
   // as text and evaluated there: the page's CSP allows no eval.
   const PILL = '.dmtab .row[data-inst^="ep.silon|"] .fpill';
-  await page.waitForFunction(sel => /rebuild · env · create/.test([...document.querySelectorAll(sel)].find(p => p.querySelector('.k')?.textContent === 'Claude')?.textContent || ''), PILL, { timeout: 20000 });
-  ok(await page.evaluate(sel => !![...document.querySelectorAll(sel)].find(p => p.querySelector('.k')?.textContent === 'Claude')?.querySelector('[data-dmtestgo="ep.silon"]'), PILL)
+  await page.waitForFunction(sel => /rebuild · env · create/.test([...document.querySelectorAll(sel)].find(p => p.querySelector('.k')?.textContent === 'Agent')?.textContent || ''), PILL, { timeout: 20000 });
+  ok(await page.evaluate(sel => !![...document.querySelectorAll(sel)].find(p => p.querySelector('.k')?.textContent === 'Agent')?.querySelector('[data-dmtestgo="ep.silon"]'), PILL)
      && await page.$('.dmtab [data-dmclaude]') === null,
      'the docker row says what a session may do with it and links to the setting, carrying no control');
   await page.evaluate(() => renameProject('ep.silon'));
@@ -4721,7 +4721,7 @@ print(json.dumps(out))
   }, null, { timeout: 20000 });
   // Its Claude pill says what the project's sessions may do with it (the
   // operator's concept, 17 Oct: settings read as pills).
-  ok(/Claude\s*(start · stop|asks first|reads its log)/.test(await page.$eval(R, r => r.textContent)),
+  ok(/Agent\s*(start · stop|asks first|reads its log)/.test(await page.$eval(R, r => r.textContent)),
      "...and Apply moves it under that project, saying what the project's sessions may do with it");
   ok(JSON.parse(readFileSync(`${DIR}/state/docker-owners.json`, 'utf8'))
        && Object.values(JSON.parse(readFileSync(`${DIR}/state/docker-owners.json`, 'utf8')))

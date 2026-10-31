@@ -953,7 +953,7 @@ function dmOwnerLine(r, key){
   // System's is the deployment's to set (R180): said, with nothing to pick.
   if (saved === "System")
     return `<div class="setcell ro dmowner">${lbl("", "Project",
-      "BuilderBot deployed this itself, so it is System's: no project's Claude sees it, "
+      "BuilderBot deployed this itself, so it is System's: no project's session sees it, "
       + "and the network lets it reach every container on this node.")}<div class="val">System</div></div>`;
   const pick = dmOwnDraft[key] ?? saved;
   // A project since deleted is still what the row says until it is changed.
@@ -1023,7 +1023,7 @@ function dmInstPills(d, managed){
     r && (mode || url) ? ["Reached via", [esc(mode), url].filter(Boolean).join(" · ")] : null,
     dmRoutesOf(d).length ? ["nginx", dmRoutesOf(d).map(dmRouteLink).join(" · ")] : null,
     d.exists && !managed ? ["", d.boot ? "✓ Starts on boot" : "not on boot", d.boot ? "ok" : ""] : null,
-    ["Claude", dmClaudeSaid(d)],
+    ["Agent", dmClaudeSaid(d)],
     ["Tests", dmTestSaid(d)],
   ];
 }
@@ -2574,7 +2574,7 @@ function dmOtherRowsHtml(cs){
         </div>
         ${dmSetPills([["Project", c.owner ? esc(c.owner === "System" ? "System" : projLabel(c.owner)) : "none"],
                         ["", c.boot ? "✓ Starts on boot" : "not on boot", c.boot ? "ok" : ""],
-                        ["Claude", dmClaudeSaid(c, true)]])}
+                        ["Agent", dmClaudeSaid(c, true)]])}
         ${dmEditing.has("ctr:" + (c.name || c.id)) || dmRowDirty("ctr:" + (c.name || c.id))
           ? dmSetDialog(c.name || c.id, "ctr:" + (c.name || c.id),
                         [dmOwnerLine(c, "ctr:" + (c.name || c.id)), dmBootLine(c.name || c.id, !!c.boot),
