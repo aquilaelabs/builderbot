@@ -115,7 +115,9 @@ function instState(r){
       : w(st === "nocard" ? "installed, no card now" : "installed, Docker not configured", "warn");
   }
   if (r.kind === "agent" && !r.installed) return w("not installed: the Library installs it", "warn");
-  if (r.installed) return w(r.update ? `update available: ${esc(r.latest)}` : "installed", r.update ? "warn" : "ok");
+  // The version that is out is the row's pill ("2.1.314 is out"), so the
+  // state says only that, as the Library's card does.
+  if (r.installed) return w(r.update ? "update available" : "installed", r.update ? "warn" : "ok");
   if (r.unknown) return w("installed, version unknown");
   return w("");
 }

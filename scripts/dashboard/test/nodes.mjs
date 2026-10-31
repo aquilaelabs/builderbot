@@ -3729,7 +3729,7 @@ ok(page.errors.length === 0,
   const AGC = `.thingtab [data-instnode="${en.id}"][data-thing="agent:claude-code"]`;
   await page.waitForFunction(sel => /update available/.test(document.querySelector(sel + ' .pghead .state')?.textContent || ''), AGC, { timeout: 15000 });
   const tcRowText = await page.$eval(AGC, s => s.textContent.replace(/\s+/g, ' '));
-  ok(/Claude Code/.test(tcRowText) && /1\.0\.0/.test(tcRowText) && /1\.2\.0 is out/.test(tcRowText) && /update available: 1\.2\.0/.test(tcRowText),
+  ok(/Claude Code/.test(tcRowText) && /1\.0\.0/.test(tcRowText) && /1\.2\.0 is out/.test(tcRowText) && /update available/.test(tcRowText) && !/update available: /.test(tcRowText),
      `the node's Installed page has a Claude Code row: its version, the update out, and where it stands (${tcRowText.slice(0, 120)})`);
   // ...and Update is the Library's, on Claude Code's card.
   await page.evaluate(id => openLibraryOn(id, 'claude'), en.id);
