@@ -39,6 +39,7 @@ import re
 import secrets
 import threading
 import time
+import urllib.parse
 
 import signing
 import statefile
@@ -344,9 +345,17 @@ def forget(uid):
 # An entry's id names it for good; one written before ids (keyed by its
 # host) keeps its host as its id.
 
+def _bare(host):
+    """A host as a remote's URL names it: git's credential lines write a
+    port's colon as %3a, and an entry kept from one never matched its
+    project's remote (192.168.1.16%3a3000 against 192.168.1.16:3000) and
+    read that way on the Keys page."""
+    return urllib.parse.unquote(str(host or "")).lower()
+
+
 def _entries(uid, sd=None):
     fs = ((sd if sd is not None else _load_secrets()).get(uid) or {}).get("forges") or {}
-    return {fid: dict(f, host=f.get("host") or fid) for fid, f in fs.items() if isinstance(f, dict)}
+    return {fid: dict(f, host=_bare(f.get("host") or fid)) for fid, f in fs.items() if isinstance(f, dict)}
 
 
 def forges_of(uid):
@@ -376,14 +385,14 @@ def link_forge(uid, host, line, login):
     k = key_of(uid)
     if not k:
         return {"error": "this install has no key, so nothing can be kept in an account's key store"}, 409
-    host = str(host).lower()
+    host = _bare(host)
     with _lock:
         sd = _load_secrets()
         fs = sd.setdefault(uid, {}).setdefault("forges", {})
         for fid, f in _entries(uid, sd).items():
             if f["host"] == host and _open_entry(k, f) == line:
                 return {"ok": True, "id": fid, "host": host, "login": f.get("login", ""), "replaced": []}, 200
-        same = sorted((fid for fid, f in fs.items() if isinstance(f, dict) and str(f.get("host", "")).lower() == host
+        same = sorted((fid for fid, f in fs.items() if isinstance(f, dict) and _bare(f.get("host", "")) == host
                        and (f.get("login") or "") == (login or "")), key=lambda i: -int(fs[i].get("at") or 0))
         fid = same[0] if same else secrets.token_hex(6)
         for old in same[1:]:
@@ -412,7 +421,7 @@ def entry_for(uid, fid="", host=""):
     """The entry `fid`, or the newest for `host`, with no token; None."""
     es = _entries(uid)
     f = es.get(str(fid)) if fid else next((e for e in sorted(es.values(), key=lambda e: -int(e.get("at") or 0))
-                                           if e["host"] == str(host or "").lower()), None)
+                                           if e["host"] == _bare(host)), None)
     if not f:
         return None
     fid = str(fid) if fid else next(i for i, e in es.items() if e is f)
