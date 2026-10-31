@@ -3060,9 +3060,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* A control row with a button or two and no words beside it shares the
    tiles' line, at their right (the operator, 29 Oct: never a button on a
    line of its own; the VMs view's VMs page and New VM stood under its one
-   tile): the glance takes the room, the buttons what they need. */
+   tile): the glance takes the room, the buttons what they need, at the
+   right still when a narrow phone wraps them under the tiles. */
 .nb .nbview>.nbglance{flex:1 1 0;min-width:min(100%, 18rem)}
-.nb .nbview>.nbhead:not(:has(input:not([hidden]),select,.pseg,.nbsaidslot:not(:empty),>button:not([hidden]))):has(>.actbar>button:last-child:nth-child(-n+2)){flex:0 0 auto;order:0;align-self:center}
+.nb .nbview>.nbhead:not(:has(input:not([hidden]),select,.pseg,.nbsaidslot:not(:empty),>button:not([hidden]))):has(>.actbar>button:last-child:nth-child(-n+2)){flex:0 0 auto;order:0;align-self:center;margin-inline-start:auto}
 .nb .nbhead>.actbar{align-items:center}
 .nb .nbhead>.actbar>button{flex:0 0 auto;white-space:nowrap}
 .nb .nbhead>.actbar:empty{display:none}
