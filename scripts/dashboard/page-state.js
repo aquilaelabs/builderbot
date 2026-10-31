@@ -245,9 +245,11 @@ function fmtTime(t, opts = {}){
   return new Date(t).toLocaleString([], z ? {...opts, timeZone: z} : opts);
 }
 
-// ...and GB past a gigabyte (B825): a 19 GB limit read 19476.5MB.
+// ...and GB past a gigabyte (B825): a 19 GB limit read 19476.5MB; TB past
+// a terabyte, where a big store read 11274.0 GB.
 const humanBytes = n =>
-  n >= 1073741824 ? (n / 1073741824).toFixed(1) + "GB"
+  n >= 1099511627776 ? (n / 1099511627776).toFixed(1) + "TB"
+  : n >= 1073741824 ? (n / 1073741824).toFixed(1) + "GB"
   : n >= 1048576 ? (n / 1048576).toFixed(1) + "MB"
   : n >= 1024 ? Math.round(n / 1024) + "kB" : (n || 0) + "B";
 

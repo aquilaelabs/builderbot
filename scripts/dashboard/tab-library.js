@@ -333,7 +333,7 @@ function libFilterBand(rows, acts = ""){
     <div class="libsearchrow"><input id="libFind" type="search" maxlength="80" autocomplete="off" spellcheck="false" aria-label="search the library"
       placeholder="search by name or what it does" value="${esc(libQ)}">${acts ? `<span class="actbar">${acts}</span>` : ""}</div>
     <div class="chips" data-chips="libkind">${chipButtons(kinds, libKind, "data-libkind", rows.length)}</div>
-    <div class="chips" data-chips="libtier">${chipButtons(tiers, libTier, "data-libtier")}</div>
+    <div class="chips" data-chips="libtier">${chipButtons(tiers, libTier, "data-libtier", undefined, "Any source")}</div>
   </div>`;
 }
 
@@ -409,7 +409,7 @@ function renderLibraryInto(i){
   if (LIB_STANDS[libKind] && !all.some(LIB_STANDS[libKind])) libKind = "";
   const rows = all.filter(r => libMatch(r, libQ) && (!libKind || (LIB_STANDS[libKind] ? LIB_STANDS[libKind](r) : libGroup(r) === libKind)) && (!libTier || r.tier === libTier));
   const inst = all.filter(r => r.installed).length, due = all.filter(r => r.update).length;
-  const free = lib.store?.free_mb ? `${(lib.store.free_mb / 1024).toFixed(1)} GB free` : "";
+  const free = lib.store?.free_mb ? `${humanBytes(lib.store.free_mb * 1048576)} free` : "";
   const head = pageHead({facts: [
     ["Installed", `${inst} of ${all.filter(r => r.kind !== "app" && r.kind !== "companion").length}`],
     ["Updates due", due ? String(due) : ""],
