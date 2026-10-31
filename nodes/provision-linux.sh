@@ -1567,6 +1567,9 @@ add_fstab() {
     # nothing, the first word of " x y" being empty.
     old="${hit#*: }"
     [ "$old" = "$line" ] && return 0
+    # Only a share's line is rewritten: one of the machine's own disks
+    # (/, /home, /boot) at that path would stop mounting at boot.
+    ours | grep -qxF -- "$path" || { warn "$path is one of this machine's own mounts, not a share: it is not replaced"; return 1; }
     tmp="$(mktemp)"
     awk -v n="$lineno" -v repl="$line" 'NR==n {print repl; next} {print}' \
         /etc/fstab > "$tmp"
@@ -1698,6 +1701,7 @@ cmd_add_nfs() {
 cmd_readonly() {
     local path="${1:?usage: bb-sandbox readonly PATH [on|off]}" want="${2:-on}"
     local hit line src mp fstype opts dump pass o new_opts=""
+    ours | grep -qxF -- "$path" || die "$path is not a share this machine mounts (bb-sandbox list says which are)"
     hit="$(fstab_line "$path")"
     [ -n "$hit" ] || die "$path is not one of this machine's mounts"
     line="${hit#*:}"
@@ -1733,7 +1737,9 @@ cmd_readonly() {
 
 cmd_remove() {
     local path="${1:?usage: bb-sandbox remove PATH [--force]}" tmp held
-    [ -n "$(fstab_line "$path")" ] || die "$path is not one of this machine's mounts"
+    # A share this tool mounts, never one of the machine's own disks: any
+    # fstab line matched here, so remove / and remove /home went through.
+    ours | grep -qxF -- "$path" || die "$path is not a share this machine mounts (bb-sandbox list says which are)"
     # A store inside this share becomes a directory on the root disk the
     # moment the share goes, and the agent would then report it with the
     # root disk's free space and nothing would say the toolchains or the
