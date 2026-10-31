@@ -559,7 +559,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const done = [];
       if (policy != null){
         const j = await postVersion({action: "policy", policy}, true);
-        if (j && !j.error) done.push(`Claude access: ${POLICY_LABEL[policy] || policy}`);
+        if (j && !j.error) done.push(`Agent access: ${POLICY_LABEL[policy] || policy}`);
       }
       for (const [comp, part] of parts){
         const j = await postVersion({action: "bump", part, component: comp},
@@ -1004,7 +1004,7 @@ this directory">Send to ${esc(sendAgent(project).name)}</button>
              <b>Release</b> tags and pushes it. ${helpIcon(`Two steps. Until the release, a build reads ${
                v.target}-dev.${v.ordinal ?? "n"} rather than ${v.target}: the tag on the commit, pushed, is what says it happened.`)}`}</p>
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save, and is never pushed. ${
-          helpIcon("Save writes and commits VERSION. Claude access limits what a session may change.")}</p>
+          helpIcon("Save writes and commits VERSION. Agent access limits what a session may change.")}</p>
         ${verAddFold(v)}`}` : `
         ${v.component ? "" : verPolicyPicker(v)}
         <div class="verln"><span>start at</span>
@@ -1036,7 +1036,7 @@ this directory">Send to ${esc(sendAgent(project).name)}</button>
   // at exactly that moment.
   function verPolicyPicker(v){
     return `<label class="verpol">
-      <span>Claude access</span>
+      <span>Agent access</span>
       <select id="verPolicy" data-was="${esc(v.policy)}"
         aria-label="what a session may do with this project's version">
         ${optionList((v.policies || []).map(o => [o, POLICY_LABEL[o] || o]), verPolicyPending ?? v.policy)}
