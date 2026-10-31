@@ -2504,7 +2504,9 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 }
 .gbfilter{padding-bottom:var(--label-gap)}
 .gcommitbar{padding:0 0 8px}
-.gcommitbar input{flex:1 1 auto;min-width:0}
+/* The message is a proseline (a textarea) since it grows: sized here as the
+   input it was, or the button wrapped under it with room beside it. */
+.gcommitbar :is(input,textarea){flex:1 1 auto;min-width:0}
 /* The branch picker in the Git view's head row (R269 step 3): the branch
    the tree is on as a button with its icon at the row's right, where a
    view's head keeps its controls, opening the local branches under a box
@@ -2619,7 +2621,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 :is(.doctab,.nb) .headline>.actbar.actbar{align-items:center}
 /* display:flex beats the hidden attribute; the log hides this row. */
 .roadmapadd[hidden]{display:none}
-.roadmapadd input{flex:1 1 auto;min-width:0}
+.roadmapadd :is(input,textarea){flex:1 1 auto;min-width:0}
 .roadmapadd button{flex:0 0 auto;min-height:var(--tap)}
 /* On a phone the field and its buttons cannot share a line: at 393px with
    Add and Reorder beside it the input was eleven characters wide, showing
