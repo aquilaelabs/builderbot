@@ -13,6 +13,10 @@
 - A session's bb version release from a branch other than main makes a dev pre-release unless --stable is said, and its first line names the channel the release lands on (7a8e367)
 - bb sign release waits for its look and says what it found, run by run, or why it found nothing to sign (7a8e367)
 
+### Fixed
+
+- A git token given for a host with a port (a self-hosted Gitea on :3000) matches its project's remote again: one kept with the port's colon written as %3a was never found by the remote's host, and read that way on the Keys page (2868b53)
+
 ## 0.9.0: 2026-10-30
 
 ### Added
