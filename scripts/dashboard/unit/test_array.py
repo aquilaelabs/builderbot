@@ -185,7 +185,10 @@ class TheController(unittest.TestCase):
             self.assertEqual(add.call_count, 0)
             r = nodes.node_storage_array("user:t", "n1", {"array": "create", "data": ["sdb", "sda"], "parity": ["sdc"], "fs": "btrfs", "policy": "lfs", "wipe": True})
             self.assertTrue(r.get("ok"), r)
-            self.assertEqual(add.call_args[0][3]["config"], {"array": "create", "data": ["sdb", "sda"], "parity": ["sdc"], "fs": "btrfs", "policy": "lfs", "wipe": True})
+            self.assertEqual(add.call_args[0][3]["config"], {"array": "create", "data": ["sdb", "sda"], "parity": ["sdc"], "fs": "btrfs", "policy": "lfs", "wipe": True,
+                             # Each disk as the person saw it, for the agent to hold its name to (B527).
+                             "ids": {"sdb": {"by_id": "", "serial": "B"}, "sda": {"by_id": "", "serial": "A"},
+                                     "sdc": {"by_id": "", "serial": "C"}}})
             self.assertEqual(add.call_args[0][3]["timeout"], 86400)
             n["reported"]["array"] = {"data": [{"slot": 1}], "parity": [{"slot": 1}]}
             self.assertIn("one of d1, p1", nodes.node_storage_array("user:t", "n1", {"array": "replace", "which": "d3", "new": "sdb"})["error"])

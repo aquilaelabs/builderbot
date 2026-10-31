@@ -18,7 +18,7 @@ import subprocess
 import time
 
 from .base import log
-from .disks import disks_now
+from .disks import disks_now, moved
 
 POOL_RE = re.compile(r"[a-z][a-z0-9_-]{0,30}")
 LAYOUTS = {"single": 1, "mirror": 2, "raidz1": 3, "raidz2": 4}
@@ -281,6 +281,9 @@ class PoolsMixin:
                 return False
             if d.get("system"):
                 say(f"refused: {n} is the system disk, which never goes into {for_what}\n")
+                return False
+            if (why := moved(n, d, cfg.get("ids"))):
+                say(f"refused: {why}\n")
                 return False
             held = [p for p in d.get("parts") or [] if p.get("holds") not in ("nothing", "")] or ([d] if d.get("holds") not in ("nothing", "") else [])
             if held and not wipe:

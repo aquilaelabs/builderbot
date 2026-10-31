@@ -147,6 +147,18 @@ class TheAgent(unittest.TestCase):
         self.run_job({"pool": "export", "name": "tank"})
         self.assertEqual(self.ran[-1][1:], ["export", "tank"])
 
+    def test_a_disk_whose_name_moved_since_the_pick_is_refused(self):
+        # B527: the job carries the serial the person saw under sdb; another
+        # disk under that name now is never written.
+        state, code, text = self.run_job({"pool": "create", "name": "data", "layout": "mirror", "disks": ["sdb", "sdc"],
+                                           "ids": {"sdb": {"serial": "Z"}, "sdc": {"serial": "C"}}})
+        self.assertEqual(state, "failed", text)
+        self.assertIn("is not the disk that was picked", text)
+        self.assertFalse([a for a in self.ran if a[1:2] == ["create"]])
+        state, code, text = self.run_job({"pool": "create", "name": "data", "layout": "mirror", "disks": ["sdb", "sdc"],
+                                           "ids": {"sdb": {"serial": "B"}, "sdc": {"serial": "C"}}})
+        self.assertEqual(state, "succeeded", text)
+
     def test_the_census_counts_each_pools_snapshots_by_kind_once_across_its_datasets(self):
         with mock.patch.object(self.pm, "_out", side_effect=self.fake_out), mock.patch.object(self.pm.shutil, "which", return_value="/usr/sbin/zfs"):
             got = self.pm.snapshots_now()

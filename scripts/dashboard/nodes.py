@@ -3229,6 +3229,14 @@ ARRAY_POLICIES = ("mfs", "lfs", "epmfs", "ff")
 ARRAY_LONG = 86400
 
 
+def _disk_ids(known, names):
+    """Each named disk as the census showed it to the person (its by-id link
+    and serial), for the agent to hold the name to: a kernel name can move
+    to another disk between the pick and the job (a stick plugged in, a
+    reboot), and the wipe would land on whichever disk took it (B527)."""
+    return {d: {"by_id": str(known[d].get("by_id") or ""), "serial": str(known[d].get("serial") or "")}
+            for d in names if d in known}
+
 def node_storage_array(principal, node_id, req):
     """The array on the controller's own machine (R162 step 2): made of
     data disks and one or two parity disks, a disk added or a slot's disk
@@ -3280,7 +3288,8 @@ def node_storage_array(principal, node_id, req):
         small = [p for p in parity if int(known[p].get("size_mb") or 0) < biggest]
         if small:
             return {"error": f"a parity disk is at least as large as the largest data disk; {', '.join(small)} is smaller"}
-        cfg.update(data=data, parity=parity, fs=fs, policy=policy, wipe=req.get("wipe") is True)
+        cfg.update(data=data, parity=parity, fs=fs, policy=policy, wipe=req.get("wipe") is True,
+                   ids=_disk_ids(known, data + parity))
     elif action in ("add", "replace"):
         new = str(req.get("new" if action == "replace" else "disk") or "")
         if not have.get("data"):
@@ -3293,9 +3302,9 @@ def node_storage_array(principal, node_id, req):
             slots = {f"d{x['slot']}" for x in have.get("data") or []} | {f"p{x['slot']}" for x in have.get("parity") or []}
             if which not in slots:
                 return {"error": f"replace takes the slot to replace, one of {', '.join(sorted(slots))}"}
-            cfg.update(which=which, new=new, wipe=req.get("wipe") is True)
+            cfg.update(which=which, new=new, wipe=req.get("wipe") is True, ids=_disk_ids(known, [new]))
         else:
-            cfg.update(disk=new, wipe=req.get("wipe") is True)
+            cfg.update(disk=new, wipe=req.get("wipe") is True, ids=_disk_ids(known, [new]))
     elif action == "destroy":
         if not have.get("data"):
             return {"error": "no array on the machine yet"}
@@ -3481,7 +3490,7 @@ def node_storage_pool(principal, node_id, req):
                 return {"error": f"{d} is not a disk {n['name']} lists"}
             if known[d].get("system"):
                 return {"error": f"{d} is the system disk, which never goes into a pool"}
-        cfg.update(layout=layout, disks=disks, wipe=req.get("wipe") is True)
+        cfg.update(layout=layout, disks=disks, wipe=req.get("wipe") is True, ids=_disk_ids(known, disks))
         # Native encryption (R162 step 3): the passphrase goes to the key
         # record (kept sealed here, or asked after every boot), never into
         # the job; the hello hands it to the agent before the job runs.
@@ -3496,7 +3505,7 @@ def node_storage_pool(principal, node_id, req):
         old, new = str(req.get("old") or "")[:120], str(req.get("new") or "")
         if not old or new not in known or known[new].get("system"):
             return {"error": "replace takes the member to replace and a disk the machine lists that is not the system's"}
-        cfg.update(old=old, new=new, wipe=req.get("wipe") is True)
+        cfg.update(old=old, new=new, wipe=req.get("wipe") is True, ids=_disk_ids(known, [new]))
     elif action == "destroy":
         if str(req.get("confirm") or "") != name:
             return {"error": "destroying a pool takes its name typed again"}

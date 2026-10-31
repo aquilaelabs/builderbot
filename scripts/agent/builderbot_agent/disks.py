@@ -98,6 +98,21 @@ def _mounts(dev):
     return out
 
 
+def moved(name, now, ids):
+    """Why the disk under `name` is not the one the person picked, or "":
+    the job carries each disk's by-id link and serial as the census showed
+    them (B527), and a kernel name that moved to another disk since (a stick
+    plugged in, a reboot) is refused rather than written."""
+    want = (ids or {}).get(name) if isinstance(ids, dict) else None
+    if not isinstance(want, dict):
+        return ""
+    for key in ("by_id", "serial"):
+        if want.get(key) and str(now.get(key) or "") != str(want[key]):
+            return (f"{name} is not the disk that was picked: its {key.replace('_', '-')} is "
+                    f"{now.get(key) or 'none'} now, {want[key]} then; the disks' names moved, so look again")
+    return ""
+
+
 def disks_now(smart=True):
     """Every whole disk of this machine, loop and RAM devices left out, with
     its partitions' holdings and its SMART facts; at most 32."""

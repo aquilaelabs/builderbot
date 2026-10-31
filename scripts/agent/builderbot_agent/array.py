@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import time
 
-from .disks import disks_now
+from .disks import disks_now, moved
 from .pools import by_id, _out
 
 RECORD = "/etc/builderbot/array.json"
@@ -208,6 +208,9 @@ class ArrayMixin:
                 return False
             if d.get("system"):
                 say(f"refused: {n} is the system disk, which never goes into the array\n")
+                return False
+            if (why := moved(n, d, cfg.get("ids"))):
+                say(f"refused: {why}\n")
                 return False
             # Anything mounted on it is in use, wipe or not.
             if d.get("mounted"):
