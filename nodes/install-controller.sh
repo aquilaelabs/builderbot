@@ -862,6 +862,11 @@ back_to_previous() {
     [ -n "$state" ] || die "the controller's state folder could not be told: nothing changed"
     say "back: ${newver:-?} to ${oldver:-?}"
     svc_stop "$SERVICE"
+    # Stopped, or nothing is put back: the restore moves its database aside,
+    # which a controller still writing would go on writing into.
+    if svc_active "$SERVICE"; then
+        die "the controller did not stop, so its state is not put back: stop ${SERVICE}, then sudo bash $0 --update --from ${prev}"
+    fi
     # The newer build may have moved the state on, which the older one
     # refuses; then the copy the newer one took before it migrated is put
     # back, and what the state held is kept beside it.
