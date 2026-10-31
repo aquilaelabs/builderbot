@@ -106,8 +106,10 @@ function renderNoticesInto(i){
   const all = noticesData, rows = noticesShown(), waiting = noticesWaitingRows();
   const groups = [...Object.entries(NOTICE_KINDS).map(([k, label]) => ({key: k, label, count: all.filter(n => n.kind === k).length})),
                   {key: "bad", label: "Failures", count: all.filter(n => n.level === "bad").length}];
+  // In an action bar as every page's bar action is, which keeps it at the
+  // right on a phone too, where it sat at the left once the spacer folded.
   d.setBar(`<span class="sp"></span>
-    ${all.length ? `<button type="button" class="danger" id="ntClear">${noticesChip && noticesChip !== "bad" ? `Clear ${esc(NOTICE_KINDS[noticesChip].toLowerCase())}` : "Clear all"}</button>` : ""}`);
+    ${all.length ? `<span class="actbar"><button type="button" class="danger" id="ntClear">${noticesChip && noticesChip !== "bad" ? `Clear ${esc(NOTICE_KINDS[noticesChip].toLowerCase())}` : "Clear all"}</button></span>` : ""}`);
   const html = (noticesErr ? `<div class="hint bad">${esc(noticesErr)}</div>` : "")
     // Not drawn with nothing in it (the house rule: what has nothing to act
     // on is not shown); while something waits it opens by itself, and on a
