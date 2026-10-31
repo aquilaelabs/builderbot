@@ -200,7 +200,7 @@ scripts/
     claudesync.py                a synced node's agents' conversations: the listing, get and put (whole, a tail, gone) for its agent's mirror (B613)
     files.py                     a project's files for a person's editor (R159): stat, list, read, write, rename, delete, search and changes, inside the project and never .git
     git.py                       the notebook's Git view: the repository read out, and its writes
-    codebase.py                  the code base counted, by language, for the Briefing tab
+    codebase.py                  the code base counted, by language, for the notebook's Overview
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     roadmap.py                   the roadmap; `bb roadmap` drives the same file
     records.py                   the notebook's records whole as JSON, YAML or Markdown, and read back in (R167)

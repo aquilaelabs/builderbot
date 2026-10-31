@@ -728,7 +728,7 @@ def _mine(rs, name, by):
             if by == "claude" and r.get("by") != "claude":
                 return None, ("that rule is the operator's: you can read it and "
                               "cannot change it. Say what you think is wrong with "
-                              "it in your reply; they edit it on the Briefing tab")
+                              "it in your reply; they edit it on the project's Overview")
             return i, ""
     return None, f"no rule called {name} here"
 

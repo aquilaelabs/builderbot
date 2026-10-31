@@ -758,7 +758,7 @@ def block(project, reply="", asks="", uid="", agent=""):
 
 
 def payload(project, reply="", asks="", uid="", agent=""):
-    """What the Briefing tab draws, and what `bb preamble --json` prints.
+    """What the notebook's Overview draws, and what `bb preamble --json` prints.
     `reply` and `asks` are the asker's own settings on the project (prefs
     USER_CHOICES): how Claude writes to them and how often it asks them.
     Each part carries its size, its share where it has one, and what it

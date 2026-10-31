@@ -422,7 +422,7 @@ holding one container, `web-dev`, on `bb-dev-sandbox`.
    two it already has. With the Containers page's branches loaded, Build from
    showed too, carrying the same ports sentence a second time; that one
    went (`b14541f`). Canceled there.
-4. **What a session is handed.** `web`'s briefing (the Briefing tab's
+4. **What a session is handed.** `web`'s briefing (the Overview's
    source, `/api/preamble`) carries the new paragraph: `bb devapp new
    [NAME] [--branch REF]` is Send done from a session, and it, not `bb
    container new`, is how the project's own code goes into Docker. The old

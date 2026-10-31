@@ -625,7 +625,7 @@ def may(u, action, project=None):
     # to be talked out of `user` above.
     if action == "rules" and (u or {}).get("session"):
         return ("a session cannot change the rules it is being held to: they "
-                "are the operator's, written on the notebook's Briefing tab")
+                "are the operator's, written on the project's Overview in the notebook")
     # ...nor hand out the project's files to people outside BuilderBot (R151).
     if action == "ftp" and (u or {}).get("session"):
         return "who may reach a project's files over FTP is a person's to set, not a session's"
