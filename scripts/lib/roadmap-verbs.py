@@ -298,6 +298,13 @@ elif op == "apply":
     # on words it did not see.
     if not rest:
         print("usage: bb roadmap apply FILE|-", file=sys.stderr); sys.exit(1)
+    # Relayed, it runs on the controller: a file is the project's own, never
+    # one of the controller's (its parse error would show what it held).
+    if rest[0] != "-" and os.environ.get("BB_RELAYED"):
+        real, top = os.path.realpath(rest[0]), os.path.realpath(os.getcwd())
+        if not real.startswith(top + os.sep):
+            print(f"[builderbot] ERROR: {rest[0]} is not a file in this project: give one inside it, or - for stdin",
+                  file=sys.stderr); sys.exit(1)
     try:
         doc = records.load(sys.stdin.read() if rest[0] == "-" else open(rest[0], encoding="utf-8").read())
     except (OSError, ValueError) as e:
