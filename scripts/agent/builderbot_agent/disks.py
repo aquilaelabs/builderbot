@@ -90,6 +90,14 @@ def by_id_link(name):
     return best
 
 
+def _mounts(dev):
+    """Every mount point on a device and everything under it."""
+    out = [str(dev.get("mountpoint"))] if dev.get("mountpoint") else []
+    for c in dev.get("children") or []:
+        out += _mounts(c)
+    return out
+
+
 def disks_now(smart=True):
     """Every whole disk of this machine, loop and RAM devices left out, with
     its partitions' holdings and its SMART facts; at most 32."""
@@ -111,8 +119,10 @@ def disks_now(smart=True):
                "size_mb": int(dev.get("size") or 0) // 1048576, "ssd": dev.get("rota") is False,
                "tran": str(dev.get("tran") or "")[:16], "removable": dev.get("rm") is True, "by_id": by_id_link(name)[:120],
                "holds": _holds(dev)[:80] if not parts else "", "parts": parts[:16],
-               "system": any(str(p.get("mountpoint") or "") in ("/", "/boot/efi") for p in (dev.get("children") or []))
-                         or str(dev.get("mountpoint") or "") == "/"}
+               # The whole tree under the disk, not its first level: / on
+               # LUKS, LVM or md is a grandchild, and read as no system disk.
+               "system": any(m in ("/", "/boot", "/boot/efi", "[SWAP]") for m in _mounts(dev)),
+               "mounted": bool(_mounts(dev))}
         if smart:
             row["smart"] = _smart(name)
         out.append(row)
