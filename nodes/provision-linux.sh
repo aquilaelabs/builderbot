@@ -1259,6 +1259,13 @@ keep_account() {
     install -d -m 0755 /etc/builderbot
     grep -qx "$1" "$KEPT_ACCOUNTS" 2>/dev/null || echo "$1" >> "$KEPT_ACCOUNTS"
 }
+# ...and each one this script makes, the moment it makes it: what Uninstall
+# deletes is this list, never a name it guessed (B516).
+MADE_ACCOUNTS=/etc/builderbot/made-accounts
+made_account() {
+    install -d -m 0755 /etc/builderbot
+    grep -qx "$1" "$MADE_ACCOUNTS" 2>/dev/null || echo "$1" >> "$MADE_ACCOUNTS"
+}
 # Never one that is already here and not BuilderBot's: an account is
 # somebody's, and taking it over (or deleting it at Uninstall) is never
 # ours to do, whatever it is called. A machine already enrolled has made its
@@ -1270,6 +1277,7 @@ if id -u "$USER_NAME" >/dev/null 2>&1; then
     fi
 else
     useradd -m -s /bin/bash "$USER_NAME"
+    made_account "$USER_NAME"
 fi
 if [ "$BESIDE_CONTROLLER" = 1 ]; then
     # Docker is root on this machine, and root here holds the controller's
@@ -1375,6 +1383,7 @@ else
             useradd -m -u "$SESSION_UID" -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME" 2>/dev/null \
                 || useradd -m -u "$SESSION_UID" -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
         fi
+        made_account "$SESSION_NAME"
     fi
     getent group kvm >/dev/null 2>&1 && usermod -aG kvm "$SESSION_NAME"
     # Belt and braces: an account that was in docker before this ran is
@@ -2055,8 +2064,10 @@ cmd_uninstall() {
             *) die "uninstall takes --yes, --stores, --configured and --doors" ;;
         esac
     done
-    session_user="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("session_user", ""))' 2>/dev/null || true)"
-    [ -n "$session_user" ] || session_user=builder
+    # The session account node.json names; an older node.json that names
+    # none had builder, while one enrolled with --session-user none has
+    # none at all, and its machine's own builder is not ours (B516).
+    session_user="$(python3 -c 'import json; d = json.load(open("/etc/builderbot/node.json")); print(d["session_user"] if "session_user" in d else "builder")' 2>/dev/null || true)"
     store_dirs="$(python3 -c 'import json; print(" ".join(sorted(set(str(v) for v in (json.load(open("/etc/builderbot/node.json")).get("stores") or {}).values() if str(v).startswith("/")))))' 2>/dev/null || true)"
     for p in $(ours); do
         case "$p" in
@@ -2066,7 +2077,8 @@ cmd_uninstall() {
     done
     say "uninstall BuilderBot from this machine"
     printf '   goes:  the agent and its unit, the session firewall rules and the sessions'"'"' own networks,\n'
-    printf '          the accounts %s and %s with their homes, /etc/builderbot, and this tool\n' "$DOCKER_USER" "$session_user"
+    printf '          the account%s %s with their homes (those BuilderBot made), /etc/builderbot, and this tool\n' \
+        "${session_user:+s}" "${DOCKER_USER}${session_user:+ and ${session_user}}"
     [ "$stores" = 1 ] && printf '   also:  the stores on this disk (%s), /workspace, /var/lib/builderbot\n' "${store_dirs:- none}"
     [ "$configured" = 1 ] && printf '   also:  the mounts BuilderBot used (%s), the runners, the GPU display\n' "${mounts:- none}"
     [ "$doors" = 1 ] && printf '   also:  cloudflared and its token, Tailscale'"'"'s login, the port 22 rule, the hosting firewall, the nginx container\n'
@@ -2181,6 +2193,12 @@ cmd_uninstall() {
         # and all (it took the session account's name on a cloud image).
         if grep -qx "$u" /etc/builderbot/kept-accounts 2>/dev/null; then
             say "kept ${u}: it was an account here before BuilderBot"
+            continue
+        fi
+        # Only one this script made, where it has kept that list; a node
+        # provisioned before the list keeps the old reading (B516).
+        if [ -f /etc/builderbot/made-accounts ] && ! grep -qx "$u" /etc/builderbot/made-accounts; then
+            say "kept ${u}: BuilderBot did not make it"
             continue
         fi
         case "$(getent passwd "$u" | cut -d: -f6)" in
