@@ -724,25 +724,45 @@ fetch_tree() {
     d="$(mktemp -d /tmp/builderbot-release.XXXXXX)"
     ver="${tag#v}"
     base="https://github.com/${REPO}/releases/download/${tag}/builderbot-controller-${ver}.tar.gz"
-    if curl -fsSL -o "$d/release.tar.gz" "$base" 2>/dev/null; then
+    local http
+    http="$(curl -sSL -o "$d/release.tar.gz" -w '%{http_code}' "$base" 2>/dev/null || true)"
+    if [ "$http" = 200 ]; then
         curl -fsSL -o "$d/release.tar.gz.sha256" "${base}.sha256" || die "the bundle has no sha256 beside it at ${base}.sha256, so it is not taken"
         sum="$(awk '{print $1}' "$d/release.tar.gz.sha256")"
         echo "${sum}  $d/release.tar.gz" | sha256sum -c - >/dev/null 2>&1 \
             || die "the bundle does not match its sha256 (${base}): not taken"
         printf '   bundle %s, sha256 %s\n' "$(basename "$base")" "${sum:0:12}" >&2
         if command -v gh >/dev/null 2>&1; then
-            if gh attestation verify "$d/release.tar.gz" --repo "$REPO" >/dev/null 2>&1; then
+            # The attestation read from GitHub's public API and verified with
+            # --bundle, which asks gh for no sign-in, where a root shell has
+            # none and every update was refused; a gh too old for --bundle
+            # asks GitHub itself, as before.
+            local att=()
+            if gh attestation verify --help 2>&1 | grep -q -- '--bundle' \
+                    && curl -fsSL -H 'Accept: application/vnd.github+json' -o "$d/att.json" \
+                        "https://api.github.com/repos/${REPO}/attestations/sha256:${sum}" 2>/dev/null \
+                    && python3 -c 'import json, sys; a = json.load(open(sys.argv[1])).get("attestations") or []; open(sys.argv[2], "w").write("".join(json.dumps(x["bundle"]) + "\n" for x in a if isinstance(x.get("bundle"), dict))); sys.exit(0 if a else 1)' \
+                        "$d/att.json" "$d/att.jsonl" 2>/dev/null; then
+                att=(--bundle "$d/att.jsonl")
+            fi
+            if gh attestation verify "$d/release.tar.gz" "${att[@]}" --repo "$REPO" >/dev/null 2>&1; then
                 printf '   build attestation: verified by gh\n' >&2
             else
-                die "gh attestation verify refused the bundle: not taken (a build not made by the release workflow)"
+                die "gh attestation verify refused the bundle: not taken (a build not made by the release workflow, or a gh that wants a sign-in: gh auth login)"
             fi
         else
             printf '   build attestation: gh is not here to check it; the sha256 is what held\n' >&2
         fi
-    else
+    elif [ "$http" = 404 ] && [ "$(printf '%s\n%s\n' "${ver%%-*}" 0.9.0 | sort -V | head -1)" != 0.9.0 ]; then
+        # Only a release from before the bundle, said not to have one, falls
+        # back to its source archive: any other failure to fetch the bundle
+        # (a server error, an asset taken off) is refused, never taken
+        # unverified.
         url="https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz"
         printf '   %s publishes no controller bundle (a release from before 0.9.0); its source archive is taken instead, unverified\n' "$tag" >&2
         curl -fsSL -o "$d/release.tar.gz" "$url" || die "could not download ${url}"
+    else
+        die "the controller bundle could not be fetched (${base}: HTTP ${http:-no answer}): not taken"
     fi
     tar -xzf "$d/release.tar.gz" -C "$d"
     local top

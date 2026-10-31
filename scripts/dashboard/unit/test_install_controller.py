@@ -380,3 +380,74 @@ class Rollback(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheUpdatesFetch(unittest.TestCase):
+    """fetch_tree with curl and gh stood in on the PATH: the bundle verified
+    by its attestation read from GitHub's public API with --bundle (no
+    sign-in), and the source archive taken unverified only for a release
+    from before the bundle that GitHub says has none."""
+
+    def world(self, code, gh_ok=True):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        tree = os.path.join(d, "t", "builderbot-9")
+        os.makedirs(os.path.join(tree, "nodes"))
+        open(os.path.join(tree, "Dockerfile"), "w").write("FROM x\n")
+        open(os.path.join(tree, "nodes", "install-controller.sh"), "w").write("#!/bin/sh\n")
+        tgz = os.path.join(d, "b.tar.gz")
+        with tarfile.open(tgz, "w:gz") as t:
+            t.add(tree, arcname="builderbot-9")
+        dig = subprocess.run(["sha256sum", tgz], capture_output=True, text=True).stdout.split()[0]
+        bin_ = os.path.join(d, "bin")
+        os.makedirs(bin_)
+        with open(os.path.join(bin_, "curl"), "w") as f:
+            f.write(f"""#!/bin/bash
+out=""; url=""; w=""
+while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; -w) w="$2"; shift 2;; -H) shift 2;; -*) shift;; *) url="$1"; shift;; esac; done
+case "$url" in
+  *attestations/sha256:*) echo '{{"attestations":[{{"bundle":{{"x":1}}}}]}}' > "$out" ;;
+  *.tar.gz.sha256) echo "{dig}  b.tar.gz" > "$out" ;;
+  *archive/refs/tags/*) cp "{tgz}" "$out" ;;
+  *.tar.gz) [ "{code}" = 200 ] && cp "{tgz}" "$out"; [ -n "$w" ] && printf '%s' "{code}" ;;
+esac
+[ "{code}" = 200 ] || case "$url" in *controller-*.tar.gz) exit 22;; esac
+exit 0
+""")
+        with open(os.path.join(bin_, "gh"), "w") as f:
+            f.write(f"""#!/bin/bash
+[ "$3" = --help ] && {{ echo "  -b, --bundle string"; exit 0; }}
+echo "$*" >> "{d}/gh.log"
+case " $* " in *" --bundle "*) exit {0 if gh_ok else 1};; *) exit 1;; esac
+""")
+        for n in ("curl", "gh"):
+            os.chmod(os.path.join(bin_, n), 0o755)
+        return d, bin_
+
+    def fetch(self, tag, code, gh_ok=True):
+        d, bin_ = self.world(code, gh_ok)
+        r = sh(f'fetch_tree {tag}', env={"PATH": bin_ + ":" + os.environ["PATH"]}, root=d)
+        log = open(os.path.join(d, "gh.log")).read() if os.path.exists(os.path.join(d, "gh.log")) else ""
+        return r, log
+
+    def test_a_bundle_is_verified_by_its_attestation_with_no_sign_in(self):
+        r, log = self.fetch("v0.9.1", 200)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("verified by gh", r.stderr)
+        self.assertIn("--bundle", log)
+
+    def test_a_bundle_that_does_not_verify_is_not_taken(self):
+        r, _ = self.fetch("v0.9.1", 200, gh_ok=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("refused the bundle", r.stderr)
+
+    def test_a_bundle_that_cannot_be_fetched_is_not_taken_unverified(self):
+        for tag, code in (("v0.9.1", "500"), ("v0.9.1", "404")):
+            r, _ = self.fetch(tag, code)
+            self.assertNotEqual(r.returncode, 0, (tag, code))
+            self.assertIn("could not be fetched", r.stderr)
+
+    def test_only_a_release_from_before_the_bundle_falls_back_to_its_source(self):
+        r, _ = self.fetch("v0.8.2", "404")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("source archive is taken instead", r.stderr)
