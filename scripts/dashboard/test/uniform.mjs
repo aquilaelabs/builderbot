@@ -1482,6 +1482,23 @@ for (const kind of kinds){
   ok(skewed.length === 0, `[${kind}] no stacked box is aligned across its own axis${
     skewed.length ? `: ${skewed.join('; ')}` : ''}`);
 }
+
+// A list narrowed two ways shows one All: each row of chips after the first
+// names its own first chip (Any source, Any version), where the Library and
+// Bugs stacked All 50 over All 50 (31 Oct sweep).
+for (const kind of kinds){
+  if (!DRIVERS[kind]) continue;
+  await bring(kind);
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 }).catch(() => {});
+  await sleep(200);
+  const alls = await page.evaluate(() => {
+    const surf = document.querySelector('.doc.on .doctab, .doc.on .nb');
+    if (!surf) return 0;
+    return [...surf.querySelectorAll('.chips')].filter(c => c.offsetParent
+      && (c.querySelector('.chip')?.firstChild?.textContent || '').trim() === 'All').length;
+  });
+  ok(alls <= 1, `[${kind}] one All chip on a page, each further row of chips naming its own first (${alls})`);
+}
 }
 
 if (runs('b')) {
