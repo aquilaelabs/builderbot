@@ -109,8 +109,9 @@ class TheAgent(unittest.TestCase):
         self.assertEqual((state, code), ("succeeded", 0), text)
         argv = [a for a in self.ran if a[0] == "mkfs.xfs"]
         self.assertEqual([a[-1] for a in argv], ["/dev/sda", "/dev/sdb", "/dev/sdc"])
-        self.assertEqual(argv[0][2:4], ["-L", "bb-d1"])
-        self.assertEqual(argv[2][2:4], ["-L", "bb-p1"])
+        self.assertEqual(argv[0][1:3], ["-L", "bb-d1"])
+        self.assertEqual(argv[2][1:3], ["-L", "bb-p1"])
+        self.assertNotIn("-f", argv[0], "mkfs keeps its own refusal where the job did not say to wipe")
         self.assertNotIn(["wipefs", "-a", "/dev/sda"], self.ran, "nothing to wipe without the word")
         self.assertEqual([a for a in self.ran if a[0] == "mount"], [["mount", "/mnt/disks/d1"], ["mount", "/mnt/disks/d2"], ["mount", "/mnt/parity/p1"], ["mount", "/mnt/array"]])
         self.assertEqual(self.ran[-1], ["/usr/bin/snapraid", "sync"])

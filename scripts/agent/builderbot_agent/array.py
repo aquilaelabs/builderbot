@@ -209,9 +209,17 @@ class ArrayMixin:
             if d.get("system"):
                 say(f"refused: {n} is the system disk, which never goes into the array\n")
                 return False
+            # Anything mounted on it is in use, wipe or not.
+            if d.get("mounted"):
+                say(f"refused: {n} has something mounted on it\n")
+                return False
             held = [p for p in d.get("parts") or [] if p.get("holds") not in ("nothing", "")] or ([d] if d.get("holds") not in ("nothing", "") else [])
-            if held and not wipe:
-                say(f"refused: {n} holds {held[0].get('holds')}; the job must say to wipe it\n")
+            # ...and a partition table at all is something, though blkid may
+            # not know what its partitions hold (an encrypted volume, a raw
+            # image): only a wipe the job asked for overwrites it.
+            if (held or d.get("parts")) and not wipe:
+                said = held[0].get("holds") if held else "partitions"
+                say(f"refused: {n} holds {said}; the job must say to wipe it\n")
                 return False
             return True
 
@@ -219,7 +227,10 @@ class ArrayMixin:
             """The whole disk one filesystem, labeled; its UUID back."""
             if wipe:
                 self._sh(job, ["wipefs", "-a", f"/dev/{n}"], timeout=120)
-            argv = ["mkfs.xfs", "-f", "-L", label, f"/dev/{n}"] if fs == "xfs" else ["mkfs.btrfs", "-f", "-L", label, f"/dev/{n}"]
+            # -f only where the job said to wipe: without it mkfs keeps its own
+            # refusal of a disk that holds something it can see.
+            force = ["-f"] if wipe else []
+            argv = ["mkfs.xfs", *force, "-L", label, f"/dev/{n}"] if fs == "xfs" else ["mkfs.btrfs", *force, "-L", label, f"/dev/{n}"]
             if self._sh(job, argv, timeout=600) != 0:
                 return ""
             return _out(["blkid", "-s", "UUID", "-o", "value", f"/dev/{n}"]).strip()
