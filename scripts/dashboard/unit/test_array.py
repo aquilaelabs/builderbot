@@ -45,10 +45,12 @@ class TheAgent(unittest.TestCase):
         am = self.am
         ran = self.ran = []
 
+        self.fail_mkfs = ""
+
         class A(am.ArrayMixin):
-            def _sh(self, job, argv, timeout=0, **kw):
+            def _sh(inner, job, argv, timeout=0, **kw):
                 ran.append(argv)
-                return 0
+                return 1 if self.fail_mkfs and argv[0].startswith("mkfs") and argv[-1] == self.fail_mkfs else 0
 
             def hello_again(self, why):
                 self.said = why
@@ -119,6 +121,14 @@ class TheAgent(unittest.TestCase):
         self.assertEqual(rec["policy"], "mfs")
         self.assertIn("data d2 /mnt/disks/d2/", open(self.env["BB_SNAPRAID_CONF"]).read())
         self.assertIn("fuse.mergerfs", open(self.env["BB_ARRAY_FSTAB"]).read())
+
+    def test_a_create_that_stops_partway_says_which_disks_it_wrote(self):
+        # B529: no record holds them, so the job names them.
+        self.fail_mkfs = "/dev/sdc"
+        state, code, text, rec = self.run_job({"array": "create", "data": ["sda", "sdb"], "parity": ["sdc"], "fs": "xfs", "policy": "mfs"})
+        self.assertEqual(state, "failed", text)
+        self.assertIn("sdc did not take xfs", text)
+        self.assertIn("sda, sdb were formatted already and are in no array", text)
 
     def test_what_is_refused_runs_nothing(self):
         for cfg, rec, why in (({"array": "create", "data": ["sda"], "parity": ["sdb"]}, None, "at least as large"),

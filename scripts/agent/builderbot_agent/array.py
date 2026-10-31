@@ -227,16 +227,22 @@ class ArrayMixin:
             return True
 
         def make_fs(n, fs, label):
-            """The whole disk one filesystem, labeled; its UUID back."""
-            if wipe:
-                self._sh(job, ["wipefs", "-a", f"/dev/{n}"], timeout=120)
+            """The whole disk one filesystem, labeled; its UUID back, or ""
+            with why said."""
+            if wipe and self._sh(job, ["wipefs", "-a", f"/dev/{n}"], timeout=120) != 0:
+                say(f"{n}'s old signatures did not come off (wipefs above): it is not formatted\n")
+                return ""
             # -f only where the job said to wipe: without it mkfs keeps its own
             # refusal of a disk that holds something it can see.
             force = ["-f"] if wipe else []
             argv = ["mkfs.xfs", *force, "-L", label, f"/dev/{n}"] if fs == "xfs" else ["mkfs.btrfs", *force, "-L", label, f"/dev/{n}"]
             if self._sh(job, argv, timeout=600) != 0:
+                say(f"{n} did not take {fs} (above)\n")
                 return ""
-            return _out(["blkid", "-s", "UUID", "-o", "value", f"/dev/{n}"]).strip()
+            uuid = _out(["blkid", "-s", "UUID", "-o", "value", f"/dev/{n}"]).strip()
+            if not uuid:
+                say(f"{n} was formatted but blkid gives it no UUID\n")
+            return uuid
 
         def mount_all():
             for kind, key in (("d", "data"), ("p", "parity")):
@@ -292,17 +298,37 @@ class ArrayMixin:
             if small:
                 say(f"refused: a parity disk is at least as large as the largest data disk; {', '.join(small)} is smaller\n")
                 return "failed", 64
+            # The tool first, before any disk is written: a missing one was
+            # found after the first disk's table was already wiped.
+            if not shutil.which("mkfs.xfs" if fs == "xfs" else "mkfs.btrfs"):
+                say(f"refused: no mkfs for {fs} on this machine; install Storage on its Features section first\n")
+                return "failed", 65
             rec = {"policy": policy, "data": [], "parity": [], "made": int(time.time())}
             say(f"array create: {len(data)} data disk(s) as {fs}, {len(parity)} parity, {POLICIES[policy]}\n")
+            done = []
+
+            def stopped(n):
+                # What was written before the stop, said, since no record of
+                # an array holds it: those disks are formatted and in none.
+                left = [x for x in done if x != n]
+                if not left:
+                    say("the array was not made; no disk was written before the stop\n")
+                else:
+                    one = len(left) == 1
+                    say(f"the array was not made; {', '.join(left)} {'was' if one else 'were'} formatted already and "
+                        f"{'is' if one else 'are'} in no array: create again with wipe to use {'it' if one else 'them'}\n")
+                return "failed", 1
             for i, n in enumerate(data, 1):
                 uuid = make_fs(n, fs, f"bb-d{i}")
                 if not uuid:
-                    return "failed", 1
+                    return stopped(n)
+                done.append(n)
                 rec["data"].append({"slot": i, "id": by_id(n), "uuid": uuid, "fs": fs})
             for i, n in enumerate(parity, 1):
                 uuid = make_fs(n, fs, f"bb-p{i}")
                 if not uuid:
-                    return "failed", 1
+                    return stopped(n)
+                done.append(n)
                 rec["parity"].append({"slot": i, "id": by_id(n), "uuid": uuid, "fs": fs})
             settle()
             if not mount_all():
