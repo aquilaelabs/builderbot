@@ -1054,7 +1054,9 @@ boot_oneshot_remove() {
         systemd) systemctl disable "$1" >/dev/null 2>&1 || true
                  rm -f "/etc/systemd/system/$1.service" ;;
         openrc)  rm -f "/etc/local.d/$1.start" ;;
-        runit)   [ -f /etc/rc.local ] && sed -i "\\|$2|d" /etc/rc.local ;;
+        # No rc.local is nothing to remove, not a failure: under set -e the
+        # test's 1 ended an update after its flip and a --remove halfway.
+        runit)   [ ! -f /etc/rc.local ] || sed -i "\\|$2|d" /etc/rc.local ;;
     esac
 }
 
