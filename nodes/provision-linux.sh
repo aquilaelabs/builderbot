@@ -1237,11 +1237,17 @@ authorize() {
         exit 1
     }
     home="$(getent passwd "$who" | cut -d: -f6)"
+    # Root writes here, in a home the account writes: a link in its place
+    # would take root's append and chown wherever it points (B510).
+    if [ -L "$home/.ssh" ] || [ -L "$home/.ssh/authorized_keys" ]; then
+        echo "${home}/.ssh or its authorized_keys is a symbolic link: the key is not added; make them plain and run this again" >&2
+        exit 1
+    fi
     install -d -m 0700 -o "$who" -g "$who" "$home/.ssh"
     touch "$home/.ssh/authorized_keys"
     grep -qxF "$key" "$home/.ssh/authorized_keys" \
         || echo "$key" >> "$home/.ssh/authorized_keys"
-    chown "$who:$who" "$home/.ssh/authorized_keys"
+    chown -h "$who:$who" "$home/.ssh/authorized_keys"
     chmod 0600 "$home/.ssh/authorized_keys"
 }
 
