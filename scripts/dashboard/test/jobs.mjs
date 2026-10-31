@@ -151,7 +151,7 @@ await ready(page);
   // By names an account without its prefix, and a job BuilderBot asked for in words (B31).
   const by = await page.evaluate(() => [jobBy({ requested_by: 'user:alice' }),
     jobBy({ requested_by: 'system:auto-update' })]);
-  ok(by[0] === 'alice' && by[1] === 'automatic update',
+  ok(by[0] === 'alice' && by[1] === 'automatic',
      `By says who asked in words, never system:auto-update (${by.join(' | ')})`);
   const rows = (await page.$$eval('.jobstab .jbrow', rs => rs.map(r => ({
     id: r.dataset.job, state: r.dataset.state, text: r.textContent.replace(/\s+/g, ' '),

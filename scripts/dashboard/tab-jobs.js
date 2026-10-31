@@ -196,7 +196,10 @@ function jobsShowSet(v){
 // Who asked: every job has an asker, so it is a column and not a line
 // under each row; an account is named without its "user:" prefix.
 // A job BuilderBot asked for itself is "system:WHAT", said in words.
-const JOB_BY_SYSTEM = {"auto-update": "automatic update"};
+// One word, which the By column holds whole at a desk beside the Job
+// column's room ("automatic update" was cut to "automatic …"); the Kind
+// column beside it says what it updated.
+const JOB_BY_SYSTEM = {"auto-update": "automatic"};
 function jobBy(j){
   const by = j.requested_by || "";
   return esc(by.startsWith("user:") ? by.slice(5)
