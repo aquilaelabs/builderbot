@@ -157,7 +157,9 @@ function nbPermsView({$, nb, project, root}){
     const pol = {...((state?.projects || []).find(x => x.name === project)?.prefs?.gitpol || {})};
     viewGlance(hint, [{label: "on its own", value: n.auto}, {label: "asks first", value: n.ask},
                       {label: "may not", value: n.deny}],
-      `pushing its branches ${pol.push || "allow"}, to main ${pol.main || "deny"}`);
+      // In words, not the dials' values ("pushing its branches allow, to main deny").
+      `${{allow: "pushes its branches", ask: "asks before pushing its branches", deny: "never pushes its branches"}[pol.push || "allow"] || ""}; ${
+        {allow: "pushes to main", ask: "asks before pushing to main", deny: "never pushes to main"}[pol.main || "deny"] || ""}`);
   }
   function loadPerms(){ lendDials(); drawPush(); hostFor = ""; drawHost(); drawGlance(); }
   function leavePerms(){ rnDialsHome(); }
