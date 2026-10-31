@@ -840,7 +840,9 @@ class ConfigPlaneMixin:
         want = [m for m in (cfg.get("mounts") or []) if isinstance(m, dict)]
         have = {m.get("path"): m for m in mounts_now()}
         bad = 0
-        for path in have:
+        # Shares taken off only by a job that names its mounts: one that does
+        # not say (a storage job about stores alone) unmounted every share.
+        for path in (have if "mounts" in cfg else ()):
             if not any(w.get("path") == path for w in want):
                 if self._sh(job, [SANDBOX_BIN, "remove", path]) != 0:
                     bad += 1
@@ -849,6 +851,14 @@ class ConfigPlaneMixin:
             kind, ro = str(w.get("type") or "nfs"), bool(w.get("ro"))
             if not path.startswith("/") or not src:
                 job.say(f"skipping a mount with no path or source: {w!r}\n")
+                bad += 1
+                continue
+            # A source and a path that are plainly one: each is written into
+            # /etc/fstab, where a space or a newline would add lines of its own.
+            ok_src = (re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", src) if kind == "virtiofs"
+                      else re.fullmatch(r"[A-Za-z0-9.\-\[\]:]{1,255}:/[A-Za-z0-9._/+@-]*", src))
+            if not ok_src or not re.fullmatch(r"/[A-Za-z0-9._/+@-]+", path):
+                job.say(f"refused the mount at {path!r}: its source {src!r} or its path is not a plain one\n")
                 bad += 1
                 continue
             if (why := store_path_ok(path, "a mount point")):
