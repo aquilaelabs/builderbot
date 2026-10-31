@@ -90,9 +90,11 @@ function homeTiles(){
     {key: "jobs", label: "jobs running", value: jobs.running ?? "–",
      sub: jobs.failed_today ? `${jobs.failed_today} failed today` : jobs.waiting ? `${jobs.waiting} waiting` : "none failed today",
      subTone: jobs.failed_today ? "bad" : ""},
-    {key: "sessions", label: "sessions open", value: sessions, sub: claudes ? `${claudes} of them ${agentsWord(agentSs.map(s => s.name))}` : ""},
-    {key: "updates", label: updates === 1 ? "update due" : "updates due", value: updates, tone: updates ? "warn" : ""},
-    {key: "ci", label: "CI red", value: red, tone: red ? "bad" : "", sub: red === 1 ? projLabel(state.ci_red[0].project) : ""},
+    // These three are the status read's: before its first answer they wait
+    // rather than say 0 (a reload read 0 sessions open beside 24 a moment on).
+    {key: "sessions", label: "sessions open", value: sessions, wait: !state, sub: claudes ? `${claudes} of them ${agentsWord(agentSs.map(s => s.name))}` : ""},
+    {key: "updates", label: updates === 1 ? "update due" : "updates due", value: updates, wait: !state, tone: updates ? "warn" : ""},
+    {key: "ci", label: "CI red", value: red, wait: !state, tone: red ? "bad" : "", sub: red === 1 ? projLabel(state.ci_red[0].project) : ""},
     // The own machine's backups (R162 step 5): the last good run, or what
     // failed or went stale; only where a backup is recorded.
     h.backups ? {key: "backups", label: h.backups.count === 1 ? "backup" : "backups", value: h.backups.count,
@@ -198,13 +200,13 @@ function homeStartHtml(){
 function homeCards(jobs){
   const needs = needsRows(), hidden = state?.bell_hidden || 0;
   return `${homeStartHtml()}<div class="field"><div class="homegrid">
-        <section class="hcard hattn"><h3>Attention</h3>${needs.length ? needs.join("")
+        <section class="hcard hattn"><h3>Attention</h3>${!state ? skRows(2) : needs.length ? needs.join("")
           : `<div class="empty">nothing needs attention</div>`}${hidden
           ? `<div class="bfootbar"><span>${hidden} update${hidden === 1 ? "" : "s"} dismissed</span>
               <button type="button" data-brestore>Show again</button></div>` : ""}</section>
         <section class="hcard"><h3>Last jobs</h3>${jobs}</section>
       </div></div>
-      <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${homeGlanceHtml()}</section></div>`;
+      <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${state ? homeGlanceHtml() : skRows(1)}</section></div>`;
 }
 
 // The Attention card brought into view and marked a moment: where the
