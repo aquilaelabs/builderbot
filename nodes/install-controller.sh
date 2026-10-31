@@ -815,6 +815,11 @@ cmd_update() {
     packages
     pick_python >/dev/null || die "no python 3.${PY_MIN} or newer here"
     dir="$RELEASES/$(release_name "$ver")"
+    # The same version from another commit would be laid out over the
+    # release that is running, and leave nothing to go back to.
+    if [ "$(readlink -f "$OPT" 2>/dev/null)" = "$(readlink -f "$dir" 2>/dev/null)" ]; then
+        die "${ver} is the release running here, from another commit (${rev:-unstamped}): its folder is not laid out again under it; move to a later version"
+    fi
     lay_out "$t" "$dir" "$ver" "$rev"
     flip "$dir"
     prune
