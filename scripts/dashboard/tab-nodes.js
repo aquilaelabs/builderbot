@@ -1802,7 +1802,7 @@ function ndRowHtml(n){
     const seen = n.agent?.last_seen
       ? `seen ${ago(n.agent.last_seen)}` : (n.kind === "agent" ? "never seen" : "");
     const census = n.reported?.cpu
-      ? `${n.reported.cpu} cpu · ${Math.round((n.reported.mem_mb || 0) / 1024)}GB`
+      ? `${n.reported.cpu} cpu · ${Math.round((n.reported.mem_mb || 0) / 1024)} GB`
       : "";
     const where = n.kind === "local" ? "this container"
       : n.agent?.addr ? `dials in from ${n.agent.addr}` : "";

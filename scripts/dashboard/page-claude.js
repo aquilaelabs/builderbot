@@ -457,7 +457,7 @@ function claudeNodeFacts(n){
   const s = n.sample || {};
   const bits = [];
   if (s.cpu_pct !== undefined) bits.push(`cpu ${s.cpu_pct}%`);
-  if (s.mem_mb) bits.push(`${Math.round((s.mem_used_mb || 0) / 1024 * 10) / 10}/${Math.round(s.mem_mb / 1024)}GB`);
+  if (s.mem_mb) bits.push(`${Math.round((s.mem_used_mb || 0) / 1024 * 10) / 10}/${Math.round(s.mem_mb / 1024)} GB`);
   if (n.gpu) bits.push(n.gpu);
   if ((n.tools || []).length) bits.push(n.tools.join(", "));
   return bits.join(" · ");
