@@ -270,6 +270,18 @@ class Updates(unittest.TestCase):
             f.write(f"DASHBOARD_STATE={state}\n")
         return sh(f'ENV_FILE="{envf}"; gate "{ROOT}" {ver}')
 
+    def test_the_state_is_the_services_own_when_the_env_file_names_none(self):
+        # B499: an empty answer had the gate read the current directory.
+        with tempfile.TemporaryDirectory() as d:
+            envf = os.path.join(d, "controller.env")
+            open(envf, "w").write("PORT=7680\n")
+            r = sh(f'ENV_FILE="{envf}"; state_dir', root=d)
+            self.assertEqual(r.stdout, os.path.join(d, "var/lib/builderbot-controller/config"), r.stderr)
+            open(envf, "w").write("DASHBOARD_STATE=relative/x\n")
+            r = sh(f'ENV_FILE="{envf}"; state_dir', root=d)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("not a path from /", r.stderr)
+
     def test_every_supported_release_is_one_an_update_starts_on(self):
         vers = sorted(os.listdir(SNAPS))
         self.assertGreater(len(vers), 3)

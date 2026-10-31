@@ -495,6 +495,15 @@ env_get() {
     (set -a; . "$ENV_FILE" >/dev/null 2>&1; set +a; printf '%s' "${!1:-}")
 }
 
+# state_dir: the controller's state as the service finds it, with the same
+# default host-env.sh gives when the env file names none; an empty answer
+# had the update's gate and the rollback read the current directory (B499).
+state_dir() {
+    local v; v="$(env_get DASHBOARD_STATE)"
+    v="${v:-$VAR/config}"
+    case "$v" in /?*) printf '%s' "$v" ;; *) die "DASHBOARD_STATE in ${ENV_FILE} is not a path from /: ${v}" ;; esac
+}
+
 # bb_wrapper: bb on the machine's PATH, as the controller's account, with
 # the environment the service has (scripts/lib/host-env.sh). What `docker
 # exec -it BuilderBot bb` is on a container install.
@@ -616,7 +625,7 @@ cmd_install() {
     sudoers
     say "service: ${SERVICE}"
     service
-    wait_up || die "the controller did not answer on port ${PORT}: journalctl -u ${SERVICE} (or $(env_get DASHBOARD_STATE)/logs/builderbot.log) says why"
+    wait_up || die "the controller did not answer on port ${PORT}: journalctl -u ${SERVICE} (or $(state_dir)/logs/builderbot.log) says why"
     printf '   up: http://%s:%s\n' "$(lan_ip || echo localhost)" "$PORT"
     if [ "$NODE" = 1 ]; then
         # The wall before the node: its first hello asks bb-session whether
@@ -636,7 +645,7 @@ account: until somebody does, it serves that page and nothing else.
   sudo systemctl status ${SERVICE}
   ${ENV_FILE}   its settings
 
-Its state is $(env_get DASHBOARD_STATE), its projects $(env_get WORKSPACE).
+Its state is $(state_dir), its projects $(env_get WORKSPACE).
 EOF
 }
 
@@ -749,7 +758,8 @@ fetch_tree() {
 # its own stateversion.py before anything is changed.
 gate() {
     local t="$1" ver="$2" state
-    state="$(env_get DASHBOARD_STATE)"
+    state="$(state_dir)"
+    [ -n "$state" ] || die "the controller's state folder could not be told: nothing changed"
     BB_VERSION="$ver" PATH="$SHIM:$PATH" python3 "$t/scripts/dashboard/stateversion.py" check "$state"
 }
 
@@ -823,7 +833,8 @@ back_to_previous() {
     [ -d "$prev" ] || die "the release before ($prev) is gone"
     newver="$(sed -n 's/^BB_VERSION=//p' "$OPT/build.env" 2>/dev/null || true)"
     oldver="$(sed -n 's/^BB_VERSION=//p' "$prev/build.env" 2>/dev/null || true)"
-    state="$(env_get DASHBOARD_STATE)"
+    state="$(state_dir)"
+    [ -n "$state" ] || die "the controller's state folder could not be told: nothing changed"
     say "back: ${newver:-?} to ${oldver:-?}"
     svc_stop "$SERVICE"
     # The newer build may have moved the state on, which the older one
@@ -848,7 +859,7 @@ cmd_remove() {
     what="the ${SERVICE} service, ${OPT} and ${RELEASES}, ${BB_BIN}, the sudo rule and the wall"
     [ -f /etc/builderbot/node.json ] && [ -f "$ETC/own-node" ] && what="${what}, and this machine's node (provision-linux.sh --remove)"
     if [ "$PURGE" = 1 ]; then
-        what="${what}; and with --purge: $(env_get DASHBOARD_STATE 2>/dev/null || echo "$VAR/config"), ${VAR}, ${ETC} and the account ${ACCOUNT}. The projects in $(env_get WORKSPACE 2>/dev/null || echo "$WORKSPACE_DIR") stay"
+        what="${what}; and with --purge: $(state_dir), ${VAR}, ${ETC} and the account ${ACCOUNT}. The projects in $(env_get WORKSPACE 2>/dev/null || echo "$WORKSPACE_DIR") stay"
     fi
     printf 'This takes away: %s.\n' "$what"
     if [ -z "$ASSUME_YES" ]; then
