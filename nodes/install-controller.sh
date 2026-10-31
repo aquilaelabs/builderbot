@@ -448,7 +448,10 @@ folders() {
         setpriv --reuid="$ACCOUNT" --regid="$g" --init-groups test -w "$P$WORKSPACE_DIR" 2>/dev/null \
             || warn "$WORKSPACE_DIR is not writable by ${ACCOUNT}: new projects cannot be made there until it is"
     else
-        install -d -m 0750 -o root -g "$g" "$(dirname "$P$WORKSPACE_DIR")"
+        # The parent made if missing and never changed if it is there: install
+        # -d sets a folder's mode and owner even when it exists, and the
+        # parent of --workspace /projects is / (B498).
+        mkdir -p "$(dirname "$P$WORKSPACE_DIR")"
         install -d -m 0750 -o "$ACCOUNT" -g "$g" "$P$WORKSPACE_DIR"
     fi
 }
