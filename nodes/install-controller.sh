@@ -892,7 +892,11 @@ cmd_remove() {
     what="the ${SERVICE} service, ${OPT} and ${RELEASES}, ${BB_BIN}, the sudo rule and the wall"
     [ -f /etc/builderbot/node.json ] && [ -f "$ETC/own-node" ] && what="${what}, and this machine's node (provision-linux.sh --remove)"
     if [ "$PURGE" = 1 ]; then
-        what="${what}; and with --purge: $(state_dir), ${VAR}, ${ETC} and the account ${ACCOUNT}. The projects in $(env_get WORKSPACE 2>/dev/null || echo "$WORKSPACE_DIR") stay"
+        # What --purge removes is the installer's own folders; a state the env
+        # file moved elsewhere is named as staying, not as gone.
+        local st; st="$(state_dir)"
+        case "$st" in "$VAR"/*) st="" ;; esac
+        what="${what}; and with --purge: ${VAR}, ${ETC} and the account ${ACCOUNT} where this installer made it. The projects in $(env_get WORKSPACE 2>/dev/null || echo "$WORKSPACE_DIR")${st:+ and the state at ${st}} stay"
     fi
     printf 'This takes away: %s.\n' "$what"
     if [ -z "$ASSUME_YES" ]; then
