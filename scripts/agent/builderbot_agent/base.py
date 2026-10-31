@@ -533,6 +533,28 @@ def _run(argv, timeout=5):
 _PROBE_SAID = set()
 
 
+def _probe_as(exe):
+    """Who a version probe runs as, from root: the account that owns the
+    binary, or nobody where root owns it and another account may write it.
+    The agent is root, and the binaries it asked for a version (a toolchain
+    store's java, a session's own claude) are files a build or a session can
+    replace, which root then ran (B523). As whom they answer changes nothing
+    of what they print."""
+    if os.geteuid() != 0:
+        return {}
+    import shutil
+    import stat
+    try:
+        st = os.stat(shutil.which(exe) or exe)
+    except OSError:
+        return {}
+    if st.st_uid != 0:
+        return {"user": st.st_uid, "group": st.st_gid, "extra_groups": []}
+    if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        return {"user": 65534, "group": 65534, "extra_groups": []}
+    return {}
+
+
 def _probe(argv, timeout=5):
     """Ask a tool for its version: what it said, and whether it ANSWERED.
 
@@ -560,7 +582,7 @@ def _probe(argv, timeout=5):
     """
     try:
         p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
-                           check=False)
+                           check=False, **_probe_as(argv[0]))
     except subprocess.TimeoutExpired:
         return "", f"did not answer within {timeout}s"
     except (OSError, subprocess.SubprocessError) as e:
