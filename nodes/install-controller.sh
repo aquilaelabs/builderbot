@@ -872,9 +872,12 @@ back_to_previous() {
     # back, and what the state held is kept beside it.
     # The restore is the newer release's own (an older one may predate it).
     if ! gate "$prev" "$oldver" 2>/dev/null; then
-        PATH="$SHIM:$PATH" python3 "$OPT/scripts/dashboard/stateversion.py" restore "$state" "$newver" \
+        # As the controller's account, whose folder it is, never as root:
+        # root following a link the account could plant in its own state
+        # would move files where the account chose.
+        setpriv --reuid="$ACCOUNT" --regid="$(id -gn "$ACCOUNT")" --init-groups \
+            env PATH="$SHIM:$PATH" python3 "$OPT/scripts/dashboard/stateversion.py" restore "$state" "$newver" \
             || { svc_restart "$SERVICE" || true; die "the state could not be put back to what ${oldver} reads, so ${newver} is started again"; }
-        chown -R "$ACCOUNT:$(id -gn "$ACCOUNT")" "$state" 2>/dev/null || true
     fi
     flip "$prev"
     service
