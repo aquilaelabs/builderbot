@@ -12,6 +12,7 @@
 
 - A session's bb version release from a branch other than main makes a dev pre-release unless --stable is said, and its first line names the channel the release lands on (7a8e367)
 - bb sign release waits for its look and says what it found, run by run, or why it found nothing to sign (7a8e367)
+- Pages read alike: sizes say their unit after a space and in TB past a terabyte, a list narrowed two ways shows one All with the second row starting at Any source or Any version, a view's status line is a note unless it says what stops a press, the Wiki view's controls are one row, Commit all and the Design view's new page sit on one line, and where any coding agent is meant the page says agent (56bc704)
 
 ### Fixed
 
