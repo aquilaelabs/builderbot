@@ -332,6 +332,8 @@ object Watch {
                  " (updating Claude Code ends the ${a.optInt("sessions")} Claude session${if (a.optInt("sessions") == 1) "" else "s"} there)" else "")
         "release-sign" -> if (a.bool("bad")) "${a.str("tag")}'s APK in ${a.str("project")} is not signed: ${a.str("why")}"
                           else "${a.str("project")}'s next release cannot be signed: ${a.str("why")}"
+        // A release short of a file its project lists (R190).
+        "release-files" -> "${a.str("tag")} of ${a.str("project")} is missing a file: ${a.str("why")}"
         "room" -> "${a.str("node")} is running short of room: " + (a.arr("short").map {
                 if (it.has("used_pct") && !it.isNull("used_pct")) "${it.str("what")} has been ${it.optInt("used_pct")}% used for ten minutes"
                 else "${it.str("what")} has ${it.str("free_gb")} GB free of ${it.str("total_gb")} GB" } +
@@ -367,6 +369,10 @@ object Watch {
         "release-edit" -> "Edit the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }}"
         "release-remove" -> "Remove files from the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }}"
         "release-sign" -> "Sign the release APKs of ${a.str("project").ifBlank { "a project" }} again"
+        // A release taken back with its tag (R190), always its owner's answer.
+        "release-withdraw" -> "Withdraw the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }} and its tag"
+        // A push held for the lines in it that look like a secret (R219).
+        "push" -> "A push from ${a.str("project").ifBlank { "a project" }} looks sensitive"
         // A VM a session asks to make, start or remove (R91), under its
         // project's Make VMs setting.
         "vm" -> "A VM in ${a.str("project").ifBlank { "a project" }}"
@@ -374,7 +380,7 @@ object Watch {
     }
     fun askCommand(a: JSONObject): String = when (a.str("kind")) {
         "root" -> "# "
-        "rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "release-sign", "vm" -> "bb "
+        "rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "release-withdraw", "release-sign", "push", "vm" -> "bb "
         else -> "adb "
     } + a.strs("cmd").joinToString(" ")
 }
