@@ -1052,7 +1052,13 @@ function pageHead({title = "", pills = "", facts = [], actions = "", cls = ""} =
 // A value or a sub given as GHOST is the page's placeholder: the tile is
 // the real one, its number shimmering until the page has it.
 function statTiles(tiles){
-  const rows = (tiles || []).filter(t => t && !t.omit);
+  // A size given whole ("11.0 TB") is its number and its unit, the unit in
+  // the small voice as a tile's unit is: at the tile's size the two parted
+  // across lines on a phone.
+  const rows = (tiles || []).filter(t => t && !t.omit).map(t => {
+    const m = !t.unit && typeof t.value === "string" && /^([\d.,]+) (B|kB|KB|MB|GB|TB)$/.exec(t.value);
+    return m ? {...t, value: m[1], unit: m[2]} : t;
+  });
   if (!rows.length) return "";
   return `<div class="field"><div class="tiles">${rows.map(t => `
     <div class="tile${t.tone ? " " + esc(t.tone) : ""}"${t.title ? ` title="${esc(t.title)}"` : ""}>
