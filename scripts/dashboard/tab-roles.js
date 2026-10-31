@@ -299,7 +299,7 @@ function rolesRoleBody(){
   // built in first, then the ones made here, each with its kind, and the
   // projects' owner roles, one per project and each the same shape, folded
   // into one row at the end that opens on them.
-  const kind = x => x.builtin ? "built in" : x.scope === "global" ? "Everywhere" : "on a project";
+  const kind = x => x.builtin ? "built in" : x.scope === "global" ? "everywhere" : "on a project";
   const owners = names.filter(n => !d.roles[n].builtin && d.roles[n].project);
   const plain = names.filter(n => !owners.includes(n));
   const ownersOpen = rolesOwnersOpen || owners.includes(rolesPick) && !r?.fresh;
