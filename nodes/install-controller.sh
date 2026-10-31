@@ -883,11 +883,19 @@ cmd_remove() {
     rm -rf "$RELEASES" "$SHIM"
     rm -f "$OPT"
     if [ "$PURGE" = 1 ]; then
+        # Whether this installer made the account, read before the folder
+        # that records it goes, which made the answer always no (B500).
+        local made=""
+        grep -qx "$ACCOUNT" "$MADE" 2>/dev/null && made=1
         rm -rf "$VAR" "$ETC"
-        if grep -qx "$ACCOUNT" "$MADE" 2>/dev/null || ! id -u "$ACCOUNT" >/dev/null 2>&1; then
-            userdel "$ACCOUNT" >/dev/null 2>&1 || true
+        if [ -n "$made" ]; then
+            userdel "$ACCOUNT" >/dev/null 2>&1 || warn "the account ${ACCOUNT} could not be removed: userdel ${ACCOUNT}"
         fi
-        printf '   the state, the env file, the secrets and %s are gone; the projects stay\n' "$ACCOUNT"
+        if [ -n "$made" ] && ! id -u "$ACCOUNT" >/dev/null 2>&1; then
+            printf '   the state, the env file, the secrets and %s are gone; the projects stay\n' "$ACCOUNT"
+        else
+            printf '   the state, the env file and the secrets are gone; the account %s stays; the projects stay\n' "$ACCOUNT"
+        fi
     else
         printf '   the state (%s), the env file, the secrets and %s stay: --install puts the controller back on them\n' \
             "$VAR/config" "$ACCOUNT"
