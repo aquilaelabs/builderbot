@@ -1465,7 +1465,8 @@ const inRelease = (v, on) => !on || (on === "none" ? !relOf(v) : relOf(v) === on
 // beside them, R254 step 1): "" when fewer than two groups have anything.
 // `all` is All's count where the groups overlap (a branch both Active and
 // Yours), the groups' sum otherwise. `allWord` names the first chip where a
-// second row under another would say All again (the Library's sources).
+// second row under another would say All again (the Library's sources,
+// Bugs' and the Roadmap's versions).
 function chipButtons(groups, on, attr, all, allWord = "All"){
   // A group with no count to give (a disk, a key: count null) is a chip
   // with its name alone; one whose count is 0 has nothing to show.

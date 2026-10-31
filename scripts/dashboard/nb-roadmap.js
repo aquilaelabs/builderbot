@@ -337,7 +337,7 @@ function nbRoadmapView({$, nb}){
     // narrows by it too, so what went into a release can be read back.
     const vers = versionChips(rows, rmVers, "No target");
     if (nb.roadmapVer && !vers.some(v => v.key === nb.roadmapVer)) nb.roadmapVer = "";
-    const verChips = chipButtons(vers, nb.roadmapVer, "data-rmver");
+    const verChips = chipButtons(vers, nb.roadmapVer, "data-rmver", undefined, "Any version");
     // One band for every group (R109), drawn while any group has two.
     setHidden($("roadmapFilter"), !chips && !verChips);
     if (paint($("roadmapVers"), verChips, true))

@@ -277,13 +277,13 @@ function nbBugsView({$, nb, project}){
     // ...and by the release a report was seen in (the operator, 21 Oct).
     const vers = versionChips(rows, b => b.seen_in, "Unknown");
     if (nb.bugVer && !vers.some(v => v.key === nb.bugVer)) nb.bugVer = "";
-    if (paint($("bugVers"), chipButtons(vers, nb.bugVer, "data-bgver"), true))
+    if (paint($("bugVers"), chipButtons(vers, nb.bugVer, "data-bgver", undefined, "Any version"), true))
       $("bugVers").querySelectorAll("[data-bgver]").forEach(b => b.onclick = () => fadeThrough(() => [$("bugList")], () => { nb.bugVer = b.dataset.bgver; drawBugs(true); }));
     // ...and by whether it reproduces (R124).
     const reprN = k => rows.filter(b => (b.reproduces || "untried") === k).length;
     if (!REPRO_ORDER.includes(nb.bugRepr)) nb.bugRepr = "";
     if (paint($("bugRepro"), chipButtons(REPRO_ORDER.map(k => ({key: k, label: REPRO_LABELS[k], count: reprN(k)})),
-                                         nb.bugRepr, "data-bgrepr"), true))
+                                         nb.bugRepr, "data-bgrepr", undefined, "However often"), true))
       $("bugRepro").querySelectorAll("[data-bgrepr]").forEach(b => b.onclick = () => fadeThrough(() => [$("bugList")], () => { nb.bugRepr = b.dataset.bgrepr; drawBugs(true); }));
     const shown = b => (!nb.bugChip || (nb.bugChip === "open") === (b.status === "open"))
       && inRelease(b.seen_in, nb.bugVer) && (!nb.bugRepr || (b.reproduces || "untried") === nb.bugRepr) && bugMatch(b, q);
