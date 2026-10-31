@@ -97,7 +97,7 @@ class TheAgent(unittest.TestCase):
              mock.patch.object(self.em.subprocess, "run", side_effect=self.run), mock.patch.object(self.em.shutil, "which", side_effect=lambda t: t), \
              mock.patch.object(self.em.os.path, "ismount", side_effect=lambda p: p in self.mounted):
             a.ext_mounts_want(rows)
-            self.assertEqual(self.runs[0], ["mount", os.path.join(self.byid, "usb-Seagate_NA1-0:0-part1"), f"{self.root}/backup"])
+            self.assertEqual(self.runs[0], ["mount", "-o", "nosuid,nodev", os.path.join(self.byid, "usb-Seagate_NA1-0:0-part1"), f"{self.root}/backup"])
             self.assertEqual(self.runs[1][:4], ["mount", "-t", "cifs", "//nas/media"])
             self.assertIn("credentials=" + os.path.join(self.creds, "media"), self.runs[1][-1])
             self.assertIn(",ro", self.runs[1][-1])

@@ -42,6 +42,10 @@ def disk_dev(source):
     """The device for a disk's by-id link: its first partition's link
     where one exists (a disk with a table), else the disk's own."""
     root = _env("BB_BY_ID", "/dev/disk/by-id")
+    # One link's name in that folder, never a path out of it: ../../sda1
+    # mounted any device.
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:+@-]{0,200}", source or ""):
+        return ""
     for cand in (f"{root}/{source}-part1", f"{root}/{source}"):
         if os.path.exists(cand):
             return cand
@@ -101,7 +105,11 @@ class ExtMountsMixin:
                 continue
             path = os.path.join(root, r["name"])
             keep.add(r["name"])
-            text = f"username={r.get('user') or 'guest'}\npassword={r.get('password') or ''}\n"
+            # One line each: a newline in either added keys of its own.
+            user, pw = str(r.get("user") or "guest"), str(r.get("password") or "")
+            if any(c in user + pw for c in "\r\n"):
+                continue
+            text = f"username={user}\npassword={pw}\n"
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(text)
@@ -161,10 +169,11 @@ class ExtMountsMixin:
 
     def _ext_argv(self, m, path):
         kind = m.get("kind")
-        ro = ["-o", "ro"] if m.get("ro") else []
         if kind == "disk":
             dev = disk_dev(str(m.get("source") or ""))
-            return [shutil.which("mount") or "mount", *ro, dev, path] if dev else None
+            # A disk somebody brings is mounted without its own set-uid
+            # programs or device files counting for anything here.
+            return [shutil.which("mount") or "mount", "-o", "nosuid,nodev" + (",ro" if m.get("ro") else ""), dev, path] if dev else None
         if kind == "smb":
             creds = os.path.join(_env("BB_CREDS", CREDS), m["name"])
             opts = f"credentials={creds},uid=0,gid=0,file_mode=0664,dir_mode=0775,vers=3.0,soft" + (",ro" if m.get("ro") else "")
