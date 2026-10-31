@@ -3065,6 +3065,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    row's buttons at the right (viewGlance's slot), and a row with neither
    not drawn at all. */
 .nb .nbhead>.nbsaidslot{flex:1 1 12rem;min-width:0}
+/* The wiki's control row carries where it goes as words beside five
+   buttons: the words take a line of their own when the row has no room. */
+.nb .nbview[data-view="wiki"]>.nbhead{flex-wrap:wrap}
+.nb .nbview[data-view="wiki"]>.nbhead>#wkNetState{flex:1 1 12rem;min-width:0;font:var(--f-note);overflow-wrap:anywhere}
 .nb .nbhead>.nbsaidslot:empty{display:none}
 .nb .nbhead>.nbsaidslot>.notice{margin:0;display:flex;align-items:center;flex-wrap:wrap;gap:var(--field-gap)}
 .nb .nbhead>.nbsaidslot>.notice>.actbar{margin-inline-start:auto}
@@ -6064,24 +6068,19 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            to be read, written through like Bugs, kept by the controller as a
            forge-shaped repository so Export is a zip of Markdown and Push is
            the repository's own wiki. -->
-      <!-- The control row (R109): History, and New page, the primary, whose
-           form unrolls under the row, as every view adds (B457). -->
+      <!-- The control row (R109), one row as every view's: where the wiki
+           goes at its left, then Export for every project, Pull and Push
+           where there is a forge, History, and New page, the primary, whose
+           form unrolls under the row, as every view adds (B457). It was two
+           rows, History and New page alone on the first. Why Push is dead
+           when it is, said under the row rather than in a tooltip. -->
       <div class="field nbhead vbar docbarrow">
+        <span class="state" id="wkNetState"></span>
         <span class="sp"></span>
-        <span class="actbar"><button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button><button type="button" id="wkNew" class="primary" data-add="wiki" hidden>New page</button></span>
+        <span class="actbar"><button type="button" id="wkExport" title="every page as Markdown in a zip, with or without a remote">Export</button><button type="button" id="wkPull" hidden title="take in what changed on the forge's wiki">Pull</button><button type="button" id="wkPush" hidden title="send the wiki to the repository's own wiki">Push</button><button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button><button type="button" id="wkNew" class="primary" data-add="wiki" hidden>New page</button></span>
       </div>
       <div id="wkAddBox"></div>
-      <!-- The glance: its pages, and its status line, which says where the
-           wiki goes and holds Export for every project, Pull and Push where
-           there is a forge, so the control row fits a phone; why Push is dead
-           when it is, said under the line rather than in a tooltip. -->
       <div class="nbglance" id="wkHint" data-tiles="1"></div>
-      <div class="field headline nbsaid" id="wkNet"><div class="actbar">
-        <span class="state" id="wkNetState"></span>
-        <button type="button" id="wkExport" title="every page as Markdown in a zip, with or without a remote">Export</button>
-        <button type="button" id="wkPull" hidden title="take in what changed on the forge's wiki">Pull</button>
-        <button type="button" id="wkPush" hidden title="send the wiki to the repository's own wiki">Push</button>
-      </div></div>
       <div class="field" id="wkWhy" hidden></div>
       <div id="wkBody" data-skel="lines"></div>
     </div>
