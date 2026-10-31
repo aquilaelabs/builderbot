@@ -3073,7 +3073,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* The wiki's control row carries where it goes as words beside five
    buttons: the words take a line of their own when the row has no room. */
 .nb .nbview[data-view="wiki"]>.nbhead{flex-wrap:wrap}
-.nb .nbview[data-view="wiki"]>.nbhead>#wkNetState{flex:1 1 12rem;min-width:0;font:var(--f-note);overflow-wrap:anywhere}
+.nb .nbview[data-view="wiki"]>.nbhead>#wkNetState{flex:1 1 12rem;min-width:0;overflow-wrap:anywhere}
 .nb .nbhead>.nbsaidslot:empty{display:none}
 /* An empty part of a head row (the Docker view's view switch while it has
    no containers) takes no gap: its status line sat 8px in from every other
@@ -6092,7 +6092,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            rows, History and New page alone on the first. Why Push is dead
            when it is, said under the row rather than in a tooltip. -->
       <div class="field nbhead vbar docbarrow">
-        <span class="state" id="wkNetState"></span>
+        <span class="nbsaidslot" id="wkNetState"></span>
         <span class="sp"></span>
         <span class="actbar"><button type="button" id="wkExport" title="every page as Markdown in a zip, with or without a remote">Export</button><button type="button" id="wkPull" hidden title="take in what changed on the forge's wiki">Pull</button><button type="button" id="wkPush" hidden title="send the wiki to the repository's own wiki">Push</button><button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button><button type="button" id="wkNew" class="primary" data-add="wiki" hidden>New page</button></span>
       </div>
