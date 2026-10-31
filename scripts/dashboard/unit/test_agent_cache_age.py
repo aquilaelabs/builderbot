@@ -47,6 +47,23 @@ class CacheAge(unittest.TestCase):
         self.clear({})
         self.assertEqual(os.listdir(self.root), [])
 
+    def test_a_dotted_project_never_reaches_past_the_store(self):
+        # ".." named the store's parent, which root then removed whole.
+        beside = os.path.join(os.path.dirname(self.root), os.path.basename(self.root) + "-beside")
+        os.makedirs(beside)
+        self.addCleanup(shutil.rmtree, beside, True)
+        for bad in ("..", ".", "../x"):
+            self.assertEqual(self.clear({"project": bad}), ("failed", 64), bad)
+        self.assertTrue(os.path.isdir(beside))
+        self.assertEqual(sorted(os.listdir(self.root)), ["fresh", "stale", "unstamped"])
+
+    def test_a_link_in_the_store_is_not_followed(self):
+        out = tempfile.mkdtemp(prefix="outside-")
+        self.addCleanup(shutil.rmtree, out, True)
+        os.symlink(out, os.path.join(self.root, "linked"))
+        self.clear({})
+        self.assertTrue(os.path.isdir(out), "what a link in the store points at stays")
+
 
 if __name__ == "__main__":
     unittest.main()

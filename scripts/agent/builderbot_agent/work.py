@@ -248,7 +248,12 @@ class WorkMixin:
         if not root or not os.path.isdir(root):
             job.say("no cache store here\n")
             return "succeeded", 0
-        project = re.sub(r"[^A-Za-z0-9._-]", "_", str(spec.get("project") or ""))
+        project = str(spec.get("project") or "")
+        # A project's name, never "." or "..": the old clean-up kept dots, so
+        # ".." named the store's parent and root removed it whole.
+        if project and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", project):
+            job.say(f"refused: {project!r} is not a project's name\n")
+            return "failed", 64
         targets = [os.path.join(root, project)] if project else \
                   [os.path.join(root, d) for d in os.listdir(root)]
         try:
@@ -264,8 +269,14 @@ class WorkMixin:
                 targets += glob.glob(os.path.join(home, ".cache", "builderbot", "u", "*", "project", project)) + \
                     glob.glob(os.path.join(home, "users", "*", ".cache", "builderbot", "u", "*", "project", project))
         n = 0
+        real_root = os.path.realpath(root)
         for t in targets:
             if days > 0 and cache_age_days(t) < days:
+                continue
+            # Only a folder itself directly in the store (or a project's
+            # build cache under a home), never a link out of it.
+            if os.path.islink(t) or (t.startswith(root) and os.path.dirname(os.path.realpath(t)) != real_root):
+                job.say(f"skipped {t}: not a folder of the cache store's own\n")
                 continue
             if os.path.isdir(t):
                 shutil.rmtree(t, ignore_errors=True)
