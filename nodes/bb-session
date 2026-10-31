@@ -1039,7 +1039,10 @@ def _mkdirs(path, uid, gid):
         cur += "/" + p
         if not os.path.isdir(cur):
             os.mkdir(cur, 0o755)
-            os.chown(cur, uid, gid)
+            # Never through a link: on a real home a racing session could
+            # swap the folder just made for one, and root's chown would go
+            # wherever it pointed (B511).
+            os.lchown(cur, uid, gid)
 
 
 def apply(steps, uid, gid):
