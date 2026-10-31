@@ -49,6 +49,12 @@ def store_path_ok(path, what="a store"):
     for bad in STORE_DENY_UNDER:
         if (p + "/").startswith(bad):
             return f"{p} is inside {bad.rstrip('/')}, which this agent will not write to"
+    # ...and where it really is, held to the same: a link on a share that
+    # points at /etc passed as text, and root then copied a store's tree
+    # into /etc. A link to somewhere a store may be (macOS's /tmp) is fine.
+    real = os.path.realpath(p)
+    if real != p and (why := store_path_ok(real, what)):
+        return f"{p} is a link to {real}, and {why}"
     return ""
 def make_store(path):
     """Create a store directory, and say which directories that actually
