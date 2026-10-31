@@ -152,8 +152,10 @@ function nbTestsView({$, nb, project}){
     if (!all.length){
       viewGlance($("tstHint"), [], going);
       $("tstStats").hidden = false;
-      $("tstStats").innerHTML = `<div class="hint nbempty">A session records a run with
-        <pre class="ndcmd">bb tests run</pre></div>`;
+      // What the view is for, as its empty state, in one sentence as every
+      // view's is (the a-notebook/views rule): a command box the page's
+      // width read as a field to type in.
+      $("tstStats").innerHTML = `<div class="field"><div class="hint nbempty">Each test run a session records with <code>bb tests run</code>, once there is one: what passed and failed, the tests that went flaky, and the ones with nothing saying what they protect.</div></div>`;
       $("tstList").innerHTML = ""; $("tstBar").hidden = true;
       $("tstFolds").innerHTML = "";
       return;
