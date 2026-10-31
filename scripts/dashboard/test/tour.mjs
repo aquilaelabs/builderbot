@@ -104,7 +104,9 @@ const overShimmer = await page.evaluate(async () => {
   await new Promise(r => setTimeout(r, 1200));
   const during = !$('tourCard')?.hidden;
   ph.remove(); tourSoon(tabOf(panes[0])?.kind);
-  await new Promise(r => setTimeout(r, 1200));
+  // Up to ten seconds for the tour to come, not a fixed second a loaded
+  // gate outran (B384).
+  for (let i = 0; i < 100 && $('tourCard')?.hidden !== false; i++) await new Promise(r => setTimeout(r, 100));
   const after = !$('tourCard')?.hidden;
   const shade = getComputedStyle($('tourRing')).boxShadow;
   tourEnd?.(); state.tour = seen;
