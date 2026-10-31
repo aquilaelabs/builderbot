@@ -5643,6 +5643,10 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
   margin:5px 0 0;padding-left:9px;border-left:2px solid var(--line);
   overflow-wrap:anywhere}
 .fx a{color:var(--note)}
+/* ...but a link dressed as a button keeps the button's face: at the same
+   weight and later, the rule above dressed the Sessions view's Download in
+   the link color beside Resume and Read. */
+.fx a.btn:not(.primary, .danger){color:var(--ink)}
 .fx .cve{display:inline-block;font:var(--f-pill);padding:3px 7px;
   border-radius:99px;border:var(--hair) solid var(--red2-edge);color:var(--bad);
   text-decoration:none;margin:0 4px 4px 0}
