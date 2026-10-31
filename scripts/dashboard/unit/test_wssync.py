@@ -179,6 +179,13 @@ class Sync(unittest.TestCase):
         self.assertEqual(code, 200, out)
         self.assertEqual(read(f"{self.ws}/alpha/.git/config"), fine.decode())
         self.assertEqual(put("src/link", link="../a.txt")[1], 200, "a link inside the project is fine")
+        # B531: a link to "." reads harmless, and a link under it to ".."
+        # read as inside by its path landed at the top and named the parent.
+        self.assertEqual(put("p", link=".")[1], 200)
+        out, code = put("p/q", link="..")
+        self.assertEqual(code, 403, out)
+        self.assertFalse(os.path.lexists(f"{self.ws}/alpha/q"), "no link to the workspace was made")
+        self.assertEqual(put("p/escaped.txt", b"x")[1], 200, "a file through a link inside the project lands inside it")
 
     def test_a_git_config_the_controller_already_holds_comes_back_as_already_so(self):
         """B732: the controller writes the project's own credential helper

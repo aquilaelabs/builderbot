@@ -553,6 +553,12 @@ def since(nid, project, rev):
         return {"rev": cur, "changes": rows}, 200
 
 
+def _inside(root, p):
+    """Whether `p`, its links followed, is the project's tree or in it."""
+    top, real = os.path.realpath(root), os.path.realpath(p)
+    return real == top or real.startswith(top + os.sep)
+
+
 def file_path(nid, project, rel):
     """The file a node asked for, or a refusal."""
     if (why := may(nid, project)):
@@ -560,9 +566,12 @@ def file_path(nid, project, rel):
     if not _rel_ok(rel) or skipped(rel) or _hidden(nid, rel):
         return None, ({"error": "not a synced path"}, 400)
     try:
-        p = _root(project) / rel
+        root = _root(project)
+        p = root / rel
     except ValueError as e:
         return None, ({"error": str(e)}, 404)
+    if not _inside(root, p):
+        return None, ({"error": "no such file"}, 404)
     e = _entry(p)
     if e is None or e[3]:
         return None, ({"error": "no such file"}, 404)
@@ -736,6 +745,12 @@ def put(nid, project, q, stream, length):
     if not gone and not link and (length < 0 or length > MAX_FILE):
         return {"error": f"over {MAX_FILE >> 20} MB: not synced"}, 413
     target = root / rel
+    # Judged where it really lands, not as the path reads: a link to "."
+    # then a link under it to ".." put the project's parent in reach, every
+    # other project's tree read and written through it (B531).
+    if not _inside(root, target.parent) or (link and not _inside(root, os.path.join(os.path.realpath(target.parent), link))):
+        _refused(nid, project, rel, "a path or a link that leads out of the project")
+        return {"error": "a path or a link that leads out of the project is not synced"}, 403
     who = _who(nid)
     tmp = None
     try:
