@@ -115,7 +115,11 @@ def _env():
 
 
 def _git(project, *args, timeout=60, check=True, env=None):
-    r = subprocess.run(["git", "-C", str(repo(project)), *args], capture_output=True, text=True,
+    # A wiki pulled from a forge may hold links: checked out as plain files
+    # naming their target, never as links a save would write through
+    # (/config/users.json), and no hook of its own runs (B532).
+    r = subprocess.run(["git", "-c", "core.symlinks=false", "-c", "core.hooksPath=/dev/null",
+                        "-C", str(repo(project)), *args], capture_output=True, text=True,
                        timeout=timeout, check=False, env=env or _env())
     if check and r.returncode:
         raise Refused((r.stderr or r.stdout or "git failed").strip().splitlines()[-1][:300])
@@ -242,6 +246,8 @@ def save(project, name, text, base="", who=None, why=""):
                           f"{title_of(file)!r} is already a page: open it and edit it")
         if not now and len(pages(project)) >= MAX_PAGES:
             raise Refused(f"a wiki holds at most {MAX_PAGES} pages")
+        if (repo(project) / file).is_symlink():
+            raise Refused(f"{title_of(file)!r} is a link on this controller, not a page: pull the wiki again")
         (repo(project) / file).write_text(text, encoding="utf-8")
         _git(project, "add", "--", file)
         if _git(project, "diff", "--cached", "--quiet", check=False).returncode == 0:
@@ -324,6 +330,8 @@ def rename(project, old, new, who=None):
         for p in pages(project):
             f = b if p["file"] == a else p["file"]
             path = repo(project) / f
+            if path.is_symlink():
+                continue
             try:
                 text = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):

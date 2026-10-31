@@ -69,6 +69,20 @@ class Wiki(unittest.TestCase):
         self.assertEqual([x["name"] for x in wiki.pages("app")], ["Home"])
         self.assertGreaterEqual(len(wiki.history("app")), 4)
 
+    def test_a_page_that_is_a_link_is_never_written_through(self):
+        # B532: a wiki pulled from a forge may hold a link where a page is;
+        # a save wrote through it to wherever it pointed.
+        outside = self.tmp / "outside.json"
+        outside.write_text("{}")
+        wiki.save("alpha", "Home", "# Home\n")
+        home = wiki.repo("alpha") / "Home.md"
+        home.unlink()
+        home.symlink_to(outside)
+        rev = wiki.page("alpha", "Home")["rev"]
+        with self.assertRaises(wiki.Refused):
+            wiki.save("alpha", "Home", "pwned\n", base=rev)
+        self.assertEqual(outside.read_text(), "{}")
+
     def test_a_rename_moves_the_links_to_it(self):
         """B46: every link to a renamed page follows it, in the same commit,
         and a link to another page or a forge address is left alone."""
