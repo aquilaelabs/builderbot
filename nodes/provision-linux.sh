@@ -386,6 +386,12 @@ guest_unit() { printf '%s' "$HOME/.config/systemd/user/$GUEST_UNIT_NAME"; }
 guest_remove() {
     local foot unit
     foot="$(guest_foot)"; unit="$(guest_unit)"
+    # Only a folder this laid down: BUILDERBOT_HOME left set to a home or
+    # to / would otherwise be deleted whole (B517).
+    case "${foot%/}" in ""|/|"${HOME%/}"|/home|/root) warn "BUILDERBOT_HOME is ${foot:-empty}, which is not the agent's own folder: nothing removed"; exit 1 ;; esac
+    if [ -e "$foot" ] && [ ! -f "$foot/node.json" ] && [ ! -e "$foot/bin" ]; then
+        warn "${foot} does not look like the agent's folder (no node.json or bin in it): nothing removed"; exit 1
+    fi
     if [ -z "${YES:-}" ]; then
         printf 'This takes off %s (its stores included) and %s.\nNothing else was put on this machine. Continue? [y/N] ' \
                "$foot" "$unit"
