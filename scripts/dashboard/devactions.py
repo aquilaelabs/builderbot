@@ -125,6 +125,15 @@ def sync_work_tree(project, instance):
     # files and no .git, where a node shares this disk) is made again as one:
     # git cannot move what is not its own (B121).
     if at.exists() and not (at / ".git").exists():
+        # Only a build tree this made (its .bbignore says so): a project of
+        # its own that happens to carry the name (web-main-build, with no
+        # git) was removed whole (B533).
+        try:
+            ours = (at / ".bbignore").read_text().strip() == "a build tree, not a project"
+        except OSError:
+            ours = False
+        if not ours:
+            return f"{at.name} is a folder of its own here, not {instance}'s build tree: rename the instance or that folder"
         shutil.rmtree(at, ignore_errors=True)
         devapp._run(["git", "-C", str(repo), "worktree", "prune"], timeout=60)
     if not at.exists():
@@ -292,7 +301,12 @@ def _plan(project, instance, action, extra=None):
         checkout = {"name": "checking out", "timeout": 600, "env": {}, "argv": [
             # A worktree there already is the controller's own, on a disk this
             # node shares, put on the ref before the plan was sent: left alone.
-            "sh", "-c", '[ -e "$2/.git" ] && exit 0; set -e; rm -rf "$2.new"; mkdir -p "$2.new"; '
+            # ...and a folder there that is not a build tree (no .bbignore of
+            # one) is somebody's, and left whole (B533).
+            "sh", "-c", '[ -e "$2/.git" ] && exit 0; set -e; '
+            'if [ -e "$2" ] && [ "$(cat "$2/.bbignore" 2>/dev/null)" != "a build tree, not a project" ]; then '
+            'echo "$2 is a folder of its own, not this instance\'s build tree" >&2; exit 1; fi; '
+            'rm -rf "$2.new"; mkdir -p "$2.new"; '
             'git -C "$1" archive --format=tar "$3" | tar -x -C "$2.new"; '
             'rm -rf "$2"; mv "$2.new" "$2"; echo "a build tree, not a project" > "$2/.bbignore"',
             "sh", str(devapp.WORKSPACE / project), str(at), ref]}
