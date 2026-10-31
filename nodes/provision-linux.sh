@@ -443,7 +443,7 @@ guest_run() {
     say "the agent, from ${CONTROLLER}"
     local hdr want got
     hdr="$(mktemp)"
-    curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
+    curl -fsSL -D "$hdr" -H @<(printf 'Authorization: Bearer %s\n' "${TOKEN}") \
          "${CONTROLLER%/}/api/v1/agent/download" -o "${agent}.new" \
         || { warn "could not download the agent from ${CONTROLLER}: is that the dashboard's address, and is the token unused?"
              rm -f "$hdr" "${agent}.new"; exit 1; }
@@ -988,7 +988,7 @@ if [ "$REACH" = public ]; then
     # answered 200 with nothing in it, the run installed an empty agent,
     # and the enrollment "succeeded" without reaching home (11 Oct).
     rhdr="$(mktemp)"
-    code="$(curl -s -o /dev/null -D "$rhdr" -m 15 -H "Authorization: Bearer ${TOKEN}" -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
+    code="$(curl -s -o /dev/null -D "$rhdr" -m 15 -H @<(printf 'Authorization: Bearer %s\n' "${TOKEN}") -w '%{http_code}' "${CONTROLLER%/}/api/v1/agent/download" || true)"
     rdig="$(tr -d '\r' < "$rhdr" | awk 'tolower($1)=="x-agent-digest:"{print $2}')"
     rm -f "$rhdr"
     if [ "$code" = 200 ] && [ -z "$rdig" ]; then
@@ -3390,7 +3390,7 @@ if [ -n "$CONTROLLER" ]; then
     # shellcheck disable=SC2046
     pkg $(pkg_names pycrypto)
     hdr="$(mktemp)"
-    curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
+    curl -fsSL -D "$hdr" -H @<(printf 'Authorization: Bearer %s\n' "${TOKEN}") \
          "${CONTROLLER%/}/api/v1/agent/download" -o "${AGENT}.new" \
         || { warn "could not download the agent from ${CONTROLLER}. Is that the dashboard's address, and is the token unused?"; rm -f "$hdr" "${AGENT}.new"; exit 1; }
     # The digest the controller says it served, against what arrived. The
@@ -3494,7 +3494,7 @@ elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
     read -r ctl tok < <(python3 -c 'import json; d = json.load(open("/etc/builderbot/node.json")); print(d.get("controller", ""), d.get("token", ""))' 2>/dev/null || true)
     if [ -n "$ctl" ] && [ -n "$tok" ]; then
         hdr="$(mktemp)"
-        if curl -fsSL -D "$hdr" -H "Authorization: Bearer ${tok}" \
+        if curl -fsSL -D "$hdr" -H @<(printf 'Authorization: Bearer %s\n' "${tok}") \
                 "${ctl%/}/api/v1/agent/download" -o "${AGENT}.new" 2>/dev/null; then
             want="$(tr -d '\r' < "$hdr" | awk 'tolower($1)=="x-agent-digest:"{print $2}')"
             got="sha256:$(sha256sum "${AGENT}.new" | cut -d' ' -f1)"
