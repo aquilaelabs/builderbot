@@ -71,7 +71,7 @@ fun PhoneScreen(store: Store) {
             Text("This phone", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
             Dim("Connect it to a node over Android's Wireless debugging, then lend it to a project: that project's sessions install, run, see and touch its own app here, and anything else still asks you.")
             got.error?.let { Problem(it) }
-            if (got.value != null && nodes.isEmpty()) Problem("No node with adb is dialing in: install android-tools on one from the Toolchains tab.")
+            if (got.value != null && nodes.isEmpty()) Problem("No node with adb is dialing in: install android-tools on one from the Library.")
             if (node != null) {
                 SectionHead("Node", inset = false)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

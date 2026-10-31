@@ -265,7 +265,7 @@ private fun AgentRow(a: Agent, run: JSONObject?, signed: JSONObject?, nodeName: 
                     if (a.id == "claude") OutlinedButton(onClick = onRestart) { Text("Restart") }
                     OutlinedButton(onClick = onEnd) { Text("End", color = Bad) }
                 }
-                signed == null -> Dim("its sign-in is made on the dashboard's Agents page, for that node")
+                signed == null -> Dim("its sign-in is made on its page under Installed in the dashboard, for that node")
                 dead -> {}
                 else -> {
                     if (last != null && last.str("id").isNotBlank())
