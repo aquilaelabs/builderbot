@@ -1129,8 +1129,10 @@ def apply(steps, uid, gid):
         elif kind == "bindmine":
             # This project's own transcripts put back over the cover; where
             # the folder could not be made there is nothing to bind, and the
-            # session still starts.
-            if os.path.isdir(step[1]):
+            # session still starts. A folder itself, never a link: root's
+            # bind followed one into a folder the account could not reach
+            # (B518).
+            if _real_dir(step[1]):
                 _mkdirs(target, uid, gid)
                 _mount(step[1], target, None, MS_BIND | MS_REC)
         elif kind == "hidefile":
