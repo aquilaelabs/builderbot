@@ -2185,11 +2185,17 @@ cmd_uninstall() {
         say "removing the stores on this disk"
         for p in $store_dirs /workspace; do
             [ -d "$p" ] || continue
-            # A mountpoint is a share's, never emptied from here.
+            # A mountpoint is a share's, never emptied from here...
             mountpoint -q "$p" 2>/dev/null && continue
-            rm -rf "$p"
+            # ...nor a store inside a share, which other nodes may use; and
+            # nothing is followed into a mount below it (B509).
+            case "$(findmnt -no FSTYPE -T "$p" 2>/dev/null)" in
+                nfs|nfs4|cifs|smb3|virtiofs|9p|fuse.sshfs|fuse.rclone)
+                    warn "$p is on a share and stays: remove it there if no other node uses it"; continue ;;
+            esac
+            rm -rf --one-file-system "$p"
         done
-        rm -rf /var/lib/builderbot
+        rm -rf --one-file-system /var/lib/builderbot
     else
         rm -rf /var/lib/builderbot/agent /var/lib/builderbot/runner
     fi
