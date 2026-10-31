@@ -4418,6 +4418,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndtools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .ndcap{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
   color:var(--ink)}
+/* ...in a notebook or a dialog too, whose label{display:block} outranked
+   one class: the notebook's VMs view stacked a VM's "starts with its host"
+   box over its words. */
+:is(.nb,.modal) label.ndcap{display:inline-flex;color:var(--ink)}
 /* A set of things to pick from is a listbox (docs/design-language.md,
    Controls): a bordered box of checkbox rows, a thumb high each, scrolling
    past four so it stays small, never a select multiple or a loose column of
