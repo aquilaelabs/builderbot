@@ -108,8 +108,10 @@ function scannersScheduleSection(s, deployed){
      </div>
      <div class="field" id="scanCronF"${custom ? "" : " hidden"}>${lbl("scanCron", "Timetable", "cron's five fields: minute, hour, day of the month, month, weekday")}
        <input id="scanCron" type="text" value="${esc(cron)}" spellcheck="false" autocomplete="off" placeholder="0 4 * * 0"></div>
-     ${s.last?.at ? `<div class="field"><div class="sub">Last run ${esc(ago(s.last.at))}${s.last.by ? `, by ${esc(s.last.by)}` : ""}.</div></div>` : ""}
-     <div class="field"><div class="actbar"><span class="state">${s.on && s.next_at ? `next ${esc(fmtTime(s.next_at * 1000, {weekday: "short", hour: "numeric", minute: "2-digit"}))}` : ""}</span><span class="sp"></span>
+     <div class="field"><div class="actbar"><span class="state">${[
+       s.on && s.next_at ? `next ${esc(fmtTime(s.next_at * 1000, {weekday: "short", hour: "numeric", minute: "2-digit"}))}` : "",
+       // On the bar's status line, in its voice, where it stood alone at body size.
+       s.last?.at ? `last run ${esc(ago(s.last.at))}${s.last.by ? ` by ${esc(s.last.by)}` : ""}` : ""].filter(Boolean).join(" · ")}</span><span class="sp"></span>
        <button type="button" data-scanrunall${deployed ? "" : " disabled"}>Run now on every node</button>
        <button type="button" data-scansave${custom ? "" : " hidden"}>Save timetable</button>
        <button type="button" class="${s.on ? "" : "primary"}" data-scanon="${s.on ? "0" : "1"}">${s.on ? "Turn off" : "Turn on"}</button></div></div>`);
