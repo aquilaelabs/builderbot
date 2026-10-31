@@ -143,8 +143,8 @@ function renderProfileInto(i){
               profile.git_ready === false
                 ? "no author for commits yet: a session waits for a name and an email here"
                 : `commits are signed ${esc(g.name)} &lt;${esc(g.email)}&gt;`}</span>
-            <button type="button" id="pfSave" class="primary"${dirty ? "" : " disabled"}>Save</button>
-            <button type="button" id="pfRevert"${dirty ? "" : " disabled"}>Revert</button>
+            <button type="button" id="pfSave"${dirty ? "" : " disabled"}>Save</button>
+            <button type="button" id="pfRevert" class="caution"${dirty ? "" : " disabled"}>Revert</button>
           </div>
         </div>`)}
     ${sec("may", "What you may do", `

@@ -1024,7 +1024,7 @@ function nodeSessSettings(n){
   return `<div class="ndsettings">${rows}
     <div class="actbar sectbar"><span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span><span class="sp"></span>
       <button type="button" data-nd="sess-save"${dirty ? "" : " disabled"}>Save</button>
-      <button type="button" data-nd="sess-revert"${dirty ? "" : " disabled"}>Revert</button></div>
+      <button type="button" class="caution" data-nd="sess-revert"${dirty ? "" : " disabled"}>Revert</button></div>
   </div>`;
 }
 // Whether a draft in the section differs from what the node has.
